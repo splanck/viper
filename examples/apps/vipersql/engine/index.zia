@@ -240,7 +240,7 @@ class SqlIndex {
     ///        return negative values (signed Integer); we flip sign
     ///        so modulo is always non-negative.
     expose func hashString(s: String) -> Integer {
-        var h = Viper.Crypto.Hash.Fast(s);
+        var h = Viper.Crypto.Hash.NonCryptoFast(s);
         if h < 0 { return 0 - h; }
         return h;
     }

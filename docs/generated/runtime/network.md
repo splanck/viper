@@ -76,7 +76,7 @@ Provides UDP datagram socket.
 
 Create `Viper.Network.Udp` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes properties such as `Port`,
-`Address`, `IsBound` and operations including `Bind`, `BindAt`, `SendTo`, `SendToStr`.
+`Address`, `IsBound` and operations including `New`, `Bind`, `BindAt`, `SendTo`.
 
 Constructor: `Viper.Network.Udp.New`
 
@@ -114,7 +114,8 @@ Constructor: `Viper.Network.Udp.New`
 Provides DNS resolution utility class (static).
 
 `Viper.Network.Dns` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Resolve`, `ResolveAll`, `Resolve4`, `Resolve6`.
+Its public surface exposes operations including `Resolve`, `ResolveAll`, `ResolveIpv4`,
+`ResolveIpv6`.
 
 #### Methods
 
@@ -122,12 +123,12 @@ surface exposes operations including `Resolve`, `ResolveAll`, `Resolve4`, `Resol
 |---|---|---|
 | <a id="viper-network-dns-resolve"></a>`Resolve` | `str(str)` | `Viper.Network.Dns.Resolve` |
 | <a id="viper-network-dns-resolveall"></a>`ResolveAll` | `obj(str)` | `Viper.Network.Dns.ResolveAll` |
-| <a id="viper-network-dns-resolve4"></a>`Resolve4` | `str(str)` | `Viper.Network.Dns.Resolve4` |
-| <a id="viper-network-dns-resolve6"></a>`Resolve6` | `str(str)` | `Viper.Network.Dns.Resolve6` |
+| <a id="viper-network-dns-resolveipv4"></a>`ResolveIpv4` | `str(str)` | `Viper.Network.Dns.ResolveIpv4` |
+| <a id="viper-network-dns-resolveipv6"></a>`ResolveIpv6` | `str(str)` | `Viper.Network.Dns.ResolveIpv6` |
 | <a id="viper-network-dns-reverse"></a>`Reverse` | `str(str)` | `Viper.Network.Dns.Reverse` |
-| <a id="viper-network-dns-isipv4"></a>`IsIPv4` | `i1(str)` | `Viper.Network.Dns.IsIPv4` |
-| <a id="viper-network-dns-isipv6"></a>`IsIPv6` | `i1(str)` | `Viper.Network.Dns.IsIPv6` |
-| <a id="viper-network-dns-isip"></a>`IsIP` | `i1(str)` | `Viper.Network.Dns.IsIP` |
+| <a id="viper-network-dns-isipv4"></a>`IsIpv4` | `i1(str)` | `Viper.Network.Dns.IsIpv4` |
+| <a id="viper-network-dns-isipv6"></a>`IsIpv6` | `i1(str)` | `Viper.Network.Dns.IsIpv6` |
+| <a id="viper-network-dns-isip"></a>`IsIp` | `i1(str)` | `Viper.Network.Dns.IsIp` |
 | <a id="viper-network-dns-localhost"></a>`LocalHost` | `str()` | `Viper.Network.Dns.LocalHost` |
 | <a id="viper-network-dns-localaddrs"></a>`LocalAddrs` | `obj()` | `Viper.Network.Dns.LocalAddrs` |
 
@@ -137,7 +138,7 @@ surface exposes operations including `Resolve`, `ResolveAll`, `Resolve4`, `Resol
 Provides static HTTP client utilities.
 
 `Viper.Network.Http` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Get`, `GetBytes`, `Post`, `PostBytes`.
+Its public surface exposes operations including `Get`, `GetBytes`, `Post`, `PostBytes`.
 
 #### Methods
 
@@ -162,8 +163,8 @@ surface exposes operations including `Get`, `GetBytes`, `Post`, `PostBytes`.
 Provides HTTP request builder.
 
 Create `Viper.Network.HttpReq` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes operations including
-`SetHeader`, `SetBody`, `SetBodyStr`, `SetTimeout`.
+object with the instance members below. Its public surface exposes operations including `New`,
+`SetHeader`, `SetBody`, `SetBodyStr`.
 
 Constructor: `Viper.Network.HttpReq.New`
 
@@ -215,8 +216,8 @@ construct the class directly. Its public surface exposes properties such as `Sta
 Provides URL parsing and construction.
 
 Create `Viper.Network.Url` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes properties such as `Scheme`, `Host`,
-`Port` and operations including `Parse`, `SetQueryParam`, `GetQueryParam`, `HasQueryParam`.
+with the instance members below. Its public surface exposes properties such as `Scheme`,
+`Host`, `Port` and operations including `Parse`, `New`, `SetQueryParam`, `GetQueryParam`.
 
 Constructor: `Viper.Network.Url.New`
 
@@ -245,12 +246,10 @@ Constructor: `Viper.Network.Url.New`
 | <a id="viper-network-url-setqueryparam"></a>`SetQueryParam` | `obj(str,str)` | `Viper.Network.Url.SetQueryParam` |
 | <a id="viper-network-url-getqueryparam"></a>`GetQueryParam` | `str(str)` | `Viper.Network.Url.GetQueryParam` |
 | <a id="viper-network-url-hasqueryparam"></a>`HasQueryParam` | `i1(str)` | `Viper.Network.Url.HasQueryParam` |
-| <a id="viper-network-url-delqueryparam"></a>`DelQueryParam` | `obj(str)` | `Viper.Network.Url.DelQueryParam` |
+| <a id="viper-network-url-removequeryparam"></a>`RemoveQueryParam` | `obj(str)` | `Viper.Network.Url.RemoveQueryParam` |
 | <a id="viper-network-url-querymap"></a>`QueryMap` | `obj()` | `Viper.Network.Url.QueryMap` |
 | <a id="viper-network-url-resolve"></a>`Resolve` | `obj(str)` | `Viper.Network.Url.Resolve` |
 | <a id="viper-network-url-clone"></a>`Clone` | `obj()` | `Viper.Network.Url.Clone` |
-| <a id="viper-network-url-encode"></a>`Encode` | `str(str)` | `Viper.Network.Url.Encode` |
-| <a id="viper-network-url-decode"></a>`Decode` | `str(str)` | `Viper.Network.Url.Decode` |
 | <a id="viper-network-url-encodequery"></a>`EncodeQuery` | `str(obj)` | `Viper.Network.Url.EncodeQuery` |
 | <a id="viper-network-url-decodequery"></a>`DecodeQuery` | `obj(str)` | `Viper.Network.Url.DecodeQuery` |
 | <a id="viper-network-url-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Network.Url.IsValid` |
@@ -330,8 +329,9 @@ Constructor: `Viper.Network.RetryPolicy.New`
 Provides REST client functionality for networked applications.
 
 Create `Viper.Network.RestClient` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `BaseUrl`,
-`KeepAlive` and operations including `SetHeader`, `DelHeader`, `SetAuthBearer`, `SetAuthBasic`.
+object with the instance members below. Its public surface exposes properties such as
+`BaseUrl`, `KeepAlive` and operations including `New`, `SetHeader`, `RemoveHeader`,
+`SetAuthBearer`.
 
 Constructor: `Viper.Network.RestClient.New`
 
@@ -348,7 +348,7 @@ Constructor: `Viper.Network.RestClient.New`
 |---|---|---|
 | <a id="viper-network-restclient-new"></a>`New` | `obj(str)` | `Viper.Network.RestClient.New` |
 | <a id="viper-network-restclient-setheader"></a>`SetHeader` | `void(str,str)` | `Viper.Network.RestClient.SetHeader` |
-| <a id="viper-network-restclient-delheader"></a>`DelHeader` | `void(str)` | `Viper.Network.RestClient.DelHeader` |
+| <a id="viper-network-restclient-removeheader"></a>`RemoveHeader` | `void(str)` | `Viper.Network.RestClient.RemoveHeader` |
 | <a id="viper-network-restclient-setauthbearer"></a>`SetAuthBearer` | `void(str)` | `Viper.Network.RestClient.SetAuthBearer` |
 | <a id="viper-network-restclient-setauthbasic"></a>`SetAuthBasic` | `void(str,str)` | `Viper.Network.RestClient.SetAuthBasic` |
 | <a id="viper-network-restclient-clearauth"></a>`ClearAuth` | `void()` | `Viper.Network.RestClient.ClearAuth` |
@@ -371,9 +371,6 @@ Constructor: `Viper.Network.RestClient.New`
 | <a id="viper-network-restclient-putjson"></a>`PutJson` | `obj(str,obj)` | `Viper.Network.RestClient.PutJson` |
 | <a id="viper-network-restclient-patchjson"></a>`PatchJson` | `obj(str,obj)` | `Viper.Network.RestClient.PatchJson` |
 | <a id="viper-network-restclient-deletejson"></a>`DeleteJson` | `obj(str)` | `Viper.Network.RestClient.DeleteJson` |
-| <a id="viper-network-restclient-laststatus"></a>`LastStatus` | `i64()` | `Viper.Network.RestClient.LastStatus` |
-| <a id="viper-network-restclient-lastresponse"></a>`LastResponse` | `obj()` | `Viper.Network.RestClient.LastResponse` |
-| <a id="viper-network-restclient-lastok"></a>`LastOk` | `i1()` | `Viper.Network.RestClient.LastOk` |
 
 <a id="viper-network-ratelimiter"></a>
 ### `Viper.Network.RateLimiter`
@@ -382,7 +379,7 @@ Provides token bucket rate limiter.
 
 Create `Viper.Network.RateLimiter` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Available`, `Max`, `Rate` and operations including `TryAcquire`, `TryAcquireN`, `Reset`.
+`Available`, `Max`, `Rate` and operations including `TryAcquire`, `TryAcquire`, `Reset`.
 
 Constructor: `Viper.Network.RateLimiter.New`
 
@@ -399,7 +396,7 @@ Constructor: `Viper.Network.RateLimiter.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-network-ratelimiter-tryacquire"></a>`TryAcquire` | `i1()` | `Viper.Network.RateLimiter.TryAcquire` |
-| <a id="viper-network-ratelimiter-tryacquiren"></a>`TryAcquireN` | `i1(i64)` | `Viper.Network.RateLimiter.TryAcquireN` |
+| `TryAcquire` | `i1(i64)` | `Viper.Network.RateLimiter.TryAcquireMany` |
 | <a id="viper-network-ratelimiter-reset"></a>`Reset` | `void()` | `Viper.Network.RateLimiter.Reset` |
 | <a id="viper-network-ratelimiter-new"></a>`New` | `obj(i64,f64)` | `Viper.Network.RateLimiter.New` |
 
@@ -409,7 +406,7 @@ Constructor: `Viper.Network.RateLimiter.New`
 Provides URL pattern matching with parameter extraction.
 
 Create `Viper.Network.HttpRouter` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Count`
+object with the instance members below. Its public surface exposes properties such as `Count`
 and operations including `Add`, `Get`, `Post`, `Put`.
 
 Constructor: `Viper.Network.HttpRouter.New`
@@ -621,9 +618,9 @@ Constructor: `Viper.Network.Multipart.New`
 
 Provides static network utilities.
 
-`Viper.Network.NetUtils` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchCIDR`,
-`IsPrivateIP`.
+`Viper.Network.NetUtils` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchCidr`,
+`IsPrivateIp`.
 
 #### Methods
 
@@ -631,9 +628,9 @@ public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchC
 |---|---|---|
 | <a id="viper-network-netutils-isportopen"></a>`IsPortOpen` | `i1(str,i64,i64)` | `Viper.Network.NetUtils.IsPortOpen` |
 | <a id="viper-network-netutils-getfreeport"></a>`GetFreePort` | `i64()` | `Viper.Network.NetUtils.GetFreePort` |
-| <a id="viper-network-netutils-matchcidr"></a>`MatchCIDR` | `i1(str,str)` | `Viper.Network.NetUtils.MatchCIDR` |
-| <a id="viper-network-netutils-isprivateip"></a>`IsPrivateIP` | `i1(str)` | `Viper.Network.NetUtils.IsPrivateIP` |
-| <a id="viper-network-netutils-localipv4"></a>`LocalIPv4` | `str()` | `Viper.Network.NetUtils.LocalIPv4` |
+| <a id="viper-network-netutils-matchcidr"></a>`MatchCidr` | `i1(str,str)` | `Viper.Network.NetUtils.MatchCidr` |
+| <a id="viper-network-netutils-isprivateip"></a>`IsPrivateIp` | `i1(str)` | `Viper.Network.NetUtils.IsPrivateIp` |
+| <a id="viper-network-netutils-localipv4"></a>`LocalIpv4` | `str()` | `Viper.Network.NetUtils.LocalIpv4` |
 
 <a id="viper-network-wsserver"></a>
 ### `Viper.Network.WsServer`
@@ -642,8 +639,8 @@ Provides WebSocket server.
 
 Create `Viper.Network.WsServer` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`, `SetSubprotocol`,
-`Broadcast`.
+`ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`,
+`SetSubprotocol`, `Broadcast`.
 
 Constructor: `Viper.Network.WsServer.New`
 
@@ -674,8 +671,8 @@ Provides TLS-backed WebSocket server.
 
 Create `Viper.Network.WssServer` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`, `SetSubprotocol`,
-`Broadcast`.
+`ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`,
+`SetSubprotocol`, `Broadcast`.
 
 Constructor: `Viper.Network.WssServer.New`
 
@@ -765,16 +762,10 @@ Constructor: `Viper.Network.HttpClient.New`
 Provides simple email sending.
 
 Create `Viper.Network.SmtpClient` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as
-`LastError` and operations including `SetAuth`, `SetTls`, `Send`, `SendResult`.
+object with the instance members below. Its public surface exposes operations including
+`SetAuth`, `SetTls`, `SendResult`, `SendHtmlResult`.
 
 Constructor: `Viper.Network.SmtpClient.New`
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-network-smtpclient-lasterror"></a>`LastError` | `str` | read-only |
 
 #### Methods
 
@@ -782,9 +773,7 @@ Constructor: `Viper.Network.SmtpClient.New`
 |---|---|---|
 | <a id="viper-network-smtpclient-setauth"></a>`SetAuth` | `void(str,str)` | `Viper.Network.SmtpClient.SetAuth` |
 | <a id="viper-network-smtpclient-settls"></a>`SetTls` | `void(i1)` | `Viper.Network.SmtpClient.SetTls` |
-| <a id="viper-network-smtpclient-send"></a>`Send` | `i1(str,str,str,str)` | `Viper.Network.SmtpClient.Send` |
 | <a id="viper-network-smtpclient-sendresult"></a>`SendResult` | `obj<Viper.Result>(str,str,str,str)` | `Viper.Network.SmtpClient.SendResult` |
-| <a id="viper-network-smtpclient-sendhtml"></a>`SendHtml` | `i1(str,str,str,str)` | `Viper.Network.SmtpClient.SendHtml` |
 | <a id="viper-network-smtpclient-sendhtmlresult"></a>`SendHtmlResult` | `obj<Viper.Result>(str,str,str,str)` | `Viper.Network.SmtpClient.SendHtmlResult` |
 | <a id="viper-network-smtpclient-close"></a>`Close` | `void()` | `Viper.Network.SmtpClient.Close` |
 | <a id="viper-network-smtpclient-new"></a>`New` | `obj(str,i64)` | `Viper.Network.SmtpClient.New` |
@@ -794,9 +783,9 @@ Constructor: `Viper.Network.SmtpClient.New`
 
 Runs blocking socket work through Future-returning worker-pool tasks.
 
-`Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `SendAsync`,
-`RecvAsync`.
+`Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync`,
+`SendAsync`, `RecvAsync`.
 
 #### Methods
 
@@ -824,7 +813,7 @@ public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `
 | <a id="viper-network-retrypolicy-get-isexhausted"></a>`Viper.Network.RetryPolicy.get_IsExhausted` | `i1(obj)` | `rt_retry_is_exhausted` |
 | `Viper.Network.RateLimiter.New` | `obj(i64,f64)` | `rt_ratelimit_new` |
 | `Viper.Network.RateLimiter.TryAcquire` | `i1(obj)` | `rt_ratelimit_try_acquire` |
-| `Viper.Network.RateLimiter.TryAcquireN` | `i1(obj,i64)` | `rt_ratelimit_try_acquire_n` |
+| <a id="viper-network-ratelimiter-tryacquiremany"></a>`Viper.Network.RateLimiter.TryAcquireMany` | `i1(obj,i64)` | `rt_ratelimit_try_acquire_n` |
 | <a id="viper-network-ratelimiter-get-available"></a>`Viper.Network.RateLimiter.get_Available` | `i64(obj)` | `rt_ratelimit_available` |
 | `Viper.Network.RateLimiter.Reset` | `void(obj)` | `rt_ratelimit_reset` |
 | <a id="viper-network-ratelimiter-get-max"></a>`Viper.Network.RateLimiter.get_Max` | `i64(obj)` | `rt_ratelimit_get_max` |
@@ -887,9 +876,9 @@ public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `
 | `Viper.Network.Multipart.GetFile` | `obj(obj,str)` | `rt_multipart_get_file` |
 | `Viper.Network.NetUtils.IsPortOpen` | `i1(str,i64,i64)` | `rt_netutils_is_port_open` |
 | `Viper.Network.NetUtils.GetFreePort` | `i64()` | `rt_netutils_get_free_port` |
-| `Viper.Network.NetUtils.MatchCIDR` | `i1(str,str)` | `rt_netutils_match_cidr` |
-| `Viper.Network.NetUtils.IsPrivateIP` | `i1(str)` | `rt_netutils_is_private_ip` |
-| `Viper.Network.NetUtils.LocalIPv4` | `str()` | `rt_netutils_local_ipv4` |
+| `Viper.Network.NetUtils.MatchCidr` | `i1(str,str)` | `rt_netutils_match_cidr` |
+| `Viper.Network.NetUtils.IsPrivateIp` | `i1(str)` | `rt_netutils_is_private_ip` |
+| `Viper.Network.NetUtils.LocalIpv4` | `str()` | `rt_netutils_local_ipv4` |
 | `Viper.Network.WsServer.New` | `obj(i64)` | `rt_ws_server_new` |
 | `Viper.Network.WsServer.Start` | `void(obj)` | `rt_ws_server_start` |
 | `Viper.Network.WsServer.Stop` | `void(obj)` | `rt_ws_server_stop` |
@@ -935,11 +924,8 @@ public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `
 | `Viper.Network.SmtpClient.New` | `obj(str,i64)` | `rt_smtp_new` |
 | `Viper.Network.SmtpClient.SetAuth` | `void(obj,str,str)` | `rt_smtp_set_auth` |
 | `Viper.Network.SmtpClient.SetTls` | `void(obj,i1)` | `rt_smtp_set_tls` |
-| `Viper.Network.SmtpClient.Send` | `i1(obj,str,str,str,str)` | `rt_smtp_send` |
 | `Viper.Network.SmtpClient.SendResult` | `obj<Viper.Result>(obj,str,str,str,str)` | `rt_smtp_send_result` |
-| `Viper.Network.SmtpClient.SendHtml` | `i1(obj,str,str,str,str)` | `rt_smtp_send_html` |
 | `Viper.Network.SmtpClient.SendHtmlResult` | `obj<Viper.Result>(obj,str,str,str,str)` | `rt_smtp_send_html_result` |
-| <a id="viper-network-smtpclient-get-lasterror"></a>`Viper.Network.SmtpClient.get_LastError` | `str(obj)` | `rt_smtp_last_error` |
 | `Viper.Network.SmtpClient.Close` | `void(obj)` | `rt_smtp_close` |
 | `Viper.Network.AsyncSocket.ConnectAsync` | `obj(str,i64)` | `rt_async_connect` |
 | `Viper.Network.AsyncSocket.ConnectForAsync` | `obj(str,i64,i64)` | `rt_async_connect_for` |
@@ -992,12 +978,12 @@ public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `
 | `Viper.Network.Udp.Close` | `void(obj)` | `rt_udp_close` |
 | `Viper.Network.Dns.Resolve` | `str(str)` | `rt_dns_resolve` |
 | `Viper.Network.Dns.ResolveAll` | `obj(str)` | `rt_dns_resolve_all` |
-| `Viper.Network.Dns.Resolve4` | `str(str)` | `rt_dns_resolve4` |
-| `Viper.Network.Dns.Resolve6` | `str(str)` | `rt_dns_resolve6` |
+| `Viper.Network.Dns.ResolveIpv4` | `str(str)` | `rt_dns_resolve4` |
+| `Viper.Network.Dns.ResolveIpv6` | `str(str)` | `rt_dns_resolve6` |
 | `Viper.Network.Dns.Reverse` | `str(str)` | `rt_dns_reverse` |
-| `Viper.Network.Dns.IsIP` | `i1(str)` | `rt_dns_is_ip` |
-| `Viper.Network.Dns.IsIPv4` | `i1(str)` | `rt_dns_is_ipv4` |
-| `Viper.Network.Dns.IsIPv6` | `i1(str)` | `rt_dns_is_ipv6` |
+| `Viper.Network.Dns.IsIp` | `i1(str)` | `rt_dns_is_ip` |
+| `Viper.Network.Dns.IsIpv4` | `i1(str)` | `rt_dns_is_ipv4` |
+| `Viper.Network.Dns.IsIpv6` | `i1(str)` | `rt_dns_is_ipv6` |
 | `Viper.Network.Dns.LocalHost` | `str()` | `rt_dns_local_host` |
 | `Viper.Network.Dns.LocalAddrs` | `obj()` | `rt_dns_local_addrs` |
 | `Viper.Network.Http.Get` | `str(str)` | `rt_http_get` |
@@ -1054,12 +1040,10 @@ public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `
 | `Viper.Network.Url.SetQueryParam` | `obj(obj,str,str)` | `rt_url_set_query_param` |
 | `Viper.Network.Url.GetQueryParam` | `str(obj,str)` | `rt_url_get_query_param` |
 | `Viper.Network.Url.HasQueryParam` | `i1(obj,str)` | `rt_url_has_query_param` |
-| `Viper.Network.Url.DelQueryParam` | `obj(obj,str)` | `rt_url_del_query_param` |
+| `Viper.Network.Url.RemoveQueryParam` | `obj(obj,str)` | `rt_url_del_query_param` |
 | `Viper.Network.Url.QueryMap` | `obj(obj)` | `rt_url_query_map` |
 | `Viper.Network.Url.Resolve` | `obj(obj,str)` | `rt_url_resolve` |
 | `Viper.Network.Url.Clone` | `obj(obj)` | `rt_url_clone` |
-| `Viper.Network.Url.Encode` | `str(str)` | `rt_url_encode` |
-| `Viper.Network.Url.Decode` | `str(str)` | `rt_url_decode` |
 | `Viper.Network.Url.EncodeQuery` | `str(obj)` | `rt_url_encode_query` |
 | `Viper.Network.Url.DecodeQuery` | `obj(str)` | `rt_url_decode_query` |
 | `Viper.Network.Url.IsValid` | `i1(str)` | `rt_url_is_valid` |
@@ -1084,7 +1068,7 @@ public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `
 | `Viper.Network.RestClient.New` | `obj(str)` | `rt_restclient_new` |
 | <a id="viper-network-restclient-get-baseurl"></a>`Viper.Network.RestClient.get_BaseUrl` | `str(obj)` | `rt_restclient_base_url` |
 | `Viper.Network.RestClient.SetHeader` | `void(obj,str,str)` | `rt_restclient_set_header` |
-| `Viper.Network.RestClient.DelHeader` | `void(obj,str)` | `rt_restclient_del_header` |
+| `Viper.Network.RestClient.RemoveHeader` | `void(obj,str)` | `rt_restclient_del_header` |
 | `Viper.Network.RestClient.SetAuthBearer` | `void(obj,str)` | `rt_restclient_set_auth_bearer` |
 | `Viper.Network.RestClient.SetAuthBasic` | `void(obj,str,str)` | `rt_restclient_set_auth_basic` |
 | `Viper.Network.RestClient.ClearAuth` | `void(obj)` | `rt_restclient_clear_auth` |
@@ -1109,7 +1093,4 @@ public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `
 | `Viper.Network.RestClient.PutJson` | `obj(obj,str,obj)` | `rt_restclient_put_json` |
 | `Viper.Network.RestClient.PatchJson` | `obj(obj,str,obj)` | `rt_restclient_patch_json` |
 | `Viper.Network.RestClient.DeleteJson` | `obj(obj,str)` | `rt_restclient_delete_json` |
-| `Viper.Network.RestClient.LastStatus` | `i64(obj)` | `rt_restclient_last_status` |
-| `Viper.Network.RestClient.LastResponse` | `obj(obj)` | `rt_restclient_last_response` |
-| `Viper.Network.RestClient.LastOk` | `i1(obj)` | `rt_restclient_last_ok` |
 

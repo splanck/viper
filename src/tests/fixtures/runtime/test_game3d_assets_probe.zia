@@ -39,13 +39,13 @@ func start() {
         loopEntity.Name = "AssetProbeImport";
         world.Spawn(loopEntity);
         if (world.EntityCount != 1 ||
-            world.FindEntity("AssetProbeImport") == null) {
+            world.FindEntity("AssetProbeImport").IsNone) {
             fail("imported asset group did not spawn/index cleanly");
             return;
         }
         world.Despawn(loopEntity);
         if (world.EntityCount != 0 ||
-            world.FindEntity("AssetProbeImport") != null) {
+            world.FindEntity("AssetProbeImport").IsSome) {
             fail("imported asset group despawn leaked world registry state");
             return;
         }
@@ -53,8 +53,8 @@ func start() {
     }
     world.Destroy();
 
-    var tpl1: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplate(path);
-    var tpl2: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplate(path);
+    var tpl1: Game3D.SceneTemplate = Viper.Game3D.Prefab.Load(path);
+    var tpl2: Game3D.SceneTemplate = Viper.Game3D.Prefab.Load(path);
     if (tpl1 == null || tpl2 == null) {
         fail("LoadTemplate did not return cached templates");
         return;
@@ -72,34 +72,34 @@ func start() {
         return;
     }
 
-    var assetTpl: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplateAsset(path);
+    var assetTpl: Game3D.SceneTemplate = Viper.Game3D.Prefab.LoadAsset(path);
     if (assetTpl == null || assetTpl.IsAsset == false) {
         fail("LoadTemplateAsset did not record asset path");
         return;
     }
 
-    var missing: Game3D.AssetHandle3D = Game3D.Assets3D.LoadTemplateAssetAsync("viper/missing/co3_missing.gltf");
+    var missing: Game3D.AssetHandle3D = Viper.Game3D.Prefab.LoadAssetAsync("viper/missing/co3_missing.gltf");
     if (missing == null) {
         fail("missing package asset did not return a diagnostic handle");
         return;
     }
-    var missingReady = missing.Ready;
+    var missingReady = missing.IsReady;
     var wait = 0;
     while (missingReady == false && wait < 40) {
         Thread.Sleep(5);
-        missingReady = missing.Ready;
+        missingReady = missing.IsReady;
         wait = wait + 1;
     }
     if (missingReady == false ||
         missing.Error != "failed to load model asset" ||
-        missing.GetTemplate() != null) {
+        missing.GetPrefab() != null) {
         fail("missing package asset did not produce a terminal diagnostic handle");
         return;
     }
 
     Game3D.Assets3D.Preload(path);
     Game3D.Assets3D.ClearCache();
-    var tpl3: Game3D.SceneTemplate = Game3D.Assets3D.LoadTemplate(path);
+    var tpl3: Game3D.SceneTemplate = Viper.Game3D.Prefab.Load(path);
     if (tpl3 == null) {
         fail("LoadTemplate failed after ClearCache");
         return;

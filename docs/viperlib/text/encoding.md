@@ -21,10 +21,10 @@ String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
 
 | Method           | Signature        | Description                              |
 |------------------|------------------|------------------------------------------|
-| `Base64Enc(str)` | `String(String)` | Base64-encode a string's bytes           |
-| `Base64Dec(str)` | `String(String)` | Decode a Base64 string to original bytes |
-| `HexEnc(str)`    | `String(String)` | Hex-encode a string's bytes (lowercase)  |
-| `HexDec(str)`    | `String(String)` | Decode a hex string to original bytes    |
+| `Base64Encode(str)` | `String(String)` | Base64-encode a string's bytes           |
+| `Base64Decode(str)` | `String(String)` | Decode a Base64 string to original bytes |
+| `HexEncode(str)`    | `String(String)` | Hex-encode a string's bytes (lowercase)  |
+| `HexDecode(str)`    | `String(String)` | Decode a hex string to original bytes    |
 | `UrlEncode(str)` | `String(String)` | URL-encode a string (percent-encoding)   |
 | `UrlDecode(str)` | `String(String)` | URL-decode a string                      |
 
@@ -39,7 +39,7 @@ String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
     - Invalid or incomplete `%XX` escapes are left unchanged
 - **Base64:** RFC 4648 standard alphabet with `=` padding
 - **Hex:** Encoding emits lowercase digits; decoding accepts uppercase or lowercase input
-- Invalid input to `Base64Dec` or `HexDec` will trap
+- Invalid input to `Base64Decode` or `HexDecode` will trap
 
 ### Zia Example
 
@@ -50,10 +50,10 @@ bind Viper.Terminal;
 bind Viper.Text.Codec as Codec;
 
 func start() {
-    Say("Base64: " + Codec.Base64Enc("Hello"));        // SGVsbG8=
-    Say("Decoded: " + Codec.Base64Dec("SGVsbG8="));     // Hello
-    Say("Hex: " + Codec.HexEnc("Hello"));               // 48656c6c6f
-    Say("HexDec: " + Codec.HexDec("48656c6c6f"));       // Hello
+    Say("Base64: " + Codec.Base64Encode("Hello"));        // SGVsbG8=
+    Say("Decoded: " + Codec.Base64Decode("SGVsbG8="));     // Hello
+    Say("Hex: " + Codec.HexEncode("Hello"));               // 48656c6c6f
+    Say("HexDec: " + Codec.HexDecode("48656c6c6f"));       // Hello
     Say("UrlEnc: " + Codec.UrlEncode("hello world"));   // hello%20world
     Say("UrlDec: " + Codec.UrlDecode("hello%20world")); // hello world
 }
@@ -72,17 +72,17 @@ PRINT decoded = original  ' Output: 1 (true)
 
 ' Base64 encoding for data transmission
 DIM data AS STRING = "Hello, World!"
-DIM b64 AS STRING = Viper.Text.Codec.Base64Enc(data)
+DIM b64 AS STRING = Viper.Text.Codec.Base64Encode(data)
 PRINT b64  ' Output: "SGVsbG8sIFdvcmxkIQ=="
 
-DIM restored AS STRING = Viper.Text.Codec.Base64Dec(b64)
+DIM restored AS STRING = Viper.Text.Codec.Base64Decode(b64)
 PRINT restored  ' Output: "Hello, World!"
 
 ' Hex encoding for display
-DIM hex AS STRING = Viper.Text.Codec.HexEnc("ABC")
+DIM hex AS STRING = Viper.Text.Codec.HexEncode("ABC")
 PRINT hex  ' Output: "414243"
 
-DIM unhex AS STRING = Viper.Text.Codec.HexDec(hex)
+DIM unhex AS STRING = Viper.Text.Codec.HexDecode(hex)
 PRINT unhex  ' Output: "ABC"
 ```
 
@@ -140,7 +140,7 @@ bind Viper.Text.Uuid as Uuid;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var id = Uuid.New();
+    var id = Uuid.Generate();
     Say("UUID: " + id);                                    // canonical 36-character form
     Say("Valid: " + Fmt.Bool(Uuid.IsValid(id)));            // true
     Say("Invalid: " + Fmt.Bool(Uuid.IsValid("not-uuid"))); // false
@@ -151,7 +151,7 @@ func start() {
 
 ```basic
 ' Generate a new UUID
-DIM id AS STRING = Viper.Text.Uuid.New()
+DIM id AS STRING = Viper.Text.Uuid.Generate()
 PRINT id  ' Example: "550e8400-e29b-41d4-a716-446655440000"
 
 ' Check if a string is a valid UUID

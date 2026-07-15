@@ -14,7 +14,8 @@
 //   - Static lerp and easing functions are pure and allocation-free.
 //
 // Ownership/Lifetime:
-//   - Caller owns the rt_tween handle; destroy with rt_tween_destroy.
+//   - Tween handles are reference-counted GC objects. rt_tween_destroy releases
+//     the caller's reference and frees the object when that was the last one.
 //   - Static functions require no allocation and have no ownership semantics.
 //
 // Links: src/runtime/game/rt_tween.c (implementation), src/runtime/core/rt_easing.h
@@ -138,14 +139,15 @@ int64_t rt_tween_elapsed(rt_tween tween);
 /// @return Total duration in game frames.
 int64_t rt_tween_duration(rt_tween tween);
 
-/// @brief Stops the tween and marks it as complete at the current value.
+/// @brief Stops the tween at its current value and clears pause state.
+/// @details Does not set the completion flag.
 /// @param tween The tween to stop.
 void rt_tween_stop(rt_tween tween);
 
 /// @brief Resets the tween to the beginning without changing its from/to
 ///   or duration settings.
-/// @param tween The tween to reset. The tween remains in the running state
-///   if it was running.
+/// @param tween The tween to reset. Any configured tween (duration > 0)
+///   restarts, even if it had previously been stopped or completed.
 void rt_tween_reset(rt_tween tween);
 
 /// @brief Pauses the tween at its current position.
@@ -172,7 +174,8 @@ int8_t rt_tween_is_paused(rt_tween tween);
 /// @param from Starting value.
 /// @param to Ending value.
 /// @param t Interpolation progress from 0.0 (returns @p from) to 1.0
-///   (returns @p to). Values outside [0, 1] will extrapolate.
+///   (returns @p to). Values outside [0, 1] are clamped; non-finite values
+///   are treated as zero.
 /// @return The interpolated value, rounded to the nearest integer.
 int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t);
 

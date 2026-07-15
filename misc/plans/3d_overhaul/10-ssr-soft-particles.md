@@ -34,7 +34,7 @@
 >   probe is ~0.4 ms/frame at 160×120-window scale — revisit if a real scene
 >   needs it) and **in chain order** (grouped with SSAO after tonemap, matching
 >   the engine's existing screen-space effect placement, not §3.3's pre-tonemap
->   note). `PostFX3D.AddSSR(intensity, maxRoughness)`; `Material3D.SsrEnabled`
+>   note). `PostFX3D.AddSsr(intensity, maxRoughness)`; `Material3D.SsrEnabled`
 >   prop; `Water3D` opts in automatically; CINEMATIC quality adds SSR when
 >   `BackendSupports("ssr")` (GPU postfx backends).
 > - **Found+fixed on the way**: the SW unlit vertex path dropped `cmd->alpha`
@@ -84,7 +84,7 @@ Two of the most visible "engine vs toy" tells: water and glossy floors reflect o
 
 - Half-res ray-march pass executed at the postfx stage (it needs completed opaque color+depth; postfx already owns those bindings): hierarchical-free linear march (16-24 steps + 4 binary-refine steps), jittered start (IGN), roughness-aware: ray from `reflect(V,N)` where N comes from depth-derivative reconstruction (plan 05's SSAO function, reused), march only for pixels whose material wrote reflectivity — requires knowing reflectivity per pixel: **v1 scope decision — SSR as a postfx effect applied to `Water3D` and floor-like materials via a new material flag `ssr_enabled` that writes a 1-byte mask into the motion target's spare channel** (`scene_motion_tex` is RGBA8; RG = velocity, B free — write reflectivity×ssr_enabled there; zero new targets for the mask).
 - Composite: `sceneColor + ssrColor * F(roughness, NdotV) * mask`, falling back to the existing env-cubemap term where the ray misses (screen-edge fade + backface rejection). Output blends **before** tonemap (HDR).
-- New postfx enum entry `VGFX3D_POSTFX_EFFECT_SSR` + snapshot params (`ssr_intensity`, `ssr_max_roughness`, `ssr_steps`); `PostFX3D.AddSSR(...)`; CINEMATIC quality adds it when `BackendSupports("ssr")`.
+- New postfx enum entry `VGFX3D_POSTFX_EFFECT_SSR` + snapshot params (`ssr_intensity`, `ssr_max_roughness`, `ssr_steps`); `PostFX3D.AddSsr(...)`; CINEMATIC quality adds it when `BackendSupports("ssr")`.
 - `Water3D` sets the material flag automatically when SSR is available (`rt_water3d.c` material setup `:83-86`).
 
 ## 4. Implementation steps

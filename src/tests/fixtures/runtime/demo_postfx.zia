@@ -12,24 +12,24 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Scene objects
-    var cube = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var sphere = Mesh3D.NewSphere(0.5, 16);
-    var floor_mesh = Mesh3D.NewPlane(12.0, 12.0);
+    var cube = Mesh3D.Box(1.0, 1.0, 1.0);
+    var sphere = Mesh3D.Sphere(0.5, 16);
+    var floor_mesh = Mesh3D.Plane(12.0, 12.0);
 
     // Materials — bright emissive-style colors to trigger bloom
-    var bright_mat = Material3D.NewColor(1.0, 0.8, 0.3);
+    var bright_mat = Material3D.FromColor(1.0, 0.8, 0.3);
     Material3D.SetShininess(bright_mat, 128.0);
-    var blue_mat = Material3D.NewColor(0.2, 0.5, 1.0);
+    var blue_mat = Material3D.FromColor(0.2, 0.5, 1.0);
     Material3D.SetShininess(blue_mat, 64.0);
-    var red_mat = Material3D.NewColor(1.0, 0.15, 0.15);
-    var floor_mat = Material3D.NewColor(0.25, 0.25, 0.3);
+    var red_mat = Material3D.FromColor(1.0, 0.15, 0.15);
+    var floor_mat = Material3D.FromColor(0.25, 0.25, 0.3);
 
     // Lighting
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.9);
     Canvas3D.SetLight(canvas, 0, sun);
     var point_pos = new Vec3(0.0, 2.0, 0.0);
-    var point = Light3D.NewPoint(point_pos, 1.0, 0.9, 0.7, 0.15);
+    var point = Light3D.Point(point_pos, 1.0, 0.9, 0.7, 0.15);
     Canvas3D.SetLight(canvas, 1, point);
     Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
 
@@ -42,7 +42,7 @@ func start() {
 
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
 

@@ -12,7 +12,7 @@
 Provides Resolver constants and static operations for asset loading workflows.
 
 `Viper.Assets.Resolver` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Resolve`.
+Its public surface exposes operations including `Resolve`.
 
 #### Methods
 

@@ -63,8 +63,8 @@ bind "../config";
 
 /// @brief Owns the 10 pin bodies and their knock-down state machine.
 class PinManager {
-    hide List[Physics3DBody] bodies;
-    hide Physics3DWorld world;
+    hide List[PhysicsBody3D] bodies;
+    hide PhysicsWorld3D world;
 
     hide List[Float] homeX;
     hide List[Float] homeZ;
@@ -102,7 +102,7 @@ class PinManager {
 
     /// @brief Build the 10-pin rack: meshes, materials, physics bodies,
     ///        home positions in the standard equilateral-triangle layout.
-    expose func initPins(physWorld: Physics3DWorld) {
+    expose func initPins(physWorld: PhysicsWorld3D) {
         world = physWorld;
         bodies = [];
         homeX = [];
@@ -157,18 +157,18 @@ class PinManager {
             tiltAxisX.add(0.0);
             tiltAxisZ.add(1.0);
 
-            var body = Physics3DBody.NewCapsule(config.PIN_BODY_RADIUS, config.PIN_CAPSULE_HEIGHT, config.PIN_MASS);
-            Physics3DBody.SetPosition(body, px, config.PIN_BODY_CENTER_Y, pz);
-            Physics3DBody.set_Restitution(body, config.PIN_RESTITUTION);
-            Physics3DBody.set_Friction(body, config.PIN_FRICTION);
-            Physics3DBody.set_LinearDamping(body, config.PIN_LINEAR_DAMPING);
-            Physics3DBody.set_AngularDamping(body, config.PIN_ANGULAR_DAMPING);
-            Physics3DBody.set_CanSleep(body, true);
-            Physics3DBody.set_UseCcd(body, true);
-            Physics3DBody.set_CollisionLayer(body, config.LAYER_PINS);
-            Physics3DBody.set_CollisionMask(body, config.MASK_PINS);
-            Physics3DWorld.Add(world, body);
-            Physics3DBody.Sleep(body);
+            var body = PhysicsBody3D.NewCapsule(config.PIN_BODY_RADIUS, config.PIN_CAPSULE_HEIGHT, config.PIN_MASS);
+            PhysicsBody3D.SetPosition(body, px, config.PIN_BODY_CENTER_Y, pz);
+            PhysicsBody3D.set_Restitution(body, config.PIN_RESTITUTION);
+            PhysicsBody3D.set_Friction(body, config.PIN_FRICTION);
+            PhysicsBody3D.set_LinearDamping(body, config.PIN_LINEAR_DAMPING);
+            PhysicsBody3D.set_AngularDamping(body, config.PIN_ANGULAR_DAMPING);
+            PhysicsBody3D.set_CanSleep(body, true);
+            PhysicsBody3D.set_UseCcd(body, true);
+            PhysicsBody3D.set_CollisionLayer(body, config.LAYER_PINS);
+            PhysicsBody3D.set_CollisionMask(body, config.MASK_PINS);
+            PhysicsWorld3D.Add(world, body);
+            PhysicsBody3D.Sleep(body);
             bodies.add(body);
         }
     }
@@ -237,12 +237,12 @@ class PinManager {
             previousKnocked.set(i, false);
             impacted.set(i, false);
             downDwell.set(i, 0.0);
-            Physics3DBody.SetPosition(bodies.get(i), px,
+            PhysicsBody3D.SetPosition(bodies.get(i), px,
                 config.PIN_BODY_CENTER_Y, pz);
-            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
-            Physics3DBody.Sleep(bodies.get(i));
+            PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetOrientation(bodies.get(i), Quat.Identity());
+            PhysicsBody3D.Sleep(bodies.get(i));
         }
         rackQuietTime = 0.0;
     }
@@ -252,9 +252,9 @@ class PinManager {
         var rackQuiet = true;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var body = bodies.get(i);
-            var pos = Physics3DBody.get_Position(body);
-            var vel = Physics3DBody.get_Velocity(body);
-            var ang = Physics3DBody.get_AngularVelocity(body);
+            var pos = PhysicsBody3D.get_Position(body);
+            var vel = PhysicsBody3D.get_Velocity(body);
+            var ang = PhysicsBody3D.get_AngularVelocity(body);
 
             var px = Vec3.get_X(pos);
             var pz = Vec3.get_Z(pos);
@@ -270,7 +270,7 @@ class PinManager {
             var dz = pz - homeZ.get(i);
             var disp = Sqrt(dx * dx + dz * dz);
 
-            var orientation = Physics3DBody.get_Orientation(body);
+            var orientation = PhysicsBody3D.get_Orientation(body);
             var up = Quat.RotateVec3(orientation, new Vec3(0.0, 1.0, 0.0));
             var upY = Abs(Vec3.get_Y(up));
             var physicallyDown = upY < config.PIN_DOWN_TILT_COS ||
@@ -288,12 +288,12 @@ class PinManager {
             if (knocked.get(i) == false && physicallyDown == false &&
                 speed < config.PIN_SETTLE_SNAP_SPEED &&
                 angularSpeed < config.SETTLE_ANGULAR_THRESHOLD && upY > 0.985) {
-                Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
-                Physics3DBody.SetAngularVelocity(body, 0.0, 0.0, 0.0);
+                PhysicsBody3D.SetVelocity(body, 0.0, 0.0, 0.0);
+                PhysicsBody3D.SetAngularVelocity(body, 0.0, 0.0, 0.0);
                 if (disp < config.PIN_REST_SNAP_DISPLACEMENT) {
-                    Physics3DBody.SetPosition(body, homeX.get(i), config.PIN_BODY_CENTER_Y, homeZ.get(i));
-                    Physics3DBody.SetOrientation(body, Quat.Identity());
-                    Physics3DBody.Sleep(body);
+                    PhysicsBody3D.SetPosition(body, homeX.get(i), config.PIN_BODY_CENTER_Y, homeZ.get(i));
+                    PhysicsBody3D.SetOrientation(body, Quat.Identity());
+                    PhysicsBody3D.Sleep(body);
                 }
             }
 
@@ -332,8 +332,8 @@ class PinManager {
             if (bodies.get(i) == body) {
                 if (impulse > 0.04 || relativeSpeed > 0.20) {
                     impacted.set(i, true);
-                    Physics3DBody.Wake(bodies.get(i));
-                    var pos = Physics3DBody.get_Position(bodies.get(i));
+                    PhysicsBody3D.Wake(bodies.get(i));
+                    var pos = PhysicsBody3D.get_Position(bodies.get(i));
                     var ix = Vec3.get_X(point) - Vec3.get_X(pos);
                     var iz = Vec3.get_Z(point) - Vec3.get_Z(pos);
                     var ilen = Sqrt(ix * ix + iz * iz);
@@ -381,7 +381,7 @@ class PinManager {
         var maxDisp = 0.0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             if (knocked.get(i) == false) {
-                var pos = Physics3DBody.get_Position(bodies.get(i));
+                var pos = PhysicsBody3D.get_Position(bodies.get(i));
                 var dx = Vec3.get_X(pos) - homeX.get(i);
                 var dz = Vec3.get_Z(pos) - homeZ.get(i);
                 var disp = Sqrt(dx * dx + dz * dz);
@@ -394,7 +394,7 @@ class PinManager {
     expose func maxBodySpeed() -> Float {
         var maxSpeed = 0.0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            var vel = Physics3DBody.get_Velocity(bodies.get(i));
+            var vel = PhysicsBody3D.get_Velocity(bodies.get(i));
             var vx = Vec3.get_X(vel);
             var vy = Vec3.get_Y(vel);
             var vz = Vec3.get_Z(vel);
@@ -416,7 +416,7 @@ class PinManager {
                 savedY.set(i, -10.0);
                 savedZ.set(i, 0.0);
             } else {
-                var pos = Physics3DBody.get_Position(bodies.get(i));
+                var pos = PhysicsBody3D.get_Position(bodies.get(i));
                 savedX.set(i, Vec3.get_X(pos));
                 savedY.set(i, config.PIN_BODY_CENTER_Y);
                 savedZ.set(i, Vec3.get_Z(pos));
@@ -433,11 +433,11 @@ class PinManager {
             impacted.set(i, false);
             downDwell.set(i, 0.0);
             tiltAngle.set(i, 0.0);
-            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
-            Physics3DBody.SetPosition(bodies.get(i), savedX.get(i), savedY.get(i), savedZ.get(i));
-            Physics3DBody.Sleep(bodies.get(i));
+            PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetOrientation(bodies.get(i), Quat.Identity());
+            PhysicsBody3D.SetPosition(bodies.get(i), savedX.get(i), savedY.get(i), savedZ.get(i));
+            PhysicsBody3D.Sleep(bodies.get(i));
         }
     }
 
@@ -467,10 +467,10 @@ class PinManager {
             sweeping = false;
             for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
                 if (knocked.get(i)) {
-                    Physics3DBody.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
-                    Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-                    Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-                    Physics3DBody.Sleep(bodies.get(i));
+                    PhysicsBody3D.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
+                    PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                    PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                    PhysicsBody3D.Sleep(bodies.get(i));
                 }
             }
             return true;
@@ -502,10 +502,10 @@ class PinManager {
             savedY.set(i, config.PIN_BODY_CENTER_Y);
             savedZ.set(i, homeZ.get(i));
             tiltAngle.set(i, 0.0);
-            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
-            Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), config.RESET_DROP_HEIGHT, homeZ.get(i));
+            PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetOrientation(bodies.get(i), Quat.Identity());
+            PhysicsBody3D.SetPosition(bodies.get(i), homeX.get(i), config.RESET_DROP_HEIGHT, homeZ.get(i));
         }
     }
 
@@ -517,19 +517,19 @@ class PinManager {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             downDwell.set(i, 0.0);
             if (knocked.get(i)) {
-                Physics3DBody.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
-                Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-                Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-                Physics3DBody.Sleep(bodies.get(i));
+                PhysicsBody3D.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
+                PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                PhysicsBody3D.Sleep(bodies.get(i));
             } else {
                 impacted.set(i, false);
-                var pos = Physics3DBody.get_Position(bodies.get(i));
-                Physics3DBody.SetPosition(bodies.get(i),
+                var pos = PhysicsBody3D.get_Position(bodies.get(i));
+                PhysicsBody3D.SetPosition(bodies.get(i),
                     Vec3.get_X(pos), config.PIN_BODY_CENTER_Y, Vec3.get_Z(pos));
-                Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-                Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-                Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
-                Physics3DBody.Sleep(bodies.get(i));
+                PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                PhysicsBody3D.SetOrientation(bodies.get(i), Quat.Identity());
+                PhysicsBody3D.Sleep(bodies.get(i));
             }
         }
         savePinState();
@@ -549,20 +549,20 @@ class PinManager {
             (config.PIN_BODY_CENTER_Y - config.RESET_DROP_HEIGHT) * progress;
 
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), currentY, homeZ.get(i));
-            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
+            PhysicsBody3D.SetPosition(bodies.get(i), homeX.get(i), currentY, homeZ.get(i));
+            PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetOrientation(bodies.get(i), Quat.Identity());
         }
 
         if (resetTimer <= 0.0) {
             resetting = false;
             for (var i2: Integer = 0; i2 < config.PIN_COUNT; i2 = i2 + 1) {
-                Physics3DBody.SetPosition(bodies.get(i2), homeX.get(i2), config.PIN_BODY_CENTER_Y, homeZ.get(i2));
-                Physics3DBody.SetVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
-                Physics3DBody.SetAngularVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
-                Physics3DBody.SetOrientation(bodies.get(i2), Quat.Identity());
-                Physics3DBody.Sleep(bodies.get(i2));
+                PhysicsBody3D.SetPosition(bodies.get(i2), homeX.get(i2), config.PIN_BODY_CENTER_Y, homeZ.get(i2));
+                PhysicsBody3D.SetVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
+                PhysicsBody3D.SetAngularVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
+                PhysicsBody3D.SetOrientation(bodies.get(i2), Quat.Identity());
+                PhysicsBody3D.Sleep(bodies.get(i2));
             }
             savePinState();
             return true;
@@ -604,7 +604,7 @@ class PinManager {
     /// @brief Render every pin using its real rigid-body orientation.
     expose func draw(canvas: Canvas3D) {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            var pos = Physics3DBody.get_Position(bodies.get(i));
+            var pos = PhysicsBody3D.get_Position(bodies.get(i));
             var px = Vec3.get_X(pos);
             var py = Vec3.get_Y(pos);
             var pz = Vec3.get_Z(pos);
@@ -628,7 +628,7 @@ class PinManager {
 
     hide func makePinTransform(index: Integer, px: Float, py: Float, pz: Float) -> Mat4 {
         var translate = Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET, pz);
-        var orientation = Physics3DBody.get_Orientation(bodies.get(index));
+        var orientation = PhysicsBody3D.get_Orientation(bodies.get(index));
         return Mat4.Mul(translate, Quat.ToMat4(orientation));
     }
 
@@ -642,14 +642,14 @@ class PinManager {
 
     /// @brief World position of a specific pin (for trigger callbacks etc.).
     expose func getPinPosition(index: Integer) -> Vec3 {
-        return Physics3DBody.get_Position(bodies.get(index));
+        return PhysicsBody3D.get_Position(bodies.get(index));
     }
 
     expose func getPinOrientation(index: Integer) -> Quat {
-        return Physics3DBody.get_Orientation(bodies.get(index));
+        return PhysicsBody3D.get_Orientation(bodies.get(index));
     }
 
-    expose func getPinBody(index: Integer) -> Physics3DBody {
+    expose func getPinBody(index: Integer) -> PhysicsBody3D {
         return bodies.get(index);
     }
 
@@ -681,15 +681,15 @@ class PinManager {
             impacted.set(i, false);
             downDwell.set(i, 0.0);
             tiltAngle.set(i, 0.0);
-            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
-            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            PhysicsBody3D.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
             if (standing) {
-                Physics3DBody.SetPosition(bodies.get(i), homeX.get(i),
+                PhysicsBody3D.SetPosition(bodies.get(i), homeX.get(i),
                     config.PIN_BODY_CENTER_Y, homeZ.get(i));
             } else {
-                Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), -4.0, homeZ.get(i));
+                PhysicsBody3D.SetPosition(bodies.get(i), homeX.get(i), -4.0, homeZ.get(i));
             }
-            Physics3DBody.Sleep(bodies.get(i));
+            PhysicsBody3D.Sleep(bodies.get(i));
         }
         savePinState();
     }

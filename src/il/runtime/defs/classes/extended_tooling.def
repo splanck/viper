@@ -22,7 +22,6 @@
 RT_FUNC(DequeNew,          rt_deque_new,            "Viper.Collections.Deque.New",          "obj()")
 RT_FUNC(DequeWithCapacity, rt_deque_with_capacity,  "Viper.Collections.Deque.WithCapacity", "obj(i64)")
 RT_FUNC(DequeLen,       rt_deque_len,          "Viper.Collections.Deque.get_Count",   "i64(obj)")
-RT_FUNC(DequeCap,       rt_deque_cap,          "Viper.Collections.Deque.get_Cap",      "i64(obj)")
 RT_FUNC(DequeCapacity,  rt_deque_cap,          "Viper.Collections.Deque.get_Capacity", "i64(obj)")
 RT_FUNC(DequeIsEmpty,   rt_deque_is_empty,     "Viper.Collections.Deque.get_IsEmpty", "i1(obj)")
 RT_FUNC(DequePushFront, rt_deque_push_front,   "Viper.Collections.Deque.PushFront", "void(obj,obj)")
@@ -37,10 +36,8 @@ RT_FUNC(DequeClear,     rt_deque_clear,        "Viper.Collections.Deque.Clear", 
 RT_FUNC(DequeHas,       rt_deque_has,          "Viper.Collections.Deque.Has",       "i1(obj,obj)")
 RT_FUNC(DequeReverse,   rt_deque_reverse,      "Viper.Collections.Deque.Reverse",   "void(obj)")
 RT_FUNC(DequeClone,     rt_deque_clone,        "Viper.Collections.Deque.Clone",     "obj<Viper.Collections.Deque>(obj)")
-RT_FUNC(DequeTryPopFront, rt_deque_try_pop_front, "Viper.Collections.Deque.TryPopFront", "obj(obj)")
-RT_FUNC(DequeTryPopBack,  rt_deque_try_pop_back,  "Viper.Collections.Deque.TryPopBack",  "obj(obj)")
-RT_FUNC(DequeTryPopFrontOption, rt_deque_try_pop_front_option, "Viper.Collections.Deque.TryPopFrontOption", "obj<Viper.Option>(obj)")
-RT_FUNC(DequeTryPopBackOption,  rt_deque_try_pop_back_option,  "Viper.Collections.Deque.TryPopBackOption",  "obj<Viper.Option>(obj)")
+RT_FUNC(DequeTryPopFrontOption, rt_deque_try_pop_front_option, "Viper.Collections.Deque.TryPopFront", "obj<Viper.Option>(obj)")
+RT_FUNC(DequeTryPopBackOption,  rt_deque_try_pop_back_option,  "Viper.Collections.Deque.TryPopBack",  "obj<Viper.Option>(obj)")
 RT_FUNC(DequeToSeq,     rt_deque_to_seq,       "Viper.Collections.Deque.ToSeq",     "obj<Viper.Collections.Seq>(obj)")
 RT_FUNC(DequeToList,    rt_deque_to_list,      "Viper.Collections.Deque.ToList",    "obj<Viper.Collections.List>(obj)")
 
@@ -50,10 +47,10 @@ RT_FUNC(DequeToList,    rt_deque_to_list,      "Viper.Collections.Deque.ToList",
 /// @details
 /// Create `Viper.Collections.Deque` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
-/// `Cap`, `Capacity` and operations including `PushFront`, `PopFront`, `PeekFront`, `PushBack`.
+/// `Capacity`, `IsEmpty` and operations including `PushFront`, `PopFront`, `PeekFront`,
+/// `PushBack`.
 RT_CLASS_BEGIN("Viper.Collections.Deque", Deque, "obj", DequeNew)
     RT_PROP("Count", "i64", DequeLen, none)
-    RT_PROP("Cap", "i64", DequeCap, none)
     RT_PROP("Capacity", "i64", DequeCapacity, none)
     RT_PROP("IsEmpty", "i1", DequeIsEmpty, none)
     RT_METHOD("PushFront", "void(obj)", DequePushFront)
@@ -69,10 +66,8 @@ RT_CLASS_BEGIN("Viper.Collections.Deque", Deque, "obj", DequeNew)
     RT_METHOD("Reverse", "void()", DequeReverse)
     RT_METHOD("Clone", "obj<Viper.Collections.Deque>()", DequeClone)
     RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", DequeToSeq)
-    RT_METHOD("TryPopFront", "obj()", DequeTryPopFront)
-    RT_METHOD("TryPopBack", "obj()", DequeTryPopBack)
-    RT_METHOD("TryPopFrontOption", "obj<Viper.Option>()", DequeTryPopFrontOption)
-    RT_METHOD("TryPopBackOption", "obj<Viper.Option>()", DequeTryPopBackOption)
+    RT_METHOD("TryPopFront", "obj<Viper.Option>()", DequeTryPopFrontOption)
+    RT_METHOD("TryPopBack", "obj<Viper.Option>()", DequeTryPopBackOption)
     RT_METHOD("ToList", "obj<Viper.Collections.List>()", DequeToList)
 RT_CLASS_END()
 
@@ -80,10 +75,11 @@ RT_CLASS_END()
 /// @summary Provides string scanner for lexing and parsing.
 /// @details
 /// Create `Viper.Text.Scanner` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Pos`,
-/// `IsEnd`, `Remaining` and operations including `Reset`, `Peek`, `PeekAt`, `PeekStr`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Position`, `IsEnd`, `Remaining` and operations including `Reset`, `Peek`, `PeekAt`,
+/// `PeekStr`.
 RT_CLASS_BEGIN("Viper.Text.Scanner", Scanner, "obj", ScannerNew)
-    RT_PROP("Pos", "i64", ScannerPos, ScannerSetPos)
+    RT_PROP("Position", "i64", ScannerPos, ScannerSetPos)
     RT_PROP("IsEnd", "i1", ScannerIsEnd, none)
     RT_PROP("Remaining", "i64", ScannerRemaining, none)
     RT_PROP("Length", "i64", ScannerLen, none)
@@ -103,20 +99,19 @@ RT_CLASS_BEGIN("Viper.Text.Scanner", Scanner, "obj", ScannerNew)
     RT_METHOD("Skip", "void(i64)", ScannerSkip)
     RT_METHOD("SkipWhitespace", "i64()", ScannerSkipWhitespace)
     RT_METHOD("ReadIdent", "str()", ScannerReadIdent)
-    RT_METHOD("ReadInt", "str()", ScannerReadInt)
-    RT_METHOD("ReadNumber", "str()", ScannerReadNumber)
+    RT_METHOD("ReadIntToken", "str()", ScannerReadInt)
+    RT_METHOD("ReadNumberToken", "str()", ScannerReadNumber)
     RT_METHOD("ReadQuoted", "str(i64)", ScannerReadQuoted)
     RT_METHOD("ReadLine", "str()", ScannerReadLine)
 RT_CLASS_END()
 
 // Viper.Time.DateOnly - Date without time components
-/// @summary Provides date without time components.
-/// @details
-/// `Viper.Time.DateOnly` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes properties such as `Year`, `Month`,
-/// `Day` and operations including `Create`, `Today`, `Parse`, `FromDays`.
+/// @summary Represents immutable proleptic-Gregorian dates without time or zone state.
+/// @details `Create`, `Today`, and exact `YYYY-MM-DD` parsing can return null. Arithmetic returns
+/// new objects and clamps month/year shifts to a valid day. Day-count conversion is relative to
+/// 1970-01-01 and traps on signed overflow for extreme values.
 RT_CLASS_BEGIN("Viper.Time.DateOnly", DateOnly, "obj", none)
-    RT_METHOD("Create", "obj(i64,i64,i64)", DateOnlyCreate)
+    RT_METHOD("FromParts", "obj(i64,i64,i64)", DateOnlyCreate)
     RT_METHOD("Today", "obj()", DateOnlyToday)
     RT_METHOD("Parse", "obj(str)", DateOnlyParse)
     RT_METHOD("FromDays", "obj(i64)", DateOnlyFromDays)
@@ -136,7 +131,7 @@ RT_CLASS_BEGIN("Viper.Time.DateOnly", DateOnly, "obj", none)
     RT_METHOD("EndOfMonth", "obj()", DateOnlyEndOfMonth)
     RT_METHOD("StartOfYear", "obj()", DateOnlyStartOfYear)
     RT_METHOD("EndOfYear", "obj()", DateOnlyEndOfYear)
-    RT_METHOD("Cmp", "i64(obj)", DateOnlyCmp)
+    RT_METHOD("Compare", "i64(obj)", DateOnlyCmp)
     RT_METHOD("Equals", "i1(obj)", DateOnlyEquals)
     RT_METHOD("ToString", "str()", DateOnlyToString)
     RT_METHOD("Format", "str(str)", DateOnlyFormat)
@@ -158,11 +153,11 @@ RT_CLASS_BEGIN("Viper.Text.TextWrapper", TextWrapper, "obj", none)
     RT_METHOD("Truncate", "str(str,i64)", TextWrapTruncate)
     RT_METHOD("TruncateWith", "str(str,i64,str)", TextWrapTruncateWith)
     RT_METHOD("Shorten", "str(str,i64)", TextWrapShorten)
-    RT_METHOD("Left", "str(str,i64)", TextWrapLeft)
-    RT_METHOD("Right", "str(str,i64)", TextWrapRight)
+    RT_METHOD("AlignLeft", "str(str,i64)", TextWrapLeft)
+    RT_METHOD("AlignRight", "str(str,i64)", TextWrapRight)
     RT_METHOD("Center", "str(str,i64)", TextWrapCenter)
     RT_METHOD("LineCount", "i64(str)", TextWrapLineCount)
-    RT_METHOD("MaxLineLen", "i64(str)", TextWrapMaxLineLen)
+    RT_METHOD("MaxLineLength", "i64(str)", TextWrapMaxLineLen)
 RT_CLASS_END()
 
 // Viper.Functional.Lazy - Deferred computation until first access
@@ -175,11 +170,11 @@ RT_FUNC(LazyGetI64,        rt_lazy_get_i64,       "Viper.Functional.Lazy.GetI64"
 RT_FUNC(LazyIsEvaluated,   rt_lazy_is_evaluated,  "Viper.Functional.Lazy.get_IsEvaluated","i1(obj)")
 RT_FUNC(LazyForce,         rt_lazy_force,         "Viper.Functional.Lazy.Force",          "void(obj)")
 RT_FUNC(LazyMap,           rt_lazy_map_wrapper,      "Viper.Functional.Lazy.Map",            "obj<Viper.Functional.Lazy>(obj,obj)")
-RT_FUNC(LazyFlatMap,       rt_lazy_flat_map_wrapper, "Viper.Functional.Lazy.FlatMap",        "obj<Viper.Functional.Lazy>(obj,obj)")
+RT_FUNC(LazyFlatMap,       rt_lazy_flat_map_wrapper, "Viper.Functional.Lazy.AndThen",        "obj<Viper.Functional.Lazy>(obj,obj)")
 /// @summary Provides Lazy functionality for functional programming workflows.
 /// @details
 /// `Viper.Functional.Lazy` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes a property such as `IsEvaluated` and
+/// construct the class directly. Its public surface exposes properties such as `IsEvaluated` and
 /// operations including `Of`, `OfStr`, `OfI64`, `Get`.
 RT_CLASS_BEGIN("Viper.Functional.Lazy", Lazy, "obj", none)
     RT_METHOD("Of", "obj<Viper.Functional.Lazy>(obj)", LazyOf)
@@ -191,7 +186,7 @@ RT_CLASS_BEGIN("Viper.Functional.Lazy", Lazy, "obj", none)
     RT_PROP("IsEvaluated", "i1", LazyIsEvaluated, none)
     RT_METHOD("Force", "void()", LazyForce)
     RT_METHOD("Map", "obj<Viper.Functional.Lazy>(obj)", LazyMap)
-    RT_METHOD("FlatMap", "obj<Viper.Functional.Lazy>(obj)", LazyFlatMap)
+    RT_METHOD("AndThen", "obj<Viper.Functional.Lazy>(obj)", LazyFlatMap)
 RT_CLASS_END()
 
 //=============================================================================
@@ -211,15 +206,14 @@ RT_FUNC(LazySeqTake,           rt_lazyseq_w_take,         "Viper.Functional.Lazy
 RT_FUNC(LazySeqDrop,           rt_lazyseq_w_drop,         "Viper.Functional.LazySeq.Drop",            "obj<Viper.Functional.LazySeq>(obj,i64)")
 RT_FUNC(LazySeqConcat,         rt_lazyseq_w_concat,       "Viper.Functional.LazySeq.Concat",          "obj<Viper.Functional.LazySeq>(obj,obj)")
 RT_FUNC(LazySeqToSeq,          rt_lazyseq_w_to_seq,       "Viper.Functional.LazySeq.ToSeq",           "seq<obj>(obj)")
-RT_FUNC(LazySeqToSeqN,         rt_lazyseq_w_to_seq_n,     "Viper.Functional.LazySeq.ToSeqN",          "seq<obj>(obj,i64)")
+RT_FUNC(LazySeqToSeqN,         rt_lazyseq_w_to_seq_n,     "Viper.Functional.LazySeq.ToSeqLimited",          "seq<obj>(obj,i64)")
 RT_FUNC(LazySeqCount,          rt_lazyseq_w_count,        "Viper.Functional.LazySeq.Count",           "i64(obj)")
 // Functional methods (receiver as first obj, closure as second obj)
 RT_FUNC(LazySeqMap,            rt_lazyseq_w_map,          "Viper.Functional.LazySeq.Map",             "obj<Viper.Functional.LazySeq>(obj,obj)")
 RT_FUNC(LazySeqFilter,         rt_lazyseq_w_filter,       "Viper.Functional.LazySeq.Filter",          "obj<Viper.Functional.LazySeq>(obj,obj)")
 RT_FUNC(LazySeqTakeWhile,      rt_lazyseq_w_take_while,   "Viper.Functional.LazySeq.TakeWhile",       "obj<Viper.Functional.LazySeq>(obj,obj)")
 RT_FUNC(LazySeqDropWhile,      rt_lazyseq_w_drop_while,   "Viper.Functional.LazySeq.DropWhile",       "obj<Viper.Functional.LazySeq>(obj,obj)")
-RT_FUNC(LazySeqFind,           rt_lazyseq_w_find,         "Viper.Functional.LazySeq.Find",            "obj(obj,obj)")
-RT_FUNC(LazySeqFindOption,     rt_lazyseq_w_find_option,  "Viper.Functional.LazySeq.FindOption",      "obj<Viper.Option>(obj,obj)")
+RT_FUNC(LazySeqFindOption,     rt_lazyseq_w_find_option,  "Viper.Functional.LazySeq.Find",      "obj<Viper.Option>(obj,obj)")
 RT_FUNC(LazySeqAny,            rt_lazyseq_w_any,          "Viper.Functional.LazySeq.Any",             "i1(obj,obj)")
 RT_FUNC(LazySeqAll,            rt_lazyseq_w_all,          "Viper.Functional.LazySeq.All",             "i1(obj,obj)")
 
@@ -244,10 +238,9 @@ RT_CLASS_BEGIN("Viper.Functional.LazySeq", LazySeq, "obj", none)
     RT_METHOD("DropWhile", "obj<Viper.Functional.LazySeq>(obj)", LazySeqDropWhile)
     RT_METHOD("Concat", "obj<Viper.Functional.LazySeq>(obj)", LazySeqConcat)
     RT_METHOD("ToSeq", "seq<obj>()", LazySeqToSeq)
-    RT_METHOD("ToSeqN", "seq<obj>(i64)", LazySeqToSeqN)
+    RT_METHOD("ToSeq", "seq<obj>(i64)", LazySeqToSeqN)
     RT_METHOD("Count", "i64()", LazySeqCount)
-    RT_METHOD("Find", "obj(obj)", LazySeqFind)
-    RT_METHOD("FindOption", "obj<Viper.Option>(obj)", LazySeqFindOption)
+    RT_METHOD("Find", "obj<Viper.Option>(obj)", LazySeqFindOption)
     RT_METHOD("Any", "i1(obj)", LazySeqAny)
     RT_METHOD("All", "i1(obj)", LazySeqAll)
 RT_CLASS_END()
@@ -256,15 +249,15 @@ RT_CLASS_END()
 /// @summary Provides named task scheduler.
 /// @details
 /// Create `Viper.Threads.Scheduler` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as `Pending`
-/// and operations including `Schedule`, `ScheduleGen`, `Cancel`, `IsDue`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Pending` and operations including `Schedule`, `ScheduleGeneration`, `Cancel`, `IsDue`.
 RT_CLASS_BEGIN("Viper.Threads.Scheduler", Scheduler, "obj", SchedulerNew)
     RT_PROP("Pending", "i64", SchedulerPending, none)
     RT_METHOD("Schedule", "void(str,i64)", SchedulerSchedule)
-    RT_METHOD("ScheduleGen", "void(str,i64,i64)", SchedulerScheduleGen)
+    RT_METHOD("ScheduleGeneration", "void(str,i64,i64)", SchedulerScheduleGen)
     RT_METHOD("Cancel", "i1(str)", SchedulerCancel)
     RT_METHOD("IsDue", "i1(str)", SchedulerIsDue)
-    RT_METHOD("IsDueGen", "i1(str,i64)", SchedulerIsDueGen)
+    RT_METHOD("IsDueGeneration", "i1(str,i64)", SchedulerIsDueGen)
     RT_METHOD("GenerationOf", "i64(str)", SchedulerGenerationOf)
     RT_METHOD("Poll", "obj()", SchedulerPoll)
     RT_METHOD("Clear", "void()", SchedulerClear)
@@ -275,13 +268,13 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Network.RateLimiter` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Available`, `Max`, `Rate` and operations including `TryAcquire`, `TryAcquireN`, `Reset`.
+/// `Available`, `Max`, `Rate` and operations including `TryAcquire`, `TryAcquire`, `Reset`.
 RT_CLASS_BEGIN("Viper.Network.RateLimiter", RateLimiter, "obj", RateLimitNew)
     RT_PROP("Available", "i64", RateLimitAvailable, none)
     RT_PROP("Max", "i64", RateLimitGetMax, none)
     RT_PROP("Rate", "f64", RateLimitGetRate, none)
     RT_METHOD("TryAcquire", "i1()", RateLimitTryAcquire)
-    RT_METHOD("TryAcquireN", "i1(i64)", RateLimitTryAcquireN)
+    RT_METHOD("TryAcquire", "i1(i64)", RateLimitTryAcquireN)
     RT_METHOD("Reset", "void()", RateLimitReset)
 RT_CLASS_END()
 
@@ -289,7 +282,7 @@ RT_CLASS_END()
 /// @summary Provides URL pattern matching with parameter extraction.
 /// @details
 /// Create `Viper.Network.HttpRouter` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as `Count`
+/// object with the instance members below. Its public surface exposes properties such as `Count`
 /// and operations including `Add`, `Get`, `Post`, `Put`.
 RT_CLASS_BEGIN("Viper.Network.HttpRouter", HttpRouter, "obj", HttpRouterNew)
     RT_METHOD("Add", "obj(str,str)", HttpRouterAdd)
@@ -409,15 +402,15 @@ RT_CLASS_END()
 // Viper.Network.NetUtils - static network utilities
 /// @summary Provides static network utilities.
 /// @details
-/// `Viper.Network.NetUtils` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchCIDR`,
-/// `IsPrivateIP`.
+/// `Viper.Network.NetUtils` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchCidr`,
+/// `IsPrivateIp`.
 RT_CLASS_BEGIN("Viper.Network.NetUtils", NetUtils, "none", none)
     RT_METHOD("IsPortOpen", "i1(str,i64,i64)", NetUtilsIsPortOpen)
     RT_METHOD("GetFreePort", "i64()", NetUtilsGetFreePort)
-    RT_METHOD("MatchCIDR", "i1(str,str)", NetUtilsMatchCIDR)
-    RT_METHOD("IsPrivateIP", "i1(str)", NetUtilsIsPrivateIP)
-    RT_METHOD("LocalIPv4", "str()", NetUtilsLocalIPv4)
+    RT_METHOD("MatchCidr", "i1(str,str)", NetUtilsMatchCIDR)
+    RT_METHOD("IsPrivateIp", "i1(str)", NetUtilsIsPrivateIP)
+    RT_METHOD("LocalIpv4", "str()", NetUtilsLocalIPv4)
 RT_CLASS_END()
 
 // Viper.Network.WsServer - WebSocket server
@@ -425,8 +418,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Network.WsServer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`, `SetSubprotocol`,
-/// `Broadcast`.
+/// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`,
+/// `SetSubprotocol`, `Broadcast`.
 RT_CLASS_BEGIN("Viper.Network.WsServer", WsServer, "obj", WsServerNew)
     RT_METHOD("Start", "void()", WsServerStart)
     RT_METHOD("Stop", "void()", WsServerStop)
@@ -444,8 +437,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Network.WssServer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`, `SetSubprotocol`,
-/// `Broadcast`.
+/// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`,
+/// `SetSubprotocol`, `Broadcast`.
 RT_CLASS_BEGIN("Viper.Network.WssServer", WssServer, "obj", WssServerNew)
     RT_METHOD("Start", "void()", WssServerStart)
     RT_METHOD("Stop", "void()", WssServerStop)
@@ -498,25 +491,22 @@ RT_CLASS_END()
 /// @summary Provides simple email sending.
 /// @details
 /// Create `Viper.Network.SmtpClient` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as
-/// `LastError` and operations including `SetAuth`, `SetTls`, `Send`, `SendResult`.
+/// object with the instance members below. Its public surface exposes operations including
+/// `SetAuth`, `SetTls`, `SendResult`, `SendHtmlResult`.
 RT_CLASS_BEGIN("Viper.Network.SmtpClient", SmtpClient, "obj", SmtpNew)
     RT_METHOD("SetAuth", "void(str,str)", SmtpSetAuth)
     RT_METHOD("SetTls", "void(i1)", SmtpSetTls)
-    RT_METHOD("Send", "i1(str,str,str,str)", SmtpSend)
     RT_METHOD("SendResult", "obj<Viper.Result>(str,str,str,str)", SmtpSendResult)
-    RT_METHOD("SendHtml", "i1(str,str,str,str)", SmtpSendHtml)
     RT_METHOD("SendHtmlResult", "obj<Viper.Result>(str,str,str,str)", SmtpSendHtmlResult)
     RT_METHOD("Close", "void()", SmtpClose)
-    RT_PROP("LastError", "str", SmtpLastError, none)
 RT_CLASS_END()
 
 // Viper.Network.AsyncSocket - blocking socket work with Future integration
 /// @summary Runs blocking socket work through Future-returning worker-pool tasks.
 /// @details
-/// `Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `SendAsync`,
-/// `RecvAsync`.
+/// `Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync`,
+/// `SendAsync`, `RecvAsync`.
 RT_CLASS_BEGIN("Viper.Network.AsyncSocket", AsyncSocket, "none", none)
     RT_METHOD("ConnectAsync",    "obj(str,i64)",    AsyncConnect)
     RT_METHOD("ConnectForAsync", "obj(str,i64,i64)", AsyncConnectFor)
@@ -527,11 +517,11 @@ RT_CLASS_BEGIN("Viper.Network.AsyncSocket", AsyncSocket, "none", none)
 RT_CLASS_END()
 
 // Viper.Text.Html - HTML parsing and utilities
-/// @summary Provides hTML parsing and utilities.
+/// @summary Provides HTML parsing and utilities.
 /// @details
 /// `Viper.Text.Html` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes operations including `Parse`, `ToText`,
-/// `Escape`, `Unescape`.
+/// construct the class directly. Its public surface exposes operations including `Parse`,
+/// `ToText`, `Escape`, `Unescape`.
 RT_CLASS_BEGIN("Viper.Text.Html", Html, "obj", none)
     RT_METHOD("Parse", "obj(str)", HtmlParse)
     RT_METHOD("ToText", "str(str)", HtmlToText)
@@ -549,7 +539,8 @@ RT_CLASS_END()
 /// @summary Provides Completion constants and static operations for Zia language tooling.
 /// @details
 /// `Viper.Zia.Completion` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `Complete`, `CompleteForFile`, `Items`, `ItemsForFile`.
+/// Its public surface exposes operations including `Complete`, `CompleteForFile`, `Items`,
+/// `ItemsForFile`.
 RT_CLASS_BEGIN("Viper.Zia.Completion", ZiaCompletion, "none", none)
     RT_METHOD("Complete",       "str(str,i64,i64)",     ZiaComplete)
     RT_METHOD("CompleteForFile", "str(str,str,i64,i64)", ZiaCompleteForFile)
@@ -579,7 +570,8 @@ RT_CLASS_END()
 /// @summary Provides structured diagnostics and compile results.
 /// @details
 /// `Viper.Zia.Toolchain` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `Check`, `CheckForFile`, `BeginCheckForFile`, `Compile`.
+/// Its public surface exposes operations including `Check`, `CheckForFile`, `BeginCheckForFile`,
+/// `Compile`.
 RT_CLASS_BEGIN("Viper.Zia.Toolchain", ZiaToolchain, "none", none)
     RT_METHOD("Check",          "obj<Viper.Collections.Seq>(str)",     ZiaToolchainCheck)
     RT_METHOD("CheckForFile",   "obj<Viper.Collections.Seq>(str,str)", ZiaToolchainCheckForFile)
@@ -592,7 +584,7 @@ RT_CLASS_END()
 /// @summary Provides incremental document mirror sync (plan 08), static-only.
 /// @details
 /// `Viper.Zia.Document` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
+/// Its public surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
 RT_CLASS_BEGIN("Viper.Zia.Document", ZiaDocument, "none", none)
     RT_METHOD("SyncFull",     "void(str,str,i64)", ZiaDocSyncFull)
     RT_METHOD("SyncDelta",    "i1(str,str,i64)",   ZiaDocSyncDelta)
@@ -604,9 +596,9 @@ RT_CLASS_END()
 
 /// @summary Provides Language Service constants and static operations for Viper BASIC language tooling.
 /// @details
-/// `Viper.Basic.LanguageService` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `CheckForFile`, `ItemsForFile`, `SymbolsForFile`,
-/// `HoverInfoForFile`.
+/// `Viper.Basic.LanguageService` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `CheckForFile`, `ItemsForFile`,
+/// `SymbolsForFile`, `HoverInfoForFile`.
 RT_CLASS_BEGIN("Viper.Basic.LanguageService", BasicLanguageService, "none", none)
     RT_METHOD("CheckForFile",    "obj<Viper.Collections.Seq>(str,str)",         BasicToolchainCheckForFile)
     RT_METHOD("ItemsForFile",    "obj<Viper.Collections.Seq>(str,str,i64,i64)", BasicCompletionItemsForFile)
@@ -617,12 +609,11 @@ RT_CLASS_END()
 /// @summary Provides Semantic Job constants and static operations for Zia language tooling.
 /// @details
 /// `Viper.Zia.SemanticJob` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `IsDone`, `IsError`, `Error`, `ErrorOption`.
+/// Its public surface exposes operations including `IsDone`, `IsError`, `Error`, `Kind`.
 RT_CLASS_BEGIN("Viper.Zia.SemanticJob", ZiaSemanticJob, "none", none)
     RT_METHOD("IsDone",          "i1(obj)",                         ZiaSemanticJobIsDone)
     RT_METHOD("IsError",         "i1(obj)",                         ZiaSemanticJobIsError)
-    RT_METHOD("Error",           "str(obj)",                        ZiaSemanticJobError)
-    RT_METHOD("ErrorOption",     "obj<Viper.Option>(obj)",          ZiaSemanticJobErrorOption)
+    RT_METHOD("Error",     "obj<Viper.Option>(obj)",          ZiaSemanticJobErrorOption)
     RT_METHOD("Kind",            "i64(obj)",                        ZiaSemanticJobKind)
     RT_METHOD("Cancel",          "void(obj)",                       ZiaSemanticJobCancel)
     RT_METHOD("CompletionItems", "obj<Viper.Collections.Seq>(obj)", ZiaSemanticJobCompletionItems)
@@ -644,8 +635,8 @@ RT_CLASS_END()
 // Viper.Zia.ProjectIndex - project-wide semantic navigation and rename queries
 /// @summary Provides project-wide semantic navigation and rename queries.
 /// @details
-/// `Viper.Zia.ProjectIndex` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `IsValid`, `UpdateFile`, `RemoveFile`, `Clear`.
+/// `Viper.Zia.ProjectIndex` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `New`, `IsValid`, `UpdateFile`, `RemoveFile`.
 RT_CLASS_BEGIN("Viper.Zia.ProjectIndex", ZiaProjectIndex, "none", none)
     RT_METHOD("New",         "obj<Viper.Zia.ProjectIndex.ProjectIndexHandle>(str)",        ZiaProjectIndexNew)
     RT_METHOD("IsValid",     "i1(obj)",                                        ZiaProjectIndexIsValid)

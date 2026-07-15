@@ -1,7 +1,7 @@
 module RuntimeTest45;
 
 bind "./_support";
-bind Viper.Text.Json;
+bind Viper.Data.Json;
 bind Viper.Text.Fmt;
 bind Viper.Math.Easing;
 bind Viper.Collections.Map;
@@ -10,7 +10,7 @@ bind Viper.Collections.Map;
 
 func testCanonicalRuntimeSurface() {
     assertEqStr(Viper.Text.Fmt.Int(42), "42", "fmt_int");
-    assertTrue(Viper.String.Has(Viper.Text.Fmt.Num(1.5), "1.5"), "fmt_num");
+    assertTrue(Viper.String.Contains(Viper.Text.Fmt.Num(1.5), "1.5"), "fmt_num");
 
     var seq = new Viper.Collections.Seq();
     assertEqInt(seq.Count, 0, "seq_new_count");
@@ -31,7 +31,7 @@ func testCollectionSnapshots() {
 
 func testConstructorsAndRandom() {
     var ring = new Viper.Collections.Ring();
-    assertGtInt(ring.Cap, 0, "ring_default_ctor");
+    assertGtInt(ring.Capacity, 0, "ring_default_ctor");
 
     var a = new Viper.Math.Random(123);
     var b = new Viper.Math.Random(123);
@@ -52,7 +52,7 @@ func testJsonMachineVecAndEasing() {
     assertEqInt(Viper.Collections.Map.GetInt(obj, "version"), 1, "json_get_int");
     assertTrue(Viper.Collections.Map.GetBool(obj, "ready"), "json_get_bool");
     assertTrue(Viper.Collections.Map.Has(obj, "name"), "json_has");
-    assertTrue(Viper.String.Has(Viper.Text.Json.Format(obj), "zia"), "json_format");
+    assertTrue(Viper.String.Contains(Viper.Data.Json.Format(obj), "zia"), "json_format");
 
     assertNotEmpty(Viper.System.Machine.get_Os(), "environment_platform");
     assertNotEmpty(Viper.System.Machine.get_Arch(), "machine_arch");
@@ -62,7 +62,7 @@ func testJsonMachineVecAndEasing() {
     var v = new Viper.Math.Vec2(3.0, 4.0);
     assertApprox(v.Length(), 5.0, 0.0001, "vec2_length");
     assertApprox(Viper.Math.Vec2.Dist(new Viper.Math.Vec2(0.0, 0.0), v), 5.0, 0.0001, "vec2_distance");
-    assertApprox(Viper.Math.Easing.InQuad(0.5), 0.25, 0.0001, "easing_in_quad");
+    assertApprox(Viper.Math.Easing.EaseInQuad(0.5), 0.25, 0.0001, "easing_in_quad");
 }
 
 func start() {

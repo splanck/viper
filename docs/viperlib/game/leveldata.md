@@ -1,55 +1,64 @@
+---
+status: active
+audience: public
+last-verified: 2026-07-15
+---
+
 # Viper.Game2D.LevelDocument
 
-JSON-based level loader that parses tilemap data and entity spawn objects from a single file.
+This legacy loader reads a compact JSON level into one `Viper.Graphics2D.Tilemap` plus a bounded
+array of spawn records. It is distinct from the newer editable
+[`Viper.Game2D.SceneDocument`](scene.md).
 
-## Level JSON Format
+## JSON shape
 
 ```json
 {
-    "width": 50, "height": 18,
-    "tileWidth": 32, "tileHeight": 32,
-    "properties": {
-        "theme": "grasslands",
-        "playerStartX": 96,
-        "playerStartY": 480
-    },
-    "layers": [{
-        "name": "terrain",
-        "type": "tiles",
-        "data": [0, 0, 1, 1, 1, 0, ...]
-    }],
-    "objects": [
-        {"type": "enemy", "id": "slime", "x": 640, "y": 480},
-        {"type": "pickup", "id": "coin", "x": 320, "y": 384}
-    ]
+  "width": 50,
+  "height": 18,
+  "tileWidth": 32,
+  "tileHeight": 32,
+  "properties": {
+    "theme": "grasslands",
+    "playerStartX": 96,
+    "playerStartY": 480
+  },
+  "layers": [
+    { "name": "terrain", "type": "tiles", "data": [0, 0, 1, 1] }
+  ],
+  "objects": [
+    { "type": "enemy", "id": "slime", "x": 640, "y": 480 }
+  ]
 }
 ```
 
+`width` and `height` must be positive. Missing/non-positive tile dimensions default to 32. Tile
+values accept boxed integers or doubles (doubles truncate); other values become zero. Short data
+arrays leave remaining cells empty and excess values are ignored.
+
+All `type == "tiles"` entries currently write into the same base Tilemap in array order. Layer
+names are ignored, so later layers overwrite earlier cells, including with zero (VDOC-239). The
+loader retains at most 512 objects. Theme, object type, and object ID are silently limited to 31
+bytes and can be cut mid-UTF-8 sequence.
+
 ## API
 
-### LevelDocument.Load(path) -> LevelDocument?
-Loads a JSON level file, returning `null` for empty files, invalid dimensions, or allocation failure.
-### Properties
-- `Tilemap` — The parsed Tilemap object
-- `ObjectCount` — Number of objects in the level
-- `PlayerStartX`, `PlayerStartY` — Player spawn position
-- `Theme` — Theme string from properties
-### Methods
-- `ObjectType(index)` — Get object type string at index
-- `ObjectId(index)` — Get object id string at index
-- `ObjectX(index)`, `ObjectY(index)` — Get object position
+- `Viper.Game2D.LevelDocument.Load(path)` returns an untyped nullable object for empty content,
+  malformed JSON, invalid dimensions, or allocation failure. Missing and other file-I/O failures
+  currently trap before null can be returned (VDOC-238).
+- `Tilemap`, `ObjectCount`, `PlayerStartX`, `PlayerStartY`, and `Theme` expose the loaded values.
+- `ObjectType(index)`, `ObjectId(index)`, `ObjectX(index)`, and `ObjectY(index)` return an empty
+  string or zero for an invalid index, which is indistinguishable from stored empty/zero data.
 
 ## Example
-```rust
-var level = LevelDocument.Load("levels/level1.json")
-var tilemap = level.get_Tilemap()
-player.set_X(level.get_PlayerStartX() * 100)
 
-var i = 0
-while i < level.get_ObjectCount() {
-    if level.ObjectType(i) == "enemy" {
-        enemies.spawn(level.ObjectId(i), level.ObjectX(i), level.ObjectY(i))
-    }
-    i = i + 1
+```rust
+module LevelDocumentExample;
+
+func start() {
+    // ... the application supplies an existing, validated level file.
+    var level = Viper.Game2D.LevelDocument.Load("levels/level1.json");
+    var count = level.get_ObjectCount();
+    Viper.Terminal.SayInt(count);
 }
 ```

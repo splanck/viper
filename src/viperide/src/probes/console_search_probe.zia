@@ -614,5 +614,5 @@ func main() {
 
     shell.Destroy();
     Terminal.Say("RESULT: ok");
-    Env.EndProgram(0);
+    Env.Exit(0);
 }

@@ -754,7 +754,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
 /// @brief Wake one thread waiting on this monitor (signal/notify pattern).
 void rt_monitor_pause(void *obj) {
     if (!obj)
-        rt_trap("Monitor.Pause: not owner");
+        rt_trap("Monitor.Notify: not owner");
     if (!obj)
         return;
     RtMonitor *m = get_monitor_for(obj);
@@ -765,7 +765,7 @@ void rt_monitor_pause(void *obj) {
 
     if (!monitor_is_owner(m, self)) {
         LeaveCriticalSection(&m->cs);
-        rt_trap("Monitor.Pause: not owner");
+        rt_trap("Monitor.Notify: not owner");
         return;
     }
 
@@ -787,7 +787,7 @@ void rt_monitor_pause(void *obj) {
 /// @brief Wake all threads waiting on this monitor (broadcast/notify-all pattern).
 void rt_monitor_pause_all(void *obj) {
     if (!obj)
-        rt_trap("Monitor.PauseAll: not owner");
+        rt_trap("Monitor.NotifyAll: not owner");
     if (!obj)
         return;
     RtMonitor *m = get_monitor_for(obj);
@@ -798,7 +798,7 @@ void rt_monitor_pause_all(void *obj) {
 
     if (!monitor_is_owner(m, self)) {
         LeaveCriticalSection(&m->cs);
-        rt_trap("Monitor.PauseAll: not owner");
+        rt_trap("Monitor.NotifyAll: not owner");
         return;
     }
 

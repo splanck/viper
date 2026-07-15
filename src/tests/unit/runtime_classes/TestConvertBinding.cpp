@@ -21,8 +21,8 @@
 /// - ToInt64(str) - Parse string to 64-bit integer
 /// - ToDouble(str) - Parse string to 64-bit float
 /// - NumToInt(f64) - Truncate/clamp float to 64-bit integer
-/// - ToString_Int(i64) - Format integer as string
-/// - ToString_Double(f64) - Format float as string
+/// - ToStringInt(i64) - Format integer as string
+/// - ToStringDouble(f64) - Format float as string
 ///
 /// ### Method Index Tests
 ///
@@ -33,8 +33,8 @@
 /// | ToInt64(str)      | 1     | Viper.Core.Convert.ToInt64     |
 /// | ToDouble(str)     | 1     | Viper.Core.Convert.ToDouble  |
 /// | NumToInt(f64)     | 1     | Viper.Core.Convert.NumToInt  |
-/// | ToString_Int(i64) | 1     | Viper.Core.Convert.ToString_Int |
-/// | ToString_Double(f64)| 1   | Viper.Core.Convert.ToString_Double |
+/// | ToStringInt(i64) | 1     | Viper.Core.Convert.ToStringInt |
+/// | ToStringDouble(f64)| 1   | Viper.Core.Convert.ToStringDouble |
 ///
 /// ## Conversion Architecture
 ///
@@ -46,8 +46,8 @@
 /// - NumToInt: Converts f64 to i64
 ///
 /// **Numeric → String:**
-/// - ToString_Int: Formats i64 as decimal string
-/// - ToString_Double: Formats f64 with appropriate precision
+/// - ToStringInt: Formats i64 as decimal string
+/// - ToStringDouble: Formats f64 with appropriate precision
 ///
 /// Note: The ToString variants delegate to Viper.Strings functions for
 /// implementation efficiency.
@@ -92,6 +92,8 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
             hasToInt64 = hasToInt64 || std::string(m.name) == "ToInt64";
             hasToDouble = hasToDouble || std::string(m.name) == "ToDouble";
             hasNumToInt = hasNumToInt || std::string(m.name) == "NumToInt";
+            // Underscore compatibility spellings were removed in the pre-alpha
+            // sweep; only the canonical names may appear.
             hasToStringInt = hasToStringInt || std::string(m.name) == "ToString_Int";
             hasToStringDouble = hasToStringDouble || std::string(m.name) == "ToString_Double";
             hasCanonicalToStringInt =
@@ -103,8 +105,8 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
         EXPECT_TRUE(hasToInt64);
         EXPECT_TRUE(hasToDouble);
         EXPECT_TRUE(hasNumToInt);
-        EXPECT_TRUE(hasToStringInt);
-        EXPECT_TRUE(hasToStringDouble);
+        EXPECT_TRUE(!hasToStringInt);
+        EXPECT_TRUE(!hasToStringDouble);
         EXPECT_TRUE(hasCanonicalToStringInt);
         EXPECT_TRUE(hasCanonicalToStringDouble);
     };
@@ -141,15 +143,17 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     ASSERT_TRUE(nti.has_value());
     EXPECT_EQ(nti->target, std::string("Viper.Core.Convert.NumToInt"));
 
-    // Test Convert.ToString_Int(i: Int) -> String
+    // The underscore compatibility spelling is gone; only the canonical
+    // ToStringInt remains.
     auto tsi = midx.find("Viper.Core.Convert", "ToString_Int", 1);
-    ASSERT_TRUE(tsi.has_value());
-    EXPECT_EQ(tsi->target, std::string("Viper.Core.Convert.ToString_Int"));
+    EXPECT_FALSE(tsi.has_value());
+    auto tsiCanon = midx.find("Viper.Core.Convert", "ToStringInt", 1);
+    ASSERT_TRUE(tsiCanon.has_value());
+    EXPECT_EQ(tsiCanon->target, std::string("Viper.Core.Convert.ToStringInt"));
 
-    // Test Convert.ToString_Double(f: Float) -> String
+    // Test Convert.ToStringDouble(f: Float) -> String
     auto tsd = midx.find("Viper.Core.Convert", "ToString_Double", 1);
-    ASSERT_TRUE(tsd.has_value());
-    EXPECT_EQ(tsd->target, std::string("Viper.Core.Convert.ToString_Double"));
+    EXPECT_FALSE(tsd.has_value());
 
     auto canonicalTsi = midx.find("Viper.Core.Convert", "ToStringInt", 1);
     ASSERT_TRUE(canonicalTsi.has_value());
@@ -185,7 +189,7 @@ TEST(RuntimeClassParseBinding, CatalogContainsCanonicalParseMethods) {
             hasTryNum = hasTryNum || std::string(m.name) == "TryNum";
             hasTryBool = hasTryBool || std::string(m.name) == "TryBool";
             hasIntOr = hasIntOr || std::string(m.name) == "IntOr";
-            hasNumOr = hasNumOr || std::string(m.name) == "NumOr";
+            hasNumOr = hasNumOr || std::string(m.name) == "DoubleOr";
             hasBoolOr = hasBoolOr || std::string(m.name) == "BoolOr";
             hasIsInt = hasIsInt || std::string(m.name) == "IsInt";
             hasIsNum = hasIsNum || std::string(m.name) == "IsNum";
@@ -194,7 +198,7 @@ TEST(RuntimeClassParseBinding, CatalogContainsCanonicalParseMethods) {
             hasLegacyDouble = hasLegacyDouble || std::string(m.name) == "Double";
         }
         EXPECT_TRUE(hasTryInt);
-        EXPECT_TRUE(hasTryNum);
+        EXPECT_TRUE(!hasTryNum);
         EXPECT_TRUE(hasTryBool);
         EXPECT_TRUE(hasIntOr);
         EXPECT_TRUE(hasNumOr);
@@ -221,9 +225,11 @@ TEST(RuntimeClassParseBinding, MethodIndexTargets) {
     ASSERT_TRUE(radix.has_value());
     EXPECT_EQ(radix->target, std::string("Viper.Core.Parse.IntRadix"));
 
-    auto tryNum = midx.find("Viper.Core.Parse", "TryNum", 1);
-    ASSERT_TRUE(tryNum.has_value());
-    EXPECT_EQ(tryNum->target, std::string("Viper.Core.Parse.TryNum"));
+    // The TryNum spelling was removed; TryDouble is canonical.
+    EXPECT_FALSE(midx.find("Viper.Core.Parse", "TryNum", 1).has_value());
+    auto tryDouble = midx.find("Viper.Core.Parse", "TryDouble", 1);
+    ASSERT_TRUE(tryDouble.has_value());
+    EXPECT_EQ(tryDouble->target, std::string("Viper.Core.Parse.TryDouble"));
 }
 
 TEST(RuntimeUtilityBindings, DirectCanonicalFunctionsResolve) {

@@ -46,7 +46,7 @@ func start() {
 
     // --- Items ---
     Say("--- Items ---");
-    var items = s.Items();
+    var items = s.ToSeq();
     SayInt(items.Count);    // 2
 
     // --- Merge (union) ---
@@ -75,7 +75,7 @@ func start() {
 
     // --- Diff ---
     Say("--- Diff ---");
-    var diff = s1.Diff(s2);
+    var diff = s1.Difference(s2);
     SayInt(diff.Count);     // 1 (x)
 
     // --- IsSubset ---

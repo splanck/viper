@@ -3,7 +3,7 @@ module hud;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
-bind Viper.Sound;
+bind Viper.Audio;
 bind Viper.Core.Convert as Convert;
 bind "./config";
 bind "./minimap";
@@ -164,12 +164,12 @@ class RidgeboundHud {
             "Present path: " + toString(canvas.BackendPresentPath), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 200,
-            "Audio render/miss: " + toString(Audio.get_RenderCalls()) + " / "
-                + toString(Audio.get_MixerLockMisses()), config.HUD_TEXT);
+            "Audio render/miss: " + toString(Mixer.get_RenderCalls()) + " / "
+                + toString(Mixer.get_MixerLockMisses()), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 218,
-            "ALSA xruns/fail: " + toString(Audio.get_BackendXruns()) + " / "
-                + toString(Audio.get_BackendWriteFailures()), config.HUD_TEXT);
+            "ALSA xruns/fail: " + toString(Mixer.get_BackendXruns()) + " / "
+                + toString(Mixer.get_BackendWriteFailures()), config.HUD_TEXT);
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 236,
             "Cull frustum/occ: " + toString(canvas.FrustumCulledDrawCount) + " / "

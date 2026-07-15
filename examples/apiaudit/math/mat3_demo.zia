@@ -149,7 +149,7 @@ func start() {
 
     // --- TransformVec ---
     Say("--- TransformVec ---");
-    var tv = Mat3.TransformVec(tr, pt);
+    var tv = Mat3.TransformVector(tr, pt);
     Say("Translate(5,10) * Vec(1,0) X:");
     SayNum(tv.X);
     Say("Translate(5,10) * Vec(1,0) Y:");
@@ -166,9 +166,9 @@ func start() {
     // --- Det ---
     Say("--- Det ---");
     Say("Det(Identity):");
-    SayNum(Mat3.Det(id));
+    SayNum(Mat3.Determinant(id));
     Say("Det(Scale(2,3)):");
-    SayNum(Mat3.Det(sc));
+    SayNum(Mat3.Determinant(sc));
 
     // --- Inverse ---
     Say("--- Inverse ---");
@@ -183,7 +183,7 @@ func start() {
 
     // --- Neg ---
     Say("--- Neg ---");
-    var ng = Mat3.Neg(id);
+    var ng = Mat3.Negate(id);
     Say("Neg(Identity) [0,0]:");
     SayNum(Mat3.Get(ng, 0, 0));
     Say("Neg(Identity) [1,1]:");
@@ -192,9 +192,9 @@ func start() {
     // --- Eq ---
     Say("--- Eq ---");
     Say("Eq(Identity, Identity, 0.001):");
-    SayBool(Mat3.Eq(id, id, 0.001));
+    SayBool(Mat3.Equals(id, id, 0.001));
     Say("Eq(Identity, Zero, 0.001):");
-    SayBool(Mat3.Eq(id, zr, 0.001));
+    SayBool(Mat3.Equals(id, zr, 0.001));
 
     Say("=== Mat3 Audit Complete ===");
 }

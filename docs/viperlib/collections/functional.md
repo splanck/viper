@@ -71,14 +71,13 @@ push/pop, insert/remove, and slicing operations.
 | `ToStack()`            | `Stack()`                 | Returns elements as a new Stack                                                       |
 | `ToQueue()`            | `Queue()`                 | Returns elements as a new Queue                                                       |
 | `ToDeque()`            | `Deque()`                 | Returns elements as a new Deque                                                       |
-| `ToBag()`              | `Bag()`                   | Returns raw or boxed string elements as a new Bag                                      |
+| `ToBag()`              | `StringSet()`                   | Returns raw or boxed string elements as a new StringSet                                      |
 
 ### Notes
 
 - Public `Seq` constructors (`new Seq()`, `Seq.New()`, `Seq.New(size)`, and `Seq.WithCapacity(cap)`) create owning sequences, so pushed strings and objects remain valid until removed or the sequence is released.
 - `Seq.New(size)` creates a sequence with `Count == size` and null-initialized slots. Use `Seq.WithCapacity(cap)` to reserve capacity without changing the count.
 - Negative sizes trap; capacity values below 1 are clamped to one slot.
-- `Cap` remains available as a compatibility alias for `Capacity`.
 - The lower-level C helpers `rt_seq_new` and `rt_seq_with_capacity` still create borrowed-element sequences for internal runtime views; ownership mode must be selected while the sequence is empty.
 - `Pop()` and `Remove(index)` return an owned object reference. When the sequence owns elements, the removed element's retained reference is transferred to the caller.
 - `Get()`, `Peek()`, `First()`, `Last()`, and `FindWhere()` return borrowed references. Keep the
@@ -263,7 +262,7 @@ FOR i = 1 TO 10
 NEXT i
 
 DIM evens AS Viper.Collections.Seq
-evens = Viper.Collections.Seq.Keep(numbers, ADDRESSOF IsEven)
+evens = Viper.Collections.Seq.Filter(numbers, ADDRESSOF IsEven)
 
 DIM doubled AS Viper.Collections.Seq
 doubled = Viper.Collections.Seq.Apply(numbers, ADDRESSOF DoubleValue)

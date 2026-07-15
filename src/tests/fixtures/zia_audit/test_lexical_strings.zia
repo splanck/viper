@@ -66,7 +66,7 @@ func start() {
 
     var y: Number = 3.14;
     var interp2: String = "pi is ${y}";
-    var hasValue: Boolean = Viper.String.Has(interp2, "3.14");
+    var hasValue: Boolean = Viper.String.Contains(interp2, "3.14");
     if (hasValue) {
         passed = passed + 1;
         Viper.Terminal.Say("PASS: Float interpolation");

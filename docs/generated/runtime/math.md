@@ -31,7 +31,7 @@ operations including `FromInt`, `FromStr`, `FromBytes`, `ToInt`.
 | <a id="viper-math-bigint-frombytes"></a>`FromBytes` | `obj(obj)` | `Viper.Math.BigInt.FromBytes` |
 | <a id="viper-math-bigint-toint"></a>`ToInt` | `i64(obj)` | `Viper.Math.BigInt.ToInt` |
 | <a id="viper-math-bigint-tostring"></a>`ToString` | `str(obj)` | `Viper.Math.BigInt.ToString` |
-| <a id="viper-math-bigint-tostrbase"></a>`ToStrBase` | `str(obj,i64)` | `Viper.Math.BigInt.ToStrBase` |
+| <a id="viper-math-bigint-tostringbase"></a>`ToStringBase` | `str(obj,i64)` | `Viper.Math.BigInt.ToStringBase` |
 | <a id="viper-math-bigint-tobytes"></a>`ToBytes` | `obj(obj)` | `Viper.Math.BigInt.ToBytes` |
 | <a id="viper-math-bigint-fitsint"></a>`FitsInt` | `i1(obj)` | `Viper.Math.BigInt.FitsInt` |
 | <a id="viper-math-bigint-add"></a>`Add` | `obj(obj,obj)` | `Viper.Math.BigInt.Add` |
@@ -39,10 +39,10 @@ operations including `FromInt`, `FromStr`, `FromBytes`, `ToInt`.
 | <a id="viper-math-bigint-mul"></a>`Mul` | `obj(obj,obj)` | `Viper.Math.BigInt.Mul` |
 | <a id="viper-math-bigint-div"></a>`Div` | `obj(obj,obj)` | `Viper.Math.BigInt.Div` |
 | <a id="viper-math-bigint-mod"></a>`Mod` | `obj(obj,obj)` | `Viper.Math.BigInt.Mod` |
-| <a id="viper-math-bigint-neg"></a>`Neg` | `obj(obj)` | `Viper.Math.BigInt.Neg` |
+| <a id="viper-math-bigint-negate"></a>`Negate` | `obj(obj)` | `Viper.Math.BigInt.Negate` |
 | <a id="viper-math-bigint-abs"></a>`Abs` | `obj(obj)` | `Viper.Math.BigInt.Abs` |
-| <a id="viper-math-bigint-cmp"></a>`Cmp` | `i64(obj,obj)` | `Viper.Math.BigInt.Cmp` |
-| <a id="viper-math-bigint-eq"></a>`Eq` | `i1(obj,obj)` | `Viper.Math.BigInt.Eq` |
+| <a id="viper-math-bigint-compare"></a>`Compare` | `i64(obj,obj)` | `Viper.Math.BigInt.Compare` |
+| <a id="viper-math-bigint-equals"></a>`Equals` | `i1(obj,obj)` | `Viper.Math.BigInt.Equals` |
 | <a id="viper-math-bigint-iszero"></a>`IsZero` | `i1(obj)` | `Viper.Math.BigInt.IsZero` |
 | <a id="viper-math-bigint-isnegative"></a>`IsNegative` | `i1(obj)` | `Viper.Math.BigInt.IsNegative` |
 | <a id="viper-math-bigint-sign"></a>`Sign` | `i64(obj)` | `Viper.Math.BigInt.Sign` |
@@ -68,8 +68,8 @@ operations including `FromInt`, `FromStr`, `FromBytes`, `ToInt`.
 Provides Mat 3 functionality for numeric and geometric calculations.
 
 Create `Viper.Math.Mat3` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes operations including `Identity`,
-`Zero`, `Translate`, `Scale`.
+with the instance members below. Its public surface exposes operations including `New`,
+`Identity`, `Zero`, `Translate`.
 
 Constructor: `Viper.Math.Mat3.New`
 
@@ -93,12 +93,12 @@ Constructor: `Viper.Math.Mat3.New`
 | <a id="viper-math-mat3-mul"></a>`Mul` | `obj(obj,obj)` | `Viper.Math.Mat3.Mul` |
 | <a id="viper-math-mat3-mulscalar"></a>`MulScalar` | `obj(obj,f64)` | `Viper.Math.Mat3.MulScalar` |
 | <a id="viper-math-mat3-transformpoint"></a>`TransformPoint` | `obj(obj,obj)` | `Viper.Math.Mat3.TransformPoint` |
-| <a id="viper-math-mat3-transformvec"></a>`TransformVec` | `obj(obj,obj)` | `Viper.Math.Mat3.TransformVec` |
+| <a id="viper-math-mat3-transformvector"></a>`TransformVector` | `obj(obj,obj)` | `Viper.Math.Mat3.TransformVector` |
 | <a id="viper-math-mat3-transpose"></a>`Transpose` | `obj(obj)` | `Viper.Math.Mat3.Transpose` |
-| <a id="viper-math-mat3-det"></a>`Det` | `f64(obj)` | `Viper.Math.Mat3.Det` |
+| <a id="viper-math-mat3-determinant"></a>`Determinant` | `f64(obj)` | `Viper.Math.Mat3.Determinant` |
 | <a id="viper-math-mat3-inverse"></a>`Inverse` | `obj(obj)` | `Viper.Math.Mat3.Inverse` |
-| <a id="viper-math-mat3-neg"></a>`Neg` | `obj(obj)` | `Viper.Math.Mat3.Neg` |
-| <a id="viper-math-mat3-eq"></a>`Eq` | `i1(obj,obj,f64)` | `Viper.Math.Mat3.Eq` |
+| <a id="viper-math-mat3-negate"></a>`Negate` | `obj(obj)` | `Viper.Math.Mat3.Negate` |
+| <a id="viper-math-mat3-approxequals"></a>`ApproxEquals` | `i1(obj,obj,f64)` | `Viper.Math.Mat3.ApproxEquals` |
 
 <a id="viper-math-mat4"></a>
 ### `Viper.Math.Mat4`
@@ -106,8 +106,8 @@ Constructor: `Viper.Math.Mat3.New`
 Provides Mat 4 functionality for numeric and geometric calculations.
 
 Create `Viper.Math.Mat4` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes operations including `Identity`,
-`Zero`, `Translate`, `Scale`.
+with the instance members below. Its public surface exposes operations including `New`,
+`Identity`, `Zero`, `Translate`.
 
 Constructor: `Viper.Math.Mat4.New`
 
@@ -126,7 +126,7 @@ Constructor: `Viper.Math.Mat4.New`
 | <a id="viper-math-mat4-rotatez"></a>`RotateZ` | `obj(f64)` | `Viper.Math.Mat4.RotateZ` |
 | <a id="viper-math-mat4-rotateaxis"></a>`RotateAxis` | `obj(obj,f64)` | `Viper.Math.Mat4.RotateAxis` |
 | <a id="viper-math-mat4-perspective"></a>`Perspective` | `obj(f64,f64,f64,f64)` | `Viper.Math.Mat4.Perspective` |
-| <a id="viper-math-mat4-ortho"></a>`Ortho` | `obj(f64,f64,f64,f64,f64,f64)` | `Viper.Math.Mat4.Ortho` |
+| <a id="viper-math-mat4-orthographic"></a>`Orthographic` | `obj(f64,f64,f64,f64,f64,f64)` | `Viper.Math.Mat4.Orthographic` |
 | <a id="viper-math-mat4-lookat"></a>`LookAt` | `obj(obj,obj,obj)` | `Viper.Math.Mat4.LookAt` |
 | <a id="viper-math-mat4-get"></a>`Get` | `f64(obj,i64,i64)` | `Viper.Math.Mat4.Get` |
 | <a id="viper-math-mat4-add"></a>`Add` | `obj(obj,obj)` | `Viper.Math.Mat4.Add` |
@@ -134,12 +134,12 @@ Constructor: `Viper.Math.Mat4.New`
 | <a id="viper-math-mat4-mul"></a>`Mul` | `obj(obj,obj)` | `Viper.Math.Mat4.Mul` |
 | <a id="viper-math-mat4-mulscalar"></a>`MulScalar` | `obj(obj,f64)` | `Viper.Math.Mat4.MulScalar` |
 | <a id="viper-math-mat4-transformpoint"></a>`TransformPoint` | `obj(obj,obj)` | `Viper.Math.Mat4.TransformPoint` |
-| <a id="viper-math-mat4-transformvec"></a>`TransformVec` | `obj(obj,obj)` | `Viper.Math.Mat4.TransformVec` |
+| <a id="viper-math-mat4-transformvector"></a>`TransformVector` | `obj(obj,obj)` | `Viper.Math.Mat4.TransformVector` |
 | <a id="viper-math-mat4-transpose"></a>`Transpose` | `obj(obj)` | `Viper.Math.Mat4.Transpose` |
-| <a id="viper-math-mat4-det"></a>`Det` | `f64(obj)` | `Viper.Math.Mat4.Det` |
+| <a id="viper-math-mat4-determinant"></a>`Determinant` | `f64(obj)` | `Viper.Math.Mat4.Determinant` |
 | <a id="viper-math-mat4-inverse"></a>`Inverse` | `obj(obj)` | `Viper.Math.Mat4.Inverse` |
-| <a id="viper-math-mat4-neg"></a>`Neg` | `obj(obj)` | `Viper.Math.Mat4.Neg` |
-| <a id="viper-math-mat4-eq"></a>`Eq` | `i1(obj,obj,f64)` | `Viper.Math.Mat4.Eq` |
+| <a id="viper-math-mat4-negate"></a>`Negate` | `obj(obj)` | `Viper.Math.Mat4.Negate` |
+| <a id="viper-math-mat4-approxequals"></a>`ApproxEquals` | `i1(obj,obj,f64)` | `Viper.Math.Mat4.ApproxEquals` |
 
 <a id="viper-math-bits"></a>
 ### `Viper.Math.Bits`
@@ -148,7 +148,7 @@ Provides bit manipulation utilities.
 
 `Viper.Math.Bits` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `And`, `Clear`,
-`Count`, `CountLeadingZeros`.
+`CountOnes`, `CountLeadingZeros`.
 
 #### Methods
 
@@ -156,16 +156,13 @@ construct the class directly. Its public surface exposes operations including `A
 |---|---|---|
 | <a id="viper-math-bits-and"></a>`And` | `i64(i64,i64)` | `Viper.Math.Bits.And` |
 | <a id="viper-math-bits-clear"></a>`Clear` | `i64(i64,i64)` | `Viper.Math.Bits.Clear` |
-| <a id="viper-math-bits-count"></a>`Count` | `i64(i64)` | `Viper.Math.Bits.Count` |
+| <a id="viper-math-bits-countones"></a>`CountOnes` | `i64(i64)` | `Viper.Math.Bits.CountOnes` |
 | <a id="viper-math-bits-countleadingzeros"></a>`CountLeadingZeros` | `i64(i64)` | `Viper.Math.Bits.CountLeadingZeros` |
 | <a id="viper-math-bits-counttrailingzeros"></a>`CountTrailingZeros` | `i64(i64)` | `Viper.Math.Bits.CountTrailingZeros` |
 | <a id="viper-math-bits-flip"></a>`Flip` | `i64(i64)` | `Viper.Math.Bits.Flip` |
 | <a id="viper-math-bits-get"></a>`Get` | `i1(i64,i64)` | `Viper.Math.Bits.Get` |
-| <a id="viper-math-bits-leadz"></a>`LeadZ` | `i64(i64)` | `Viper.Math.Bits.LeadZ` |
 | <a id="viper-math-bits-not"></a>`Not` | `i64(i64)` | `Viper.Math.Bits.Not` |
 | <a id="viper-math-bits-or"></a>`Or` | `i64(i64,i64)` | `Viper.Math.Bits.Or` |
-| <a id="viper-math-bits-rotl"></a>`Rotl` | `i64(i64,i64)` | `Viper.Math.Bits.Rotl` |
-| <a id="viper-math-bits-rotr"></a>`Rotr` | `i64(i64,i64)` | `Viper.Math.Bits.Rotr` |
 | <a id="viper-math-bits-rotateleft"></a>`RotateLeft` | `i64(i64,i64)` | `Viper.Math.Bits.RotateLeft` |
 | <a id="viper-math-bits-rotateright"></a>`RotateRight` | `i64(i64,i64)` | `Viper.Math.Bits.RotateRight` |
 | <a id="viper-math-bits-set"></a>`Set` | `i64(i64,i64)` | `Viper.Math.Bits.Set` |
@@ -174,8 +171,6 @@ construct the class directly. Its public surface exposes operations including `A
 | <a id="viper-math-bits-shr"></a>`Shr` | `i64(i64,i64)` | `Viper.Math.Bits.Shr` |
 | <a id="viper-math-bits-swap"></a>`Swap` | `i64(i64)` | `Viper.Math.Bits.Swap` |
 | <a id="viper-math-bits-toggle"></a>`Toggle` | `i64(i64,i64)` | `Viper.Math.Bits.Toggle` |
-| <a id="viper-math-bits-trailz"></a>`TrailZ` | `i64(i64)` | `Viper.Math.Bits.TrailZ` |
-| <a id="viper-math-bits-ushr"></a>`Ushr` | `i64(i64,i64)` | `Viper.Math.Bits.Ushr` |
 | <a id="viper-math-bits-xor"></a>`Xor` | `i64(i64,i64)` | `Viper.Math.Bits.Xor` |
 
 <a id="viper-math"></a>
@@ -210,7 +205,7 @@ operations including `Abs`, `AbsInt`, `Acos`, `Asin`.
 | <a id="viper-math-clampint"></a>`ClampInt` | `i64(i64,i64,i64)` | `Viper.Math.ClampInt` |
 | <a id="viper-math-cos"></a>`Cos` | `f64(f64)` | `Viper.Math.Cos` |
 | <a id="viper-math-cosh"></a>`Cosh` | `f64(f64)` | `Viper.Math.Cosh` |
-| <a id="viper-math-deg"></a>`Deg` | `f64(f64)` | `Viper.Math.Deg` |
+| <a id="viper-math-todegrees"></a>`ToDegrees` | `f64(f64)` | `Viper.Math.ToDegrees` |
 | <a id="viper-math-exp"></a>`Exp` | `f64(f64)` | `Viper.Math.Exp` |
 | <a id="viper-math-fmod"></a>`FMod` | `f64(f64,f64)` | `Viper.Math.FMod` |
 | <a id="viper-math-floor"></a>`Floor` | `f64(f64)` | `Viper.Math.Floor` |
@@ -224,16 +219,16 @@ operations including `Abs`, `AbsInt`, `Acos`, `Asin`.
 | <a id="viper-math-min"></a>`Min` | `f64(f64,f64)` | `Viper.Math.Min` |
 | <a id="viper-math-minint"></a>`MinInt` | `i64(i64,i64)` | `Viper.Math.MinInt` |
 | <a id="viper-math-pow"></a>`Pow` | `f64(f64,f64)` | `Viper.Math.Pow` |
-| <a id="viper-math-rad"></a>`Rad` | `f64(f64)` | `Viper.Math.Rad` |
+| <a id="viper-math-toradians"></a>`ToRadians` | `f64(f64)` | `Viper.Math.ToRadians` |
 | <a id="viper-math-round"></a>`Round` | `f64(f64)` | `Viper.Math.Round` |
-| <a id="viper-math-sgn"></a>`Sgn` | `f64(f64)` | `Viper.Math.Sgn` |
-| <a id="viper-math-sgnint"></a>`SgnInt` | `i64(i64)` | `Viper.Math.SgnInt` |
+| <a id="viper-math-sign"></a>`Sign` | `f64(f64)` | `Viper.Math.Sign` |
+| <a id="viper-math-signint"></a>`SignInt` | `i64(i64)` | `Viper.Math.SignInt` |
 | <a id="viper-math-sin"></a>`Sin` | `f64(f64)` | `Viper.Math.Sin` |
 | <a id="viper-math-sinh"></a>`Sinh` | `f64(f64)` | `Viper.Math.Sinh` |
 | <a id="viper-math-sqrt"></a>`Sqrt` | `f64(f64)` | `Viper.Math.Sqrt` |
 | <a id="viper-math-tan"></a>`Tan` | `f64(f64)` | `Viper.Math.Tan` |
 | <a id="viper-math-tanh"></a>`Tanh` | `f64(f64)` | `Viper.Math.Tanh` |
-| <a id="viper-math-trunc"></a>`Trunc` | `f64(f64)` | `Viper.Math.Trunc` |
+| <a id="viper-math-truncate"></a>`Truncate` | `f64(f64)` | `Viper.Math.Truncate` |
 | <a id="viper-math-wrap"></a>`Wrap` | `f64(f64,f64,f64)` | `Viper.Math.Wrap` |
 | <a id="viper-math-wrapint"></a>`WrapInt` | `i64(i64,i64,i64)` | `Viper.Math.WrapInt` |
 
@@ -265,43 +260,40 @@ Provides static easing functions.
 
 `Viper.Math.Easing` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Linear`,
-`InQuad`, `EaseInQuad`, `OutQuad`.
+`EaseInQuad`, `EaseOutQuad`, `EaseInOutQuad`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-math-easing-linear"></a>`Linear` | `f64(f64)` | `Viper.Math.Easing.Linear` |
-| <a id="viper-math-easing-inquad"></a>`InQuad` | `f64(f64)` | `Viper.Math.Easing.InQuad` |
-| <a id="viper-math-easing-easeinquad"></a>`EaseInQuad` | `f64(f64)` | `Viper.Math.Easing.InQuad` |
-| <a id="viper-math-easing-outquad"></a>`OutQuad` | `f64(f64)` | `Viper.Math.Easing.OutQuad` |
-| <a id="viper-math-easing-easeoutquad"></a>`EaseOutQuad` | `f64(f64)` | `Viper.Math.Easing.OutQuad` |
-| <a id="viper-math-easing-inoutquad"></a>`InOutQuad` | `f64(f64)` | `Viper.Math.Easing.InOutQuad` |
-| <a id="viper-math-easing-easeinoutquad"></a>`EaseInOutQuad` | `f64(f64)` | `Viper.Math.Easing.InOutQuad` |
-| <a id="viper-math-easing-incubic"></a>`InCubic` | `f64(f64)` | `Viper.Math.Easing.InCubic` |
-| <a id="viper-math-easing-outcubic"></a>`OutCubic` | `f64(f64)` | `Viper.Math.Easing.OutCubic` |
-| <a id="viper-math-easing-inoutcubic"></a>`InOutCubic` | `f64(f64)` | `Viper.Math.Easing.InOutCubic` |
-| <a id="viper-math-easing-inquart"></a>`InQuart` | `f64(f64)` | `Viper.Math.Easing.InQuart` |
-| <a id="viper-math-easing-outquart"></a>`OutQuart` | `f64(f64)` | `Viper.Math.Easing.OutQuart` |
-| <a id="viper-math-easing-inoutquart"></a>`InOutQuart` | `f64(f64)` | `Viper.Math.Easing.InOutQuart` |
-| <a id="viper-math-easing-insine"></a>`InSine` | `f64(f64)` | `Viper.Math.Easing.InSine` |
-| <a id="viper-math-easing-outsine"></a>`OutSine` | `f64(f64)` | `Viper.Math.Easing.OutSine` |
-| <a id="viper-math-easing-inoutsine"></a>`InOutSine` | `f64(f64)` | `Viper.Math.Easing.InOutSine` |
-| <a id="viper-math-easing-inexpo"></a>`InExpo` | `f64(f64)` | `Viper.Math.Easing.InExpo` |
-| <a id="viper-math-easing-outexpo"></a>`OutExpo` | `f64(f64)` | `Viper.Math.Easing.OutExpo` |
-| <a id="viper-math-easing-inoutexpo"></a>`InOutExpo` | `f64(f64)` | `Viper.Math.Easing.InOutExpo` |
-| <a id="viper-math-easing-incirc"></a>`InCirc` | `f64(f64)` | `Viper.Math.Easing.InCirc` |
-| <a id="viper-math-easing-outcirc"></a>`OutCirc` | `f64(f64)` | `Viper.Math.Easing.OutCirc` |
-| <a id="viper-math-easing-inoutcirc"></a>`InOutCirc` | `f64(f64)` | `Viper.Math.Easing.InOutCirc` |
-| <a id="viper-math-easing-inback"></a>`InBack` | `f64(f64)` | `Viper.Math.Easing.InBack` |
-| <a id="viper-math-easing-outback"></a>`OutBack` | `f64(f64)` | `Viper.Math.Easing.OutBack` |
-| <a id="viper-math-easing-inoutback"></a>`InOutBack` | `f64(f64)` | `Viper.Math.Easing.InOutBack` |
-| <a id="viper-math-easing-inelastic"></a>`InElastic` | `f64(f64)` | `Viper.Math.Easing.InElastic` |
-| <a id="viper-math-easing-outelastic"></a>`OutElastic` | `f64(f64)` | `Viper.Math.Easing.OutElastic` |
-| <a id="viper-math-easing-inoutelastic"></a>`InOutElastic` | `f64(f64)` | `Viper.Math.Easing.InOutElastic` |
-| <a id="viper-math-easing-inbounce"></a>`InBounce` | `f64(f64)` | `Viper.Math.Easing.InBounce` |
-| <a id="viper-math-easing-outbounce"></a>`OutBounce` | `f64(f64)` | `Viper.Math.Easing.OutBounce` |
-| <a id="viper-math-easing-inoutbounce"></a>`InOutBounce` | `f64(f64)` | `Viper.Math.Easing.InOutBounce` |
+| <a id="viper-math-easing-easeinquad"></a>`EaseInQuad` | `f64(f64)` | `Viper.Math.Easing.EaseInQuad` |
+| <a id="viper-math-easing-easeoutquad"></a>`EaseOutQuad` | `f64(f64)` | `Viper.Math.Easing.EaseOutQuad` |
+| <a id="viper-math-easing-easeinoutquad"></a>`EaseInOutQuad` | `f64(f64)` | `Viper.Math.Easing.EaseInOutQuad` |
+| <a id="viper-math-easing-easeincubic"></a>`EaseInCubic` | `f64(f64)` | `Viper.Math.Easing.EaseInCubic` |
+| <a id="viper-math-easing-easeoutcubic"></a>`EaseOutCubic` | `f64(f64)` | `Viper.Math.Easing.EaseOutCubic` |
+| <a id="viper-math-easing-easeinoutcubic"></a>`EaseInOutCubic` | `f64(f64)` | `Viper.Math.Easing.EaseInOutCubic` |
+| <a id="viper-math-easing-easeinquart"></a>`EaseInQuart` | `f64(f64)` | `Viper.Math.Easing.EaseInQuart` |
+| <a id="viper-math-easing-easeoutquart"></a>`EaseOutQuart` | `f64(f64)` | `Viper.Math.Easing.EaseOutQuart` |
+| <a id="viper-math-easing-easeinoutquart"></a>`EaseInOutQuart` | `f64(f64)` | `Viper.Math.Easing.EaseInOutQuart` |
+| <a id="viper-math-easing-easeinsine"></a>`EaseInSine` | `f64(f64)` | `Viper.Math.Easing.EaseInSine` |
+| <a id="viper-math-easing-easeoutsine"></a>`EaseOutSine` | `f64(f64)` | `Viper.Math.Easing.EaseOutSine` |
+| <a id="viper-math-easing-easeinoutsine"></a>`EaseInOutSine` | `f64(f64)` | `Viper.Math.Easing.EaseInOutSine` |
+| <a id="viper-math-easing-easeinexpo"></a>`EaseInExpo` | `f64(f64)` | `Viper.Math.Easing.EaseInExpo` |
+| <a id="viper-math-easing-easeoutexpo"></a>`EaseOutExpo` | `f64(f64)` | `Viper.Math.Easing.EaseOutExpo` |
+| <a id="viper-math-easing-easeinoutexpo"></a>`EaseInOutExpo` | `f64(f64)` | `Viper.Math.Easing.EaseInOutExpo` |
+| <a id="viper-math-easing-easeincirc"></a>`EaseInCirc` | `f64(f64)` | `Viper.Math.Easing.EaseInCirc` |
+| <a id="viper-math-easing-easeoutcirc"></a>`EaseOutCirc` | `f64(f64)` | `Viper.Math.Easing.EaseOutCirc` |
+| <a id="viper-math-easing-easeinoutcirc"></a>`EaseInOutCirc` | `f64(f64)` | `Viper.Math.Easing.EaseInOutCirc` |
+| <a id="viper-math-easing-easeinback"></a>`EaseInBack` | `f64(f64)` | `Viper.Math.Easing.EaseInBack` |
+| <a id="viper-math-easing-easeoutback"></a>`EaseOutBack` | `f64(f64)` | `Viper.Math.Easing.EaseOutBack` |
+| <a id="viper-math-easing-easeinoutback"></a>`EaseInOutBack` | `f64(f64)` | `Viper.Math.Easing.EaseInOutBack` |
+| <a id="viper-math-easing-easeinelastic"></a>`EaseInElastic` | `f64(f64)` | `Viper.Math.Easing.EaseInElastic` |
+| <a id="viper-math-easing-easeoutelastic"></a>`EaseOutElastic` | `f64(f64)` | `Viper.Math.Easing.EaseOutElastic` |
+| <a id="viper-math-easing-easeinoutelastic"></a>`EaseInOutElastic` | `f64(f64)` | `Viper.Math.Easing.EaseInOutElastic` |
+| <a id="viper-math-easing-easeinbounce"></a>`EaseInBounce` | `f64(f64)` | `Viper.Math.Easing.EaseInBounce` |
+| <a id="viper-math-easing-easeoutbounce"></a>`EaseOutBounce` | `f64(f64)` | `Viper.Math.Easing.EaseOutBounce` |
+| <a id="viper-math-easing-easeinoutbounce"></a>`EaseInOutBounce` | `f64(f64)` | `Viper.Math.Easing.EaseInOutBounce` |
 
 <a id="viper-math-random"></a>
 ### `Viper.Math.Random`
@@ -309,8 +301,8 @@ construct the class directly. Its public surface exposes operations including `L
 Provides Random functionality for numeric and geometric calculations.
 
 Create `Viper.Math.Random` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes operations including `Next`,
-`NextDouble`, `NextInt`, `Range`.
+with the instance members below. Its public surface exposes operations including `NextDouble`,
+`NextInt`, `Range`, `Seed`.
 
 Constructor: `Viper.Math.Random.New`
 
@@ -318,7 +310,6 @@ Constructor: `Viper.Math.Random.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-math-random-next"></a>`Next` | `f64()` | `Viper.Math.Random.inst_Next` |
 | <a id="viper-math-random-nextdouble"></a>`NextDouble` | `f64()` | `Viper.Math.Random.inst_Next` |
 | <a id="viper-math-random-nextint"></a>`NextInt` | `i64(i64)` | `Viper.Math.Random.inst_NextInt` |
 | <a id="viper-math-random-range"></a>`Range` | `i64(i64,i64)` | `Viper.Math.Random.inst_Range` |
@@ -328,7 +319,6 @@ Constructor: `Viper.Math.Random.New`
 | <a id="viper-math-random-exponential"></a>`Exponential` | `f64(f64)` | `Viper.Math.Random.Exponential` |
 | <a id="viper-math-random-dice"></a>`Dice` | `i64(i64)` | `Viper.Math.Random.Dice` |
 | <a id="viper-math-random-chance"></a>`Chance` | `i1(f64)` | `Viper.Math.Random.Chance` |
-| <a id="viper-math-random-chanceint"></a>`ChanceInt` | `i64(f64)` | `Viper.Math.Random.ChanceInt` |
 | <a id="viper-math-random-shuffle"></a>`Shuffle` | `void(obj)` | `Viper.Math.Random.Shuffle` |
 
 <a id="viper-math-vec2"></a>
@@ -358,21 +348,20 @@ Constructor: `Viper.Math.Vec2.New`
 | <a id="viper-math-vec2-add"></a>`Add` | `obj(obj)` | `Viper.Math.Vec2.Add` |
 | <a id="viper-math-vec2-sub"></a>`Sub` | `obj(obj)` | `Viper.Math.Vec2.Sub` |
 | <a id="viper-math-vec2-mul"></a>`Mul` | `obj(f64)` | `Viper.Math.Vec2.Mul` |
-| <a id="viper-math-vec2-scale"></a>`Scale` | `obj(f64)` | `Viper.Math.Vec2.Mul` |
 | <a id="viper-math-vec2-div"></a>`Div` | `obj(f64)` | `Viper.Math.Vec2.Div` |
 | <a id="viper-math-vec2-dot"></a>`Dot` | `f64(obj)` | `Viper.Math.Vec2.Dot` |
 | <a id="viper-math-vec2-cross"></a>`Cross` | `f64(obj)` | `Viper.Math.Vec2.Cross` |
 | <a id="viper-math-vec2-len"></a>`Len` | `f64()` | `Viper.Math.Vec2.Len` |
 | <a id="viper-math-vec2-length"></a>`Length` | `f64()` | `Viper.Math.Vec2.Len` |
-| <a id="viper-math-vec2-lensq"></a>`LenSq` | `f64()` | `Viper.Math.Vec2.LenSq` |
+| <a id="viper-math-vec2-lengthsquared"></a>`LengthSquared` | `f64()` | `Viper.Math.Vec2.LengthSquared` |
 | <a id="viper-math-vec2-norm"></a>`Norm` | `obj()` | `Viper.Math.Vec2.Norm` |
 | <a id="viper-math-vec2-normalize"></a>`Normalize` | `obj()` | `Viper.Math.Vec2.Norm` |
 | <a id="viper-math-vec2-dist"></a>`Dist` | `f64(obj)` | `Viper.Math.Vec2.Dist` |
 | <a id="viper-math-vec2-distance"></a>`Distance` | `f64(obj)` | `Viper.Math.Vec2.Dist` |
 | <a id="viper-math-vec2-lerp"></a>`Lerp` | `obj(obj,f64)` | `Viper.Math.Vec2.Lerp` |
-| <a id="viper-math-vec2-angle"></a>`Angle` | `f64()` | `Viper.Math.Vec2.Angle` |
+| <a id="viper-math-vec2-heading"></a>`Heading` | `f64()` | `Viper.Math.Vec2.Heading` |
 | <a id="viper-math-vec2-rotate"></a>`Rotate` | `obj(f64)` | `Viper.Math.Vec2.Rotate` |
-| <a id="viper-math-vec2-neg"></a>`Neg` | `obj()` | `Viper.Math.Vec2.Neg` |
+| <a id="viper-math-vec2-negate"></a>`Negate` | `obj()` | `Viper.Math.Vec2.Negate` |
 | <a id="viper-math-vec2-new"></a>`New` | `obj(f64,f64)` | `Viper.Math.Vec2.New` |
 
 <a id="viper-math-vec3"></a>
@@ -381,8 +370,8 @@ Constructor: `Viper.Math.Vec2.New`
 Provides Vec 3 functionality for numeric and geometric calculations.
 
 Create `Viper.Math.Vec3` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z` and
-operations including `Set`, `CopyFrom`, `Add`, `Sub`.
+with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z`
+and operations including `Set`, `CopyFrom`, `Add`, `Sub`.
 
 Constructor: `Viper.Math.Vec3.New`
 
@@ -403,24 +392,23 @@ Constructor: `Viper.Math.Vec3.New`
 | <a id="viper-math-vec3-add"></a>`Add` | `obj(obj)` | `Viper.Math.Vec3.Add` |
 | <a id="viper-math-vec3-sub"></a>`Sub` | `obj(obj)` | `Viper.Math.Vec3.Sub` |
 | <a id="viper-math-vec3-mul"></a>`Mul` | `obj(f64)` | `Viper.Math.Vec3.Mul` |
-| <a id="viper-math-vec3-scale"></a>`Scale` | `obj(f64)` | `Viper.Math.Vec3.Mul` |
 | <a id="viper-math-vec3-div"></a>`Div` | `obj(f64)` | `Viper.Math.Vec3.Div` |
 | <a id="viper-math-vec3-dot"></a>`Dot` | `f64(obj)` | `Viper.Math.Vec3.Dot` |
 | <a id="viper-math-vec3-cross"></a>`Cross` | `obj(obj)` | `Viper.Math.Vec3.Cross` |
 | <a id="viper-math-vec3-len"></a>`Len` | `f64()` | `Viper.Math.Vec3.Len` |
 | <a id="viper-math-vec3-length"></a>`Length` | `f64()` | `Viper.Math.Vec3.Len` |
-| <a id="viper-math-vec3-lensq"></a>`LenSq` | `f64()` | `Viper.Math.Vec3.LenSq` |
+| <a id="viper-math-vec3-lengthsquared"></a>`LengthSquared` | `f64()` | `Viper.Math.Vec3.LengthSquared` |
 | <a id="viper-math-vec3-norm"></a>`Norm` | `obj()` | `Viper.Math.Vec3.Norm` |
 | <a id="viper-math-vec3-normalize"></a>`Normalize` | `obj()` | `Viper.Math.Vec3.Norm` |
 | <a id="viper-math-vec3-dist"></a>`Dist` | `f64(obj)` | `Viper.Math.Vec3.Dist` |
 | <a id="viper-math-vec3-distance"></a>`Distance` | `f64(obj)` | `Viper.Math.Vec3.Dist` |
 | <a id="viper-math-vec3-lerp"></a>`Lerp` | `obj(obj,f64)` | `Viper.Math.Vec3.Lerp` |
-| <a id="viper-math-vec3-neg"></a>`Neg` | `obj()` | `Viper.Math.Vec3.Neg` |
+| <a id="viper-math-vec3-negate"></a>`Negate` | `obj()` | `Viper.Math.Vec3.Negate` |
 | <a id="viper-math-vec3-reflect"></a>`Reflect` | `obj(obj)` | `Viper.Math.Vec3.Reflect` |
 | <a id="viper-math-vec3-project"></a>`Project` | `obj(obj)` | `Viper.Math.Vec3.Project` |
-| <a id="viper-math-vec3-clamplen"></a>`ClampLen` | `obj(f64)` | `Viper.Math.Vec3.ClampLen` |
+| <a id="viper-math-vec3-clamplength"></a>`ClampLength` | `obj(f64)` | `Viper.Math.Vec3.ClampLength` |
 | <a id="viper-math-vec3-movetowards"></a>`MoveTowards` | `obj(obj,f64)` | `Viper.Math.Vec3.MoveTowards` |
-| <a id="viper-math-vec3-angle"></a>`Angle` | `f64(obj)` | `Viper.Math.Vec3.Angle` |
+| <a id="viper-math-vec3-anglebetween"></a>`AngleBetween` | `f64(obj)` | `Viper.Math.Vec3.AngleBetween` |
 | <a id="viper-math-vec3-min"></a>`Min` | `obj(obj)` | `Viper.Math.Vec3.Min` |
 | <a id="viper-math-vec3-max"></a>`Max` | `obj(obj)` | `Viper.Math.Vec3.Max` |
 | <a id="viper-math-vec3-new"></a>`New` | `obj(f64,f64,f64)` | `Viper.Math.Vec3.New` |
@@ -433,8 +421,8 @@ Constructor: `Viper.Math.Vec3.New`
 Provides quaternion rotation math.
 
 Create `Viper.Math.Quat` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z` and
-operations including `Identity`, `FromAxisAngle`, `FromEuler`, `Mul`.
+with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z`
+and operations including `Identity`, `FromAxisAngle`, `FromEuler`, `Mul`.
 
 Constructor: `Viper.Math.Quat.New`
 
@@ -457,9 +445,9 @@ Constructor: `Viper.Math.Quat.New`
 | <a id="viper-math-quat-mul"></a>`Mul` | `obj(obj)` | `Viper.Math.Quat.Mul` |
 | <a id="viper-math-quat-conjugate"></a>`Conjugate` | `obj()` | `Viper.Math.Quat.Conjugate` |
 | <a id="viper-math-quat-inverse"></a>`Inverse` | `obj()` | `Viper.Math.Quat.Inverse` |
-| <a id="viper-math-quat-norm"></a>`Norm` | `obj()` | `Viper.Math.Quat.Norm` |
-| <a id="viper-math-quat-len"></a>`Len` | `f64()` | `Viper.Math.Quat.Len` |
-| <a id="viper-math-quat-lensq"></a>`LenSq` | `f64()` | `Viper.Math.Quat.LenSq` |
+| <a id="viper-math-quat-normalize"></a>`Normalize` | `obj()` | `Viper.Math.Quat.Normalize` |
+| <a id="viper-math-quat-length"></a>`Length` | `f64()` | `Viper.Math.Quat.Length` |
+| <a id="viper-math-quat-lengthsquared"></a>`LengthSquared` | `f64()` | `Viper.Math.Quat.LengthSquared` |
 | <a id="viper-math-quat-dot"></a>`Dot` | `f64(obj)` | `Viper.Math.Quat.Dot` |
 | <a id="viper-math-quat-slerp"></a>`Slerp` | `obj(obj,f64)` | `Viper.Math.Quat.Slerp` |
 | <a id="viper-math-quat-lerp"></a>`Lerp` | `obj(obj,f64)` | `Viper.Math.Quat.Lerp` |
@@ -475,7 +463,7 @@ Constructor: `Viper.Math.Quat.New`
 Provides curve interpolation.
 
 `Viper.Math.Spline` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes a property such as `PointCount` and
+construct the class directly. Its public surface exposes properties such as `PointCount` and
 operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 
 #### Properties
@@ -503,15 +491,12 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 |---|---|---|
 | `Viper.Math.Bits.And` | `i64(i64,i64)` | `rt_bits_and` |
 | `Viper.Math.Bits.Clear` | `i64(i64,i64)` | `rt_bits_clear` |
-| `Viper.Math.Bits.Count` | `i64(i64)` | `rt_bits_count` |
+| `Viper.Math.Bits.CountOnes` | `i64(i64)` | `rt_bits_count` |
 | `Viper.Math.Bits.Flip` | `i64(i64)` | `rt_bits_flip` |
 | `Viper.Math.Bits.Get` | `i1(i64,i64)` | `rt_bits_get` |
-| `Viper.Math.Bits.LeadZ` | `i64(i64)` | `rt_bits_leadz` |
 | `Viper.Math.Bits.CountLeadingZeros` | `i64(i64)` | `rt_bits_leadz` |
 | `Viper.Math.Bits.Not` | `i64(i64)` | `rt_bits_not` |
 | `Viper.Math.Bits.Or` | `i64(i64,i64)` | `rt_bits_or` |
-| `Viper.Math.Bits.Rotl` | `i64(i64,i64)` | `rt_bits_rotl` |
-| `Viper.Math.Bits.Rotr` | `i64(i64,i64)` | `rt_bits_rotr` |
 | `Viper.Math.Bits.RotateLeft` | `i64(i64,i64)` | `rt_bits_rotl` |
 | `Viper.Math.Bits.RotateRight` | `i64(i64,i64)` | `rt_bits_rotr` |
 | `Viper.Math.Bits.Set` | `i64(i64,i64)` | `rt_bits_set` |
@@ -519,39 +504,37 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Bits.Shr` | `i64(i64,i64)` | `rt_bits_shr` |
 | `Viper.Math.Bits.Swap` | `i64(i64)` | `rt_bits_swap` |
 | `Viper.Math.Bits.Toggle` | `i64(i64,i64)` | `rt_bits_toggle` |
-| `Viper.Math.Bits.TrailZ` | `i64(i64)` | `rt_bits_trailz` |
 | `Viper.Math.Bits.CountTrailingZeros` | `i64(i64)` | `rt_bits_trailz` |
-| `Viper.Math.Bits.Ushr` | `i64(i64,i64)` | `rt_bits_ushr` |
 | `Viper.Math.Bits.ShiftRightLogical` | `i64(i64,i64)` | `rt_bits_ushr` |
 | `Viper.Math.Bits.Xor` | `i64(i64,i64)` | `rt_bits_xor` |
 | `Viper.Math.Easing.Linear` | `f64(f64)` | `rt_ease_linear` |
-| `Viper.Math.Easing.InQuad` | `f64(f64)` | `rt_ease_in_quad` |
-| `Viper.Math.Easing.OutQuad` | `f64(f64)` | `rt_ease_out_quad` |
-| `Viper.Math.Easing.InOutQuad` | `f64(f64)` | `rt_ease_in_out_quad` |
-| `Viper.Math.Easing.InCubic` | `f64(f64)` | `rt_ease_in_cubic` |
-| `Viper.Math.Easing.OutCubic` | `f64(f64)` | `rt_ease_out_cubic` |
-| `Viper.Math.Easing.InOutCubic` | `f64(f64)` | `rt_ease_in_out_cubic` |
-| `Viper.Math.Easing.InQuart` | `f64(f64)` | `rt_ease_in_quart` |
-| `Viper.Math.Easing.OutQuart` | `f64(f64)` | `rt_ease_out_quart` |
-| `Viper.Math.Easing.InOutQuart` | `f64(f64)` | `rt_ease_in_out_quart` |
-| `Viper.Math.Easing.InSine` | `f64(f64)` | `rt_ease_in_sine` |
-| `Viper.Math.Easing.OutSine` | `f64(f64)` | `rt_ease_out_sine` |
-| `Viper.Math.Easing.InOutSine` | `f64(f64)` | `rt_ease_in_out_sine` |
-| `Viper.Math.Easing.InExpo` | `f64(f64)` | `rt_ease_in_expo` |
-| `Viper.Math.Easing.OutExpo` | `f64(f64)` | `rt_ease_out_expo` |
-| `Viper.Math.Easing.InOutExpo` | `f64(f64)` | `rt_ease_in_out_expo` |
-| `Viper.Math.Easing.InCirc` | `f64(f64)` | `rt_ease_in_circ` |
-| `Viper.Math.Easing.OutCirc` | `f64(f64)` | `rt_ease_out_circ` |
-| `Viper.Math.Easing.InOutCirc` | `f64(f64)` | `rt_ease_in_out_circ` |
-| `Viper.Math.Easing.InBack` | `f64(f64)` | `rt_ease_in_back` |
-| `Viper.Math.Easing.OutBack` | `f64(f64)` | `rt_ease_out_back` |
-| `Viper.Math.Easing.InOutBack` | `f64(f64)` | `rt_ease_in_out_back` |
-| `Viper.Math.Easing.InElastic` | `f64(f64)` | `rt_ease_in_elastic` |
-| `Viper.Math.Easing.OutElastic` | `f64(f64)` | `rt_ease_out_elastic` |
-| `Viper.Math.Easing.InOutElastic` | `f64(f64)` | `rt_ease_in_out_elastic` |
-| `Viper.Math.Easing.InBounce` | `f64(f64)` | `rt_ease_in_bounce` |
-| `Viper.Math.Easing.OutBounce` | `f64(f64)` | `rt_ease_out_bounce` |
-| `Viper.Math.Easing.InOutBounce` | `f64(f64)` | `rt_ease_in_out_bounce` |
+| `Viper.Math.Easing.EaseInQuad` | `f64(f64)` | `rt_ease_in_quad` |
+| `Viper.Math.Easing.EaseOutQuad` | `f64(f64)` | `rt_ease_out_quad` |
+| `Viper.Math.Easing.EaseInOutQuad` | `f64(f64)` | `rt_ease_in_out_quad` |
+| `Viper.Math.Easing.EaseInCubic` | `f64(f64)` | `rt_ease_in_cubic` |
+| `Viper.Math.Easing.EaseOutCubic` | `f64(f64)` | `rt_ease_out_cubic` |
+| `Viper.Math.Easing.EaseInOutCubic` | `f64(f64)` | `rt_ease_in_out_cubic` |
+| `Viper.Math.Easing.EaseInQuart` | `f64(f64)` | `rt_ease_in_quart` |
+| `Viper.Math.Easing.EaseOutQuart` | `f64(f64)` | `rt_ease_out_quart` |
+| `Viper.Math.Easing.EaseInOutQuart` | `f64(f64)` | `rt_ease_in_out_quart` |
+| `Viper.Math.Easing.EaseInSine` | `f64(f64)` | `rt_ease_in_sine` |
+| `Viper.Math.Easing.EaseOutSine` | `f64(f64)` | `rt_ease_out_sine` |
+| `Viper.Math.Easing.EaseInOutSine` | `f64(f64)` | `rt_ease_in_out_sine` |
+| `Viper.Math.Easing.EaseInExpo` | `f64(f64)` | `rt_ease_in_expo` |
+| `Viper.Math.Easing.EaseOutExpo` | `f64(f64)` | `rt_ease_out_expo` |
+| `Viper.Math.Easing.EaseInOutExpo` | `f64(f64)` | `rt_ease_in_out_expo` |
+| `Viper.Math.Easing.EaseInCirc` | `f64(f64)` | `rt_ease_in_circ` |
+| `Viper.Math.Easing.EaseOutCirc` | `f64(f64)` | `rt_ease_out_circ` |
+| `Viper.Math.Easing.EaseInOutCirc` | `f64(f64)` | `rt_ease_in_out_circ` |
+| `Viper.Math.Easing.EaseInBack` | `f64(f64)` | `rt_ease_in_back` |
+| `Viper.Math.Easing.EaseOutBack` | `f64(f64)` | `rt_ease_out_back` |
+| `Viper.Math.Easing.EaseInOutBack` | `f64(f64)` | `rt_ease_in_out_back` |
+| `Viper.Math.Easing.EaseInElastic` | `f64(f64)` | `rt_ease_in_elastic` |
+| `Viper.Math.Easing.EaseOutElastic` | `f64(f64)` | `rt_ease_out_elastic` |
+| `Viper.Math.Easing.EaseInOutElastic` | `f64(f64)` | `rt_ease_in_out_elastic` |
+| `Viper.Math.Easing.EaseInBounce` | `f64(f64)` | `rt_ease_in_bounce` |
+| `Viper.Math.Easing.EaseOutBounce` | `f64(f64)` | `rt_ease_out_bounce` |
+| `Viper.Math.Easing.EaseInOutBounce` | `f64(f64)` | `rt_ease_in_out_bounce` |
 | `Viper.Math.PerlinNoise.New` | `obj(i64)` | `rt_perlin_new` |
 | `Viper.Math.PerlinNoise.Noise2D` | `f64(obj,f64,f64)` | `rt_perlin_noise2d` |
 | `Viper.Math.PerlinNoise.Noise3D` | `f64(obj,f64,f64,f64)` | `rt_perlin_noise3d` |
@@ -568,7 +551,7 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.ClampInt` | `i64(i64,i64,i64)` | `rt_clamp_i64` |
 | `Viper.Math.Cos` | `f64(f64)` | `rt_cos` |
 | `Viper.Math.Cosh` | `f64(f64)` | `rt_cosh` |
-| `Viper.Math.Deg` | `f64(f64)` | `rt_deg` |
+| `Viper.Math.ToDegrees` | `f64(f64)` | `rt_deg` |
 | <a id="viper-math-get-euler"></a>`Viper.Math.get_Euler` | `f64()` | `rt_math_e` |
 | `Viper.Math.Exp` | `f64(f64)` | `rt_exp` |
 | `Viper.Math.FMod` | `f64(f64,f64)` | `rt_fmod` |
@@ -584,21 +567,21 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.MinInt` | `i64(i64,i64)` | `rt_min_i64` |
 | <a id="viper-math-get-pi"></a>`Viper.Math.get_Pi` | `f64()` | `rt_math_pi` |
 | `Viper.Math.Pow` | `f64(f64,f64)` | `rt_math_pow` |
-| `Viper.Math.Rad` | `f64(f64)` | `rt_rad` |
+| `Viper.Math.ToRadians` | `f64(f64)` | `rt_rad` |
 | `Viper.Math.Round` | `f64(f64)` | `rt_round` |
-| `Viper.Math.Sgn` | `f64(f64)` | `rt_sgn_f64` |
-| `Viper.Math.SgnInt` | `i64(i64)` | `rt_sgn_i64` |
+| `Viper.Math.Sign` | `f64(f64)` | `rt_sgn_f64` |
+| `Viper.Math.SignInt` | `i64(i64)` | `rt_sgn_i64` |
 | `Viper.Math.Sin` | `f64(f64)` | `rt_sin` |
 | `Viper.Math.Sinh` | `f64(f64)` | `rt_sinh` |
 | `Viper.Math.Sqrt` | `f64(f64)` | `rt_sqrt` |
 | `Viper.Math.Tan` | `f64(f64)` | `rt_tan` |
 | `Viper.Math.Tanh` | `f64(f64)` | `rt_tanh` |
 | <a id="viper-math-get-tau"></a>`Viper.Math.get_Tau` | `f64()` | `rt_math_tau` |
-| `Viper.Math.Trunc` | `f64(f64)` | `rt_trunc` |
+| `Viper.Math.Truncate` | `f64(f64)` | `rt_trunc` |
 | `Viper.Math.Wrap` | `f64(f64,f64,f64)` | `rt_wrap_f64` |
 | `Viper.Math.WrapInt` | `i64(i64,i64,i64)` | `rt_wrap_i64` |
 | `Viper.Math.Random.New` | `obj(i64)` | `rt_random_new` |
-| `Viper.Math.Random.Next` | `f64()` | `rt_rnd` |
+| `Viper.Math.Random.NextDouble` | `f64()` | `rt_rnd` |
 | `Viper.Math.Random.NextInt` | `i64(i64)` | `rt_rand_int` |
 | `Viper.Math.Random.Seed` | `void(i64)` | `rt_randomize_i64` |
 | `Viper.Math.Random.Range` | `i64(i64,i64)` | `rt_rand_range` |
@@ -606,7 +589,6 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Random.Exponential` | `f64(f64)` | `rt_rand_exponential` |
 | `Viper.Math.Random.Dice` | `i64(i64)` | `rt_rand_dice` |
 | `Viper.Math.Random.Chance` | `i1(f64)` | `rt_rand_chance_bool` |
-| `Viper.Math.Random.ChanceInt` | `i64(f64)` | `rt_rand_chance` |
 | `Viper.Math.Random.Shuffle` | `void(obj)` | `rt_rand_shuffle` |
 | `Viper.Math.BigInt.FromInt` | `obj(i64)` | `rt_bigint_from_i64` |
 | `Viper.Math.BigInt.FromStr` | `obj(str)` | `rt_bigint_from_str` |
@@ -615,7 +597,7 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | <a id="viper-math-bigint-get-one"></a>`Viper.Math.BigInt.get_One` | `obj()` | `rt_bigint_one` |
 | `Viper.Math.BigInt.ToInt` | `i64(obj)` | `rt_bigint_to_i64` |
 | `Viper.Math.BigInt.ToString` | `str(obj)` | `rt_bigint_to_str` |
-| `Viper.Math.BigInt.ToStrBase` | `str(obj,i64)` | `rt_bigint_to_str_base` |
+| `Viper.Math.BigInt.ToStringBase` | `str(obj,i64)` | `rt_bigint_to_str_base` |
 | `Viper.Math.BigInt.ToBytes` | `obj(obj)` | `rt_bigint_to_bytes` |
 | `Viper.Math.BigInt.FitsInt` | `i1(obj)` | `rt_bigint_fits_i64` |
 | `Viper.Math.BigInt.Add` | `obj(obj,obj)` | `rt_bigint_add` |
@@ -623,10 +605,10 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.BigInt.Mul` | `obj(obj,obj)` | `rt_bigint_mul` |
 | `Viper.Math.BigInt.Div` | `obj(obj,obj)` | `rt_bigint_div` |
 | `Viper.Math.BigInt.Mod` | `obj(obj,obj)` | `rt_bigint_mod` |
-| `Viper.Math.BigInt.Neg` | `obj(obj)` | `rt_bigint_neg` |
+| `Viper.Math.BigInt.Negate` | `obj(obj)` | `rt_bigint_neg` |
 | `Viper.Math.BigInt.Abs` | `obj(obj)` | `rt_bigint_abs` |
-| `Viper.Math.BigInt.Cmp` | `i64(obj,obj)` | `rt_bigint_cmp` |
-| `Viper.Math.BigInt.Eq` | `i1(obj,obj)` | `rt_bigint_eq` |
+| `Viper.Math.BigInt.Compare` | `i64(obj,obj)` | `rt_bigint_cmp` |
+| `Viper.Math.BigInt.Equals` | `i1(obj,obj)` | `rt_bigint_eq` |
 | `Viper.Math.BigInt.IsZero` | `i1(obj)` | `rt_bigint_is_zero` |
 | `Viper.Math.BigInt.IsNegative` | `i1(obj)` | `rt_bigint_is_negative` |
 | `Viper.Math.BigInt.Sign` | `i64(obj)` | `rt_bigint_sign` |
@@ -646,16 +628,16 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.BigInt.ClearBit` | `obj(obj,i64)` | `rt_bigint_clear_bit` |
 | `Viper.Math.BigInt.Sqrt` | `obj(obj)` | `rt_bigint_sqrt` |
 | `Viper.Math.Vec2.Add` | `obj(obj,obj)` | `rt_vec2_add` |
-| `Viper.Math.Vec2.Angle` | `f64(obj)` | `rt_vec2_angle` |
+| `Viper.Math.Vec2.Heading` | `f64(obj)` | `rt_vec2_angle` |
 | `Viper.Math.Vec2.Cross` | `f64(obj,obj)` | `rt_vec2_cross` |
 | `Viper.Math.Vec2.Dist` | `f64(obj,obj)` | `rt_vec2_dist` |
 | `Viper.Math.Vec2.Div` | `obj(obj,f64)` | `rt_vec2_div` |
 | `Viper.Math.Vec2.Dot` | `f64(obj,obj)` | `rt_vec2_dot` |
 | `Viper.Math.Vec2.Len` | `f64(obj)` | `rt_vec2_len` |
-| `Viper.Math.Vec2.LenSq` | `f64(obj)` | `rt_vec2_len_sq` |
+| `Viper.Math.Vec2.LengthSquared` | `f64(obj)` | `rt_vec2_len_sq` |
 | `Viper.Math.Vec2.Lerp` | `obj(obj,obj,f64)` | `rt_vec2_lerp` |
 | `Viper.Math.Vec2.Mul` | `obj(obj,f64)` | `rt_vec2_mul` |
-| `Viper.Math.Vec2.Neg` | `obj(obj)` | `rt_vec2_neg` |
+| `Viper.Math.Vec2.Negate` | `obj(obj)` | `rt_vec2_neg` |
 | `Viper.Math.Vec2.New` | `obj(f64,f64)` | `rt_vec2_new` |
 | `Viper.Math.Vec2.Norm` | `obj(obj)` | `rt_vec2_norm` |
 | `Viper.Math.Vec2.One` | `obj()` | `rt_vec2_one` |
@@ -670,10 +652,10 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Vec3.Div` | `obj(obj,f64)` | `rt_vec3_div` |
 | `Viper.Math.Vec3.Dot` | `f64(obj,obj)` | `rt_vec3_dot` |
 | `Viper.Math.Vec3.Len` | `f64(obj)` | `rt_vec3_len` |
-| `Viper.Math.Vec3.LenSq` | `f64(obj)` | `rt_vec3_len_sq` |
+| `Viper.Math.Vec3.LengthSquared` | `f64(obj)` | `rt_vec3_len_sq` |
 | `Viper.Math.Vec3.Lerp` | `obj(obj,obj,f64)` | `rt_vec3_lerp` |
 | `Viper.Math.Vec3.Mul` | `obj(obj,f64)` | `rt_vec3_mul` |
-| `Viper.Math.Vec3.Neg` | `obj(obj)` | `rt_vec3_neg` |
+| `Viper.Math.Vec3.Negate` | `obj(obj)` | `rt_vec3_neg` |
 | `Viper.Math.Vec3.New` | `obj(f64,f64,f64)` | `rt_vec3_new` |
 | `Viper.Math.Vec3.Set` | `void(obj,f64,f64,f64)` | `rt_vec3_set` |
 | <a id="viper-math-vec3-set-x"></a>`Viper.Math.Vec3.set_X` | `void(obj,f64)` | `rt_vec3_set_x` |
@@ -689,9 +671,9 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Vec3.CopyFrom` | `void(obj,obj)` | `rt_vec3_copy_from` |
 | `Viper.Math.Vec3.Reflect` | `obj(obj,obj)` | `rt_vec3_reflect` |
 | `Viper.Math.Vec3.Project` | `obj(obj,obj)` | `rt_vec3_project` |
-| `Viper.Math.Vec3.ClampLen` | `obj(obj,f64)` | `rt_vec3_clamp_len` |
+| `Viper.Math.Vec3.ClampLength` | `obj(obj,f64)` | `rt_vec3_clamp_len` |
 | `Viper.Math.Vec3.MoveTowards` | `obj(obj,obj,f64)` | `rt_vec3_move_towards` |
-| `Viper.Math.Vec3.Angle` | `f64(obj,obj)` | `rt_vec3_angle` |
+| `Viper.Math.Vec3.AngleBetween` | `f64(obj,obj)` | `rt_vec3_angle` |
 | `Viper.Math.Vec3.Min` | `obj(obj,obj)` | `rt_vec3_min` |
 | `Viper.Math.Vec3.Max` | `obj(obj,obj)` | `rt_vec3_max` |
 | `Viper.Math.Mat3.New` | `obj(f64,f64,f64,f64,f64,f64,f64,f64,f64)` | `rt_mat3_new` |
@@ -710,12 +692,12 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Mat3.Mul` | `obj(obj,obj)` | `rt_mat3_mul` |
 | `Viper.Math.Mat3.MulScalar` | `obj(obj,f64)` | `rt_mat3_mul_scalar` |
 | `Viper.Math.Mat3.TransformPoint` | `obj(obj,obj)` | `rt_mat3_transform_point` |
-| `Viper.Math.Mat3.TransformVec` | `obj(obj,obj)` | `rt_mat3_transform_vec` |
+| `Viper.Math.Mat3.TransformVector` | `obj(obj,obj)` | `rt_mat3_transform_vec` |
 | `Viper.Math.Mat3.Transpose` | `obj(obj)` | `rt_mat3_transpose` |
-| `Viper.Math.Mat3.Det` | `f64(obj)` | `rt_mat3_det` |
+| `Viper.Math.Mat3.Determinant` | `f64(obj)` | `rt_mat3_det` |
 | `Viper.Math.Mat3.Inverse` | `obj(obj)` | `rt_mat3_inverse` |
-| `Viper.Math.Mat3.Neg` | `obj(obj)` | `rt_mat3_neg` |
-| `Viper.Math.Mat3.Eq` | `i1(obj,obj,f64)` | `rt_mat3_eq` |
+| `Viper.Math.Mat3.Negate` | `obj(obj)` | `rt_mat3_neg` |
+| `Viper.Math.Mat3.ApproxEquals` | `i1(obj,obj,f64)` | `rt_mat3_eq` |
 | `Viper.Math.Mat4.New` | `obj(f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64)` | `rt_mat4_new` |
 | `Viper.Math.Mat4.Identity` | `obj()` | `rt_mat4_identity` |
 | `Viper.Math.Mat4.Zero` | `obj()` | `rt_mat4_zero` |
@@ -727,7 +709,7 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Mat4.RotateZ` | `obj(f64)` | `rt_mat4_rotate_z` |
 | `Viper.Math.Mat4.RotateAxis` | `obj(obj,f64)` | `rt_mat4_rotate_axis` |
 | `Viper.Math.Mat4.Perspective` | `obj(f64,f64,f64,f64)` | `rt_mat4_perspective` |
-| `Viper.Math.Mat4.Ortho` | `obj(f64,f64,f64,f64,f64,f64)` | `rt_mat4_ortho` |
+| `Viper.Math.Mat4.Orthographic` | `obj(f64,f64,f64,f64,f64,f64)` | `rt_mat4_ortho` |
 | `Viper.Math.Mat4.LookAt` | `obj(obj,obj,obj)` | `rt_mat4_look_at` |
 | `Viper.Math.Mat4.Get` | `f64(obj,i64,i64)` | `rt_mat4_get` |
 | `Viper.Math.Mat4.Add` | `obj(obj,obj)` | `rt_mat4_add` |
@@ -735,12 +717,12 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Mat4.Mul` | `obj(obj,obj)` | `rt_mat4_mul` |
 | `Viper.Math.Mat4.MulScalar` | `obj(obj,f64)` | `rt_mat4_mul_scalar` |
 | `Viper.Math.Mat4.TransformPoint` | `obj(obj,obj)` | `rt_mat4_transform_point` |
-| `Viper.Math.Mat4.TransformVec` | `obj(obj,obj)` | `rt_mat4_transform_vec` |
+| `Viper.Math.Mat4.TransformVector` | `obj(obj,obj)` | `rt_mat4_transform_vec` |
 | `Viper.Math.Mat4.Transpose` | `obj(obj)` | `rt_mat4_transpose` |
-| `Viper.Math.Mat4.Det` | `f64(obj)` | `rt_mat4_det` |
+| `Viper.Math.Mat4.Determinant` | `f64(obj)` | `rt_mat4_det` |
 | `Viper.Math.Mat4.Inverse` | `obj(obj)` | `rt_mat4_inverse` |
-| `Viper.Math.Mat4.Neg` | `obj(obj)` | `rt_mat4_neg` |
-| `Viper.Math.Mat4.Eq` | `i1(obj,obj,f64)` | `rt_mat4_eq` |
+| `Viper.Math.Mat4.Negate` | `obj(obj)` | `rt_mat4_neg` |
+| `Viper.Math.Mat4.ApproxEquals` | `i1(obj,obj,f64)` | `rt_mat4_eq` |
 | `Viper.Math.Quat.New` | `obj(f64,f64,f64,f64)` | `rt_quat_new` |
 | `Viper.Math.Quat.Identity` | `obj()` | `rt_quat_identity` |
 | `Viper.Math.Quat.FromAxisAngle` | `obj(obj,f64)` | `rt_quat_from_axis_angle` |
@@ -752,9 +734,9 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Quat.Mul` | `obj(obj,obj)` | `rt_quat_mul` |
 | `Viper.Math.Quat.Conjugate` | `obj(obj)` | `rt_quat_conjugate` |
 | `Viper.Math.Quat.Inverse` | `obj(obj)` | `rt_quat_inverse` |
-| `Viper.Math.Quat.Norm` | `obj(obj)` | `rt_quat_norm` |
-| `Viper.Math.Quat.Len` | `f64(obj)` | `rt_quat_len` |
-| `Viper.Math.Quat.LenSq` | `f64(obj)` | `rt_quat_len_sq` |
+| `Viper.Math.Quat.Normalize` | `obj(obj)` | `rt_quat_norm` |
+| `Viper.Math.Quat.Length` | `f64(obj)` | `rt_quat_len` |
+| `Viper.Math.Quat.LengthSquared` | `f64(obj)` | `rt_quat_len_sq` |
 | `Viper.Math.Quat.Dot` | `f64(obj,obj)` | `rt_quat_dot` |
 | `Viper.Math.Quat.Slerp` | `obj(obj,obj,f64)` | `rt_quat_slerp` |
 | `Viper.Math.Quat.Lerp` | `obj(obj,obj,f64)` | `rt_quat_lerp` |

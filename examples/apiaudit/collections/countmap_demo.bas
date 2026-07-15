@@ -24,7 +24,7 @@ PRINT cm.IsEmpty           ' 0
 
 ' --- IncBy ---
 PRINT "--- IncBy ---"
-PRINT cm.IncBy("banana", 5)  ' 6
+PRINT cm.IncrementBy("banana", 5)  ' 6
 
 ' --- Get ---
 PRINT "--- Get ---"

@@ -192,9 +192,9 @@ func start() {    Viper.Terminal.Clear();
     Viper.Terminal.Print("Hello");
     Viper.Terminal.SetCursorVisible(false);
     Viper.Terminal.SetCursorVisible(true);
-    var key: String = Viper.Terminal.GetKeyTimeout(1);
+    var key: String = Viper.Terminal.ReadKeyFor(1);
     if (key != "") {
-        key = Viper.Terminal.GetKey();
+        key = Viper.Terminal.ReadKey();
     }
     Viper.Time.Clock.Sleep(100);
     Viper.Terminal.Say("Done");

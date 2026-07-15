@@ -8,7 +8,7 @@
 ## 1. Level loader + manifest (`world/loader.zia`, `level_base.zia`)
 
 JSON manifests (`world/data/l1.json`... authored as Zia string constants first, external files
-when `asset` shipping lands in P19) parsed with `Viper.Text.Json`:
+when `asset` shipping lands in P19) parsed with `Viper.Data.Json`:
 ```json
 { "id": "l1", "name": "Crashsite Canyon", "music": "wastes",
   "environment": {"skyPhase": "dusk", "fog": {...}, "lut": "l1_amber", "weather": "ashfall"},

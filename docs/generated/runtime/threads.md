@@ -44,7 +44,7 @@ Provides Channel functionality for concurrent and asynchronous programs.
 
 Create `Viper.Threads.Channel` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Count`,
-`Cap`, `Capacity` and operations including `Send`, `TrySend`, `SendFor`, `Recv`.
+`Capacity`, `IsClosed` and operations including `Send`, `TrySend`, `SendFor`, `Recv`.
 
 Constructor: `Viper.Threads.Channel.New`
 
@@ -53,7 +53,6 @@ Constructor: `Viper.Threads.Channel.New`
 | Property | Type | Access |
 |---|---|---|
 | <a id="viper-threads-channel-count"></a>`Count` | `i64` | read-only |
-| <a id="viper-threads-channel-cap"></a>`Cap` | `i64` | read-only |
 | <a id="viper-threads-channel-capacity"></a>`Capacity` | `i64` | read-only |
 | <a id="viper-threads-channel-isclosed"></a>`IsClosed` | `i1` | read-only |
 | <a id="viper-threads-channel-isempty"></a>`IsEmpty` | `i1` | read-only |
@@ -67,8 +66,7 @@ Constructor: `Viper.Threads.Channel.New`
 | <a id="viper-threads-channel-trysend"></a>`TrySend` | `i1(obj)` | `Viper.Threads.Channel.TrySend` |
 | <a id="viper-threads-channel-sendfor"></a>`SendFor` | `i1(obj,i64)` | `Viper.Threads.Channel.SendFor` |
 | <a id="viper-threads-channel-recv"></a>`Recv` | `obj()` | `Viper.Threads.Channel.Recv` |
-| <a id="viper-threads-channel-tryrecv"></a>`TryRecv` | `obj()` | `Viper.Threads.Channel.TryRecv` |
-| <a id="viper-threads-channel-tryrecvoption"></a>`TryRecvOption` | `obj<Viper.Option>()` | `Viper.Threads.Channel.TryRecvOption` |
+| <a id="viper-threads-channel-tryrecv"></a>`TryRecv` | `obj<Viper.Option>()` | `Viper.Threads.Channel.TryRecv` |
 | <a id="viper-threads-channel-recvfor"></a>`RecvFor` | `obj(i64)` | `Viper.Threads.Channel.RecvFor` |
 | <a id="viper-threads-channel-close"></a>`Close` | `void()` | `Viper.Threads.Channel.Close` |
 | <a id="viper-threads-channel-new"></a>`New` | `obj(i64)` | `Viper.Threads.Channel.New` |
@@ -80,8 +78,7 @@ Provides thread-safe FIFO queue.
 
 Create `Viper.Threads.ConcurrentQueue` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`IsEmpty`, `IsClosed`, `Count` and operations including `Clear`, `Close`, `Dequeue`,
-`DequeueTimeout`.
+`IsEmpty`, `IsClosed`, `Count` and operations including `Clear`, `Close`, `Pop`, `PopFor`.
 
 Constructor: `Viper.Threads.ConcurrentQueue.New`
 
@@ -99,12 +96,11 @@ Constructor: `Viper.Threads.ConcurrentQueue.New`
 |---|---|---|
 | <a id="viper-threads-concurrentqueue-clear"></a>`Clear` | `void()` | `Viper.Threads.ConcurrentQueue.Clear` |
 | <a id="viper-threads-concurrentqueue-close"></a>`Close` | `void()` | `Viper.Threads.ConcurrentQueue.Close` |
-| <a id="viper-threads-concurrentqueue-dequeue"></a>`Dequeue` | `obj()` | `Viper.Threads.ConcurrentQueue.Dequeue` |
-| <a id="viper-threads-concurrentqueue-dequeuetimeout"></a>`DequeueTimeout` | `obj(i64)` | `Viper.Threads.ConcurrentQueue.DequeueTimeout` |
-| <a id="viper-threads-concurrentqueue-enqueue"></a>`Enqueue` | `void(obj)` | `Viper.Threads.ConcurrentQueue.Enqueue` |
+| <a id="viper-threads-concurrentqueue-pop"></a>`Pop` | `obj()` | `Viper.Threads.ConcurrentQueue.Pop` |
+| <a id="viper-threads-concurrentqueue-popfor"></a>`PopFor` | `obj(i64)` | `Viper.Threads.ConcurrentQueue.PopFor` |
+| <a id="viper-threads-concurrentqueue-push"></a>`Push` | `void(obj)` | `Viper.Threads.ConcurrentQueue.Push` |
 | <a id="viper-threads-concurrentqueue-peek"></a>`Peek` | `obj()` | `Viper.Threads.ConcurrentQueue.Peek` |
-| <a id="viper-threads-concurrentqueue-trydequeue"></a>`TryDequeue` | `obj()` | `Viper.Threads.ConcurrentQueue.TryDequeue` |
-| <a id="viper-threads-concurrentqueue-trydequeueoption"></a>`TryDequeueOption` | `obj<Viper.Option>()` | `Viper.Threads.ConcurrentQueue.TryDequeueOption` |
+| <a id="viper-threads-concurrentqueue-trypop"></a>`TryPop` | `obj<Viper.Option>()` | `Viper.Threads.ConcurrentQueue.TryPop` |
 | <a id="viper-threads-concurrentqueue-new"></a>`New` | `obj()` | `Viper.Threads.ConcurrentQueue.New` |
 
 <a id="viper-threads-concurrentmap"></a>
@@ -159,8 +155,8 @@ construct the class directly. Its public surface exposes operations including `E
 | <a id="viper-threads-monitor-exit"></a>`Exit` | `void(obj)` | `Viper.Threads.Monitor.Exit` |
 | <a id="viper-threads-monitor-wait"></a>`Wait` | `void(obj)` | `Viper.Threads.Monitor.Wait` |
 | <a id="viper-threads-monitor-waitfor"></a>`WaitFor` | `i1(obj,i64)` | `Viper.Threads.Monitor.WaitFor` |
-| <a id="viper-threads-monitor-pause"></a>`Pause` | `void(obj)` | `Viper.Threads.Monitor.Pause` |
-| <a id="viper-threads-monitor-pauseall"></a>`PauseAll` | `void(obj)` | `Viper.Threads.Monitor.PauseAll` |
+| <a id="viper-threads-monitor-notify"></a>`Notify` | `void(obj)` | `Viper.Threads.Monitor.Notify` |
+| <a id="viper-threads-monitor-notifyall"></a>`NotifyAll` | `void(obj)` | `Viper.Threads.Monitor.NotifyAll` |
 
 <a id="viper-threads-safei64"></a>
 ### `Viper.Threads.SafeI64`
@@ -189,8 +185,8 @@ Constructor: `Viper.Threads.SafeI64.New`
 Provides FIFO-fair permit gate (semaphore).
 
 Create `Viper.Threads.Gate` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Permits`
-and operations including `Enter`, `TryEnter`, `TryEnterFor`, `Leave`.
+object with the instance members below. Its public surface exposes properties such as
+`Permits` and operations including `Enter`, `TryEnter`, `TryEnterFor`, `Leave`.
 
 Constructor: `Viper.Threads.Gate.New`
 
@@ -217,8 +213,8 @@ Constructor: `Viper.Threads.Gate.New`
 Provides reusable N-party barrier.
 
 Create `Viper.Threads.Barrier` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Parties`,
-`Waiting` and operations including `Arrive`, `Reset`.
+object with the instance members below. Its public surface exposes properties such as
+`Parties`, `Waiting` and operations including `Arrive`, `Reset`.
 
 Constructor: `Viper.Threads.Barrier.New`
 
@@ -243,8 +239,9 @@ Constructor: `Viper.Threads.Barrier.New`
 Provides writer-preference reader-writer lock.
 
 Create `Viper.Threads.RwLock` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Readers`,
-`IsWriteLocked` and operations including `ReadEnter`, `ReadExit`, `WriteEnter`, `WriteExit`.
+object with the instance members below. Its public surface exposes properties such as
+`Readers`, `IsWriteLocked` and operations including `ReadEnter`, `ReadExit`, `WriteEnter`,
+`WriteExit`.
 
 Constructor: `Viper.Threads.RwLock.New`
 
@@ -308,7 +305,7 @@ construct the class directly. Its public surface exposes properties such as `Id`
 Provides Promise functionality for concurrent and asynchronous programs.
 
 Create `Viper.Threads.Promise` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `IsDone`
+object with the instance members below. Its public surface exposes properties such as `IsDone`
 and operations including `GetFuture`, `Set`, `SetOwned`, `SetError`.
 
 Constructor: `Viper.Threads.Promise.New`
@@ -335,8 +332,8 @@ Constructor: `Viper.Threads.Promise.New`
 Provides Future functionality for concurrent and asynchronous programs.
 
 `Viper.Threads.Future` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes properties such as `IsDone`, `IsError`,
-`Error` and operations including `Get`, `TryGet`, `TryGetOption`, `GetFor`.
+construct the class directly. Its public surface exposes properties such as `IsDone`,
+`IsError`, `Error` and operations including `Get`, `TryGet`, `GetFor`, `Wait`.
 
 #### Properties
 
@@ -351,8 +348,7 @@ construct the class directly. Its public surface exposes properties such as `IsD
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-threads-future-get"></a>`Get` | `obj()` | `Viper.Threads.Future.Get` |
-| <a id="viper-threads-future-tryget"></a>`TryGet` | `obj()` | `Viper.Threads.Future.TryGet` |
-| <a id="viper-threads-future-trygetoption"></a>`TryGetOption` | `obj<Viper.Option>()` | `Viper.Threads.Future.TryGetOption` |
+| <a id="viper-threads-future-tryget"></a>`TryGet` | `obj<Viper.Option>()` | `Viper.Threads.Future.TryGet` |
 | <a id="viper-threads-future-getfor"></a>`GetFor` | `obj(i64)` | `Viper.Threads.Future.GetFor` |
 | <a id="viper-threads-future-wait"></a>`Wait` | `void()` | `Viper.Threads.Future.Wait` |
 | <a id="viper-threads-future-waitfor"></a>`WaitFor` | `i1(i64)` | `Viper.Threads.Future.WaitFor` |
@@ -363,8 +359,8 @@ construct the class directly. Its public surface exposes properties such as `IsD
 Provides high-level async combinators.
 
 `Viper.Threads.Async` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Run`, `RunOwned`,
-`RunCancellable`, `RunCancellableOwned`.
+construct the class directly. Its public surface exposes operations including `Run`,
+`RunOwned`, `RunCancellable`, `RunCancellableOwned`.
 
 #### Methods
 
@@ -412,8 +408,8 @@ construct the class directly. Its public surface exposes operations including `F
 Provides cooperative cancellation.
 
 Create `Viper.Threads.CancelToken` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
-`IsCancelled` and operations including `Cancel`, `Reset`, `Linked`, `Check`.
+returned object with the instance members below. Its public surface exposes properties such as
+`IsCancelled` and operations including `Cancel`, `Reset`, `Linked`, `ThrowIfCancelled`.
 
 Constructor: `Viper.Threads.CancelToken.New`
 
@@ -430,7 +426,6 @@ Constructor: `Viper.Threads.CancelToken.New`
 | <a id="viper-threads-canceltoken-cancel"></a>`Cancel` | `void()` | `Viper.Threads.CancelToken.Cancel` |
 | <a id="viper-threads-canceltoken-reset"></a>`Reset` | `void()` | `Viper.Threads.CancelToken.Reset` |
 | <a id="viper-threads-canceltoken-linked"></a>`Linked` | `obj(obj)` | `Viper.Threads.CancelToken.Linked` |
-| <a id="viper-threads-canceltoken-check"></a>`Check` | `i1()` | `Viper.Threads.CancelToken.Check` |
 | <a id="viper-threads-canceltoken-throwifcancelled"></a>`ThrowIfCancelled` | `void()` | `Viper.Threads.CancelToken.ThrowIfCancelled` |
 | <a id="viper-threads-canceltoken-new"></a>`New` | `obj()` | `Viper.Threads.CancelToken.New` |
 
@@ -468,7 +463,7 @@ Provides interval-based rate limiter.
 
 Create `Viper.Threads.Throttler` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`CanProceed`, `Count`, `Interval` and operations including `Try`, `Reset`.
+`CanProceed`, `Count`, `Interval` and operations including `TryAcquire`, `Reset`.
 
 Constructor: `Viper.Threads.Throttler.New`
 
@@ -485,7 +480,7 @@ Constructor: `Viper.Threads.Throttler.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-threads-throttler-try"></a>`Try` | `i1()` | `Viper.Threads.Throttler.Try` |
+| <a id="viper-threads-throttler-tryacquire"></a>`TryAcquire` | `i1()` | `Viper.Threads.Throttler.TryAcquire` |
 | <a id="viper-threads-throttler-reset"></a>`Reset` | `void()` | `Viper.Threads.Throttler.Reset` |
 | <a id="viper-threads-throttler-new"></a>`New` | `obj(i64)` | `Viper.Threads.Throttler.New` |
 
@@ -495,8 +490,8 @@ Constructor: `Viper.Threads.Throttler.New`
 Provides named task scheduler.
 
 Create `Viper.Threads.Scheduler` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Pending`
-and operations including `Schedule`, `ScheduleGen`, `Cancel`, `IsDue`.
+object with the instance members below. Its public surface exposes properties such as
+`Pending` and operations including `Schedule`, `ScheduleGeneration`, `Cancel`, `IsDue`.
 
 Constructor: `Viper.Threads.Scheduler.New`
 
@@ -511,10 +506,10 @@ Constructor: `Viper.Threads.Scheduler.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-threads-scheduler-schedule"></a>`Schedule` | `void(str,i64)` | `Viper.Threads.Scheduler.Schedule` |
-| <a id="viper-threads-scheduler-schedulegen"></a>`ScheduleGen` | `void(str,i64,i64)` | `Viper.Threads.Scheduler.ScheduleGen` |
+| <a id="viper-threads-scheduler-schedulegeneration"></a>`ScheduleGeneration` | `void(str,i64,i64)` | `Viper.Threads.Scheduler.ScheduleGeneration` |
 | <a id="viper-threads-scheduler-cancel"></a>`Cancel` | `i1(str)` | `Viper.Threads.Scheduler.Cancel` |
 | <a id="viper-threads-scheduler-isdue"></a>`IsDue` | `i1(str)` | `Viper.Threads.Scheduler.IsDue` |
-| <a id="viper-threads-scheduler-isduegen"></a>`IsDueGen` | `i1(str,i64)` | `Viper.Threads.Scheduler.IsDueGen` |
+| <a id="viper-threads-scheduler-isduegeneration"></a>`IsDueGeneration` | `i1(str,i64)` | `Viper.Threads.Scheduler.IsDueGeneration` |
 | <a id="viper-threads-scheduler-generationof"></a>`GenerationOf` | `i64(str)` | `Viper.Threads.Scheduler.GenerationOf` |
 | <a id="viper-threads-scheduler-poll"></a>`Poll` | `obj()` | `Viper.Threads.Scheduler.Poll` |
 | <a id="viper-threads-scheduler-clear"></a>`Clear` | `void()` | `Viper.Threads.Scheduler.Clear` |
@@ -528,11 +523,10 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-concurrentqueue-get-count"></a>`Viper.Threads.ConcurrentQueue.get_Count` | `i64(obj)` | `rt_concqueue_len` |
 | <a id="viper-threads-concurrentqueue-get-isempty"></a>`Viper.Threads.ConcurrentQueue.get_IsEmpty` | `i1(obj)` | `rt_concqueue_is_empty` |
 | <a id="viper-threads-concurrentqueue-get-isclosed"></a>`Viper.Threads.ConcurrentQueue.get_IsClosed` | `i1(obj)` | `rt_concqueue_get_is_closed` |
-| `Viper.Threads.ConcurrentQueue.Enqueue` | `void(obj,obj)` | `rt_concqueue_enqueue` |
-| `Viper.Threads.ConcurrentQueue.TryDequeue` | `obj(obj)` | `rt_concqueue_try_dequeue` |
-| `Viper.Threads.ConcurrentQueue.TryDequeueOption` | `obj<Viper.Option>(obj)` | `rt_concqueue_try_dequeue_option` |
-| `Viper.Threads.ConcurrentQueue.Dequeue` | `obj(obj)` | `rt_concqueue_dequeue` |
-| `Viper.Threads.ConcurrentQueue.DequeueTimeout` | `obj(obj,i64)` | `rt_concqueue_dequeue_timeout` |
+| `Viper.Threads.ConcurrentQueue.Push` | `void(obj,obj)` | `rt_concqueue_enqueue` |
+| `Viper.Threads.ConcurrentQueue.TryPop` | `obj<Viper.Option>(obj)` | `rt_concqueue_try_dequeue_option` |
+| `Viper.Threads.ConcurrentQueue.Pop` | `obj(obj)` | `rt_concqueue_dequeue` |
+| `Viper.Threads.ConcurrentQueue.PopFor` | `obj(obj,i64)` | `rt_concqueue_dequeue_timeout` |
 | `Viper.Threads.ConcurrentQueue.Peek` | `obj(obj)` | `rt_concqueue_peek` |
 | `Viper.Threads.ConcurrentQueue.Clear` | `void(obj)` | `rt_concqueue_clear` |
 | `Viper.Threads.ConcurrentQueue.Close` | `void(obj)` | `rt_concqueue_close` |
@@ -553,7 +547,6 @@ Constructor: `Viper.Threads.Scheduler.New`
 | `Viper.Threads.CancelToken.Cancel` | `void(obj)` | `rt_cancellation_cancel` |
 | `Viper.Threads.CancelToken.Reset` | `void(obj)` | `rt_cancellation_reset` |
 | `Viper.Threads.CancelToken.Linked` | `obj(obj)` | `rt_cancellation_linked` |
-| `Viper.Threads.CancelToken.Check` | `i1(obj)` | `rt_cancellation_check` |
 | `Viper.Threads.CancelToken.ThrowIfCancelled` | `void(obj)` | `rt_cancellation_throw_if_cancelled` |
 | `Viper.Threads.Debouncer.New` | `obj(i64)` | `rt_debounce_new` |
 | `Viper.Threads.Debouncer.Signal` | `void(obj)` | `rt_debounce_signal` |
@@ -562,7 +555,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-debouncer-get-delay"></a>`Viper.Threads.Debouncer.get_Delay` | `i64(obj)` | `rt_debounce_get_delay` |
 | <a id="viper-threads-debouncer-get-signalcount"></a>`Viper.Threads.Debouncer.get_SignalCount` | `i64(obj)` | `rt_debounce_get_signal_count` |
 | `Viper.Threads.Throttler.New` | `obj(i64)` | `rt_throttle_new` |
-| `Viper.Threads.Throttler.Try` | `i1(obj)` | `rt_throttle_try` |
+| `Viper.Threads.Throttler.TryAcquire` | `i1(obj)` | `rt_throttle_try` |
 | <a id="viper-threads-throttler-get-canproceed"></a>`Viper.Threads.Throttler.get_CanProceed` | `i1(obj)` | `rt_throttle_can_proceed` |
 | `Viper.Threads.Throttler.Reset` | `void(obj)` | `rt_throttle_reset` |
 | <a id="viper-threads-throttler-get-interval"></a>`Viper.Threads.Throttler.get_Interval` | `i64(obj)` | `rt_throttle_get_interval` |
@@ -570,10 +563,10 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-throttler-get-remainingms"></a>`Viper.Threads.Throttler.get_RemainingMs` | `i64(obj)` | `rt_throttle_remaining_ms` |
 | `Viper.Threads.Scheduler.New` | `obj()` | `rt_scheduler_new` |
 | `Viper.Threads.Scheduler.Schedule` | `void(obj,str,i64)` | `rt_scheduler_schedule` |
-| `Viper.Threads.Scheduler.ScheduleGen` | `void(obj,str,i64,i64)` | `rt_scheduler_schedule_gen` |
+| `Viper.Threads.Scheduler.ScheduleGeneration` | `void(obj,str,i64,i64)` | `rt_scheduler_schedule_gen` |
 | `Viper.Threads.Scheduler.Cancel` | `i1(obj,str)` | `rt_scheduler_cancel` |
 | `Viper.Threads.Scheduler.IsDue` | `i1(obj,str)` | `rt_scheduler_is_due` |
-| `Viper.Threads.Scheduler.IsDueGen` | `i1(obj,str,i64)` | `rt_scheduler_is_due_gen` |
+| `Viper.Threads.Scheduler.IsDueGeneration` | `i1(obj,str,i64)` | `rt_scheduler_is_due_gen` |
 | `Viper.Threads.Scheduler.GenerationOf` | `i64(obj,str)` | `rt_scheduler_generation_of` |
 | `Viper.Threads.Scheduler.Poll` | `obj(obj)` | `rt_scheduler_poll` |
 | <a id="viper-threads-scheduler-get-pending"></a>`Viper.Threads.Scheduler.get_Pending` | `i64(obj)` | `rt_scheduler_pending` |
@@ -584,8 +577,8 @@ Constructor: `Viper.Threads.Scheduler.New`
 | `Viper.Threads.Monitor.Exit` | `void(obj)` | `rt_monitor_exit` |
 | `Viper.Threads.Monitor.Wait` | `void(obj)` | `rt_monitor_wait` |
 | `Viper.Threads.Monitor.WaitFor` | `i1(obj,i64)` | `rt_monitor_wait_for` |
-| `Viper.Threads.Monitor.Pause` | `void(obj)` | `rt_monitor_pause` |
-| `Viper.Threads.Monitor.PauseAll` | `void(obj)` | `rt_monitor_pause_all` |
+| `Viper.Threads.Monitor.Notify` | `void(obj)` | `rt_monitor_pause` |
+| `Viper.Threads.Monitor.NotifyAll` | `void(obj)` | `rt_monitor_pause_all` |
 | `Viper.Threads.Thread.Start` | `obj(obj,obj)` | `rt_thread_start` |
 | `Viper.Threads.Thread.StartOwned` | `obj(obj,obj)` | `rt_thread_start_owned` |
 | `Viper.Threads.Thread.Join` | `void(obj)` | `rt_thread_join` |
@@ -655,12 +648,10 @@ Constructor: `Viper.Threads.Scheduler.New`
 | `Viper.Threads.Channel.TrySend` | `i1(obj,obj)` | `rt_channel_try_send` |
 | `Viper.Threads.Channel.SendFor` | `i1(obj,obj,i64)` | `rt_channel_send_for` |
 | `Viper.Threads.Channel.Recv` | `obj(obj)` | `rt_channel_recv` |
-| `Viper.Threads.Channel.TryRecv` | `obj(obj)` | `rt_channel_try_recv_val` |
-| `Viper.Threads.Channel.TryRecvOption` | `obj<Viper.Option>(obj)` | `rt_channel_try_recv_option` |
+| `Viper.Threads.Channel.TryRecv` | `obj<Viper.Option>(obj)` | `rt_channel_try_recv_option` |
 | `Viper.Threads.Channel.RecvFor` | `obj(obj,i64)` | `rt_channel_recv_for_val` |
 | `Viper.Threads.Channel.Close` | `void(obj)` | `rt_channel_close` |
 | <a id="viper-threads-channel-get-count"></a>`Viper.Threads.Channel.get_Count` | `i64(obj)` | `rt_channel_get_len` |
-| <a id="viper-threads-channel-get-cap"></a>`Viper.Threads.Channel.get_Cap` | `i64(obj)` | `rt_channel_get_cap` |
 | <a id="viper-threads-channel-get-capacity"></a>`Viper.Threads.Channel.get_Capacity` | `i64(obj)` | `rt_channel_get_cap` |
 | <a id="viper-threads-channel-get-isclosed"></a>`Viper.Threads.Channel.get_IsClosed` | `i1(obj)` | `rt_channel_get_is_closed` |
 | <a id="viper-threads-channel-get-isempty"></a>`Viper.Threads.Channel.get_IsEmpty` | `i1(obj)` | `rt_channel_get_is_empty` |
@@ -677,8 +668,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-future-get-isdone"></a>`Viper.Threads.Future.get_IsDone` | `i1(obj)` | `rt_future_is_done` |
 | <a id="viper-threads-future-get-iserror"></a>`Viper.Threads.Future.get_IsError` | `i1(obj)` | `rt_future_is_error` |
 | <a id="viper-threads-future-get-error"></a>`Viper.Threads.Future.get_Error` | `str(obj)` | `rt_future_get_error` |
-| `Viper.Threads.Future.TryGet` | `obj(obj)` | `rt_future_try_get_val` |
-| `Viper.Threads.Future.TryGetOption` | `obj<Viper.Option>(obj)` | `rt_future_try_get_option` |
+| `Viper.Threads.Future.TryGet` | `obj<Viper.Option>(obj)` | `rt_future_try_get_option` |
 | `Viper.Threads.Future.GetFor` | `obj(obj,i64)` | `rt_future_get_for_val` |
 | `Viper.Threads.Async.Run` | `obj<Viper.Threads.Future>(obj,obj)` | `rt_async_run` |
 | `Viper.Threads.Async.RunOwned` | `obj<Viper.Threads.Future>(obj,obj)` | `rt_async_run_owned` |

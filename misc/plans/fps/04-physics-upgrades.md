@@ -99,8 +99,8 @@ of modeled geometry); **configurable query-hit capacity**. All from scratch (zer
 
 ```text
 Viper.Graphics3D.Collider3D.NewConvexHullReduced(obj,i64)  obj(obj,i64)
-Viper.Graphics3D.Physics3DWorld.SetMaxQueryHits(i64)       void(obj,i64)
-Viper.Graphics3D.Physics3DWorld.get_CcdToiCount            i64(obj)
+Viper.Graphics3D.PhysicsWorld3D.SetMaxQueryHits(i64)       void(obj,i64)
+Viper.Graphics3D.PhysicsWorld3D.get_CcdToiCount            i64(obj)
 ```
 (E13/E15 are behavioral upgrades under existing APIs — `set_UseCcd`, `set_Kinematic` + mesh
 colliders — no new surface beyond telemetry.)

@@ -77,16 +77,16 @@ func testCaseSensitive() {
 func testLikeCI() {
     setTest("LikeCI");
 
-    var r1 = Viper.String.LikeCI("Hello", "hello");
+    var r1 = Viper.String.LikeIgnoreCase("Hello", "hello");
     assertTrue(r1, "LikeCI case insensitive exact");
 
-    var r2 = Viper.String.LikeCI("HELLO WORLD", "%world");
+    var r2 = Viper.String.LikeIgnoreCase("HELLO WORLD", "%world");
     assertTrue(r2, "LikeCI suffix case insensitive");
 
-    var r3 = Viper.String.LikeCI("Hello", "h_llo");
+    var r3 = Viper.String.LikeIgnoreCase("Hello", "h_llo");
     assertTrue(r3, "LikeCI underscore case insensitive");
 
-    var r4 = Viper.String.LikeCI("Hello", "HELL%");
+    var r4 = Viper.String.LikeIgnoreCase("Hello", "HELL%");
     assertTrue(r4, "LikeCI prefix case insensitive");
 }
 

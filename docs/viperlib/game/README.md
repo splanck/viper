@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-07-15
 ---
 
 # Game Utilities
@@ -29,14 +29,14 @@ last-verified: 2026-05-15
 | [Raycast](raycast.md) | Raycast2D — line-of-sight and line collision queries |
 | [Level Documents](leveldata.md) | LevelDocument — JSON level loader with tilemap and object spawns |
 | [Editable Scene Documents](scene.md) | SceneDocument — scene-owned tile layers, placed objects, properties, JSON save/load |
-| [Scene Manager](scenemanager.md) | SceneManager — multi-scene transitions and lifecycle |
+| [Scene Manager](scenemanager.md) | SceneManager — bounded scene-name registry and transition timer |
 | [Config](config.md) | Config — JSON configuration file loader |
-| [UI Menus](ui-menu.md) | MenuList, GameButton — game menu widgets |
+| [UI Menus](ui-menu.md) | HudMenuList, HudButton — game menu drawing and input helpers |
 | [Debug Overlay](debug.md) | DebugOverlay — FPS, dt, custom watch variables |
 | [Persistence](persistence.md) | SaveData — cross-platform key-value save/load |
 | [Quests](quests.md) | Quests — quest/stage/objective tracker with events and SaveData round-trip |
-| [UI Widgets](ui.md) | Label, Bar, Panel, NineSlice — in-game HUD widgets |
-| [Pathfinding](pathfinding.md) | A* grid pathfinding for AI navigation |
+| [UI Widgets](ui.md) | HudLabel, HudBar, HudPanel, HudNineSlice, and richer in-game HUD widgets |
+| [Pathfinding](pathfinding.md) | Weighted A* and nearest-value grid searches with PathResult snapshots |
 
 ## See Also
 

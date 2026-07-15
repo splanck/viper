@@ -35,8 +35,8 @@ func start() {
                     new Vec3(0.0, 0.0, 4.0),
                     new Vec3(0.0, 0.0, 0.0),
                     new Vec3(0.0, 1.0, 0.0));
-    var box = Mesh3D.NewBox(2.0, 2.0, 2.0);
-    var mat = Material3D.NewColor(1.0, 0.1, 0.1);
+    var box = Mesh3D.Box(2.0, 2.0, 2.0);
+    var mat = Material3D.FromColor(1.0, 0.1, 0.1);
     Canvas3D.SetAmbient(canvas, 1.0, 1.0, 1.0);
 
     drawIt(canvas, cam, box, mat);

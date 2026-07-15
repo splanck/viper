@@ -17,13 +17,13 @@ func start() {
                     new Vec3(0.0, 0.0, 5.0),
                     new Vec3(0.0, 0.0, 0.0),
                     new Vec3(0.0, 1.0, 0.0));
-    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var mat = Material3D.NewColor(0.8, 0.8, 0.8);
+    var box = Mesh3D.Box(1.0, 1.0, 1.0);
+    var mat = Material3D.FromColor(0.8, 0.8, 0.8);
 
     var i = 0;
     while (i < 20) {
         var pos = new Vec3(-5.0 + i * 0.5, 1.0, 1.0);
-        Canvas3D.SetLight(canvas, i, Light3D.NewPoint(pos, 1.0, 1.0, 1.0, 1.0));
+        Canvas3D.SetLight(canvas, i, Light3D.Point(pos, 1.0, 1.0, 1.0, 1.0));
         i = i + 1;
     }
 

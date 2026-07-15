@@ -4,7 +4,7 @@ bind Viper.Time.Duration;
 bind Viper.Terminal;
 
 func start() {
-    var t = Create(2024, 6, 15, 10, 30, 0);
+    var t = FromParts(2024, 6, 15, 10, 30, 0);
     SayInt(Year(t));
     SayInt(Month(t));
     SayInt(Day(t));
@@ -13,8 +13,8 @@ func start() {
     SayInt(Second(t));
     SayInt(DayOfWeek(t));
 
-    var iso = ToISO(t);
-    SayBool(Viper.String.Has(iso, "2024"));
+    var iso = ToIso8601(t);
+    SayBool(Viper.String.Contains(iso, "2024"));
 
     var t2 = AddDays(t, 10);
     SayInt(Viper.Time.DateTime.Day(t2));
@@ -35,7 +35,7 @@ func start() {
     SayInt(Viper.Time.Duration.get_Minutes(d));
     SayInt(Viper.Time.Duration.get_Seconds(d));
 
-    var d2 = Viper.Time.Duration.Create(1, 2, 30, 0, 0);
+    var d2 = Viper.Time.Duration.FromParts(1, 2, 30, 0, 0);
     SayInt(TotalHours(d2));
     Say(Viper.Time.Duration.ToString(d2));
 

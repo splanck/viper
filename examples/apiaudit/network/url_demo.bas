@@ -85,7 +85,7 @@ PRINT "Has missing: "; Viper.Network.Url.HasQueryParam(u2, "missing")
 
 ' --- DelQueryParam ---
 PRINT "--- DelQueryParam ---"
-Viper.Network.Url.DelQueryParam(u2, "page")
+Viper.Network.Url.RemoveQueryParam(u2, "page")
 PRINT "Has page after delete: "; Viper.Network.Url.HasQueryParam(u2, "page")
 PRINT Viper.Network.Url.get_Full(u2)
 

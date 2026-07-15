@@ -162,7 +162,7 @@ expose func ContextDirForPath(projMgr: project_manager.ProjectManager,
             return path;
         }
         if IO.File.Exists(path) != false {
-            return Path.Dir(path);
+            return Path.Directory(path);
         }
     }
     return projMgr.project.rootPath;
@@ -233,7 +233,7 @@ expose func RevealPath(path: String) {
     } else {
         var dir = path;
         if IO.File.Exists(path) != false {
-            dir = Path.Dir(path);
+            dir = Path.Directory(path);
         }
         var linuxArgs = Seq.New();
         Seq.Push(linuxArgs, dir);
@@ -249,7 +249,7 @@ expose func RevealPath(path: String) {
 ///          prevents accidental path traversal while preserving the feature.
 expose func IsSafeChildName(name: String) -> Boolean {
     if name == "" or name == "." or name == ".." { return false; }
-    if Str.IndexOf(name, Path.Sep()) != 0 { return false; }
+    if Str.IndexOf(name, Path.Separator()) != 0 { return false; }
     if Str.IndexOf(name, "/") != 0 { return false; }
     if Str.IndexOf(name, "\\") != 0 { return false; }
     if Str.IndexOf(name, ":") != 0 { return false; }

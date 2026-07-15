@@ -102,8 +102,8 @@ func testRounding() {
     assertApprox(Viper.Math.Round(1.6), 2.0, 0.000001, "round(1.6)");
 
     // Trunc
-    assertApprox(Viper.Math.Trunc(1.9), 1.0, 0.000001, "trunc(1.9)");
-    assertApprox(Viper.Math.Trunc(-1.9), -1.0, 0.000001, "trunc(-1.9)");
+    assertApprox(Viper.Math.Truncate(1.9), 1.0, 0.000001, "trunc(1.9)");
+    assertApprox(Viper.Math.Truncate(-1.9), -1.0, 0.000001, "trunc(-1.9)");
 }
 
 func testAbsoluteValue() {
@@ -162,28 +162,28 @@ func testSign() {
     setTest("Sign");
 
     // Sgn (float)
-    assertApprox(Viper.Math.Sgn(5.0), 1.0, 0.000001, "sgn(5.0)");
-    assertApprox(Viper.Math.Sgn(-5.0), -1.0, 0.000001, "sgn(-5.0)");
-    assertApprox(Viper.Math.Sgn(0.0), 0.0, 0.000001, "sgn(0.0)");
+    assertApprox(Viper.Math.Sign(5.0), 1.0, 0.000001, "sgn(5.0)");
+    assertApprox(Viper.Math.Sign(-5.0), -1.0, 0.000001, "sgn(-5.0)");
+    assertApprox(Viper.Math.Sign(0.0), 0.0, 0.000001, "sgn(0.0)");
 
     // SgnInt
-    assertEqInt(Viper.Math.SgnInt(5), 1, "sgnint(5)");
-    assertEqInt(Viper.Math.SgnInt(-5), -1, "sgnint(-5)");
-    assertEqInt(Viper.Math.SgnInt(0), 0, "sgnint(0)");
+    assertEqInt(Viper.Math.SignInt(5), 1, "sgnint(5)");
+    assertEqInt(Viper.Math.SignInt(-5), -1, "sgnint(-5)");
+    assertEqInt(Viper.Math.SignInt(0), 0, "sgnint(0)");
 }
 
 func testDegRad() {
     setTest("DegRad");
 
     // Deg (radians to degrees)
-    assertApprox(Viper.Math.Deg(3.1415926), 180.0, 0.001, "deg(pi)");
-    assertApprox(Viper.Math.Deg(1.5707963), 90.0, 0.001, "deg(pi/2)");
-    assertApprox(Viper.Math.Deg(0.0), 0.0, 0.000001, "deg(0)");
+    assertApprox(Viper.Math.ToDegrees(3.1415926), 180.0, 0.001, "deg(pi)");
+    assertApprox(Viper.Math.ToDegrees(1.5707963), 90.0, 0.001, "deg(pi/2)");
+    assertApprox(Viper.Math.ToDegrees(0.0), 0.0, 0.000001, "deg(0)");
 
     // Rad (degrees to radians)
-    assertApprox(Viper.Math.Rad(180.0), 3.1415926, 0.000001, "rad(180)");
-    assertApprox(Viper.Math.Rad(90.0), 1.5707963, 0.000001, "rad(90)");
-    assertApprox(Viper.Math.Rad(0.0), 0.0, 0.000001, "rad(0)");
+    assertApprox(Viper.Math.ToRadians(180.0), 3.1415926, 0.000001, "rad(180)");
+    assertApprox(Viper.Math.ToRadians(90.0), 1.5707963, 0.000001, "rad(90)");
+    assertApprox(Viper.Math.ToRadians(0.0), 0.0, 0.000001, "rad(0)");
 }
 
 func testLerp() {

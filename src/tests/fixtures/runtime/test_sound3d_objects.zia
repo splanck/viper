@@ -2,7 +2,7 @@ module TestSound3DObjects;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
-bind Viper.Sound;
+bind Viper.Audio;
 bind Viper.Terminal;
 
 func start() {
@@ -44,8 +44,8 @@ func start() {
         return;
     }
 
-    if (Audio.IsAvailable()) {
-        if (Audio.Init() != 0) {
+    if (Mixer.IsAvailable()) {
+        if (Mixer.Init() != 0) {
             var voice = SoundSource3D.Play(source);
             if (voice <= 0) {
                 Say("FAIL: SoundSource3D.Play should return a live voice when audio is available");

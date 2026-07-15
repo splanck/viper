@@ -1,193 +1,161 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-07-15
 ---
 
 # Pathfinding
+> Bounded A* and breadth-first grid searches for 2D games.
 
-> A* grid pathfinding for 2D games.
+**Part of [Viper Runtime Library](../README.md) › [Game Utilities](README.md)**
 
-**Part of [Viper Runtime Library — Game](../game.md)**
+`Viper.Game.Pathfinder` owns a snapshot of grid walkability, per-cell movement
+costs, and source values. `FindPath` performs weighted A* between two cells;
+`FindNearest` performs an unweighted breadth-first search for the nearest
+reachable cell with a stored value. Both return an immutable
+`Viper.Game.PathResult` snapshot.
 
-## Contents
+## Construction
 
-- [Viper.Game.Pathfinder](#vipergamepathfinder)
-- [Movement Modes](#movement-modes)
-- [Cost Weights](#cost-weights)
-- [Integration](#integration-with-tilemap-and-grid2d)
-- [Usage Example](#usage-example)
+| Factory | Current behavior |
+|---|---|
+| `Pathfinder.New(width, height)` | Creates an all-walkable grid with cost `100`; returns null for nonpositive dimensions, either dimension above 4096, or allocation failure. |
+| `Pathfinder.FromTilemap(tilemap)` | Copies base-layer tile IDs and treats every tile whose registered collision type is nonzero as blocked. |
+| `Pathfinder.FromGrid2D(grid)` | Copies cell values and initially treats every nonzero value as blocked. |
 
----
+Factories make one-time snapshots; later Tilemap/Grid2D changes do not update
+the Pathfinder. The two import function rows currently return untyped `obj`
+rather than `obj<Viper.Game.Pathfinder>`. Current Zia recovers Pathfinder
+identity from the fully qualified owner call, but the raw API inventory and
+consumers without that provenance do not receive the concrete return type.
 
-## Viper.Game.Pathfinder
+`FromTilemap` currently samples Tilemap layer zero even when another layer is
+designated as the collision layer. Until that defect is fixed, copy or mirror
+collision tiles into the base layer before importing.
 
-A* pathfinding on uniform-cost 2D grids. Supports 4-way (cardinal) and 8-way (cardinal + diagonal) movement with per-cell movement cost weights.
+## Properties And Configuration
 
-**Type:** Instance (obj)
-**Constructor:** `Pathfinder.New(width, height)`
+| Member | Access | Behavior |
+|---|---|---|
+| `Width`, `Height` | Read | Snapshot dimensions. |
+| `Diagonal` | Write | False selects four cardinal neighbors; true adds diagonals. |
+| `MaxSteps` | Write | Maximum popped/expanded cells per search. `0` is unlimited; negatives become `0`, and values above `2,147,483,647` clamp. |
+| `SetWalkable(x, y, value)` | Method | Change walkability; out-of-range writes do nothing. |
+| `IsWalkable(x, y)` | Method | Read walkability; out-of-range cells are false. |
+| `SetCost(x, y, cost)` | Method | Set destination-cell cost, clamped to `[1, 30000]`; out-of-range writes do nothing. |
+| `GetCost(x, y)` | Method | Return the cost, or `0` out of range. |
+| `Destroy()` | Method | Explicitly release this handle; do not use it afterward. |
 
-### Static Factory Methods
+`Diagonal` and `MaxSteps` are setter-only properties. The old mutable
+last-search properties are no longer public; read each operation's result
+instead.
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `New(width, height)` | `Pathfinder(Integer, Integer)` | Blank walkable grid; returns null for invalid or >4096 dimensions |
-| `FromTilemap(tilemap)` | `Pathfinder(Tilemap)` | Import collision data (collision != 0 -> wall) and tile IDs for value searches |
-| `FromGrid2D(grid)` | `Pathfinder(Grid2D)` | Import cell values (non-zero -> wall) |
+## `FindPath`
 
-### Properties
+```zia
+module PathfinderDemo;
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `Width` | Integer | Read | Grid width |
-| `Height` | Integer | Read | Grid height |
-| `Diagonal` | Boolean | Write | Enable 8-way movement (default: false = 4-way) |
-| `MaxSteps` | Integer | Write | Max nodes to expand (0 = unlimited) |
-| `LastSteps` | Integer | Read | Compatibility diagnostic: nodes expanded in last search |
-| `LastFound` | Boolean | Read | Compatibility diagnostic: true if last search found a path |
+bind Viper.Terminal;
 
-### Methods
+func start() {
+    var pf = Viper.Game.Pathfinder.New(8, 6);
+    pf.SetWalkable(3, 2, false);
+    pf.SetWalkable(3, 3, false);
+    pf.Diagonal = true;
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `SetWalkable(x, y, walkable)` | `void(Integer, Integer, Boolean)` | Mark cell as walkable/blocked |
-| `IsWalkable(x, y)` | `Boolean(Integer, Integer)` | Check if cell is walkable |
-| `SetCost(x, y, cost)` | `void(Integer, Integer, Integer)` | Set movement cost (100 = normal) |
-| `GetCost(x, y)` | `Integer(Integer, Integer)` | Get movement cost |
-| `Destroy()` | `void()` | Release the pathfinder handle and its internal grid storage |
-| `FindPathResult(sx, sy, gx, gy)` | `PathResult(Integer×4)` | Find path with `Found`, `Steps`, `StepCount`, `Cost`, and `Path` in one value |
-| `FindPath(sx, sy, gx, gy)` | `List[Seq[Integer]](Integer×4)` | Find path; each waypoint is `[x, y]` |
-| `FindPathLength(sx, sy, gx, gy)` | `Integer(Integer×4)` | Get cell-to-cell step count (-1 if no path) |
-| `FindNearestResult(sx, sy, value)` | `PathResult(Integer×3)` | Find nearest matching value with a result snapshot |
-| `FindNearest(sx, sy, value)` | `List[Seq[Integer]](Integer×3)` | Find path to nearest reachable cell with the stored tile/grid value |
-
-### PathResult
-
-`PathResult` exposes `Found`, `Steps`, `StepCount`, `Cost`, and `Path`. `Path` is the same
-`List[Seq[Integer]]` waypoint shape returned by the compatibility `FindPath` API. `StepCount` is
-the cell-to-cell step count, or `-1` when no path was found. `Cost` is the weighted A* movement cost
-for `FindPathResult`; `FindNearestResult` sets it to `-1`.
-
-`Length` remains available as a compatibility alias for `StepCount`, but new code should prefer
-`StepCount` so the value is not confused with `Path.Length`.
-
----
-
-## Movement Modes
-
-### 4-Way (default)
-- Cardinal directions only: up, right, down, left
-- Heuristic: Manhattan distance
-- Base step cost: 100
-
-### 8-Way (Diagonal = true)
-- Cardinal + diagonal directions (8 neighbors)
-- Heuristic: octile distance
-- Cardinal step cost: 100, diagonal step cost: 141 (~sqrt(2) x 100)
-- Corner-cutting prevention: diagonal moves require both adjacent cardinal cells to be walkable
-
----
-
-## Cost Weights
-
-Each cell has a movement cost multiplier (default 100 = 1x).
-
-| Cost | Meaning |
-|------|---------|
-| 100 | Normal terrain (1x) |
-| 200 | Difficult terrain (2x cost) |
-| 50 | Easy terrain (0.5x cost) |
-| 1 | Minimum walkable terrain cost (0.01x) |
-
-The actual movement cost for a step is: `base_cost × cell_cost / 100`
-
-`SetCost` clamps walkable costs to `[1, 30000]`. Use `SetWalkable(x, y, false)` to make a
-cell impassable. The A* heuristic scales to the lowest walkable cost in the grid, so costs
-below 100 still produce correct shortest paths.
-
----
-
-## Integration with Tilemap and Grid2D
-
-### FromTilemap
-Reads the tilemap's collision types. Tiles with `SetCollision(tile, type)` where `type != 0` are marked as non-walkable.
-The original tile ID is stored for `FindNearest`, so marker tiles can be used as reachable goals when their collision type is `0`.
-
-```rust
-var tilemap = Tilemap.New(20, 15, 16, 16);
-tilemap.SetCollision(1, 1); // tile 1 = solid
-// ... set tiles ...
-
-var pf = Pathfinder.FromTilemap(tilemap);
-var result = pf.FindPathResult(0, 0, 19, 14);
-var path = result.Path;
-```
-
-### FromGrid2D
-Reads cell values. Non-zero cells are treated as walls.
-The original cell value is stored for `FindNearest`. Because non-zero cells are blocked in this factory, non-zero targets are normally used with `FromTilemap` unless the cells are later made walkable through `SetWalkable`.
-
-```rust
-var grid = Grid2D.New(20, 15, 0); // 0 = walkable
-grid.Set(5, 5, 1);                // 1 = wall
-
-var pf = Pathfinder.FromGrid2D(grid);
-```
-
-### FindNearest
-
-`FindNearestResult(sx, sy, value)` performs a breadth-first search from the start cell and
-returns a `PathResult`. The `Path` property is a `List[Seq[Integer]]`, with each waypoint stored as
-`[x, y]`. `Found` is false when the start is outside the grid, blocked, the step budget is
-exhausted, or no reachable matching value exists. `FindNearest` remains available for compatibility.
-
----
-
-## Usage Example
-
-```rust
-bind Viper.Game;
-
-// Create pathfinder from tilemap
-var pf = Pathfinder.FromTilemap(levelTilemap);
-pf.Diagonal = true; // Allow diagonal movement
-
-// Find path for enemy AI
-var result = pf.FindPathResult(enemyTileX, enemyTileY, playerTileX, playerTileY);
-
-if result.Found {
-    var path = result.Path;
-    // Path is List[Seq[Integer]], with each point as [x, y]
-    // Feed to PathFollower for smooth movement
-    var i = 0;
-    while i < path.Length {
-        var point = path.Get(i);
-        var wx = point.Get(0);
-        var wy = point.Get(1);
-        pathFollower.AddPoint(wx * TILE_SIZE + TILE_SIZE / 2,
-                              wy * TILE_SIZE + TILE_SIZE / 2);
-        i = i + 1;
+    var result = pf.FindPath(0, 0, 7, 5);
+    if result.Found {
+        Say("steps=" + result.StepCount + ", cost=" + result.Cost);
     }
-    pathFollower.Start();
 }
 ```
 
----
+Four-way movement uses cardinal steps with base cost `100` and a Manhattan
+heuristic. Eight-way movement uses cardinal cost `100`, diagonal cost `141`,
+and an octile heuristic. A diagonal is permitted only when both adjacent
+cardinal cells are walkable, preventing corner cutting.
+
+The cost of entering a cell is `baseCost * cellCost / 100` with integer
+truncation. The heuristic is scaled by the lowest walkable cost anywhere in
+the grid, so costs below `100` remain admissible. The start and goal must both
+be in bounds and walkable. A successful path includes both endpoints; start
+equal to goal produces one point, zero steps, and zero cost.
+
+`MaxSteps` counts nodes removed from the open set, including the goal when it
+is reached. Exhausting that budget is reported the same way as an unreachable
+goal.
+
+## `FindNearest`
+
+`FindNearest(startX, startY, value)` explores reachable cells in breadth-first
+order using the selected four- or eight-neighbor rules. It ignores movement
+cost weights and returns `Cost == -1`. It can match the start cell, and its
+path also includes both endpoints.
+
+`FromGrid2D` marks every nonzero source value blocked. To search for a nonzero
+marker copied from a Grid2D, first call `SetWalkable` on candidate marker cells.
+`FromTilemap` retains tile IDs separately from walkability, so a tile with
+collision type zero can be found directly.
+
+## PathResult
+
+| Property | Meaning |
+|---|---|
+| `Found` | Whether the goal or matching value was reached. |
+| `Steps` | Number of cells expanded by the search. |
+| `StepCount` | Cell-to-cell movement count, or `-1` when not found. |
+| `Cost` | Weighted A* cost; `-1` for misses and all `FindNearest` results. |
+| `Path` | Retained runtime `Viper.Collections.List` of two-element `Viper.Collections.Seq` points. |
+
+The public `Path` property is currently registered only as `obj`, not as a
+typed List. Zia treats it as `Any` and currently rejects both assignment and an
+`as` cast to `Viper.Collections.List`. The low-level static collection calls
+are the available workaround:
+
+```zia
+var points = result.Path;
+var i = 0;
+while i < Viper.Collections.List.get_Count(points) {
+    var point = Viper.Collections.List.Get(points, i);
+    var x = Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(point, 0));
+    var y = Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(point, 1));
+    // Convert cell coordinates to world coordinates here.
+    i = i + 1;
+}
+```
+
+Allocation failure during a search is not distinguished from an unreachable
+path. A later allocation failure while assembling point objects can also
+produce a shortened/empty `Path` even though `Found` was already set true;
+callers processing untrusted grid sizes should sanity-check
+`Path.Count == StepCount + 1` on successful results.
+
+## Current Surface Migration
+
+The authoritative registry now exposes `FindPath(...) -> PathResult` and
+`FindNearest(...) -> PathResult`. It no longer exposes the earlier list-returning
+`FindPath`, `FindPathLength`, `FindPathResult`, `FindNearestResult`,
+`LastFound`, `LastSteps`, or `PathResult.Length` names. Existing generated docs,
+tests, ADRs, and built binaries may still show that older surface while the
+repository-wide compatibility cleanup is in progress; this uncoordinated drift
+is recorded in the documentation findings log.
 
 ## Limits
 
 | Limit | Value |
-|-------|-------|
-| Max grid dimension | 4096 × 4096 |
-| Default step cost | 100 (fixed-point) |
-| Diagonal step cost | 141 (~sqrt(2) × 100) |
-| Cost range | 1-30000 |
-| Max steps | 0 = unlimited |
+|---|---:|
+| Maximum width or height | 4096 cells |
+| Default cell cost | 100 |
+| Cardinal/diagonal base costs | 100 / 141 |
+| Stored cost range | 1–30000 |
+| Search budget | `0` unlimited; otherwise up to `INT32_MAX` expansions |
 
----
+The grid cells are allocated at construction, while A* allocates node and heap
+arrays proportional to `width * height` for each search. A nominal 4096×4096
+grid can therefore require hundreds of MiB during a search.
 
 ## See Also
 
-- [PathFollower](../game.md#vipergamepathfollower) — Smooth movement along waypoint paths
-- [Tilemap](../graphics/pixels.md) — Tile-based level with collision data
-- [Grid2D](../game.md#vipergamegrid2d) — 2D integer grid for game data
+- [Animation and movement](animation.md) — `PathFollower` consumes world-space waypoints
+- [Physics and collision](physics.md) — Grid2D
+- [Graphics2D](../graphics/README.md) — Tilemap layers and collision types

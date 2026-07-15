@@ -85,13 +85,13 @@ func start() {
     // --- Size ---
     Say("--- Size ---");
     Say("Size(500):");
-    Say(Fmt.Size(500));
+    Say(Fmt.SizeBytes(500));
     Say("Size(1024):");
-    Say(Fmt.Size(1024));
+    Say(Fmt.SizeBytes(1024));
     Say("Size(1048576):");
-    Say(Fmt.Size(1048576));
+    Say(Fmt.SizeBytes(1048576));
     Say("Size(1073741824):");
-    Say(Fmt.Size(1073741824));
+    Say(Fmt.SizeBytes(1073741824));
 
     // --- Hex ---
     Say("--- Hex ---");

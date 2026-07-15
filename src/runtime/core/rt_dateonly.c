@@ -385,9 +385,8 @@ void *rt_dateonly_today(void) {
 }
 
 /// @brief Parse a DateOnly from an ISO 8601 date string (YYYY-MM-DD).
-/// @details Uses sscanf to extract three integers separated by hyphens. Rejects
-///          strings that don't match the expected format. Delegates validation
-///          of month/day ranges to rt_dateonly_create.
+/// @details Validates exactly ten bytes with four ASCII year digits and two-digit
+///          month/day fields. Delegates calendar validation to rt_dateonly_create.
 /// @param s Runtime string containing the date text.
 /// @return New DateOnly, or NULL if the string is malformed or out of range.
 void *rt_dateonly_parse(rt_string s) {
@@ -717,9 +716,9 @@ int8_t rt_dateonly_equals(void *a, void *b) {
 //=============================================================================
 
 /// @brief Format the date as an ISO 8601 string (YYYY-MM-DD).
-/// @details Uses zero-padded fields so the output is always 10 characters
-///          (e.g. "2026-03-29"). This is the canonical serialization format
-///          and is accepted by rt_dateonly_parse for round-tripping.
+/// @details Uses a minimum width of four year digits (e.g. "2026-03-29"). Years
+///          outside 0000-9999 produce longer or signed text that the exact parser
+///          does not accept, so only that four-digit domain round-trips (VDOC-231).
 /// @param obj DateOnly object pointer; returns "" if NULL.
 /// @return Newly allocated runtime string in ISO 8601 format.
 rt_string rt_dateonly_to_string(void *obj) {

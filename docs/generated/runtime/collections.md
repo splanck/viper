@@ -12,8 +12,8 @@
 Provides efficient byte array.
 
 Create `Viper.Collections.Bytes` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Length` and operations including `Clone`, `Copy`, `Fill`, `Find`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Length` and operations including `Clone`, `Copy`, `Fill`, `Find`.
 
 Constructor: `Viper.Collections.Bytes.New`
 
@@ -31,26 +31,25 @@ Constructor: `Viper.Collections.Bytes.New`
 | <a id="viper-collections-bytes-clone"></a>`Clone` | `obj()` | `Viper.Collections.Bytes.Clone` |
 | <a id="viper-collections-bytes-copy"></a>`Copy` | `void(i64,obj,i64,i64)` | `Viper.Collections.Bytes.Copy` |
 | <a id="viper-collections-bytes-fill"></a>`Fill` | `void(i64)` | `Viper.Collections.Bytes.Fill` |
-| <a id="viper-collections-bytes-find"></a>`Find` | `i64(i64)` | `Viper.Collections.Bytes.Find` |
-| <a id="viper-collections-bytes-findoption"></a>`FindOption` | `obj<Viper.Option>(i64)` | `Viper.Collections.Bytes.FindOption` |
+| <a id="viper-collections-bytes-find"></a>`Find` | `obj<Viper.Option>(i64)` | `Viper.Collections.Bytes.Find` |
 | <a id="viper-collections-bytes-get"></a>`Get` | `i64(i64)` | `Viper.Collections.Bytes.Get` |
-| <a id="viper-collections-bytes-readi16be"></a>`ReadI16BE` | `i64(i64)` | `Viper.Collections.Bytes.ReadI16BE` |
-| <a id="viper-collections-bytes-readi16le"></a>`ReadI16LE` | `i64(i64)` | `Viper.Collections.Bytes.ReadI16LE` |
-| <a id="viper-collections-bytes-readi32be"></a>`ReadI32BE` | `i64(i64)` | `Viper.Collections.Bytes.ReadI32BE` |
-| <a id="viper-collections-bytes-readi32le"></a>`ReadI32LE` | `i64(i64)` | `Viper.Collections.Bytes.ReadI32LE` |
-| <a id="viper-collections-bytes-readi64be"></a>`ReadI64BE` | `i64(i64)` | `Viper.Collections.Bytes.ReadI64BE` |
-| <a id="viper-collections-bytes-readi64le"></a>`ReadI64LE` | `i64(i64)` | `Viper.Collections.Bytes.ReadI64LE` |
+| <a id="viper-collections-bytes-readi16bigendian"></a>`ReadI16BigEndian` | `i64(i64)` | `Viper.Collections.Bytes.ReadI16BigEndian` |
+| <a id="viper-collections-bytes-readi16littleendian"></a>`ReadI16LittleEndian` | `i64(i64)` | `Viper.Collections.Bytes.ReadI16LittleEndian` |
+| <a id="viper-collections-bytes-readi32bigendian"></a>`ReadI32BigEndian` | `i64(i64)` | `Viper.Collections.Bytes.ReadI32BigEndian` |
+| <a id="viper-collections-bytes-readi32littleendian"></a>`ReadI32LittleEndian` | `i64(i64)` | `Viper.Collections.Bytes.ReadI32LittleEndian` |
+| <a id="viper-collections-bytes-readi64bigendian"></a>`ReadI64BigEndian` | `i64(i64)` | `Viper.Collections.Bytes.ReadI64BigEndian` |
+| <a id="viper-collections-bytes-readi64littleendian"></a>`ReadI64LittleEndian` | `i64(i64)` | `Viper.Collections.Bytes.ReadI64LittleEndian` |
 | <a id="viper-collections-bytes-set"></a>`Set` | `void(i64,i64)` | `Viper.Collections.Bytes.Set` |
 | <a id="viper-collections-bytes-slice"></a>`Slice` | `obj(i64,i64)` | `Viper.Collections.Bytes.Slice` |
 | <a id="viper-collections-bytes-tobase64"></a>`ToBase64` | `str()` | `Viper.Collections.Bytes.ToBase64` |
 | <a id="viper-collections-bytes-tohex"></a>`ToHex` | `str()` | `Viper.Collections.Bytes.ToHex` |
 | <a id="viper-collections-bytes-tostr"></a>`ToStr` | `str()` | `Viper.Collections.Bytes.ToStr` |
-| <a id="viper-collections-bytes-writei16be"></a>`WriteI16BE` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI16BE` |
-| <a id="viper-collections-bytes-writei16le"></a>`WriteI16LE` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI16LE` |
-| <a id="viper-collections-bytes-writei32be"></a>`WriteI32BE` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI32BE` |
-| <a id="viper-collections-bytes-writei32le"></a>`WriteI32LE` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI32LE` |
-| <a id="viper-collections-bytes-writei64be"></a>`WriteI64BE` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI64BE` |
-| <a id="viper-collections-bytes-writei64le"></a>`WriteI64LE` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI64LE` |
+| <a id="viper-collections-bytes-writei16bigendian"></a>`WriteI16BigEndian` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI16BigEndian` |
+| <a id="viper-collections-bytes-writei16littleendian"></a>`WriteI16LittleEndian` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI16LittleEndian` |
+| <a id="viper-collections-bytes-writei32bigendian"></a>`WriteI32BigEndian` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI32BigEndian` |
+| <a id="viper-collections-bytes-writei32littleendian"></a>`WriteI32LittleEndian` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI32LittleEndian` |
+| <a id="viper-collections-bytes-writei64bigendian"></a>`WriteI64BigEndian` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI64BigEndian` |
+| <a id="viper-collections-bytes-writei64littleendian"></a>`WriteI64LittleEndian` | `void(i64,i64)` | `Viper.Collections.Bytes.WriteI64LittleEndian` |
 | <a id="viper-collections-bytes-new"></a>`New` | `obj(i64)` | `Viper.Collections.Bytes.New` |
 | <a id="viper-collections-bytes-frombase64"></a>`FromBase64` | `obj(str)` | `Viper.Collections.Bytes.FromBase64` |
 | <a id="viper-collections-bytes-fromhex"></a>`FromHex` | `obj(str)` | `Viper.Collections.Bytes.FromHex` |
@@ -62,7 +61,7 @@ Constructor: `Viper.Collections.Bytes.New`
 Provides packed double-precision numeric buffer.
 
 Create `Viper.Collections.F64Buffer` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Length` and operations including `FromSeq`, `Get`, `Set`, `Fill`.
 
 Constructor: `Viper.Collections.F64Buffer.New`
@@ -100,7 +99,7 @@ Constructor: `Viper.Collections.F64Buffer.New`
 Provides packed 64-bit integer numeric buffer.
 
 Create `Viper.Collections.I64Buffer` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Length` and operations including `FromSeq`, `Get`, `Set`, `Fill`.
 
 Constructor: `Viper.Collections.I64Buffer.New`
@@ -138,8 +137,8 @@ Constructor: `Viper.Collections.I64Buffer.New`
 Provides bidirectional string-to-string map.
 
 Create `Viper.Collections.BiMap` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Count` and operations including `Clear`, `GetByKey`, `GetByValue`, `HasKey`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Count` and operations including `Clear`, `GetByKey`, `GetByValue`, `HasKey`.
 
 Constructor: `Viper.Collections.BiMap.New`
 
@@ -160,7 +159,6 @@ Constructor: `Viper.Collections.BiMap.New`
 | <a id="viper-collections-bimap-haskey"></a>`HasKey` | `i1(str)` | `Viper.Collections.BiMap.HasKey` |
 | <a id="viper-collections-bimap-hasvalue"></a>`HasValue` | `i1(str)` | `Viper.Collections.BiMap.HasValue` |
 | <a id="viper-collections-bimap-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.BiMap.Keys` |
-| <a id="viper-collections-bimap-put"></a>`Put` | `void(str,str)` | `Viper.Collections.BiMap.Put` |
 | <a id="viper-collections-bimap-set"></a>`Set` | `void(str,str)` | `Viper.Collections.BiMap.Set` |
 | <a id="viper-collections-bimap-removebykey"></a>`RemoveByKey` | `i1(str)` | `Viper.Collections.BiMap.RemoveByKey` |
 | <a id="viper-collections-bimap-removebyvalue"></a>`RemoveByValue` | `i1(str)` | `Viper.Collections.BiMap.RemoveByValue` |
@@ -173,8 +171,8 @@ Constructor: `Viper.Collections.BiMap.New`
 Provides arbitrary-size bit array.
 
 Create `Viper.Collections.BitSet` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Length`, `Count` and operations including `And`, `Clear`, `ClearAll`, `Get`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Length`, `Count` and operations including `And`, `ClearBit`, `Clear`, `GetBit`.
 
 Constructor: `Viper.Collections.BitSet.New`
 
@@ -191,14 +189,14 @@ Constructor: `Viper.Collections.BitSet.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-collections-bitset-and"></a>`And` | `obj(obj)` | `Viper.Collections.BitSet.And` |
-| <a id="viper-collections-bitset-clear"></a>`Clear` | `void(i64)` | `Viper.Collections.BitSet.Clear` |
-| <a id="viper-collections-bitset-clearall"></a>`ClearAll` | `void()` | `Viper.Collections.BitSet.ClearAll` |
-| <a id="viper-collections-bitset-get"></a>`Get` | `i1(i64)` | `Viper.Collections.BitSet.Get` |
+| <a id="viper-collections-bitset-clearbit"></a>`ClearBit` | `void(i64)` | `Viper.Collections.BitSet.ClearBit` |
+| <a id="viper-collections-bitset-clear"></a>`Clear` | `void()` | `Viper.Collections.BitSet.Clear` |
+| <a id="viper-collections-bitset-getbit"></a>`GetBit` | `i1(i64)` | `Viper.Collections.BitSet.GetBit` |
 | <a id="viper-collections-bitset-not"></a>`Not` | `obj()` | `Viper.Collections.BitSet.Not` |
 | <a id="viper-collections-bitset-or"></a>`Or` | `obj(obj)` | `Viper.Collections.BitSet.Or` |
-| <a id="viper-collections-bitset-set"></a>`Set` | `void(i64)` | `Viper.Collections.BitSet.Set` |
+| <a id="viper-collections-bitset-setbit"></a>`SetBit` | `void(i64)` | `Viper.Collections.BitSet.SetBit` |
 | <a id="viper-collections-bitset-setall"></a>`SetAll` | `void()` | `Viper.Collections.BitSet.SetAll` |
-| <a id="viper-collections-bitset-toggle"></a>`Toggle` | `void(i64)` | `Viper.Collections.BitSet.Toggle` |
+| <a id="viper-collections-bitset-togglebit"></a>`ToggleBit` | `void(i64)` | `Viper.Collections.BitSet.ToggleBit` |
 | <a id="viper-collections-bitset-tostring"></a>`ToString` | `str()` | `Viper.Collections.BitSet.ToString` |
 | <a id="viper-collections-bitset-xor"></a>`Xor` | `obj(obj)` | `Viper.Collections.BitSet.Xor` |
 | <a id="viper-collections-bitset-new"></a>`New` | `obj(i64)` | `Viper.Collections.BitSet.New` |
@@ -209,8 +207,8 @@ Constructor: `Viper.Collections.BitSet.New`
 Provides probabilistic set membership.
 
 Create `Viper.Collections.BloomFilter` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
-`Count` and operations including `Add`, `Clear`, `Fpr`, `FalsePositiveRate`.
+returned object with the instance members below. Its public surface exposes properties such as
+`Count` and operations including `Add`, `Clear`, `FalsePositiveRate`, `Merge`.
 
 Constructor: `Viper.Collections.BloomFilter.New`
 
@@ -226,7 +224,6 @@ Constructor: `Viper.Collections.BloomFilter.New`
 |---|---|---|
 | <a id="viper-collections-bloomfilter-add"></a>`Add` | `void(str)` | `Viper.Collections.BloomFilter.Add` |
 | <a id="viper-collections-bloomfilter-clear"></a>`Clear` | `void()` | `Viper.Collections.BloomFilter.Clear` |
-| <a id="viper-collections-bloomfilter-fpr"></a>`Fpr` | `f64()` | `Viper.Collections.BloomFilter.Fpr` |
 | <a id="viper-collections-bloomfilter-falsepositiverate"></a>`FalsePositiveRate` | `f64()` | `Viper.Collections.BloomFilter.FalsePositiveRate` |
 | <a id="viper-collections-bloomfilter-merge"></a>`Merge` | `i64(obj)` | `Viper.Collections.BloomFilter.Merge` |
 | <a id="viper-collections-bloomfilter-mightcontain"></a>`MightContain` | `i1(str)` | `Viper.Collections.BloomFilter.MightContain` |
@@ -238,8 +235,8 @@ Constructor: `Viper.Collections.BloomFilter.New`
 Provides disjoint set data structure.
 
 Create `Viper.Collections.UnionFind` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
-`Count` and operations including `Connected`, `Find`, `FindRootOption`, `Clear`.
+returned object with the instance members below. Its public surface exposes properties such as
+`Count` and operations including `IsConnected`, `FindRoot`, `Clear`, `ComponentSize`.
 
 Constructor: `Viper.Collections.UnionFind.New`
 
@@ -253,12 +250,10 @@ Constructor: `Viper.Collections.UnionFind.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-collections-unionfind-connected"></a>`Connected` | `i1(i64,i64)` | `Viper.Collections.UnionFind.Connected` |
-| <a id="viper-collections-unionfind-find"></a>`Find` | `i64(i64)` | `Viper.Collections.UnionFind.Find` |
-| <a id="viper-collections-unionfind-findrootoption"></a>`FindRootOption` | `obj<Viper.Option>(i64)` | `Viper.Collections.UnionFind.FindRootOption` |
-| <a id="viper-collections-unionfind-clear"></a>`Clear` | `void()` | `Viper.Collections.UnionFind.Reset` |
-| <a id="viper-collections-unionfind-reset"></a>`Reset` | `void()` | `Viper.Collections.UnionFind.Reset` |
-| <a id="viper-collections-unionfind-setsize"></a>`SetSize` | `i64(i64)` | `Viper.Collections.UnionFind.SetSize` |
+| <a id="viper-collections-unionfind-isconnected"></a>`IsConnected` | `i1(i64,i64)` | `Viper.Collections.UnionFind.IsConnected` |
+| <a id="viper-collections-unionfind-findroot"></a>`FindRoot` | `obj<Viper.Option>(i64)` | `Viper.Collections.UnionFind.FindRoot` |
+| <a id="viper-collections-unionfind-clear"></a>`Clear` | `void()` | `Viper.Collections.UnionFind.Clear` |
+| <a id="viper-collections-unionfind-componentsize"></a>`ComponentSize` | `i64(i64)` | `Viper.Collections.UnionFind.ComponentSize` |
 | <a id="viper-collections-unionfind-union"></a>`Union` | `i64(i64,i64)` | `Viper.Collections.UnionFind.Union` |
 | <a id="viper-collections-unionfind-new"></a>`New` | `obj(i64)` | `Viper.Collections.UnionFind.New` |
 
@@ -332,7 +327,7 @@ Provides immutable string set.
 
 `Viper.Collections.FrozenSet` exposes a registry-backed runtime surface without requiring
 callers to construct the class directly. Its public surface exposes properties such as
-`IsEmpty`, `Count` and operations including `Diff`, `Equals`, `Has`, `Intersect`.
+`IsEmpty`, `Count` and operations including `Difference`, `Equals`, `Has`, `Intersect`.
 
 #### Properties
 
@@ -345,12 +340,12 @@ callers to construct the class directly. Its public surface exposes properties s
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-collections-frozenset-diff"></a>`Diff` | `obj<Viper.Collections.FrozenSet>(obj)` | `Viper.Collections.FrozenSet.Diff` |
+| <a id="viper-collections-frozenset-difference"></a>`Difference` | `obj<Viper.Collections.FrozenSet>(obj)` | `Viper.Collections.FrozenSet.Difference` |
 | <a id="viper-collections-frozenset-equals"></a>`Equals` | `i1(obj)` | `Viper.Collections.FrozenSet.Equals` |
 | <a id="viper-collections-frozenset-has"></a>`Has` | `i1(str)` | `Viper.Collections.FrozenSet.Has` |
 | <a id="viper-collections-frozenset-intersect"></a>`Intersect` | `obj<Viper.Collections.FrozenSet>(obj)` | `Viper.Collections.FrozenSet.Intersect` |
 | <a id="viper-collections-frozenset-issubset"></a>`IsSubset` | `i1(obj)` | `Viper.Collections.FrozenSet.IsSubset` |
-| <a id="viper-collections-frozenset-items"></a>`Items` | `seq<str>()` | `Viper.Collections.FrozenSet.Items` |
+| <a id="viper-collections-frozenset-toseq"></a>`ToSeq` | `seq<str>()` | `Viper.Collections.FrozenSet.ToSeq` |
 | <a id="viper-collections-frozenset-union"></a>`Union` | `obj<Viper.Collections.FrozenSet>(obj)` | `Viper.Collections.FrozenSet.Union` |
 | <a id="viper-collections-frozenset-fromseq"></a>`FromSeq` | `obj<Viper.Collections.FrozenSet>(obj)` | `Viper.Collections.FrozenSet.FromSeq` |
 | <a id="viper-collections-frozenset-empty"></a>`Empty` | `obj<Viper.Collections.FrozenSet>()` | `Viper.Collections.FrozenSet.Empty` |
@@ -391,7 +386,7 @@ callers to construct the class directly. Its public surface exposes properties s
 Provides memory-efficient sparse array.
 
 Create `Viper.Collections.SparseArray` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Count` and operations including `Clear`, `Get`, `Has`, `Indices`.
 
 Constructor: `Viper.Collections.SparseArray.New`
@@ -446,40 +441,39 @@ Constructor: `Viper.Collections.WeakMap.New`
 | <a id="viper-collections-weakmap-set"></a>`Set` | `void(str,obj)` | `Viper.Collections.WeakMap.Set` |
 | <a id="viper-collections-weakmap-new"></a>`New` | `obj()` | `Viper.Collections.WeakMap.New` |
 
-<a id="viper-collections-bag"></a>
-### `Viper.Collections.Bag`
+<a id="viper-collections-stringset"></a>
+### `Viper.Collections.StringSet`
 
 Provides set of unique strings.
 
 Create `Viper.Collections.Bag` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Count` and operations including `Clear`, `Clone`, `Diff`, `Add`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Difference`, `Add`.
 
-Constructor: `Viper.Collections.Bag.New`
+Constructor: `Viper.Collections.StringSet.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-collections-bag-isempty"></a>`IsEmpty` | `i1` | read-only |
-| <a id="viper-collections-bag-count"></a>`Count` | `i64` | read-only |
+| <a id="viper-collections-stringset-isempty"></a>`IsEmpty` | `i1` | read-only |
+| <a id="viper-collections-stringset-count"></a>`Count` | `i64` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-collections-bag-clear"></a>`Clear` | `void()` | `Viper.Collections.Bag.Clear` |
-| <a id="viper-collections-bag-clone"></a>`Clone` | `obj<Viper.Collections.Bag>()` | `Viper.Collections.Bag.Clone` |
-| <a id="viper-collections-bag-diff"></a>`Diff` | `obj<Viper.Collections.Bag>(obj)` | `Viper.Collections.Bag.Diff` |
-| <a id="viper-collections-bag-add"></a>`Add` | `i1(str)` | `Viper.Collections.Bag.Add` |
-| <a id="viper-collections-bag-has"></a>`Has` | `i1(str)` | `Viper.Collections.Bag.Has` |
-| <a id="viper-collections-bag-intersect"></a>`Intersect` | `obj<Viper.Collections.Bag>(obj)` | `Viper.Collections.Bag.Intersect` |
-| <a id="viper-collections-bag-items"></a>`Items` | `seq<str>()` | `Viper.Collections.Bag.Items` |
-| <a id="viper-collections-bag-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.Bag.Remove` |
-| <a id="viper-collections-bag-union"></a>`Union` | `obj<Viper.Collections.Bag>(obj)` | `Viper.Collections.Bag.Union` |
-| <a id="viper-collections-bag-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Bag.ToSeq` |
-| <a id="viper-collections-bag-toset"></a>`ToSet` | `obj<Viper.Collections.Set>()` | `Viper.Collections.Bag.ToSet` |
-| <a id="viper-collections-bag-new"></a>`New` | `obj()` | `Viper.Collections.Bag.New` |
+| <a id="viper-collections-stringset-clear"></a>`Clear` | `void()` | `Viper.Collections.StringSet.Clear` |
+| <a id="viper-collections-stringset-clone"></a>`Clone` | `obj<Viper.Collections.StringSet>()` | `Viper.Collections.StringSet.Clone` |
+| <a id="viper-collections-stringset-difference"></a>`Difference` | `obj<Viper.Collections.StringSet>(obj)` | `Viper.Collections.StringSet.Difference` |
+| <a id="viper-collections-stringset-add"></a>`Add` | `i1(str)` | `Viper.Collections.StringSet.Add` |
+| <a id="viper-collections-stringset-has"></a>`Has` | `i1(str)` | `Viper.Collections.StringSet.Has` |
+| <a id="viper-collections-stringset-intersect"></a>`Intersect` | `obj<Viper.Collections.StringSet>(obj)` | `Viper.Collections.StringSet.Intersect` |
+| <a id="viper-collections-stringset-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.StringSet.Remove` |
+| <a id="viper-collections-stringset-union"></a>`Union` | `obj<Viper.Collections.StringSet>(obj)` | `Viper.Collections.StringSet.Union` |
+| <a id="viper-collections-stringset-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.StringSet.ToSeq` |
+| <a id="viper-collections-stringset-toset"></a>`ToSet` | `obj<Viper.Collections.Set>()` | `Viper.Collections.StringSet.ToSet` |
+| <a id="viper-collections-stringset-new"></a>`New` | `obj()` | `Viper.Collections.StringSet.New` |
 
 <a id="viper-collections-countmap"></a>
 ### `Viper.Collections.CountMap`
@@ -488,7 +482,7 @@ Provides frequency counting map (string key -> count).
 
 Create `Viper.Collections.CountMap` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`IsEmpty`, `Count`, `Total` and operations including `Clear`, `Dec`, `Get`, `Has`.
+`IsEmpty`, `Count`, `Total` and operations including `Clear`, `Decrement`, `Get`, `Has`.
 
 Constructor: `Viper.Collections.CountMap.New`
 
@@ -505,11 +499,11 @@ Constructor: `Viper.Collections.CountMap.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-collections-countmap-clear"></a>`Clear` | `void()` | `Viper.Collections.CountMap.Clear` |
-| <a id="viper-collections-countmap-dec"></a>`Dec` | `i64(str)` | `Viper.Collections.CountMap.Dec` |
+| <a id="viper-collections-countmap-decrement"></a>`Decrement` | `i64(str)` | `Viper.Collections.CountMap.Decrement` |
 | <a id="viper-collections-countmap-get"></a>`Get` | `i64(str)` | `Viper.Collections.CountMap.Get` |
 | <a id="viper-collections-countmap-has"></a>`Has` | `i1(str)` | `Viper.Collections.CountMap.Has` |
-| <a id="viper-collections-countmap-inc"></a>`Inc` | `i64(str)` | `Viper.Collections.CountMap.Inc` |
-| <a id="viper-collections-countmap-incby"></a>`IncBy` | `i64(str,i64)` | `Viper.Collections.CountMap.IncBy` |
+| <a id="viper-collections-countmap-increment"></a>`Increment` | `i64(str)` | `Viper.Collections.CountMap.Increment` |
+| <a id="viper-collections-countmap-incrementby"></a>`IncrementBy` | `i64(str,i64)` | `Viper.Collections.CountMap.IncrementBy` |
 | <a id="viper-collections-countmap-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.CountMap.Keys` |
 | <a id="viper-collections-countmap-mostcommon"></a>`MostCommon` | `obj(i64)` | `Viper.Collections.CountMap.MostCommon` |
 | <a id="viper-collections-countmap-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.CountMap.Remove` |
@@ -522,8 +516,8 @@ Constructor: `Viper.Collections.CountMap.New`
 Provides generic set of unique objects.
 
 Create `Viper.Collections.Set` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Count` and operations including `Clear`, `Clone`, `Diff`, `Intersect`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Difference`, `Intersect`.
 
 Constructor: `Viper.Collections.Set.New`
 
@@ -540,14 +534,13 @@ Constructor: `Viper.Collections.Set.New`
 |---|---|---|
 | <a id="viper-collections-set-clear"></a>`Clear` | `void()` | `Viper.Collections.Set.Clear` |
 | <a id="viper-collections-set-clone"></a>`Clone` | `obj<Viper.Collections.Set>()` | `Viper.Collections.Set.Clone` |
-| <a id="viper-collections-set-diff"></a>`Diff` | `obj<Viper.Collections.Set>(obj)` | `Viper.Collections.Set.Diff` |
+| <a id="viper-collections-set-difference"></a>`Difference` | `obj<Viper.Collections.Set>(obj)` | `Viper.Collections.Set.Difference` |
 | <a id="viper-collections-set-intersect"></a>`Intersect` | `obj<Viper.Collections.Set>(obj)` | `Viper.Collections.Set.Intersect` |
 | <a id="viper-collections-set-remove"></a>`Remove` | `i1(obj)` | `Viper.Collections.Set.Remove` |
 | <a id="viper-collections-set-has"></a>`Has` | `i1(obj)` | `Viper.Collections.Set.Has` |
 | <a id="viper-collections-set-isdisjoint"></a>`IsDisjoint` | `i1(obj)` | `Viper.Collections.Set.IsDisjoint` |
 | <a id="viper-collections-set-issubset"></a>`IsSubset` | `i1(obj)` | `Viper.Collections.Set.IsSubset` |
 | <a id="viper-collections-set-issuperset"></a>`IsSuperset` | `i1(obj)` | `Viper.Collections.Set.IsSuperset` |
-| <a id="viper-collections-set-items"></a>`Items` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Set.Items` |
 | <a id="viper-collections-set-union"></a>`Union` | `obj<Viper.Collections.Set>(obj)` | `Viper.Collections.Set.Union` |
 | <a id="viper-collections-set-add"></a>`Add` | `i1(obj)` | `Viper.Collections.Set.Add` |
 | <a id="viper-collections-set-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Set.ToSeq` |
@@ -583,18 +576,18 @@ Constructor: `Viper.Collections.SortedSet.New`
 | <a id="viper-collections-sortedset-first"></a>`First` | `str()` | `Viper.Collections.SortedSet.First` |
 | <a id="viper-collections-sortedset-last"></a>`Last` | `str()` | `Viper.Collections.SortedSet.Last` |
 | <a id="viper-collections-sortedset-floor"></a>`Floor` | `str(str)` | `Viper.Collections.SortedSet.Floor` |
-| <a id="viper-collections-sortedset-ceil"></a>`Ceil` | `str(str)` | `Viper.Collections.SortedSet.Ceil` |
+| <a id="viper-collections-sortedset-ceiling"></a>`Ceiling` | `str(str)` | `Viper.Collections.SortedSet.Ceiling` |
 | <a id="viper-collections-sortedset-lower"></a>`Lower` | `str(str)` | `Viper.Collections.SortedSet.Lower` |
 | <a id="viper-collections-sortedset-higher"></a>`Higher` | `str(str)` | `Viper.Collections.SortedSet.Higher` |
 | <a id="viper-collections-sortedset-at"></a>`At` | `str(i64)` | `Viper.Collections.SortedSet.At` |
 | <a id="viper-collections-sortedset-indexof"></a>`IndexOf` | `i64(str)` | `Viper.Collections.SortedSet.IndexOf` |
-| <a id="viper-collections-sortedset-items"></a>`Items` | `seq<str>()` | `Viper.Collections.SortedSet.Items` |
+| <a id="viper-collections-sortedset-toseq"></a>`ToSeq` | `seq<str>()` | `Viper.Collections.SortedSet.ToSeq` |
 | <a id="viper-collections-sortedset-range"></a>`Range` | `obj(str,str)` | `Viper.Collections.SortedSet.Range` |
 | <a id="viper-collections-sortedset-take"></a>`Take` | `obj(i64)` | `Viper.Collections.SortedSet.Take` |
 | <a id="viper-collections-sortedset-skip"></a>`Skip` | `obj(i64)` | `Viper.Collections.SortedSet.Skip` |
 | <a id="viper-collections-sortedset-union"></a>`Union` | `obj(obj)` | `Viper.Collections.SortedSet.Union` |
 | <a id="viper-collections-sortedset-intersect"></a>`Intersect` | `obj(obj)` | `Viper.Collections.SortedSet.Intersect` |
-| <a id="viper-collections-sortedset-diff"></a>`Diff` | `obj(obj)` | `Viper.Collections.SortedSet.Diff` |
+| <a id="viper-collections-sortedset-difference"></a>`Difference` | `obj(obj)` | `Viper.Collections.SortedSet.Difference` |
 | <a id="viper-collections-sortedset-issubset"></a>`IsSubset` | `i1(obj)` | `Viper.Collections.SortedSet.IsSubset` |
 | <a id="viper-collections-sortedset-new"></a>`New` | `obj()` | `Viper.Collections.SortedSet.New` |
 
@@ -605,7 +598,7 @@ Provides List functionality for collection-oriented programs.
 
 Create `Viper.Collections.List` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Count`,
-`IsEmpty` and operations including `Push`, `Pop`, `Clear`, `Find`.
+`IsEmpty` and operations including `Push`, `Pop`, `Clear`, `FindOption`.
 
 Constructor: `Viper.Collections.List.New`
 
@@ -623,7 +616,6 @@ Constructor: `Viper.Collections.List.New`
 | <a id="viper-collections-list-push"></a>`Push` | `void(obj)` | `Viper.Collections.List.Push` |
 | <a id="viper-collections-list-pop"></a>`Pop` | `obj()` | `Viper.Collections.List.Pop` |
 | <a id="viper-collections-list-clear"></a>`Clear` | `void()` | `Viper.Collections.List.Clear` |
-| <a id="viper-collections-list-find"></a>`Find` | `i64(obj)` | `Viper.Collections.List.Find` |
 | <a id="viper-collections-list-findoption"></a>`FindOption` | `obj<Viper.Option>(obj)` | `Viper.Collections.List.FindOption` |
 | <a id="viper-collections-list-has"></a>`Has` | `i1(obj)` | `Viper.Collections.List.Has` |
 | <a id="viper-collections-list-insert"></a>`Insert` | `void(i64,obj)` | `Viper.Collections.List.Insert` |
@@ -644,6 +636,7 @@ Constructor: `Viper.Collections.List.New`
 | <a id="viper-collections-list-tostack"></a>`ToStack` | `obj<Viper.Collections.Stack>()` | `Viper.Collections.List.ToStack` |
 | <a id="viper-collections-list-toqueue"></a>`ToQueue` | `obj<Viper.Collections.Queue>()` | `Viper.Collections.List.ToQueue` |
 | <a id="viper-collections-list-new"></a>`New` | `obj()` | `Viper.Collections.List.New` |
+| <a id="viper-collections-list-find"></a>`Find` | `i64(obj,obj)` | `Viper.Collections.List.Find` |
 
 <a id="viper-collections-lrucache"></a>
 ### `Viper.Collections.LruCache`
@@ -652,7 +645,7 @@ Provides bounded key-value cache with LRU eviction.
 
 Create `Viper.Collections.LruCache` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Cap`, `Capacity`, `IsEmpty` and operations including `Clear`, `Get`, `Has`, `Keys`.
+`Capacity`, `IsEmpty`, `Count` and operations including `Clear`, `Get`, `Has`, `Keys`.
 
 Constructor: `Viper.Collections.LruCache.New`
 
@@ -660,7 +653,6 @@ Constructor: `Viper.Collections.LruCache.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-collections-lrucache-cap"></a>`Cap` | `i64` | read-only |
 | <a id="viper-collections-lrucache-capacity"></a>`Capacity` | `i64` | read-only |
 | <a id="viper-collections-lrucache-isempty"></a>`IsEmpty` | `i1` | read-only |
 | <a id="viper-collections-lrucache-count"></a>`Count` | `i64` | read-only |
@@ -674,7 +666,6 @@ Constructor: `Viper.Collections.LruCache.New`
 | <a id="viper-collections-lrucache-has"></a>`Has` | `i1(str)` | `Viper.Collections.LruCache.Has` |
 | <a id="viper-collections-lrucache-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.LruCache.Keys` |
 | <a id="viper-collections-lrucache-peek"></a>`Peek` | `obj(str)` | `Viper.Collections.LruCache.Peek` |
-| <a id="viper-collections-lrucache-put"></a>`Put` | `void(str,obj)` | `Viper.Collections.LruCache.Put` |
 | <a id="viper-collections-lrucache-set"></a>`Set` | `void(str,obj)` | `Viper.Collections.LruCache.Set` |
 | <a id="viper-collections-lrucache-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.LruCache.Remove` |
 | <a id="viper-collections-lrucache-removeoldest"></a>`RemoveOldest` | `i1()` | `Viper.Collections.LruCache.RemoveOldest` |
@@ -687,8 +678,8 @@ Constructor: `Viper.Collections.LruCache.New`
 Provides key-value dictionary (string keys).
 
 Create `Viper.Collections.Map` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Count` and operations including `Clear`, `Clone`, `Get`, `GetOr`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `GetOr`.
 
 Constructor: `Viper.Collections.Map.New`
 
@@ -766,7 +757,8 @@ Provides one key to many values.
 
 Create `Viper.Collections.MultiMap` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`IsEmpty`, `KeyCount`, `Count` and operations including `Clear`, `CountFor`, `Get`, `GetFirst`.
+`IsEmpty`, `KeyCount`, `Count` and operations including `Clear`, `CountFor`, `Get`,
+`GetFirst`.
 
 Constructor: `Viper.Collections.MultiMap.New`
 
@@ -789,7 +781,6 @@ Constructor: `Viper.Collections.MultiMap.New`
 | <a id="viper-collections-multimap-has"></a>`Has` | `i1(str)` | `Viper.Collections.MultiMap.Has` |
 | <a id="viper-collections-multimap-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.MultiMap.Keys` |
 | <a id="viper-collections-multimap-add"></a>`Add` | `void(str,obj)` | `Viper.Collections.MultiMap.Add` |
-| <a id="viper-collections-multimap-put"></a>`Put` | `void(str,obj)` | `Viper.Collections.MultiMap.Put` |
 | <a id="viper-collections-multimap-removeall"></a>`RemoveAll` | `i1(str)` | `Viper.Collections.MultiMap.RemoveAll` |
 | <a id="viper-collections-multimap-new"></a>`New` | `obj()` | `Viper.Collections.MultiMap.New` |
 
@@ -799,8 +790,8 @@ Constructor: `Viper.Collections.MultiMap.New`
 Provides FIFO collection.
 
 Create `Viper.Collections.Queue` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
 
 Constructor: `Viper.Collections.Queue.New`
 
@@ -823,8 +814,7 @@ Constructor: `Viper.Collections.Queue.New`
 | <a id="viper-collections-queue-pop"></a>`Pop` | `obj()` | `Viper.Collections.Queue.Pop` |
 | <a id="viper-collections-queue-tolist"></a>`ToList` | `obj<Viper.Collections.List>()` | `Viper.Collections.Queue.ToList` |
 | <a id="viper-collections-queue-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Queue.ToSeq` |
-| <a id="viper-collections-queue-trypop"></a>`TryPop` | `obj()` | `Viper.Collections.Queue.TryPop` |
-| <a id="viper-collections-queue-trypopoption"></a>`TryPopOption` | `obj<Viper.Option>()` | `Viper.Collections.Queue.TryPopOption` |
+| <a id="viper-collections-queue-trypop"></a>`TryPop` | `obj<Viper.Option>()` | `Viper.Collections.Queue.TryPop` |
 | <a id="viper-collections-queue-new"></a>`New` | `obj()` | `Viper.Collections.Queue.New` |
 
 <a id="viper-collections-heap"></a>
@@ -833,8 +823,8 @@ Constructor: `Viper.Collections.Queue.New`
 Provides priority queue (binary heap).
 
 Create `Viper.Collections.Heap` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`IsMax`, `Count` and operations including `Clear`, `Peek`, `Pop`, `Push`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `IsMax`, `Count` and operations including `Clear`, `Peek`, `Pop`, `Push`.
 
 Constructor: `Viper.Collections.Heap.New`
 
@@ -855,10 +845,8 @@ Constructor: `Viper.Collections.Heap.New`
 | <a id="viper-collections-heap-pop"></a>`Pop` | `obj()` | `Viper.Collections.Heap.Pop` |
 | <a id="viper-collections-heap-push"></a>`Push` | `void(i64,obj)` | `Viper.Collections.Heap.Push` |
 | <a id="viper-collections-heap-toseq"></a>`ToSeq` | `obj()` | `Viper.Collections.Heap.ToSeq` |
-| <a id="viper-collections-heap-trypeek"></a>`TryPeek` | `obj()` | `Viper.Collections.Heap.TryPeek` |
-| <a id="viper-collections-heap-trypop"></a>`TryPop` | `obj()` | `Viper.Collections.Heap.TryPop` |
-| <a id="viper-collections-heap-trypeekoption"></a>`TryPeekOption` | `obj<Viper.Option>()` | `Viper.Collections.Heap.TryPeekOption` |
-| <a id="viper-collections-heap-trypopoption"></a>`TryPopOption` | `obj<Viper.Option>()` | `Viper.Collections.Heap.TryPopOption` |
+| <a id="viper-collections-heap-trypeek"></a>`TryPeek` | `obj<Viper.Option>()` | `Viper.Collections.Heap.TryPeek` |
+| <a id="viper-collections-heap-trypop"></a>`TryPop` | `obj<Viper.Option>()` | `Viper.Collections.Heap.TryPop` |
 | <a id="viper-collections-heap-new"></a>`New` | `obj()` | `Viper.Collections.Heap.New` |
 | <a id="viper-collections-heap-newmax"></a>`NewMax` | `obj(i1)` | `Viper.Collections.Heap.NewMax` |
 
@@ -868,8 +856,8 @@ Constructor: `Viper.Collections.Heap.New`
 Provides fixed-size circular buffer.
 
 Create `Viper.Collections.Ring` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Cap`,
-`Capacity`, `First` and operations including `Clear`, `Clone`, `Get`, `Has`.
+object with the instance members below. Its public surface exposes properties such as
+`Capacity`, `First`, `IsEmpty` and operations including `Clear`, `Clone`, `Get`, `Has`.
 
 Constructor: `Viper.Collections.Ring.New`
 
@@ -877,7 +865,6 @@ Constructor: `Viper.Collections.Ring.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-collections-ring-cap"></a>`Cap` | `i64` | read-only |
 | <a id="viper-collections-ring-capacity"></a>`Capacity` | `i64` | read-only |
 | <a id="viper-collections-ring-first"></a>`First` | `obj` | read-only |
 | <a id="viper-collections-ring-isempty"></a>`IsEmpty` | `i1` | read-only |
@@ -909,8 +896,9 @@ Constructor: `Viper.Collections.Ring.New`
 Provides dynamic sequence/array.
 
 Create `Viper.Collections.Seq` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Cap`,
-`Capacity`, `IsEmpty` and operations including `Clear`, `Clone`, `Drop`, `Find`.
+object with the instance members below. Its public surface exposes properties such as
+`Capacity`, `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Drop`,
+`FindOption`.
 
 Constructor: `Viper.Collections.Seq.New`
 
@@ -918,7 +906,6 @@ Constructor: `Viper.Collections.Seq.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-collections-seq-cap"></a>`Cap` | `i64` | read-only |
 | <a id="viper-collections-seq-capacity"></a>`Capacity` | `i64` | read-only |
 | <a id="viper-collections-seq-isempty"></a>`IsEmpty` | `i1` | read-only |
 | <a id="viper-collections-seq-count"></a>`Count` | `i64` | read-only |
@@ -930,7 +917,6 @@ Constructor: `Viper.Collections.Seq.New`
 | <a id="viper-collections-seq-clear"></a>`Clear` | `void()` | `Viper.Collections.Seq.Clear` |
 | <a id="viper-collections-seq-clone"></a>`Clone` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Seq.Clone` |
 | <a id="viper-collections-seq-drop"></a>`Drop` | `obj<Viper.Collections.Seq>(i64)` | `Viper.Collections.Seq.Drop` |
-| <a id="viper-collections-seq-find"></a>`Find` | `i64(obj)` | `Viper.Collections.Seq.Find` |
 | <a id="viper-collections-seq-findoption"></a>`FindOption` | `obj<Viper.Option>(obj)` | `Viper.Collections.Seq.FindOption` |
 | <a id="viper-collections-seq-first"></a>`First` | `obj()` | `Viper.Collections.Seq.First` |
 | <a id="viper-collections-seq-get"></a>`Get` | `obj(i64)` | `Viper.Collections.Seq.Get` |
@@ -941,7 +927,7 @@ Constructor: `Viper.Collections.Seq.New`
 | <a id="viper-collections-seq-pop"></a>`Pop` | `obj()` | `Viper.Collections.Seq.Pop` |
 | <a id="viper-collections-seq-push"></a>`Push` | `void(obj)` | `Viper.Collections.Seq.Push` |
 | <a id="viper-collections-seq-pushall"></a>`PushAll` | `void(obj)` | `Viper.Collections.Seq.PushAll` |
-| <a id="viper-collections-seq-remove"></a>`Remove` | `obj(i64)` | `Viper.Collections.Seq.Remove` |
+| <a id="viper-collections-seq-removeat"></a>`RemoveAt` | `obj(i64)` | `Viper.Collections.Seq.RemoveAt` |
 | <a id="viper-collections-seq-reverse"></a>`Reverse` | `void()` | `Viper.Collections.Seq.Reverse` |
 | <a id="viper-collections-seq-set"></a>`Set` | `void(i64,obj)` | `Viper.Collections.Seq.Set` |
 | <a id="viper-collections-seq-shuffle"></a>`Shuffle` | `void()` | `Viper.Collections.Seq.Shuffle` |
@@ -949,14 +935,13 @@ Constructor: `Viper.Collections.Seq.New`
 | <a id="viper-collections-seq-sort"></a>`Sort` | `void()` | `Viper.Collections.Seq.Sort` |
 | <a id="viper-collections-seq-sortdesc"></a>`SortDesc` | `void()` | `Viper.Collections.Seq.SortDesc` |
 | <a id="viper-collections-seq-take"></a>`Take` | `obj<Viper.Collections.Seq>(i64)` | `Viper.Collections.Seq.Take` |
-| <a id="viper-collections-seq-keep"></a>`Keep` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.Keep` |
+| <a id="viper-collections-seq-filter"></a>`Filter` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.Filter` |
 | <a id="viper-collections-seq-reject"></a>`Reject` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.Reject` |
-| <a id="viper-collections-seq-apply"></a>`Apply` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.Apply` |
+| <a id="viper-collections-seq-map"></a>`Map` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.Map` |
 | <a id="viper-collections-seq-all"></a>`All` | `i1(obj)` | `Viper.Collections.Seq.All` |
 | <a id="viper-collections-seq-any"></a>`Any` | `i1(obj)` | `Viper.Collections.Seq.Any` |
 | <a id="viper-collections-seq-none"></a>`None` | `i1(obj)` | `Viper.Collections.Seq.None` |
 | <a id="viper-collections-seq-countwhere"></a>`CountWhere` | `i64(obj)` | `Viper.Collections.Seq.CountWhere` |
-| <a id="viper-collections-seq-findwhere"></a>`FindWhere` | `obj(obj)` | `Viper.Collections.Seq.FindWhere` |
 | <a id="viper-collections-seq-findwhereoption"></a>`FindWhereOption` | `obj<Viper.Option>(obj)` | `Viper.Collections.Seq.FindWhereOption` |
 | <a id="viper-collections-seq-takewhile"></a>`TakeWhile` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.TakeWhile` |
 | <a id="viper-collections-seq-dropwhile"></a>`DropWhile` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Collections.Seq.DropWhile` |
@@ -966,7 +951,7 @@ Constructor: `Viper.Collections.Seq.New`
 | <a id="viper-collections-seq-tostack"></a>`ToStack` | `obj<Viper.Collections.Stack>()` | `Viper.Collections.Seq.ToStack` |
 | <a id="viper-collections-seq-toqueue"></a>`ToQueue` | `obj<Viper.Collections.Queue>()` | `Viper.Collections.Seq.ToQueue` |
 | <a id="viper-collections-seq-todeque"></a>`ToDeque` | `obj<Viper.Collections.Deque>()` | `Viper.Collections.Seq.ToDeque` |
-| <a id="viper-collections-seq-tobag"></a>`ToBag` | `obj<Viper.Collections.Bag>()` | `Viper.Collections.Seq.ToBag` |
+| <a id="viper-collections-seq-tostringset"></a>`ToStringSet` | `obj<Viper.Collections.StringSet>()` | `Viper.Collections.Seq.ToStringSet` |
 | <a id="viper-collections-seq-new"></a>`New` | `obj()` | `Viper.Collections.Seq.New` |
 | <a id="viper-collections-seq-getstr"></a>`GetStr` | `str(obj,i64)` | `Viper.Collections.Seq.GetStr` |
 | <a id="viper-collections-seq-newsized"></a>`NewSized` | `obj(i64)` | `Viper.Collections.Seq.NewSized` |
@@ -978,8 +963,8 @@ Constructor: `Viper.Collections.Seq.New`
 Provides LIFO collection.
 
 Create `Viper.Collections.Stack` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
 
 Constructor: `Viper.Collections.Stack.New`
 
@@ -1002,8 +987,7 @@ Constructor: `Viper.Collections.Stack.New`
 | <a id="viper-collections-stack-push"></a>`Push` | `void(obj)` | `Viper.Collections.Stack.Push` |
 | <a id="viper-collections-stack-tolist"></a>`ToList` | `obj<Viper.Collections.List>()` | `Viper.Collections.Stack.ToList` |
 | <a id="viper-collections-stack-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Stack.ToSeq` |
-| <a id="viper-collections-stack-trypop"></a>`TryPop` | `obj()` | `Viper.Collections.Stack.TryPop` |
-| <a id="viper-collections-stack-trypopoption"></a>`TryPopOption` | `obj<Viper.Option>()` | `Viper.Collections.Stack.TryPopOption` |
+| <a id="viper-collections-stack-trypop"></a>`TryPop` | `obj<Viper.Option>()` | `Viper.Collections.Stack.TryPop` |
 | <a id="viper-collections-stack-new"></a>`New` | `obj()` | `Viper.Collections.Stack.New` |
 
 <a id="viper-collections-iterator"></a>
@@ -1012,8 +996,8 @@ Constructor: `Viper.Collections.Stack.New`
 Provides unified collection iterator.
 
 `Viper.Collections.Iterator` exposes a registry-backed runtime surface without requiring callers
-to construct the class directly. Its public surface exposes properties such as `Index`, `Count`
-and operations including `HasNext`, `Next`, `Peek`, `Reset`.
+to construct the class directly. Its public surface exposes properties such as `Index`,
+`Count` and operations including `HasNext`, `Next`, `Peek`, `Reset`.
 
 #### Properties
 
@@ -1041,40 +1025,40 @@ and operations including `HasNext`, `Next`, `Peek`, `Reset`.
 | <a id="viper-collections-iterator-fromstack"></a>`FromStack` | `obj(obj)` | `Viper.Collections.Iterator.FromStack` |
 | <a id="viper-collections-iterator-fromring"></a>`FromRing` | `obj(obj)` | `Viper.Collections.Iterator.FromRing` |
 
-<a id="viper-collections-treemap"></a>
-### `Viper.Collections.TreeMap`
+<a id="viper-collections-sortedmap"></a>
+### `Viper.Collections.SortedMap`
 
 Provides sorted key-value map.
 
 Create `Viper.Collections.TreeMap` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`IsEmpty`, `Count` and operations including `Ceil`, `Clear`, `Remove`, `First`.
+`IsEmpty`, `Count` and operations including `Ceiling`, `Clear`, `Remove`, `First`.
 
-Constructor: `Viper.Collections.TreeMap.New`
+Constructor: `Viper.Collections.SortedMap.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-collections-treemap-isempty"></a>`IsEmpty` | `i1` | read-only |
-| <a id="viper-collections-treemap-count"></a>`Count` | `i64` | read-only |
+| <a id="viper-collections-sortedmap-isempty"></a>`IsEmpty` | `i1` | read-only |
+| <a id="viper-collections-sortedmap-count"></a>`Count` | `i64` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-collections-treemap-ceil"></a>`Ceil` | `str(str)` | `Viper.Collections.TreeMap.Ceil` |
-| <a id="viper-collections-treemap-clear"></a>`Clear` | `void()` | `Viper.Collections.TreeMap.Clear` |
-| <a id="viper-collections-treemap-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.TreeMap.Remove` |
-| <a id="viper-collections-treemap-first"></a>`First` | `str()` | `Viper.Collections.TreeMap.First` |
-| <a id="viper-collections-treemap-floor"></a>`Floor` | `str(str)` | `Viper.Collections.TreeMap.Floor` |
-| <a id="viper-collections-treemap-get"></a>`Get` | `obj(str)` | `Viper.Collections.TreeMap.Get` |
-| <a id="viper-collections-treemap-has"></a>`Has` | `i1(str)` | `Viper.Collections.TreeMap.Has` |
-| <a id="viper-collections-treemap-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.TreeMap.Keys` |
-| <a id="viper-collections-treemap-last"></a>`Last` | `str()` | `Viper.Collections.TreeMap.Last` |
-| <a id="viper-collections-treemap-set"></a>`Set` | `void(str,obj)` | `Viper.Collections.TreeMap.Set` |
-| <a id="viper-collections-treemap-values"></a>`Values` | `seq<obj>()` | `Viper.Collections.TreeMap.Values` |
-| <a id="viper-collections-treemap-new"></a>`New` | `obj()` | `Viper.Collections.TreeMap.New` |
+| <a id="viper-collections-sortedmap-ceiling"></a>`Ceiling` | `str(str)` | `Viper.Collections.SortedMap.Ceiling` |
+| <a id="viper-collections-sortedmap-clear"></a>`Clear` | `void()` | `Viper.Collections.SortedMap.Clear` |
+| <a id="viper-collections-sortedmap-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.SortedMap.Remove` |
+| <a id="viper-collections-sortedmap-first"></a>`First` | `str()` | `Viper.Collections.SortedMap.First` |
+| <a id="viper-collections-sortedmap-floor"></a>`Floor` | `str(str)` | `Viper.Collections.SortedMap.Floor` |
+| <a id="viper-collections-sortedmap-get"></a>`Get` | `obj(str)` | `Viper.Collections.SortedMap.Get` |
+| <a id="viper-collections-sortedmap-has"></a>`Has` | `i1(str)` | `Viper.Collections.SortedMap.Has` |
+| <a id="viper-collections-sortedmap-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.SortedMap.Keys` |
+| <a id="viper-collections-sortedmap-last"></a>`Last` | `str()` | `Viper.Collections.SortedMap.Last` |
+| <a id="viper-collections-sortedmap-set"></a>`Set` | `void(str,obj)` | `Viper.Collections.SortedMap.Set` |
+| <a id="viper-collections-sortedmap-values"></a>`Values` | `seq<obj>()` | `Viper.Collections.SortedMap.Values` |
+| <a id="viper-collections-sortedmap-new"></a>`New` | `obj()` | `Viper.Collections.SortedMap.New` |
 
 <a id="viper-collections-trie"></a>
 ### `Viper.Collections.Trie`
@@ -1082,8 +1066,8 @@ Constructor: `Viper.Collections.TreeMap.New`
 Provides prefix tree for string keys.
 
 Create `Viper.Collections.Trie` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-`Count` and operations including `Clear`, `Clone`, `Get`, `Has`.
+object with the instance members below. Its public surface exposes properties such as
+`IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `Has`.
 
 Constructor: `Viper.Collections.Trie.New`
 
@@ -1117,7 +1101,8 @@ Provides Deque functionality for collection-oriented programs.
 
 Create `Viper.Collections.Deque` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Count`,
-`Cap`, `Capacity` and operations including `PushFront`, `PopFront`, `PeekFront`, `PushBack`.
+`Capacity`, `IsEmpty` and operations including `PushFront`, `PopFront`, `PeekFront`,
+`PushBack`.
 
 Constructor: `Viper.Collections.Deque.New`
 
@@ -1126,7 +1111,6 @@ Constructor: `Viper.Collections.Deque.New`
 | Property | Type | Access |
 |---|---|---|
 | <a id="viper-collections-deque-count"></a>`Count` | `i64` | read-only |
-| <a id="viper-collections-deque-cap"></a>`Cap` | `i64` | read-only |
 | <a id="viper-collections-deque-capacity"></a>`Capacity` | `i64` | read-only |
 | <a id="viper-collections-deque-isempty"></a>`IsEmpty` | `i1` | read-only |
 
@@ -1147,10 +1131,8 @@ Constructor: `Viper.Collections.Deque.New`
 | <a id="viper-collections-deque-reverse"></a>`Reverse` | `void()` | `Viper.Collections.Deque.Reverse` |
 | <a id="viper-collections-deque-clone"></a>`Clone` | `obj<Viper.Collections.Deque>()` | `Viper.Collections.Deque.Clone` |
 | <a id="viper-collections-deque-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Deque.ToSeq` |
-| <a id="viper-collections-deque-trypopfront"></a>`TryPopFront` | `obj()` | `Viper.Collections.Deque.TryPopFront` |
-| <a id="viper-collections-deque-trypopback"></a>`TryPopBack` | `obj()` | `Viper.Collections.Deque.TryPopBack` |
-| <a id="viper-collections-deque-trypopfrontoption"></a>`TryPopFrontOption` | `obj<Viper.Option>()` | `Viper.Collections.Deque.TryPopFrontOption` |
-| <a id="viper-collections-deque-trypopbackoption"></a>`TryPopBackOption` | `obj<Viper.Option>()` | `Viper.Collections.Deque.TryPopBackOption` |
+| <a id="viper-collections-deque-trypopfront"></a>`TryPopFront` | `obj<Viper.Option>()` | `Viper.Collections.Deque.TryPopFront` |
+| <a id="viper-collections-deque-trypopback"></a>`TryPopBack` | `obj<Viper.Option>()` | `Viper.Collections.Deque.TryPopBack` |
 | <a id="viper-collections-deque-tolist"></a>`ToList` | `obj<Viper.Collections.List>()` | `Viper.Collections.Deque.ToList` |
 | <a id="viper-collections-deque-new"></a>`New` | `obj()` | `Viper.Collections.Deque.New` |
 | <a id="viper-collections-deque-withcapacity"></a>`WithCapacity` | `obj(i64)` | `Viper.Collections.Deque.WithCapacity` |
@@ -1160,36 +1142,34 @@ Constructor: `Viper.Collections.Deque.New`
 | Function | Signature | Runtime symbol |
 |---|---|---|
 | `Viper.Collections.BitSet.And` | `obj(obj,obj)` | `rt_bitset_and` |
-| `Viper.Collections.BitSet.Clear` | `void(obj,i64)` | `rt_bitset_clear` |
-| `Viper.Collections.BitSet.ClearAll` | `void(obj)` | `rt_bitset_clear_all` |
-| `Viper.Collections.BitSet.Get` | `i1(obj,i64)` | `rt_bitset_get` |
+| `Viper.Collections.BitSet.ClearBit` | `void(obj,i64)` | `rt_bitset_clear` |
+| `Viper.Collections.BitSet.Clear` | `void(obj)` | `rt_bitset_clear_all` |
+| `Viper.Collections.BitSet.GetBit` | `i1(obj,i64)` | `rt_bitset_get` |
 | <a id="viper-collections-bitset-get-isempty"></a>`Viper.Collections.BitSet.get_IsEmpty` | `i1(obj)` | `rt_bitset_is_empty` |
 | <a id="viper-collections-bitset-get-length"></a>`Viper.Collections.BitSet.get_Length` | `i64(obj)` | `rt_bitset_len` |
 | <a id="viper-collections-bitset-get-count"></a>`Viper.Collections.BitSet.get_Count` | `i64(obj)` | `rt_bitset_count` |
 | `Viper.Collections.BitSet.New` | `obj(i64)` | `rt_bitset_new` |
 | `Viper.Collections.BitSet.Not` | `obj(obj)` | `rt_bitset_not` |
 | `Viper.Collections.BitSet.Or` | `obj(obj,obj)` | `rt_bitset_or` |
-| `Viper.Collections.BitSet.Set` | `void(obj,i64)` | `rt_bitset_set` |
+| `Viper.Collections.BitSet.SetBit` | `void(obj,i64)` | `rt_bitset_set` |
 | `Viper.Collections.BitSet.SetAll` | `void(obj)` | `rt_bitset_set_all` |
-| `Viper.Collections.BitSet.Toggle` | `void(obj,i64)` | `rt_bitset_toggle` |
+| `Viper.Collections.BitSet.ToggleBit` | `void(obj,i64)` | `rt_bitset_toggle` |
 | `Viper.Collections.BitSet.ToString` | `str(obj)` | `rt_bitset_to_string` |
 | `Viper.Collections.BitSet.Xor` | `obj(obj,obj)` | `rt_bitset_xor` |
 | `Viper.Collections.BloomFilter.New` | `obj(i64,f64)` | `rt_bloomfilter_new` |
 | `Viper.Collections.BloomFilter.Add` | `void(obj,str)` | `rt_bloomfilter_add` |
 | `Viper.Collections.BloomFilter.MightContain` | `i1(obj,str)` | `rt_bloomfilter_might_contain` |
 | <a id="viper-collections-bloomfilter-get-count"></a>`Viper.Collections.BloomFilter.get_Count` | `i64(obj)` | `rt_bloomfilter_count` |
-| `Viper.Collections.BloomFilter.Fpr` | `f64(obj)` | `rt_bloomfilter_fpr` |
 | `Viper.Collections.BloomFilter.FalsePositiveRate` | `f64(obj)` | `rt_bloomfilter_fpr` |
 | `Viper.Collections.BloomFilter.Clear` | `void(obj)` | `rt_bloomfilter_clear` |
 | `Viper.Collections.BloomFilter.Merge` | `i64(obj,obj)` | `rt_bloomfilter_merge` |
 | `Viper.Collections.UnionFind.New` | `obj(i64)` | `rt_unionfind_new` |
-| `Viper.Collections.UnionFind.Find` | `i64(obj,i64)` | `rt_unionfind_find` |
-| `Viper.Collections.UnionFind.FindRootOption` | `obj<Viper.Option>(obj,i64)` | `rt_unionfind_find_root_option` |
+| `Viper.Collections.UnionFind.FindRoot` | `obj<Viper.Option>(obj,i64)` | `rt_unionfind_find_root_option` |
 | `Viper.Collections.UnionFind.Union` | `i64(obj,i64,i64)` | `rt_unionfind_union` |
-| `Viper.Collections.UnionFind.Connected` | `i1(obj,i64,i64)` | `rt_unionfind_connected` |
+| `Viper.Collections.UnionFind.Clear` | `void(obj)` | `rt_unionfind_reset` |
+| `Viper.Collections.UnionFind.IsConnected` | `i1(obj,i64,i64)` | `rt_unionfind_connected` |
 | <a id="viper-collections-unionfind-get-count"></a>`Viper.Collections.UnionFind.get_Count` | `i64(obj)` | `rt_unionfind_count` |
-| `Viper.Collections.UnionFind.SetSize` | `i64(obj,i64)` | `rt_unionfind_set_size` |
-| `Viper.Collections.UnionFind.Reset` | `void(obj)` | `rt_unionfind_reset` |
+| `Viper.Collections.UnionFind.ComponentSize` | `i64(obj,i64)` | `rt_unionfind_set_size` |
 | `Viper.Collections.OrderedMap.New` | `obj()` | `rt_orderedmap_new` |
 | <a id="viper-collections-orderedmap-get-count"></a>`Viper.Collections.OrderedMap.get_Count` | `i64(obj)` | `rt_orderedmap_len` |
 | <a id="viper-collections-orderedmap-get-isempty"></a>`Viper.Collections.OrderedMap.get_IsEmpty` | `i1(obj)` | `rt_orderedmap_is_empty` |
@@ -1204,8 +1184,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Bytes.Clone` | `obj(obj)` | `rt_bytes_clone` |
 | `Viper.Collections.Bytes.Copy` | `void(obj,i64,obj,i64,i64)` | `rt_bytes_copy` |
 | `Viper.Collections.Bytes.Fill` | `void(obj,i64)` | `rt_bytes_fill` |
-| `Viper.Collections.Bytes.Find` | `i64(obj,i64)` | `rt_bytes_find` |
-| `Viper.Collections.Bytes.FindOption` | `obj<Viper.Option>(obj,i64)` | `rt_bytes_find_option` |
+| `Viper.Collections.Bytes.Find` | `obj<Viper.Option>(obj,i64)` | `rt_bytes_find_option` |
 | `Viper.Collections.Bytes.FromBase64` | `obj(str)` | `rt_bytes_from_base64` |
 | `Viper.Collections.Bytes.FromHex` | `obj(str)` | `rt_bytes_from_hex` |
 | `Viper.Collections.Bytes.FromStr` | `obj(str)` | `rt_bytes_from_str` |
@@ -1218,18 +1197,18 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Bytes.ToBase64` | `str(obj)` | `rt_bytes_to_base64` |
 | `Viper.Collections.Bytes.ToHex` | `str(obj)` | `rt_bytes_to_hex` |
 | `Viper.Collections.Bytes.ToStr` | `str(obj)` | `rt_bytes_to_str` |
-| `Viper.Collections.Bytes.ReadI16LE` | `i64(obj,i64)` | `rt_bytes_read_i16le` |
-| `Viper.Collections.Bytes.ReadI16BE` | `i64(obj,i64)` | `rt_bytes_read_i16be` |
-| `Viper.Collections.Bytes.ReadI32LE` | `i64(obj,i64)` | `rt_bytes_read_i32le` |
-| `Viper.Collections.Bytes.ReadI32BE` | `i64(obj,i64)` | `rt_bytes_read_i32be` |
-| `Viper.Collections.Bytes.ReadI64LE` | `i64(obj,i64)` | `rt_bytes_read_i64le` |
-| `Viper.Collections.Bytes.ReadI64BE` | `i64(obj,i64)` | `rt_bytes_read_i64be` |
-| `Viper.Collections.Bytes.WriteI16LE` | `void(obj,i64,i64)` | `rt_bytes_write_i16le` |
-| `Viper.Collections.Bytes.WriteI16BE` | `void(obj,i64,i64)` | `rt_bytes_write_i16be` |
-| `Viper.Collections.Bytes.WriteI32LE` | `void(obj,i64,i64)` | `rt_bytes_write_i32le` |
-| `Viper.Collections.Bytes.WriteI32BE` | `void(obj,i64,i64)` | `rt_bytes_write_i32be` |
-| `Viper.Collections.Bytes.WriteI64LE` | `void(obj,i64,i64)` | `rt_bytes_write_i64le` |
-| `Viper.Collections.Bytes.WriteI64BE` | `void(obj,i64,i64)` | `rt_bytes_write_i64be` |
+| `Viper.Collections.Bytes.ReadI16LittleEndian` | `i64(obj,i64)` | `rt_bytes_read_i16le` |
+| `Viper.Collections.Bytes.ReadI16BigEndian` | `i64(obj,i64)` | `rt_bytes_read_i16be` |
+| `Viper.Collections.Bytes.ReadI32LittleEndian` | `i64(obj,i64)` | `rt_bytes_read_i32le` |
+| `Viper.Collections.Bytes.ReadI32BigEndian` | `i64(obj,i64)` | `rt_bytes_read_i32be` |
+| `Viper.Collections.Bytes.ReadI64LittleEndian` | `i64(obj,i64)` | `rt_bytes_read_i64le` |
+| `Viper.Collections.Bytes.ReadI64BigEndian` | `i64(obj,i64)` | `rt_bytes_read_i64be` |
+| `Viper.Collections.Bytes.WriteI16LittleEndian` | `void(obj,i64,i64)` | `rt_bytes_write_i16le` |
+| `Viper.Collections.Bytes.WriteI16BigEndian` | `void(obj,i64,i64)` | `rt_bytes_write_i16be` |
+| `Viper.Collections.Bytes.WriteI32LittleEndian` | `void(obj,i64,i64)` | `rt_bytes_write_i32le` |
+| `Viper.Collections.Bytes.WriteI32BigEndian` | `void(obj,i64,i64)` | `rt_bytes_write_i32be` |
+| `Viper.Collections.Bytes.WriteI64LittleEndian` | `void(obj,i64,i64)` | `rt_bytes_write_i64le` |
+| `Viper.Collections.Bytes.WriteI64BigEndian` | `void(obj,i64,i64)` | `rt_bytes_write_i64be` |
 | `Viper.Collections.F64Buffer.New` | `obj(i64)` | `rt_f64buf_new` |
 | `Viper.Collections.F64Buffer.FromSeq` | `obj(obj)` | `rt_f64buf_from_seq` |
 | <a id="viper-collections-f64buffer-get-length"></a>`Viper.Collections.F64Buffer.get_Length` | `i64(obj)` | `rt_f64buf_len` |
@@ -1269,10 +1248,10 @@ Constructor: `Viper.Collections.Deque.New`
 | <a id="viper-collections-frozenset-get-count"></a>`Viper.Collections.FrozenSet.get_Count` | `i64(obj)` | `rt_frozenset_len` |
 | <a id="viper-collections-frozenset-get-isempty"></a>`Viper.Collections.FrozenSet.get_IsEmpty` | `i1(obj)` | `rt_frozenset_is_empty` |
 | `Viper.Collections.FrozenSet.Has` | `i1(obj,str)` | `rt_frozenset_has` |
-| `Viper.Collections.FrozenSet.Items` | `seq<str>(obj)` | `rt_frozenset_items` |
+| `Viper.Collections.FrozenSet.ToSeq` | `seq<str>(obj)` | `rt_frozenset_items` |
 | `Viper.Collections.FrozenSet.Union` | `obj<Viper.Collections.FrozenSet>(obj,obj)` | `rt_frozenset_union` |
 | `Viper.Collections.FrozenSet.Intersect` | `obj<Viper.Collections.FrozenSet>(obj,obj)` | `rt_frozenset_intersect` |
-| `Viper.Collections.FrozenSet.Diff` | `obj<Viper.Collections.FrozenSet>(obj,obj)` | `rt_frozenset_diff` |
+| `Viper.Collections.FrozenSet.Difference` | `obj<Viper.Collections.FrozenSet>(obj,obj)` | `rt_frozenset_diff` |
 | `Viper.Collections.FrozenSet.IsSubset` | `i1(obj,obj)` | `rt_frozenset_is_subset` |
 | `Viper.Collections.FrozenSet.Equals` | `i1(obj,obj)` | `rt_frozenset_equals` |
 | `Viper.Collections.FrozenMap.FromSeqs` | `obj<Viper.Collections.FrozenMap>(obj,obj)` | `rt_frozenmap_from_seqs` |
@@ -1286,20 +1265,19 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.FrozenMap.GetOr` | `obj(obj,str,obj)` | `rt_frozenmap_get_or` |
 | `Viper.Collections.FrozenMap.Merge` | `obj<Viper.Collections.FrozenMap>(obj,obj)` | `rt_frozenmap_merge` |
 | `Viper.Collections.FrozenMap.Equals` | `i1(obj,obj)` | `rt_frozenmap_equals` |
-| `Viper.Collections.Bag.Clear` | `void(obj)` | `rt_bag_clear` |
-| `Viper.Collections.Bag.Intersect` | `obj<Viper.Collections.Bag>(obj,obj)` | `rt_bag_intersect` |
-| `Viper.Collections.Bag.Diff` | `obj<Viper.Collections.Bag>(obj,obj)` | `rt_bag_diff` |
-| `Viper.Collections.Bag.Remove` | `i1(obj,str)` | `rt_bag_remove` |
-| `Viper.Collections.Bag.Has` | `i1(obj,str)` | `rt_bag_has` |
-| <a id="viper-collections-bag-get-isempty"></a>`Viper.Collections.Bag.get_IsEmpty` | `i1(obj)` | `rt_bag_is_empty` |
-| `Viper.Collections.Bag.Items` | `seq<str>(obj)` | `rt_bag_items` |
-| <a id="viper-collections-bag-get-count"></a>`Viper.Collections.Bag.get_Count` | `i64(obj)` | `rt_bag_len` |
-| `Viper.Collections.Bag.Union` | `obj<Viper.Collections.Bag>(obj,obj)` | `rt_bag_union` |
-| `Viper.Collections.Bag.New` | `obj()` | `rt_bag_new` |
-| `Viper.Collections.Bag.Add` | `i1(obj,str)` | `rt_bag_add` |
-| `Viper.Collections.Bag.Clone` | `obj<Viper.Collections.Bag>(obj)` | `rt_bag_clone` |
-| `Viper.Collections.Bag.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_bag_to_seq` |
-| `Viper.Collections.Bag.ToSet` | `obj<Viper.Collections.Set>(obj)` | `rt_bag_to_set` |
+| `Viper.Collections.StringSet.Clear` | `void(obj)` | `rt_bag_clear` |
+| `Viper.Collections.StringSet.Intersect` | `obj<Viper.Collections.StringSet>(obj,obj)` | `rt_bag_intersect` |
+| `Viper.Collections.StringSet.Difference` | `obj<Viper.Collections.StringSet>(obj,obj)` | `rt_bag_diff` |
+| `Viper.Collections.StringSet.Remove` | `i1(obj,str)` | `rt_bag_remove` |
+| `Viper.Collections.StringSet.Has` | `i1(obj,str)` | `rt_bag_has` |
+| <a id="viper-collections-stringset-get-isempty"></a>`Viper.Collections.StringSet.get_IsEmpty` | `i1(obj)` | `rt_bag_is_empty` |
+| <a id="viper-collections-stringset-get-count"></a>`Viper.Collections.StringSet.get_Count` | `i64(obj)` | `rt_bag_len` |
+| `Viper.Collections.StringSet.Union` | `obj<Viper.Collections.StringSet>(obj,obj)` | `rt_bag_union` |
+| `Viper.Collections.StringSet.New` | `obj()` | `rt_bag_new` |
+| `Viper.Collections.StringSet.Add` | `i1(obj,str)` | `rt_bag_add` |
+| `Viper.Collections.StringSet.Clone` | `obj<Viper.Collections.StringSet>(obj)` | `rt_bag_clone` |
+| `Viper.Collections.StringSet.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_bag_to_seq` |
+| `Viper.Collections.StringSet.ToSet` | `obj<Viper.Collections.Set>(obj)` | `rt_bag_to_set` |
 | `Viper.Collections.SparseArray.New` | `obj()` | `rt_sparse_new` |
 | <a id="viper-collections-sparsearray-get-count"></a>`Viper.Collections.SparseArray.get_Count` | `i64(obj)` | `rt_sparse_len` |
 | `Viper.Collections.SparseArray.Get` | `obj(obj,i64)` | `rt_sparse_get` |
@@ -1321,14 +1299,13 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.WeakMap.Compact` | `i64(obj)` | `rt_weakmap_compact` |
 | `Viper.Collections.Set.Clear` | `void(obj)` | `rt_set_clear` |
 | `Viper.Collections.Set.Intersect` | `obj<Viper.Collections.Set>(obj,obj)` | `rt_set_intersect` |
-| `Viper.Collections.Set.Diff` | `obj<Viper.Collections.Set>(obj,obj)` | `rt_set_diff` |
+| `Viper.Collections.Set.Difference` | `obj<Viper.Collections.Set>(obj,obj)` | `rt_set_diff` |
 | `Viper.Collections.Set.Remove` | `i1(obj,obj)` | `rt_set_remove` |
 | `Viper.Collections.Set.Has` | `i1(obj,obj)` | `rt_set_has` |
 | `Viper.Collections.Set.IsDisjoint` | `i1(obj,obj)` | `rt_set_is_disjoint` |
 | <a id="viper-collections-set-get-isempty"></a>`Viper.Collections.Set.get_IsEmpty` | `i1(obj)` | `rt_set_is_empty` |
 | `Viper.Collections.Set.IsSubset` | `i1(obj,obj)` | `rt_set_is_subset` |
 | `Viper.Collections.Set.IsSuperset` | `i1(obj,obj)` | `rt_set_is_superset` |
-| `Viper.Collections.Set.Items` | `obj<Viper.Collections.Seq>(obj)` | `rt_set_items` |
 | <a id="viper-collections-set-get-count"></a>`Viper.Collections.Set.get_Count` | `i64(obj)` | `rt_set_len` |
 | `Viper.Collections.Set.Union` | `obj<Viper.Collections.Set>(obj,obj)` | `rt_set_union` |
 | `Viper.Collections.Set.New` | `obj()` | `rt_set_new` |
@@ -1338,7 +1315,6 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Set.ToList` | `obj<Viper.Collections.List>(obj)` | `rt_set_to_list` |
 | `Viper.Collections.List.Push` | `void(obj,obj)` | `rt_list_push` |
 | `Viper.Collections.List.Clear` | `void(obj)` | `rt_list_clear` |
-| `Viper.Collections.List.Find` | `i64(obj,obj)` | `rt_list_find` |
 | `Viper.Collections.List.FindOption` | `obj<Viper.Option>(obj,obj)` | `rt_list_find_option` |
 | <a id="viper-collections-list-get-count"></a>`Viper.Collections.List.get_Count` | `i64(obj)` | `rt_list_len` |
 | `Viper.Collections.List.Get` | `obj(obj,i64)` | `rt_list_get` |
@@ -1362,7 +1338,6 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.List.ToSet` | `obj<Viper.Collections.Set>(obj)` | `rt_list_to_set` |
 | `Viper.Collections.List.ToStack` | `obj<Viper.Collections.Stack>(obj)` | `rt_list_to_stack` |
 | `Viper.Collections.List.ToQueue` | `obj<Viper.Collections.Queue>(obj)` | `rt_list_to_queue` |
-| <a id="viper-collections-lrucache-get-cap"></a>`Viper.Collections.LruCache.get_Cap` | `i64(obj)` | `rt_lrucache_cap` |
 | <a id="viper-collections-lrucache-get-capacity"></a>`Viper.Collections.LruCache.get_Capacity` | `i64(obj)` | `rt_lrucache_cap` |
 | `Viper.Collections.LruCache.Clear` | `void(obj)` | `rt_lrucache_clear` |
 | `Viper.Collections.LruCache.Get` | `obj(obj,str)` | `rt_lrucache_get` |
@@ -1372,7 +1347,6 @@ Constructor: `Viper.Collections.Deque.New`
 | <a id="viper-collections-lrucache-get-count"></a>`Viper.Collections.LruCache.get_Count` | `i64(obj)` | `rt_lrucache_len` |
 | `Viper.Collections.LruCache.New` | `obj(i64)` | `rt_lrucache_new` |
 | `Viper.Collections.LruCache.Peek` | `obj(obj,str)` | `rt_lrucache_peek` |
-| `Viper.Collections.LruCache.Put` | `void(obj,str,obj)` | `rt_lrucache_put` |
 | `Viper.Collections.LruCache.Set` | `void(obj,str,obj)` | `rt_lrucache_put` |
 | `Viper.Collections.LruCache.Remove` | `i1(obj,str)` | `rt_lrucache_remove` |
 | `Viper.Collections.LruCache.RemoveOldest` | `i1(obj)` | `rt_lrucache_remove_oldest` |
@@ -1381,7 +1355,6 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.BiMap.New` | `obj()` | `rt_bimap_new` |
 | <a id="viper-collections-bimap-get-count"></a>`Viper.Collections.BiMap.get_Count` | `i64(obj)` | `rt_bimap_len` |
 | <a id="viper-collections-bimap-get-isempty"></a>`Viper.Collections.BiMap.get_IsEmpty` | `i1(obj)` | `rt_bimap_is_empty` |
-| `Viper.Collections.BiMap.Put` | `void(obj,str,str)` | `rt_bimap_put` |
 | `Viper.Collections.BiMap.Set` | `void(obj,str,str)` | `rt_bimap_put` |
 | `Viper.Collections.BiMap.GetByKey` | `str(obj,str)` | `rt_bimap_get_by_key` |
 | `Viper.Collections.BiMap.GetByValue` | `str(obj,str)` | `rt_bimap_get_by_value` |
@@ -1395,9 +1368,9 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.CountMap.New` | `obj()` | `rt_countmap_new` |
 | <a id="viper-collections-countmap-get-count"></a>`Viper.Collections.CountMap.get_Count` | `i64(obj)` | `rt_countmap_len` |
 | <a id="viper-collections-countmap-get-isempty"></a>`Viper.Collections.CountMap.get_IsEmpty` | `i1(obj)` | `rt_countmap_is_empty` |
-| `Viper.Collections.CountMap.Inc` | `i64(obj,str)` | `rt_countmap_inc` |
-| `Viper.Collections.CountMap.IncBy` | `i64(obj,str,i64)` | `rt_countmap_inc_by` |
-| `Viper.Collections.CountMap.Dec` | `i64(obj,str)` | `rt_countmap_dec` |
+| `Viper.Collections.CountMap.Increment` | `i64(obj,str)` | `rt_countmap_inc` |
+| `Viper.Collections.CountMap.IncrementBy` | `i64(obj,str,i64)` | `rt_countmap_inc_by` |
+| `Viper.Collections.CountMap.Decrement` | `i64(obj,str)` | `rt_countmap_dec` |
 | `Viper.Collections.CountMap.Get` | `i64(obj,str)` | `rt_countmap_get` |
 | `Viper.Collections.CountMap.Set` | `void(obj,str,i64)` | `rt_countmap_set` |
 | `Viper.Collections.CountMap.Has` | `i1(obj,str)` | `rt_countmap_has` |
@@ -1416,7 +1389,6 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.MultiMap.Keys` | `seq<str>(obj)` | `rt_multimap_keys` |
 | <a id="viper-collections-multimap-get-count"></a>`Viper.Collections.MultiMap.get_Count` | `i64(obj)` | `rt_multimap_len` |
 | `Viper.Collections.MultiMap.New` | `obj()` | `rt_multimap_new` |
-| `Viper.Collections.MultiMap.Put` | `void(obj,str,obj)` | `rt_multimap_put` |
 | `Viper.Collections.MultiMap.Add` | `void(obj,str,obj)` | `rt_multimap_put` |
 | `Viper.Collections.MultiMap.RemoveAll` | `i1(obj,str)` | `rt_multimap_remove_all` |
 | `Viper.Collections.Map.Get` | `obj(obj,str)` | `rt_map_get` |
@@ -1464,8 +1436,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Queue.Has` | `i1(obj,obj)` | `rt_queue_has` |
 | `Viper.Collections.Queue.ToList` | `obj<Viper.Collections.List>(obj)` | `rt_queue_to_list` |
 | `Viper.Collections.Queue.Clone` | `obj<Viper.Collections.Queue>(obj)` | `rt_queue_clone` |
-| `Viper.Collections.Queue.TryPop` | `obj(obj)` | `rt_queue_try_pop` |
-| `Viper.Collections.Queue.TryPopOption` | `obj<Viper.Option>(obj)` | `rt_queue_try_pop_option` |
+| `Viper.Collections.Queue.TryPop` | `obj<Viper.Option>(obj)` | `rt_queue_try_pop_option` |
 | `Viper.Collections.Queue.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_queue_to_seq` |
 | `Viper.Collections.Heap.Clear` | `void(obj)` | `rt_pqueue_clear` |
 | <a id="viper-collections-heap-get-isempty"></a>`Viper.Collections.Heap.get_IsEmpty` | `i1(obj)` | `rt_pqueue_is_empty` |
@@ -1477,11 +1448,8 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Heap.Pop` | `obj(obj)` | `rt_pqueue_pop` |
 | `Viper.Collections.Heap.Push` | `void(obj,i64,obj)` | `rt_pqueue_push` |
 | `Viper.Collections.Heap.ToSeq` | `obj(obj)` | `rt_pqueue_to_seq` |
-| `Viper.Collections.Heap.TryPeek` | `obj(obj)` | `rt_pqueue_try_peek` |
-| `Viper.Collections.Heap.TryPop` | `obj(obj)` | `rt_pqueue_try_pop` |
-| `Viper.Collections.Heap.TryPeekOption` | `obj<Viper.Option>(obj)` | `rt_pqueue_try_peek_option` |
-| `Viper.Collections.Heap.TryPopOption` | `obj<Viper.Option>(obj)` | `rt_pqueue_try_pop_option` |
-| <a id="viper-collections-ring-get-cap"></a>`Viper.Collections.Ring.get_Cap` | `i64(obj)` | `rt_ring_cap` |
+| `Viper.Collections.Heap.TryPeek` | `obj<Viper.Option>(obj)` | `rt_pqueue_try_peek_option` |
+| `Viper.Collections.Heap.TryPop` | `obj<Viper.Option>(obj)` | `rt_pqueue_try_pop_option` |
 | <a id="viper-collections-ring-get-capacity"></a>`Viper.Collections.Ring.get_Capacity` | `i64(obj)` | `rt_ring_cap` |
 | `Viper.Collections.Ring.Clear` | `void(obj)` | `rt_ring_clear` |
 | `Viper.Collections.Ring.Get` | `obj(obj,i64)` | `rt_ring_get` |
@@ -1503,9 +1471,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Ring.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_ring_to_seq` |
 | `Viper.Collections.Seq.Clear` | `void(obj)` | `rt_seq_clear` |
 | `Viper.Collections.Seq.Clone` | `obj<Viper.Collections.Seq>(obj)` | `rt_seq_clone` |
-| <a id="viper-collections-seq-get-cap"></a>`Viper.Collections.Seq.get_Cap` | `i64(obj)` | `rt_seq_cap` |
 | <a id="viper-collections-seq-get-capacity"></a>`Viper.Collections.Seq.get_Capacity` | `i64(obj)` | `rt_seq_cap` |
-| `Viper.Collections.Seq.Find` | `i64(obj,obj)` | `rt_seq_find` |
 | `Viper.Collections.Seq.FindOption` | `obj<Viper.Option>(obj,obj)` | `rt_seq_find_option` |
 | `Viper.Collections.Seq.First` | `obj(obj)` | `rt_seq_first` |
 | `Viper.Collections.Seq.Get` | `obj(obj,i64)` | `rt_seq_get` |
@@ -1521,7 +1487,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Seq.Pop` | `obj(obj)` | `rt_seq_pop` |
 | `Viper.Collections.Seq.Push` | `void(obj,obj)` | `rt_seq_push` |
 | `Viper.Collections.Seq.PushAll` | `void(obj,obj)` | `rt_seq_push_all` |
-| `Viper.Collections.Seq.Remove` | `obj(obj,i64)` | `rt_seq_remove` |
+| `Viper.Collections.Seq.RemoveAt` | `obj(obj,i64)` | `rt_seq_remove` |
 | `Viper.Collections.Seq.Reverse` | `void(obj)` | `rt_seq_reverse` |
 | `Viper.Collections.Seq.Set` | `void(obj,i64,obj)` | `rt_seq_set` |
 | `Viper.Collections.Seq.Shuffle` | `void(obj)` | `rt_seq_shuffle` |
@@ -1531,14 +1497,13 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Seq.WithCapacity` | `obj(i64)` | `rt_seq_with_capacity_owned` |
 | `Viper.Collections.Seq.Take` | `obj<Viper.Collections.Seq>(obj,i64)` | `rt_seq_take` |
 | `Viper.Collections.Seq.Drop` | `obj<Viper.Collections.Seq>(obj,i64)` | `rt_seq_drop` |
-| `Viper.Collections.Seq.Keep` | `obj<Viper.Collections.Seq>(obj,obj)` | `rt_seq_keep_wrapper` |
+| `Viper.Collections.Seq.Filter` | `obj<Viper.Collections.Seq>(obj,obj)` | `rt_seq_keep_wrapper` |
 | `Viper.Collections.Seq.Reject` | `obj<Viper.Collections.Seq>(obj,obj)` | `rt_seq_reject_wrapper` |
-| `Viper.Collections.Seq.Apply` | `obj<Viper.Collections.Seq>(obj,obj)` | `rt_seq_apply_wrapper` |
+| `Viper.Collections.Seq.Map` | `obj<Viper.Collections.Seq>(obj,obj)` | `rt_seq_apply_wrapper` |
 | `Viper.Collections.Seq.All` | `i1(obj,obj)` | `rt_seq_all_wrapper` |
 | `Viper.Collections.Seq.Any` | `i1(obj,obj)` | `rt_seq_any_wrapper` |
 | `Viper.Collections.Seq.None` | `i1(obj,obj)` | `rt_seq_none_wrapper` |
 | `Viper.Collections.Seq.CountWhere` | `i64(obj,obj)` | `rt_seq_count_where_wrapper` |
-| `Viper.Collections.Seq.FindWhere` | `obj(obj,obj)` | `rt_seq_find_where_wrapper` |
 | `Viper.Collections.Seq.FindWhereOption` | `obj<Viper.Option>(obj,obj)` | `rt_seq_find_where_option_wrapper` |
 | `Viper.Collections.Seq.TakeWhile` | `obj<Viper.Collections.Seq>(obj,obj)` | `rt_seq_take_while_wrapper` |
 | `Viper.Collections.Seq.DropWhile` | `obj<Viper.Collections.Seq>(obj,obj)` | `rt_seq_drop_while_wrapper` |
@@ -1548,7 +1513,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Seq.ToStack` | `obj<Viper.Collections.Stack>(obj)` | `rt_seq_to_stack` |
 | `Viper.Collections.Seq.ToQueue` | `obj<Viper.Collections.Queue>(obj)` | `rt_seq_to_queue` |
 | `Viper.Collections.Seq.ToDeque` | `obj<Viper.Collections.Deque>(obj)` | `rt_seq_to_deque` |
-| `Viper.Collections.Seq.ToBag` | `obj<Viper.Collections.Bag>(obj)` | `rt_seq_to_bag` |
+| `Viper.Collections.Seq.ToStringSet` | `obj<Viper.Collections.StringSet>(obj)` | `rt_seq_to_bag` |
 | `Viper.Collections.Stack.Clear` | `void(obj)` | `rt_stack_clear` |
 | <a id="viper-collections-stack-get-isempty"></a>`Viper.Collections.Stack.get_IsEmpty` | `i1(obj)` | `rt_stack_is_empty` |
 | <a id="viper-collections-stack-get-count"></a>`Viper.Collections.Stack.get_Count` | `i64(obj)` | `rt_stack_len` |
@@ -1559,8 +1524,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Stack.Has` | `i1(obj,obj)` | `rt_stack_has` |
 | `Viper.Collections.Stack.ToList` | `obj<Viper.Collections.List>(obj)` | `rt_stack_to_list` |
 | `Viper.Collections.Stack.Clone` | `obj<Viper.Collections.Stack>(obj)` | `rt_stack_clone` |
-| `Viper.Collections.Stack.TryPop` | `obj(obj)` | `rt_stack_try_pop` |
-| `Viper.Collections.Stack.TryPopOption` | `obj<Viper.Option>(obj)` | `rt_stack_try_pop_option` |
+| `Viper.Collections.Stack.TryPop` | `obj<Viper.Option>(obj)` | `rt_stack_try_pop_option` |
 | `Viper.Collections.Stack.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_stack_to_seq` |
 | `Viper.Collections.Iterator.FromSeq` | `obj(obj)` | `rt_iter_from_seq` |
 | `Viper.Collections.Iterator.FromList` | `obj(obj)` | `rt_iter_from_list` |
@@ -1578,20 +1542,20 @@ Constructor: `Viper.Collections.Deque.New`
 | <a id="viper-collections-iterator-get-count"></a>`Viper.Collections.Iterator.get_Count` | `i64(obj)` | `rt_iter_count` |
 | `Viper.Collections.Iterator.ToSeq` | `obj(obj)` | `rt_iter_to_seq` |
 | `Viper.Collections.Iterator.Skip` | `i64(obj,i64)` | `rt_iter_skip` |
-| `Viper.Collections.TreeMap.New` | `obj()` | `rt_treemap_new` |
-| <a id="viper-collections-treemap-get-count"></a>`Viper.Collections.TreeMap.get_Count` | `i64(obj)` | `rt_treemap_len` |
-| <a id="viper-collections-treemap-get-isempty"></a>`Viper.Collections.TreeMap.get_IsEmpty` | `i1(obj)` | `rt_treemap_is_empty` |
-| `Viper.Collections.TreeMap.Set` | `void(obj,str,obj)` | `rt_treemap_set` |
-| `Viper.Collections.TreeMap.Get` | `obj(obj,str)` | `rt_treemap_get` |
-| `Viper.Collections.TreeMap.Has` | `i1(obj,str)` | `rt_treemap_has` |
-| `Viper.Collections.TreeMap.Remove` | `i1(obj,str)` | `rt_treemap_remove` |
-| `Viper.Collections.TreeMap.Clear` | `void(obj)` | `rt_treemap_clear` |
-| `Viper.Collections.TreeMap.Keys` | `seq<str>(obj)` | `rt_treemap_keys` |
-| `Viper.Collections.TreeMap.Values` | `seq<obj>(obj)` | `rt_treemap_values` |
-| `Viper.Collections.TreeMap.First` | `str(obj)` | `rt_treemap_first` |
-| `Viper.Collections.TreeMap.Last` | `str(obj)` | `rt_treemap_last` |
-| `Viper.Collections.TreeMap.Floor` | `str(obj,str)` | `rt_treemap_floor` |
-| `Viper.Collections.TreeMap.Ceil` | `str(obj,str)` | `rt_treemap_ceil` |
+| `Viper.Collections.SortedMap.New` | `obj()` | `rt_treemap_new` |
+| <a id="viper-collections-sortedmap-get-count"></a>`Viper.Collections.SortedMap.get_Count` | `i64(obj)` | `rt_treemap_len` |
+| <a id="viper-collections-sortedmap-get-isempty"></a>`Viper.Collections.SortedMap.get_IsEmpty` | `i1(obj)` | `rt_treemap_is_empty` |
+| `Viper.Collections.SortedMap.Set` | `void(obj,str,obj)` | `rt_treemap_set` |
+| `Viper.Collections.SortedMap.Get` | `obj(obj,str)` | `rt_treemap_get` |
+| `Viper.Collections.SortedMap.Has` | `i1(obj,str)` | `rt_treemap_has` |
+| `Viper.Collections.SortedMap.Remove` | `i1(obj,str)` | `rt_treemap_remove` |
+| `Viper.Collections.SortedMap.Clear` | `void(obj)` | `rt_treemap_clear` |
+| `Viper.Collections.SortedMap.Keys` | `seq<str>(obj)` | `rt_treemap_keys` |
+| `Viper.Collections.SortedMap.Values` | `seq<obj>(obj)` | `rt_treemap_values` |
+| `Viper.Collections.SortedMap.First` | `str(obj)` | `rt_treemap_first` |
+| `Viper.Collections.SortedMap.Last` | `str(obj)` | `rt_treemap_last` |
+| `Viper.Collections.SortedMap.Floor` | `str(obj,str)` | `rt_treemap_floor` |
+| `Viper.Collections.SortedMap.Ceiling` | `str(obj,str)` | `rt_treemap_ceil` |
 | `Viper.Collections.Trie.Clear` | `void(obj)` | `rt_trie_clear` |
 | `Viper.Collections.Trie.Get` | `obj(obj,str)` | `rt_trie_get` |
 | `Viper.Collections.Trie.Has` | `i1(obj,str)` | `rt_trie_has` |
@@ -1625,23 +1589,22 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.SortedSet.First` | `str(obj)` | `rt_sortedset_first` |
 | `Viper.Collections.SortedSet.Last` | `str(obj)` | `rt_sortedset_last` |
 | `Viper.Collections.SortedSet.Floor` | `str(obj,str)` | `rt_sortedset_floor` |
-| `Viper.Collections.SortedSet.Ceil` | `str(obj,str)` | `rt_sortedset_ceil` |
+| `Viper.Collections.SortedSet.Ceiling` | `str(obj,str)` | `rt_sortedset_ceil` |
 | `Viper.Collections.SortedSet.Lower` | `str(obj,str)` | `rt_sortedset_lower` |
 | `Viper.Collections.SortedSet.Higher` | `str(obj,str)` | `rt_sortedset_higher` |
 | `Viper.Collections.SortedSet.At` | `str(obj,i64)` | `rt_sortedset_at` |
 | `Viper.Collections.SortedSet.IndexOf` | `i64(obj,str)` | `rt_sortedset_index_of` |
-| `Viper.Collections.SortedSet.Items` | `seq<str>(obj)` | `rt_sortedset_items` |
+| `Viper.Collections.SortedSet.ToSeq` | `seq<str>(obj)` | `rt_sortedset_items` |
 | `Viper.Collections.SortedSet.Range` | `obj(obj,str,str)` | `rt_sortedset_range` |
 | `Viper.Collections.SortedSet.Take` | `obj(obj,i64)` | `rt_sortedset_take` |
 | `Viper.Collections.SortedSet.Skip` | `obj(obj,i64)` | `rt_sortedset_skip` |
 | `Viper.Collections.SortedSet.Union` | `obj(obj,obj)` | `rt_sortedset_union` |
 | `Viper.Collections.SortedSet.Intersect` | `obj(obj,obj)` | `rt_sortedset_intersect` |
-| `Viper.Collections.SortedSet.Diff` | `obj(obj,obj)` | `rt_sortedset_diff` |
+| `Viper.Collections.SortedSet.Difference` | `obj(obj,obj)` | `rt_sortedset_diff` |
 | `Viper.Collections.SortedSet.IsSubset` | `i1(obj,obj)` | `rt_sortedset_is_subset` |
 | `Viper.Collections.Deque.New` | `obj()` | `rt_deque_new` |
 | `Viper.Collections.Deque.WithCapacity` | `obj(i64)` | `rt_deque_with_capacity` |
 | <a id="viper-collections-deque-get-count"></a>`Viper.Collections.Deque.get_Count` | `i64(obj)` | `rt_deque_len` |
-| <a id="viper-collections-deque-get-cap"></a>`Viper.Collections.Deque.get_Cap` | `i64(obj)` | `rt_deque_cap` |
 | <a id="viper-collections-deque-get-capacity"></a>`Viper.Collections.Deque.get_Capacity` | `i64(obj)` | `rt_deque_cap` |
 | <a id="viper-collections-deque-get-isempty"></a>`Viper.Collections.Deque.get_IsEmpty` | `i1(obj)` | `rt_deque_is_empty` |
 | `Viper.Collections.Deque.PushFront` | `void(obj,obj)` | `rt_deque_push_front` |
@@ -1656,10 +1619,8 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Deque.Has` | `i1(obj,obj)` | `rt_deque_has` |
 | `Viper.Collections.Deque.Reverse` | `void(obj)` | `rt_deque_reverse` |
 | `Viper.Collections.Deque.Clone` | `obj<Viper.Collections.Deque>(obj)` | `rt_deque_clone` |
-| `Viper.Collections.Deque.TryPopFront` | `obj(obj)` | `rt_deque_try_pop_front` |
-| `Viper.Collections.Deque.TryPopBack` | `obj(obj)` | `rt_deque_try_pop_back` |
-| `Viper.Collections.Deque.TryPopFrontOption` | `obj<Viper.Option>(obj)` | `rt_deque_try_pop_front_option` |
-| `Viper.Collections.Deque.TryPopBackOption` | `obj<Viper.Option>(obj)` | `rt_deque_try_pop_back_option` |
+| `Viper.Collections.Deque.TryPopFront` | `obj<Viper.Option>(obj)` | `rt_deque_try_pop_front_option` |
+| `Viper.Collections.Deque.TryPopBack` | `obj<Viper.Option>(obj)` | `rt_deque_try_pop_back_option` |
 | `Viper.Collections.Deque.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_deque_to_seq` |
 | `Viper.Collections.Deque.ToList` | `obj<Viper.Collections.List>(obj)` | `rt_deque_to_list` |
 

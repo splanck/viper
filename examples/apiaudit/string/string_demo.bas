@@ -99,7 +99,7 @@ PRINT "--- Cmp / CmpNoCase / Equals ---"
 PRINT "Cmp apple/banana: "; Viper.String.Cmp("apple", "banana")
 PRINT "Cmp banana/apple: "; Viper.String.Cmp("banana", "apple")
 PRINT "Cmp apple/apple: "; Viper.String.Cmp("apple", "apple")
-PRINT "CmpNoCase Hello/hello: "; Viper.String.CmpNoCase("Hello", "hello")
+PRINT "CmpNoCase Hello/hello: "; Viper.String.CompareIgnoreCase("Hello", "hello")
 PRINT "Equals abc/abc: "; Viper.String.Equals("abc", "abc")
 PRINT "Equals abc/xyz: "; Viper.String.Equals("abc", "xyz")
 
@@ -142,7 +142,7 @@ PRINT "CamelCase: "; Viper.String.CamelCase("hello world")
 PRINT "PascalCase: "; Viper.String.PascalCase("hello world")
 PRINT "SnakeCase: "; Viper.String.SnakeCase("helloWorld")
 PRINT "KebabCase: "; Viper.String.KebabCase("helloWorld")
-PRINT "ScreamingSnake: "; Viper.String.ScreamingSnake("helloWorld")
+PRINT "ScreamingSnake: "; Viper.String.ScreamingSnakeCase("helloWorld")
 
 ' --- Levenshtein ---
 PRINT "--- Levenshtein ---"

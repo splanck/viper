@@ -39,8 +39,8 @@ Static utilities for classifying text as LTR / RTL / mixed.
 |---|---|---|
 | `OfLocale(loc)` | `String(Locale)` | Returns `"ltr"` or `"rtl"` from locale data. |
 | `Detect(s)` | `String(String)` | `"ltr"`, `"rtl"`, or `"mixed"`; null/empty input returns `""`, while all-neutral nonempty text defaults to `"ltr"`. |
-| `IsRTL(s)` | `Bool(String)` | True when the fixed classifier's RTL count is greater than its LTR count. |
-| `IsLTR(s)` | `Bool(String)` | True when that LTR count is greater than or equal to RTL; null/empty text is LTR. |
+| `IsRtl(s)` | `Bool(String)` | True when the fixed classifier's RTL count is greater than its LTR count. |
+| `IsLtr(s)` | `Bool(String)` | True when that LTR count is greater than or equal to RTL; null/empty text is LTR. |
 | `FirstStrong(s)` | `String(String)` | `"ltr"` / `"rtl"` / `"neutral"` based on first strong codepoint. |
 | `Bidi(s)` | `String(String)` | Wraps RTL runs with U+2067/U+2069 isolates for mixed-content strings. |
 

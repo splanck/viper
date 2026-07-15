@@ -35,10 +35,12 @@ SUB Worker()
 END SUB
 
 ' Start worker threads
-DIM threads(NUM_THREADS) AS Viper.Threads.Thread
+DIM threads(NUM_THREADS) AS OBJECT
 DIM t AS INTEGER
 FOR t = 1 TO NUM_THREADS
-    threads(t) = Viper.Threads.Thread.Start(ADDRESSOF Worker)
+    DIM th AS OBJECT
+    th = Viper.Threads.Thread.Start(ADDRESSOF Worker, NOTHING)
+    threads(t) = th
     PRINT "Started thread "; threads(t).Id
 NEXT t
 

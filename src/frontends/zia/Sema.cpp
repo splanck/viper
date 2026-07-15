@@ -203,19 +203,12 @@ bool isSafeFunctionBridgePayload(TypeRef type) {
 }
 
 /// @brief Suggest a memory-safe replacement for a runtime call that returns a
-///        raw pointer/buffer (e.g. Dir.List → Dir.ListSeq), for use in the
+///        raw pointer/buffer, for use in the
 ///        diagnostic when such a call is rejected. Empty if none is known.
 std::string saferRuntimePointerAlternative(std::string_view calleeName) {
     static const std::unordered_map<std::string_view, std::string_view> alternatives = {
-        {"Viper.IO.Dir.List", "Viper.IO.Dir.ListSeq"},
-        {"Viper.IO.Dir.Files", "Viper.IO.Dir.FilesSeq"},
-        {"Viper.IO.Dir.Dirs", "Viper.IO.Dir.DirsSeq"},
-        {"Viper.IO.File.ReadBytes", "Viper.IO.File.ReadAllBytes"},
-        {"Viper.IO.File.ReadLines", "Viper.IO.File.ReadAllLines"},
-        {"Viper.IO.File.WriteBytes", "Viper.IO.File.WriteAllBytes"},
-        {"Viper.IO.File.WriteLines", "Viper.IO.File.WriteAllLines"},
         {"Viper.Core.Parse.TryInt", "Viper.Core.Parse.IntOr"},
-        {"Viper.Core.Parse.TryNum", "Viper.Core.Parse.NumOr"},
+        {"Viper.Core.Parse.TryDouble", "Viper.Core.Parse.DoubleOr"},
         {"Viper.Core.Parse.TryBool", "Viper.Core.Parse.BoolOr"},
         {"Viper.Threads.Pool.Submit",
          "Viper.Threads.Thread.Start or Viper.Threads.Async.Run for managed Zia callbacks"},

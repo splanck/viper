@@ -90,12 +90,12 @@ class WeaponModels {
 
     expose func setup(t: textures.TextureLib, r: registry.AssetRegistry) {
         texLib = t; reg = r;
-        chassisMat = G3D.Material3D.NewPBR(0.36, 0.37, 0.4);
+        chassisMat = G3D.Material3D.PBR(0.36, 0.37, 0.4);
         chassisMat.Roughness = 0.45;
         chassisMat.Metallic = 0.7;
         var w = 0;
         while w < config.WEAPON_COUNT {
-            var am = G3D.Material3D.NewColor(flashR(w), flashG(w), flashB(w));
+            var am = G3D.Material3D.FromColor(flashR(w), flashG(w), flashB(w));
             G3D.Material3D.SetEmissiveColor(am, flashR(w), flashG(w), flashB(w));
             am.EmissiveIntensity = 1.8;
             accentMats.Add(am);

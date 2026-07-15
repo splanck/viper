@@ -913,7 +913,7 @@ func readStringLines(text: String) -> List[String] {
 // final file via delete + move. Mitigates partial-write corruption from
 // a mid-save crash. Plan 15 § Failure mode 5.
 func writeAtomic(path: String, text: String) {
-    Dir.MakeAll(Path.Dir(path));
+    Dir.MakeAll(Path.Directory(path));
     var tmp = path + ".tmp";
     File.WriteAllText(tmp, text);
     if File.Exists(path) {

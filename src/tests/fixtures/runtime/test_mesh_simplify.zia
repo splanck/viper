@@ -12,7 +12,7 @@ bind Viper.Terminal;
 //   - GenerateLODs registers the requested levels and enables auto-LOD.
 
 func start() {
-    var dense = Mesh3D.NewSphere(1.0, 32);
+    var dense = Mesh3D.Sphere(1.0, 32);
     var srcTris = dense.TriangleCount;
     if (srcTris < 500) {
         Say("FAIL: test sphere should be dense");
@@ -52,7 +52,7 @@ func start() {
                     new Vec3(0.0, 0.0, 4.0),
                     new Vec3(0.0, 0.0, 0.0),
                     new Vec3(0.0, 1.0, 0.0));
-    var mat = Material3D.NewColor(0.8, 0.4, 0.2);
+    var mat = Material3D.FromColor(0.8, 0.4, 0.2);
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, cam);
     Canvas3D.DrawMesh(canvas, lod, Mat4.Identity(), mat);
@@ -64,7 +64,7 @@ func start() {
     var node = SceneNode.New();
     SceneNode.set_Mesh(node, dense);
     SceneGraph.Add(scene, node);
-    SceneNode.GenerateLODs(node, 3, 0.4);
+    SceneNode.GenerateLods(node, 3, 0.4);
     if (node.LodCount != 3) {
         Say("FAIL: GenerateLODs(3) should register three LOD levels");
         return;

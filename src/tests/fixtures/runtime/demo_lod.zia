@@ -13,20 +13,20 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 200.0);
 
     // Create 3 LOD meshes for spheres
-    var sphere_hi = Mesh3D.NewSphere(1.0, 24);   // 24 segments — high detail
-    var sphere_mid = Mesh3D.NewSphere(1.0, 8);   // 8 segments — medium
-    var sphere_lo = Mesh3D.NewBox(1.4, 1.4, 1.4); // box as lowest LOD
+    var sphere_hi = Mesh3D.Sphere(1.0, 24);   // 24 segments — high detail
+    var sphere_mid = Mesh3D.Sphere(1.0, 8);   // 8 segments — medium
+    var sphere_lo = Mesh3D.Box(1.4, 1.4, 1.4); // box as lowest LOD
 
-    var mat_red = Material3D.NewColor(0.9, 0.2, 0.2);
+    var mat_red = Material3D.FromColor(0.9, 0.2, 0.2);
     Material3D.SetShininess(mat_red, 32.0);
-    var mat_green = Material3D.NewColor(0.2, 0.8, 0.2);
+    var mat_green = Material3D.FromColor(0.2, 0.8, 0.2);
     Material3D.SetShininess(mat_green, 32.0);
-    var mat_blue = Material3D.NewColor(0.2, 0.2, 0.9);
+    var mat_blue = Material3D.FromColor(0.2, 0.2, 0.9);
     Material3D.SetShininess(mat_blue, 32.0);
-    var floor_mat = Material3D.NewColor(0.3, 0.3, 0.35);
+    var floor_mat = Material3D.FromColor(0.3, 0.3, 0.35);
 
     // Floor
-    var floor_mesh = Mesh3D.NewPlane(50.0, 50.0);
+    var floor_mesh = Mesh3D.Plane(50.0, 50.0);
 
     // Scene graph with LOD nodes
     var scene = SceneGraph.New();
@@ -58,8 +58,8 @@ func start() {
         SceneNode.SetPosition(node, x, 0.0, 0.0);
 
         // Add LOD levels: at 10 units switch to medium, at 25 units switch to low
-        SceneNode.AddLOD(node, 10.0, sphere_mid);
-        SceneNode.AddLOD(node, 25.0, sphere_lo);
+        SceneNode.AddLod(node, 10.0, sphere_mid);
+        SceneNode.AddLod(node, 25.0, sphere_lo);
 
         SceneGraph.Add(scene, node);
         i = i + 1;
@@ -67,13 +67,13 @@ func start() {
 
     // Lighting
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.85);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
 
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 

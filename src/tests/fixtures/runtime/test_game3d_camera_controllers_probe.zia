@@ -26,7 +26,7 @@ func start() {
     world.SetCameraController(freeFly);
 
     var before = camera.Position;
-    G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_KeyW(), true);
+    G3D.Canvas3D.PushSyntheticKey(canvas, Viper.Input.Key.W, true);
     G3D.Canvas3D.PushSyntheticMouse(canvas, 12.0, -4.0, 0, 0.0);
     world.RunFramesOnly(1, 0.1);
     var after = camera.Position;

@@ -5,21 +5,21 @@ bind Viper.Terminal;
 
 func start() {
     // === Test 1: GC stats ===
-    var passes = Viper.Memory.GC.PassCount();
+    var passes = Viper.Runtime.GC.PassCount();
     if (passes < 0) { Say("FAIL: PassCount should be >= 0"); return; }
 
-    var tracked = Viper.Memory.GC.TrackedCount();
+    var tracked = Viper.Runtime.GC.TrackedCount();
     if (tracked < 0) { Say("FAIL: TrackedCount should be >= 0"); return; }
 
-    var totalCollected = Viper.Memory.GC.TotalCollected();
+    var totalCollected = Viper.Runtime.GC.TotalCollected();
     if (totalCollected < 0) { Say("FAIL: TotalCollected should be >= 0"); return; }
 
     // === Test 2: GC collect ===
-    var freed = Viper.Memory.GC.Collect();
+    var freed = Viper.Runtime.GC.Collect();
     if (freed < 0) { Say("FAIL: Collect should return >= 0"); return; }
 
     // PassCount should increment
-    var passes2 = Viper.Memory.GC.PassCount();
+    var passes2 = Viper.Runtime.GC.PassCount();
     if (passes2 < passes + 1) { Say("FAIL: PassCount should increment after Collect"); return; }
 
     // === Test 3: WeakMap creation ===
@@ -82,10 +82,10 @@ func start() {
 
     // === Test 10: GC after creating objects ===
     // Create some objects and collect
-    var freed2 = Viper.Memory.GC.Collect();
+    var freed2 = Viper.Runtime.GC.Collect();
     if (freed2 < 0) { Say("FAIL: second Collect should return >= 0"); return; }
 
-    var passes3 = Viper.Memory.GC.PassCount();
+    var passes3 = Viper.Runtime.GC.PassCount();
     if (passes3 < passes2 + 1) { Say("FAIL: PassCount should increment again"); return; }
 
     Say("RESULT: ok");

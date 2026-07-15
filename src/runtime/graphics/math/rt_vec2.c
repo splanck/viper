@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_vec2.c
+// File: src/runtime/graphics/math/rt_vec2.c
 // Purpose: 2D vector mathematics (x, y doubles) for Viper games and graphics.
 //   Provides immutable Vec2 objects with arithmetic (+,-,×,÷), dot product,
 //   cross product magnitude, length/normalize, distance, linear interpolation,
-//   angle operations, and reflection. Used pervasively in physics, camera math,
+//   angle and rotation operations. Used pervasively in physics, camera math,
 //   UI layout, and any API that exchanges 2D positions or directions.
 //
 // Key invariants:

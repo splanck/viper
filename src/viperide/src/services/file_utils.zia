@@ -38,7 +38,7 @@ final DOC_KIND_BINARY_UNSUPPORTED: Integer = 4;
 /// @return Language tag suitable for `Document.language` and the
 ///         editor's `SetLanguage` call.
 func DetectLanguage(path: String) -> String {
-    var ext = Str.ToLower(Path.Ext(path));
+    var ext = Str.ToLower(Path.Extension(path));
     if ext == ".zia"  { return "zia"; }
     if ext == ".bas"  { return "basic"; }
     if ext == ".vb"   { return "basic"; }
@@ -53,7 +53,7 @@ func DetectLanguage(path: String) -> String {
 
 /// @brief Map a file path to an IDE document kind.
 func DetectKind(path: String) -> Integer {
-    var ext = Str.ToLower(Path.Ext(path));
+    var ext = Str.ToLower(Path.Extension(path));
     if ext == ".zia" or ext == ".bas" or ext == ".vb" {
         return DOC_KIND_CODE;
     }

@@ -46,7 +46,7 @@ func start() {
     // --- Expired ---
     Say("--- Expired ---");
     Say("Expired (should be false, just started):");
-    SayBool(CD.get_Expired(cd));
+    SayBool(CD.get_IsExpired(cd));
 
     // --- Stop ---
     Say("--- Stop ---");

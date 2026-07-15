@@ -59,7 +59,7 @@ the remaining user-facing design problems.
 |---|---:|---:|---:|
 | `Viper.Input.Keyboard` | 97 | 16 | 113 |
 | `Viper.Graphics3D.Canvas3D` | 41 | 71 | 112 |
-| `Viper.Game3D.Keys` | 99 | 0 | 99 |
+| `Viper.Input.Key` | 99 | 0 | 99 |
 | `Viper.GUI.CodeEditor` | 6 | 89 | 95 |
 | `Viper.Graphics.Canvas` | 5 | 80 | 85 |
 | `Viper.Game2D.SceneDocument` | 4 | 65 | 69 |
@@ -127,7 +127,7 @@ methods. Examples:
 - `Viper.Network.WsServer.Subprotocol` plus `SetSubprotocol`
 - `Viper.Graphics3D.Material3D.Color` plus `SetColor`
 - `Viper.Graphics3D.SceneNode.Position` plus `SetPosition`
-- `Viper.Graphics3D.Physics3DBody.Position` plus `SetPosition`
+- `Viper.Graphics3D.PhysicsBody3D.Position` plus `SetPosition`
 - `Viper.Game3D.World3D.WorkerCount` plus `SetWorkerCount`
 
 Decision work: see
@@ -166,21 +166,21 @@ Decision work: see
 ### Input Keys
 
 `Viper.Input.Keyboard` exposes 97 properties, most of them key constants.
-`Viper.Game3D.Keys` exposes 99 key constants. These should not both be public
+`Viper.Input.Key` exposes 99 key constants. These should not both be public
 canonical surfaces.
 
 Relevant source regions:
 
 - `src/il/runtime/runtime.def:4944` for `Viper.Input.Keyboard`
 - `src/il/runtime/runtime.def:9302` for `Viper.Input.Keyboard` class metadata
-- `src/il/runtime/runtime.def:14016` for `Viper.Game3D.Keys`
+- `src/il/runtime/runtime.def:14016` for `Viper.Input.Key`
 
 ### 3D Assets
 
 The 3D stack has several overlapping load vocabularies:
 
-- `Viper.Graphics3D.GLTF.Load`
-- `Viper.Graphics3D.FBX.Load`
+- `Viper.Graphics3D.Gltf.Load`
+- `Viper.Graphics3D.Fbx.Load`
 - `Viper.Graphics3D.SceneAsset.Load/LoadAsset/LoadAnimation/...`
 - `Viper.Game3D.Assets3D.LoadEntity/LoadTemplate/...`
 

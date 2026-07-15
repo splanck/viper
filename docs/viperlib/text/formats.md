@@ -11,7 +11,7 @@ last-verified: 2026-07-14
 
 ---
 
-## Viper.Text.Json
+## Viper.Data.Json
 
 JSON value-tree parsing and formatting targeting ECMA-404/[RFC 8259](https://www.rfc-editor.org/rfc/rfc8259.html),
 with the validation and runtime-value limitations called out below.
@@ -26,7 +26,6 @@ with the validation and runtime-value limitations called out below.
 | `ParseObject(text)` | `Map(String)`       | Parse JSON, expecting an object (returns a typed `Map`) |
 | `ParseArray(text)`  | `Object(String)`    | Parse JSON, expecting an array (Seq)             |
 | `Format(value)`     | `String(Object)`    | Format value as compact JSON string              |
-| `Stringify(value)`  | `String(Object)`    | Alias for `Format(value)`                        |
 | `FormatPretty(v,n)` | `String(Object,Int)`| Format with indentation (n spaces)               |
 | `IsValid(text)`     | `Boolean(String)`   | Check if string is valid JSON                    |
 | `TypeOf(value)`     | `String(Object)`    | Get type: `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, `"object"`, or `"unknown"` |
@@ -62,7 +61,7 @@ as `1`. JSON strings are runtime string handles, not `Box.Str` values, so the st
 module JsonDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Json as Json;
+bind Viper.Data.Json as Json;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -78,7 +77,7 @@ func start() {
 ```basic
 ' Parse JSON
 DIM json AS STRING = "{""name"": ""Alice"", ""age"": 30, ""active"": true}"
-DIM data AS OBJECT = Viper.Text.Json.Parse(json)
+DIM data AS OBJECT = Viper.Data.Json.Parse(json)
 
 ' BASIC resolves the concrete Map helpers; the Json aliases are available on Zia's class surface
 DIM name AS STRING = Viper.Collections.Map.GetStr(data, "name")
@@ -87,7 +86,7 @@ PRINT "Name: "; name   ' Output: Alice
 PRINT "Age: "; age     ' Output: 30
 
 ' Check type
-DIM valueType AS STRING = Viper.Text.Json.TypeOf(Viper.Collections.Map.Get(data, "active"))
+DIM valueType AS STRING = Viper.Data.Json.TypeOf(Viper.Collections.Map.Get(data, "active"))
 PRINT valueType        ' Output: "boolean"
 
 ' Format with pretty printing
@@ -95,7 +94,7 @@ DIM config AS OBJECT = Viper.Collections.Map.New()
 config.Set("debug", Viper.Core.Box.I1(true))
 config.Set("port", Viper.Core.Box.I64(8080))
 
-DIM formattedJson AS STRING = Viper.Text.Json.FormatPretty(config, 2)
+DIM formattedJson AS STRING = Viper.Data.Json.FormatPretty(config, 2)
 PRINT formattedJson
 ' Output:
 ' {
@@ -104,8 +103,8 @@ PRINT formattedJson
 ' }
 
 ' Validate JSON
-IF Viper.Text.Json.IsValid(json) THEN
-    DIM parsed AS OBJECT = Viper.Text.Json.Parse(json)
+IF Viper.Data.Json.IsValid(json) THEN
+    DIM parsed AS OBJECT = Viper.Data.Json.Parse(json)
 END IF
 ```
 
@@ -131,17 +130,16 @@ END IF
   value fits in an integer. Out-of-range conversion currently uses a C cast with
   platform-dependent behavior; see
   [VDOC-037](../../documentation-review-findings.md#vdoc-037--json-derived-integer-accessors-have-undefined-out-of-range-conversion).
-- The `Get*`, `Set*`, `Has`, and `Stringify` entries on the Zia `Json` class surface are aliases
+- The `Get*`, `Set*`, and `Has` entries on the Zia `Json` class surface are aliases
   for other registered functions. BASIC cannot resolve those aliases by their `Json` names;
-  call `Viper.Collections.Map.Get*`, `Set*`, and `Has`, and use `Json.Format` instead of
-  `Json.Stringify`. See
+  call `Viper.Collections.Map.Get*`, `Set*`, and `Has`, and use `Json.Format` instead of See
   [VDOC-019](../../documentation-review-findings.md#vdoc-019--basic-cannot-call-the-json-class-aliases).
 
 ---
 
-## Viper.Text.JsonPath
+## Viper.Data.JsonPath
 
-JSONPath-like query expressions for navigating parsed JSON objects. Works with objects returned by `Viper.Text.Json.Parse()`.
+JSONPath-like query expressions for navigating parsed JSON objects. Works with objects returned by `Viper.Data.Json.Parse()`.
 
 **Type:** Static utility class
 
@@ -203,8 +201,8 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 module JsonPathDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Json as Json;
-bind Viper.Text.JsonPath as JP;
+bind Viper.Data.Json as Json;
+bind Viper.Data.JsonPath as JP;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -225,31 +223,31 @@ func start() {
 ```basic
 ' Parse a JSON document
 DIM json AS STRING = "{""user"": {""name"": ""Alice"", ""scores"": [95, 87, 92]}}"
-DIM data AS OBJECT = Viper.Text.Json.Parse(json)
+DIM data AS OBJECT = Viper.Data.Json.Parse(json)
 
 ' Simple path access
-DIM name AS STRING = Viper.Text.JsonPath.GetStr(data, "user.name")
+DIM name AS STRING = Viper.Data.JsonPath.GetStr(data, "user.name")
 PRINT name  ' Output: "Alice"
 
 ' Array access
-DIM first AS INTEGER = Viper.Text.JsonPath.GetInt(data, "user.scores[0]")
+DIM first AS INTEGER = Viper.Data.JsonPath.GetInt(data, "user.scores[0]")
 PRINT first  ' Output: 95
 
 ' Check existence
-IF Viper.Text.JsonPath.Has(data, "user.email") THEN
+IF Viper.Data.JsonPath.Has(data, "user.email") THEN
     PRINT "Has email"
 ELSE
     PRINT "No email field"  ' Output: "No email field"
 END IF
 
 ' Default values (the missing path returns the boxed integer default)
-DIM rankValue AS OBJECT = Viper.Text.JsonPath.GetOr(data, "user.rank", Viper.Core.Box.I64(-1))
+DIM rankValue AS OBJECT = Viper.Data.JsonPath.GetOr(data, "user.rank", Viper.Core.Box.I64(-1))
 PRINT Viper.Core.Box.ToI64(rankValue)  ' Output: -1
 
 ' Wildcard queries
 DIM api AS STRING = "{""users"": [{""name"": ""Alice""}, {""name"": ""Bob""}]}"
-DIM apiData AS OBJECT = Viper.Text.Json.Parse(api)
-DIM names AS Viper.Collections.Seq = Viper.Text.JsonPath.Query(apiData, "users.*.name")
+DIM apiData AS OBJECT = Viper.Data.Json.Parse(api)
+DIM names AS Viper.Collections.Seq = Viper.Data.JsonPath.Query(apiData, "users.*.name")
 PRINT names.Count     ' Output: 2
 ```
 
@@ -261,7 +259,7 @@ PRINT names.Count     ' Output: 2
 
 ---
 
-## Viper.Text.JsonStream
+## Viper.Data.JsonStream
 
 Pull-based JSON tokenizer for processing a complete JSON string without building the parsed
 `Map`/`Seq` value tree.
@@ -334,7 +332,7 @@ Pull-based JSON tokenizer for processing a complete JSON string without building
 module JsonStreamDemo;
 
 bind Viper.Terminal;
-bind JS = Viper.Text.JsonStream;
+bind JS = Viper.Data.JsonStream;
 
 func start() {
     var s = JS.New("{\"name\":\"Alice\",\"age\":30,\"active\":true}");
@@ -377,7 +375,7 @@ func start() {
 ```basic
 ' Stream through a JSON document
 DIM json AS STRING = "{""name"": ""Alice"", ""scores"": [95, 87, 92]}"
-DIM stream AS OBJECT = NEW Viper.Text.JsonStream(json)
+DIM stream AS OBJECT = NEW Viper.Data.JsonStream(json)
 
 DO WHILE stream.HasNext()
     DIM nextToken AS OBJECT = stream.NextResult()
@@ -419,7 +417,7 @@ LOOP
 
 ---
 
-## Viper.Text.Csv
+## Viper.Data.Csv
 
 CSV parsing and formatting with [RFC 4180](https://www.rfc-editor.org/rfc/rfc4180.html)-style
 quoting plus configurable-delimiter and line-ending extensions.
@@ -474,7 +472,7 @@ quoting plus configurable-delimiter and line-ending extensions.
 module CsvDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Csv as Csv;
+bind Viper.Data.Csv as Csv;
 bind Viper.Text.Fmt as Fmt;
 bind Viper.Collections.Seq as Seq;
 
@@ -496,36 +494,36 @@ func start() {
 
 ```basic
 ' Parse a simple CSV line
-DIM fields AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine("name,age,city")
+DIM fields AS Viper.Collections.Seq = Viper.Data.Csv.ParseLine("name,age,city")
 PRINT fields.Count  ' Output: 3
 PRINT Viper.Collections.Seq.GetStr(fields, 0) ' Output: "name"
 
 ' Parse with quoted fields
 DIM quote AS STRING = CHR$(34)
-DIM row AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine( _
+DIM row AS Viper.Collections.Seq = Viper.Data.Csv.ParseLine( _
     quote + "John Doe" + quote + ",30," + quote + "New York" + quote)
 PRINT Viper.Collections.Seq.GetStr(row, 0)    ' Output: John Doe
 PRINT Viper.Collections.Seq.GetStr(row, 2)    ' Output: New York
 
 ' Handle embedded quotes (doubled)
-DIM quoted AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine( _
+DIM quoted AS Viper.Collections.Seq = Viper.Data.Csv.ParseLine( _
     quote + "He said " + quote + quote + "Hello" + quote + quote + quote)
 PRINT Viper.Collections.Seq.GetStr(quoted, 0) ' Output: He said "Hello"
 
 ' Parse multi-line CSV
 DIM csv AS STRING = "name,age" + CHR$(10) + "Alice,25" + CHR$(10) + "Bob,30"
-DIM rows AS Viper.Collections.Seq = Viper.Text.Csv.Parse(csv)
+DIM rows AS Viper.Collections.Seq = Viper.Data.Csv.Parse(csv)
 PRINT rows.Count    ' Output: 3
 
 ' Format fields into CSV
 DIM data AS Viper.Collections.Seq = NEW Viper.Collections.Seq()
 data.Push("Hello, World")
 data.Push("Simple")
-DIM line AS STRING = Viper.Text.Csv.FormatLine(data)
+DIM line AS STRING = Viper.Data.Csv.FormatLine(data)
 PRINT line          ' Output: "Hello, World",Simple
 
 ' Use tab delimiter
-DIM tsv AS Viper.Collections.Seq = Viper.Text.Csv.ParseLineWith("a	b	c", CHR$(9))
+DIM tsv AS Viper.Collections.Seq = Viper.Data.Csv.ParseLineWith("a	b	c", CHR$(9))
 PRINT tsv.Count     ' Output: 3
 ```
 
@@ -538,7 +536,7 @@ PRINT tsv.Count     ' Output: 3
 
 ---
 
-## Viper.Text.Toml
+## Viper.Data.Toml
 
 Permissive parser and formatter for a practical subset of TOML (Tom's Obvious Minimal Language).
 The current published specification is [TOML 1.1.0](https://toml.io/en/v1.1.0); this runtime's
@@ -604,7 +602,7 @@ either version.
 module TomlDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Toml as Toml;
+bind Viper.Data.Toml as Toml;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -624,22 +622,22 @@ DIM config AS STRING = "[server]" + CHR$(10) + _
                        "[database]" + CHR$(10) + _
                        "url = ""postgres://localhost/mydb"""
 
-DIM data AS OBJECT = Viper.Text.Toml.Parse(config)
+DIM data AS OBJECT = Viper.Data.Toml.Parse(config)
 
 ' Access nested scalar values using the string getter
-DIM host AS STRING = Viper.Text.Toml.GetStr(data, "server.host")
+DIM host AS STRING = Viper.Data.Toml.GetStr(data, "server.host")
 PRINT host  ' Output: "localhost"
 
-DIM port AS STRING = Viper.Text.Toml.GetStr(data, "server.port")
+DIM port AS STRING = Viper.Data.Toml.GetStr(data, "server.port")
 PRINT port  ' Output: "8080"
 
 ' Validate before parsing
-IF Viper.Text.Toml.IsValid(config) THEN
-    DIM parsed AS OBJECT = Viper.Text.Toml.Parse(config)
+IF Viper.Data.Toml.IsValid(config) THEN
+    DIM parsed AS OBJECT = Viper.Data.Toml.Parse(config)
 END IF
 
 ' Format back to TOML
-DIM formattedToml AS STRING = Viper.Text.Toml.Format(data)
+DIM formattedToml AS STRING = Viper.Data.Toml.Format(data)
 PRINT formattedToml
 ```
 
@@ -651,7 +649,7 @@ PRINT formattedToml
 
 ---
 
-## Viper.Text.Ini
+## Viper.Data.Ini
 
 INI-style configuration parsing and manipulation. The accepted dialect uses `[section]` headers,
 `key=value` pairs, and whole-line `;`/`#` comments.
@@ -697,7 +695,7 @@ INI-style configuration parsing and manipulation. The accepted dialect uses `[se
 module IniDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Ini as Ini;
+bind Viper.Data.Ini as Ini;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -719,35 +717,35 @@ func start() {
 ' Parse an INI configuration string
 DIM text AS STRING = "[app]" + CHR$(10) + "name=MyApp" + CHR$(10) + "version=1.0" + CHR$(10)
 text = text + "[db]" + CHR$(10) + "host=localhost"
-DIM doc AS OBJECT = Viper.Text.Ini.Parse(text)
+DIM doc AS OBJECT = Viper.Data.Ini.Parse(text)
 
 ' Read values
-DIM name AS STRING = Viper.Text.Ini.Get(doc, "app", "name")
+DIM name AS STRING = Viper.Data.Ini.Get(doc, "app", "name")
 PRINT name  ' Output: "MyApp"
 
-DIM host AS STRING = Viper.Text.Ini.Get(doc, "db", "host")
+DIM host AS STRING = Viper.Data.Ini.Get(doc, "db", "host")
 PRINT host  ' Output: "localhost"
 
 ' Missing keys return empty string
-DIM missing AS STRING = Viper.Text.Ini.Get(doc, "db", "port")
+DIM missing AS STRING = Viper.Data.Ini.Get(doc, "db", "port")
 PRINT missing  ' Output: ""
 
 ' Check if section exists
-IF Viper.Text.Ini.HasSection(doc, "app") THEN
+IF Viper.Data.Ini.HasSection(doc, "app") THEN
     PRINT "app section exists"
 END IF
 
 ' List all sections
-DIM sections AS Viper.Collections.Seq = Viper.Text.Ini.Sections(doc)
+DIM sections AS Viper.Collections.Seq = Viper.Data.Ini.Sections(doc)
 PRINT sections.Count  ' Output: 3 ("", "app", and "db")
 
 ' Modify and format back to INI text
-Viper.Text.Ini.Set(doc, "db", "port", "5432")
-DIM formattedIni AS STRING = Viper.Text.Ini.Format(doc)
+Viper.Data.Ini.Set(doc, "db", "port", "5432")
+DIM formattedIni AS STRING = Viper.Data.Ini.Format(doc)
 PRINT formattedIni
 
 ' Remove a key
-DIM removed AS INTEGER = Viper.Text.Ini.Remove(doc, "db", "port")
+DIM removed AS INTEGER = Viper.Data.Ini.Remove(doc, "db", "port")
 PRINT removed  ' Output: 1 (true)
 ```
 
@@ -1115,7 +1113,7 @@ Viper strings, integers, doubles, booleans, NULL, Maps, and Seqs.
 
 - Prefer `ParseResult` for user-provided YAML; it distinguishes valid YAML null (`Ok(NULL)`) from parse failure (`Err(message)`).
 - `Parse` remains available for compatibility and returns NULL both for valid YAML null and for parse failure; check `Error()` after legacy calls when NULL is ambiguous.
-- The returned object uses the same representation as `Viper.Text.Json.Parse` — use `Map`, `Seq`, and scalar
+- The returned object uses the same representation as `Viper.Data.Json.Parse` — use `Map`, `Seq`, and scalar
   accessors to traverse the parsed value.
 - Explicit multi-document YAML streams separated by `---` parse as a sequence of documents.
 - Empty input is valid and maps to YAML null.

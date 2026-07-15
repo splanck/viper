@@ -913,10 +913,10 @@ func start() {
     vid.set_Loop(false);
     vid.Play();
 
-    var lastMs = Clock.Ticks();
+    var lastMs = Clock.NowMs();
     while !app.get_ShouldClose() {
         app.Poll();
-        var nowMs = Clock.Ticks();
+        var nowMs = Clock.NowMs();
         var deltaSeconds = (nowMs - lastMs) / 1000.0;
         lastMs = nowMs;
         vid.Update(deltaSeconds);
@@ -936,12 +936,12 @@ vid.ShowControls = TRUE
 vid.Loop = FALSE
 vid.Play()
 
-DIM lastMs AS INTEGER = Viper.Time.Clock.Ticks()
+DIM lastMs AS INTEGER = Viper.Time.Clock.NowMs()
 DIM nowMs AS INTEGER
 DIM deltaSeconds AS DOUBLE
 DO WHILE NOT app.ShouldClose
     app.Poll()
-    nowMs = Viper.Time.Clock.Ticks()
+    nowMs = Viper.Time.Clock.NowMs()
     deltaSeconds = (nowMs - lastMs) / 1000.0
     lastMs = nowMs
     vid.Update(deltaSeconds)

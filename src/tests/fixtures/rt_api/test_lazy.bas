@@ -8,7 +8,7 @@ lazy = Viper.Functional.Lazy.OfI64(42)
 PRINT Viper.Functional.Lazy.GetI64(lazy)
 
 seq = Viper.Functional.LazySeq.Range(1, 5, 1)
-out = Viper.Functional.LazySeq.ToSeqN(seq, 3)
+out = Viper.Functional.LazySeq.ToSeqLimited(seq, 3)
 count = out.Count
 PRINT count
 

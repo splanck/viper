@@ -152,7 +152,7 @@ class ExplorerActionOverlay {
                            path: String) {
         OpenNameAction(shell, EXPLORER_ACTION_RENAME, "Rename",
                        "Rename " + DisplayPath(path) + ".",
-                       Path.Dir(path), path, Path.Name(path), "Rename");
+                       Path.Directory(path), path, Path.Name(path), "Rename");
     }
 
     /// @brief Open the overlay for duplicating a file.
@@ -162,7 +162,7 @@ class ExplorerActionOverlay {
                               path: String) {
         OpenNameAction(shell, EXPLORER_ACTION_DUPLICATE, "Duplicate File",
                        "Create a copy next to " + DisplayPath(path) + ".",
-                       Path.Dir(path), path, CopyName(Path.Name(path)), "Duplicate");
+                       Path.Directory(path), path, CopyName(Path.Name(path)), "Duplicate");
     }
 
     /// @brief Open the overlay for moving a file or folder to project trash.
@@ -173,7 +173,7 @@ class ExplorerActionOverlay {
         pendingAction = EXPLORER_ACTION_DELETE;
         completedAction = EXPLORER_ACTION_NONE;
         targetPath = path;
-        targetDir = Path.Dir(path);
+        targetDir = Path.Directory(path);
         value = "";
         validationMessage = "";
         applyLabel = "Move to Trash";
@@ -228,7 +228,7 @@ class ExplorerActionOverlay {
         completedAction = EXPLORER_ACTION_NONE;
         if visible == false { return EXPLORER_ACTION_NONE; }
         Layout(shell);
-        if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
+        if Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
             Cancel();
             return EXPLORER_ACTION_CANCEL;
         }
@@ -237,7 +237,7 @@ class ExplorerActionOverlay {
             return EXPLORER_ACTION_CANCEL;
         }
         if applyButton.WasClicked()
-           or Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter()) {
+           or Input.Keyboard.WasPressed(Viper.Input.Key.Enter) {
             return Complete();
         }
         return EXPLORER_ACTION_NONE;
@@ -390,7 +390,7 @@ class ExplorerActionOverlay {
     /// @return Filename with " copy" before the extension when possible.
     hide func CopyName(name: String) -> String {
         if name == "" { return ""; }
-        var ext = Path.Ext(name);
+        var ext = Path.Extension(name);
         if ext == "" { return name + " copy"; }
         return Path.Stem(name) + " copy" + ext;
     }

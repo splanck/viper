@@ -94,7 +94,7 @@ class FrontendController {
         var prevSel = menuBtns.Selected;
 
         if Action.Pressed(config.ACTION_UP) {
-            menuBtns.SelectPrev();
+            menuBtns.SelectPrevious();
         }
         if Action.Pressed(config.ACTION_DOWN) {
             menuBtns.SelectNext();
@@ -135,7 +135,7 @@ class FrontendController {
         var prevSel = optionsBtns.Selected;
 
         if Action.Pressed(config.ACTION_UP) {
-            optionsBtns.SelectPrev();
+            optionsBtns.SelectPrevious();
         }
         if Action.Pressed(config.ACTION_DOWN) {
             optionsBtns.SelectNext();
@@ -247,7 +247,7 @@ class FrontendController {
     expose func updateSummary() -> Integer {
         var prevSel = summaryBtns.Selected;
         if Action.Pressed(config.ACTION_LEFT) {
-            summaryBtns.SelectPrev();
+            summaryBtns.SelectPrevious();
         }
         if Action.Pressed(config.ACTION_RIGHT) {
             summaryBtns.SelectNext();

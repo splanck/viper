@@ -78,7 +78,7 @@ func initAssets() {
         bodyFont_ = BitmapFont.LoadBDF("assets/fonts/viper_8x8.bdf");
     }
     if bodyFont_ == null {
-        var bundleResources = Path.Join(Path.Dir(Path.ExeDir()), "Resources");
+        var bundleResources = Path.Join(Path.Directory(Path.ExeDir()), "Resources");
         bodyFont_ = BitmapFont.LoadBDF(Path.Join(bundleResources, "assets/fonts/viper_8x8.bdf"));
     }
     if bodyFont_ == null {

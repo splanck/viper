@@ -15,14 +15,14 @@
 //   - The type tag (RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM) is set
 //     at construction and never changes.
 //   - When owns==1, the stream holds a reference and releases it on close.
-//   - All operations trap on NULL handles rather than silently succeeding.
+//   - Operations other than Close trap on NULL handles; Close(NULL) is a no-op.
 //   - Seek positions are byte offsets; negative offsets from SEEK_END are valid.
 //
 // Ownership/Lifetime:
 //   - If the stream owns the wrapped object, it releases it when the stream is
 //     closed or garbage collected.
-//   - Callers that pass an existing BinFile/MemStream with owns=0 retain
-//     responsibility for closing the underlying object.
+//   - FromBinFile/FromMemStream retain the existing object but do not close it;
+//     the original owner remains responsible for an explicit Close where needed.
 //
 // Links: src/runtime/io/rt_stream.h (public API),
 //        src/runtime/io/rt_binfile.h (disk-backed binary file),
@@ -104,8 +104,9 @@ static int stream_retain_wrapped_or_cleanup(stream_impl *s, void *wrapped, const
 /// Clears `wrapped` and marks the stream closed *before* releasing,
 /// so a finalizer running in parallel with an explicit `Close` call
 /// can't double-release. Only drops the reference when the stream
-/// owns the wrapped object — externally-wrapped streams (see
-/// `_from_binfile` / `_from_memstream`) leave cleanup to the owner.
+/// owns the wrapped reference. Externally wrapped streams (see
+/// `_from_binfile` / `_from_memstream`) release their retained reference but
+/// leave explicit resource closure to the original owner.
 static void stream_release_wrapped(stream_impl *s) {
     if (!s)
         return;
@@ -374,7 +375,9 @@ int64_t rt_stream_get_len(void *stream) {
     }
 }
 
-/// @brief Check whether the stream has reached end-of-file (position >= length).
+/// @brief Report EOF according to the backing type.
+/// @details Memory streams compare position with length. File streams expose BinFile's sticky
+///          flag, which becomes true only after a read encounters the end and is cleared by seek.
 int8_t rt_stream_is_eof(void *stream) {
     stream_impl *s = stream_require_open(stream, "Stream.Eof: null stream");
     if (!s)
@@ -559,8 +562,10 @@ void rt_stream_close(void *stream) {
 // Conversion
 //=============================================================================
 
-/// @brief Unwrap to the underlying BinFile (if the Stream is file-backed). Returns NULL for
-/// MemStream-backed Streams. The reference is borrowed — caller must NOT release it.
+/// @brief Borrow the underlying BinFile when the Stream is file-backed.
+/// @details A wrong backing type traps. The returned reference is not retained and becomes invalid
+///          when the Stream drops its last reference; current language lowering does not safely
+///          encode that borrowed lifetime (VDOC-187).
 void *rt_stream_as_binfile(void *stream) {
     stream_impl *s = stream_require_open(stream, "Stream.AsBinFile: null stream");
     if (!s)
@@ -573,7 +578,9 @@ void *rt_stream_as_binfile(void *stream) {
     return NULL;
 }
 
-/// @brief Unwrap to the underlying MemStream (if memory-backed). Returns NULL otherwise.
+/// @brief Borrow the underlying MemStream when the Stream is memory-backed.
+/// @details A wrong backing type traps. The returned reference has the same lifetime hazard as
+///          `rt_stream_as_binfile` (VDOC-187).
 void *rt_stream_as_memstream(void *stream) {
     stream_impl *s = stream_require_open(stream, "Stream.AsMemStream: null stream");
     if (!s)
@@ -586,8 +593,8 @@ void *rt_stream_as_memstream(void *stream) {
     return NULL;
 }
 
-/// @brief Snapshot a MemStream's contents as a Bytes object. NULL for file-backed Streams (use
-/// `_set_pos(0)` then `_read_all` instead).
+/// @brief Snapshot a memory-backed Stream's contents as a Bytes object.
+/// @details File-backed Streams trap; use `_set_pos(0)` then `_read_all` instead.
 void *rt_stream_to_bytes(void *stream) {
     stream_impl *s = stream_require_open(stream, "Stream.ToBytes: null stream");
     if (!s)

@@ -421,7 +421,7 @@ class BoardRenderer {
         if checked { statusCol = theme.ACCENT_RED; }
         if thinking { statusCol = theme.ACCENT_BLUE; }
 
-        var tick = Clock.Ticks();
+        var tick = Clock.NowMs();
         var dotCol = statusCol;
         if active {
             dotCol = theme.pulseColor(statusCol, 18, tick, 1200);

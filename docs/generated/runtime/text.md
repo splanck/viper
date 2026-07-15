@@ -34,7 +34,8 @@ callers to construct the class directly. Its public surface exposes operations i
 Provides Char constants and static operations for text processing workflows.
 
 `Viper.Text.Char` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `IsIdentifierStart`, `IsIdentifierPart`, `IsAlnum`.
+Its public surface exposes operations including `IsIdentifierStart`, `IsIdentifierPart`,
+`IsAlphanumeric`.
 
 #### Methods
 
@@ -42,7 +43,7 @@ surface exposes operations including `IsIdentifierStart`, `IsIdentifierPart`, `I
 |---|---|---|
 | <a id="viper-text-char-isidentifierstart"></a>`IsIdentifierStart` | `i1(str)` | `Viper.Text.Char.IsIdentifierStart` |
 | <a id="viper-text-char-isidentifierpart"></a>`IsIdentifierPart` | `i1(str)` | `Viper.Text.Char.IsIdentifierPart` |
-| <a id="viper-text-char-isalnum"></a>`IsAlnum` | `i1(str)` | `Viper.Text.Char.IsAlnum` |
+| <a id="viper-text-char-isalphanumeric"></a>`IsAlphanumeric` | `i1(str)` | `Viper.Text.Char.IsAlphanumeric` |
 
 <a id="viper-text-fmt"></a>
 ### `Viper.Text.Fmt`
@@ -51,7 +52,7 @@ Provides value formatting utilities.
 
 `Viper.Text.Fmt` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Bin`, `Bool`,
-`BoolYN`, `YesNo`.
+`YesNo`, `Hex`.
 
 #### Methods
 
@@ -59,7 +60,6 @@ construct the class directly. Its public surface exposes operations including `B
 |---|---|---|
 | <a id="viper-text-fmt-bin"></a>`Bin` | `str(i64)` | `Viper.Text.Fmt.Bin` |
 | <a id="viper-text-fmt-bool"></a>`Bool` | `str(i1)` | `Viper.Text.Fmt.Bool` |
-| <a id="viper-text-fmt-boolyn"></a>`BoolYN` | `str(i1)` | `Viper.Text.Fmt.BoolYN` |
 | <a id="viper-text-fmt-yesno"></a>`YesNo` | `str(i1)` | `Viper.Text.Fmt.YesNo` |
 | <a id="viper-text-fmt-hex"></a>`Hex` | `str(i64)` | `Viper.Text.Fmt.Hex` |
 | <a id="viper-text-fmt-hexpad"></a>`HexPad` | `str(i64,i64)` | `Viper.Text.Fmt.HexPad` |
@@ -68,12 +68,10 @@ construct the class directly. Its public surface exposes operations including `B
 | <a id="viper-text-fmt-intradix"></a>`IntRadix` | `str(i64,i64)` | `Viper.Text.Fmt.IntRadix` |
 | <a id="viper-text-fmt-num"></a>`Num` | `str(f64)` | `Viper.Text.Fmt.Num` |
 | <a id="viper-text-fmt-numfixed"></a>`NumFixed` | `str(f64,i64)` | `Viper.Text.Fmt.NumFixed` |
-| <a id="viper-text-fmt-numpct"></a>`NumPct` | `str(f64,i64)` | `Viper.Text.Fmt.NumPct` |
-| <a id="viper-text-fmt-numsci"></a>`NumSci` | `str(f64,i64)` | `Viper.Text.Fmt.NumSci` |
 | <a id="viper-text-fmt-percent"></a>`Percent` | `str(f64,i64)` | `Viper.Text.Fmt.Percent` |
 | <a id="viper-text-fmt-scientific"></a>`Scientific` | `str(f64,i64)` | `Viper.Text.Fmt.Scientific` |
 | <a id="viper-text-fmt-oct"></a>`Oct` | `str(i64)` | `Viper.Text.Fmt.Oct` |
-| <a id="viper-text-fmt-size"></a>`Size` | `str(i64)` | `Viper.Text.Fmt.Size` |
+| <a id="viper-text-fmt-sizebytes"></a>`SizeBytes` | `str(i64)` | `Viper.Text.Fmt.SizeBytes` |
 | <a id="viper-text-fmt-intgrouped"></a>`IntGrouped` | `str(i64,str)` | `Viper.Text.Fmt.IntGrouped` |
 | <a id="viper-text-fmt-currency"></a>`Currency` | `str(f64,i64,str)` | `Viper.Text.Fmt.Currency` |
 | <a id="viper-text-fmt-towords"></a>`ToWords` | `str(i64)` | `Viper.Text.Fmt.ToWords` |
@@ -85,42 +83,19 @@ construct the class directly. Its public surface exposes operations including `B
 Provides base64, Hex, and URL encoding/decoding utilities.
 
 `Viper.Text.Codec` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Base64Dec`,
-`Base64Enc`, `HexDec`, `HexEnc`.
+construct the class directly. Its public surface exposes operations including `Base64Decode`,
+`Base64Encode`, `HexDecode`, `HexEncode`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-text-codec-base64dec"></a>`Base64Dec` | `str(str)` | `Viper.Text.Codec.Base64Dec` |
-| <a id="viper-text-codec-base64enc"></a>`Base64Enc` | `str(str)` | `Viper.Text.Codec.Base64Enc` |
-| <a id="viper-text-codec-hexdec"></a>`HexDec` | `str(str)` | `Viper.Text.Codec.HexDec` |
-| <a id="viper-text-codec-hexenc"></a>`HexEnc` | `str(str)` | `Viper.Text.Codec.HexEnc` |
+| <a id="viper-text-codec-base64decode"></a>`Base64Decode` | `str(str)` | `Viper.Text.Codec.Base64Decode` |
+| <a id="viper-text-codec-base64encode"></a>`Base64Encode` | `str(str)` | `Viper.Text.Codec.Base64Encode` |
+| <a id="viper-text-codec-hexdecode"></a>`HexDecode` | `str(str)` | `Viper.Text.Codec.HexDecode` |
+| <a id="viper-text-codec-hexencode"></a>`HexEncode` | `str(str)` | `Viper.Text.Codec.HexEncode` |
 | <a id="viper-text-codec-urldecode"></a>`UrlDecode` | `str(str)` | `Viper.Text.Codec.UrlDecode` |
 | <a id="viper-text-codec-urlencode"></a>`UrlEncode` | `str(str)` | `Viper.Text.Codec.UrlEncode` |
-
-<a id="viper-text-csv"></a>
-### `Viper.Text.Csv`
-
-Provides cSV parsing and formatting (RFC 4180).
-
-`Viper.Text.Csv` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Format`,
-`FormatLine`, `FormatLineWith`, `FormatWith`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-text-csv-format"></a>`Format` | `str(obj)` | `Viper.Text.Csv.Format` |
-| <a id="viper-text-csv-formatline"></a>`FormatLine` | `str(obj)` | `Viper.Text.Csv.FormatLine` |
-| <a id="viper-text-csv-formatlinewith"></a>`FormatLineWith` | `str(obj,str)` | `Viper.Text.Csv.FormatLineWith` |
-| <a id="viper-text-csv-formatwith"></a>`FormatWith` | `str(obj,str)` | `Viper.Text.Csv.FormatWith` |
-| <a id="viper-text-csv-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Text.Csv.IsValid` |
-| <a id="viper-text-csv-parse"></a>`Parse` | `obj(str)` | `Viper.Text.Csv.Parse` |
-| <a id="viper-text-csv-parseline"></a>`ParseLine` | `seq<str>(str)` | `Viper.Text.Csv.ParseLine` |
-| <a id="viper-text-csv-parselinewith"></a>`ParseLineWith` | `seq<str>(str,str)` | `Viper.Text.Csv.ParseLineWith` |
-| <a id="viper-text-csv-parsewith"></a>`ParseWith` | `obj(str,str)` | `Viper.Text.Csv.ParseWith` |
 
 <a id="viper-text-fuzzymatch"></a>
 ### `Viper.Text.FuzzyMatch`
@@ -128,7 +103,7 @@ construct the class directly. Its public surface exposes operations including `F
 Provides quick-open and command ranking helpers.
 
 `Viper.Text.FuzzyMatch` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Score`, `Match`.
+Its public surface exposes operations including `Score`, `Match`.
 
 #### Methods
 
@@ -137,97 +112,14 @@ surface exposes operations including `Score`, `Match`.
 | <a id="viper-text-fuzzymatch-score"></a>`Score` | `i64(str,str)` | `Viper.Text.FuzzyMatch.Score` |
 | <a id="viper-text-fuzzymatch-match"></a>`Match` | `obj<Viper.Collections.Map>(str,str)` | `Viper.Text.FuzzyMatch.Match` |
 
-<a id="viper-text-ini"></a>
-### `Viper.Text.Ini`
-
-Provides iNI config file parsing and formatting.
-
-`Viper.Text.Ini` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Parse`, `Format`,
-`Get`, `Set`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-text-ini-parse"></a>`Parse` | `obj(str)` | `Viper.Text.Ini.Parse` |
-| <a id="viper-text-ini-format"></a>`Format` | `str(obj)` | `Viper.Text.Ini.Format` |
-| <a id="viper-text-ini-get"></a>`Get` | `str(obj,str,str)` | `Viper.Text.Ini.Get` |
-| <a id="viper-text-ini-set"></a>`Set` | `void(obj,str,str,str)` | `Viper.Text.Ini.Set` |
-| <a id="viper-text-ini-hassection"></a>`HasSection` | `i1(obj,str)` | `Viper.Text.Ini.HasSection` |
-| <a id="viper-text-ini-sections"></a>`Sections` | `obj(obj)` | `Viper.Text.Ini.Sections` |
-| <a id="viper-text-ini-remove"></a>`Remove` | `i1(obj,str,str)` | `Viper.Text.Ini.Remove` |
-
-<a id="viper-text-json"></a>
-### `Viper.Text.Json`
-
-Provides jSON parsing and formatting (ECMA-404/RFC 8259).
-
-`Viper.Text.Json` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Format`,
-`FormatPretty`, `Stringify`, `IsValid`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-text-json-format"></a>`Format` | `str(obj)` | `Viper.Text.Json.Format` |
-| <a id="viper-text-json-formatpretty"></a>`FormatPretty` | `str(obj,i64)` | `Viper.Text.Json.FormatPretty` |
-| <a id="viper-text-json-stringify"></a>`Stringify` | `str(obj)` | `Viper.Text.Json.Format` |
-| <a id="viper-text-json-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Text.Json.IsValid` |
-| <a id="viper-text-json-newobject"></a>`NewObject` | `obj<Viper.Collections.Map>()` | `Viper.Text.Json.NewObject` |
-| <a id="viper-text-json-has"></a>`Has` | `i1(obj,str)` | `Viper.Collections.Map.Has` |
-| <a id="viper-text-json-getstr"></a>`GetStr` | `str(obj,str)` | `Viper.Collections.Map.GetStr` |
-| <a id="viper-text-json-getint"></a>`GetInt` | `i64(obj,str)` | `Viper.Collections.Map.GetInt` |
-| <a id="viper-text-json-getbool"></a>`GetBool` | `i1(obj,str)` | `Viper.Collections.Map.GetBool` |
-| <a id="viper-text-json-setstr"></a>`SetStr` | `void(obj,str,str)` | `Viper.Collections.Map.SetStr` |
-| <a id="viper-text-json-setint"></a>`SetInt` | `void(obj,str,i64)` | `Viper.Collections.Map.SetInt` |
-| <a id="viper-text-json-setbool"></a>`SetBool` | `void(obj,str,i1)` | `Viper.Collections.Map.SetBool` |
-| <a id="viper-text-json-parse"></a>`Parse` | `obj(str)` | `Viper.Text.Json.Parse` |
-| <a id="viper-text-json-parsearray"></a>`ParseArray` | `obj(str)` | `Viper.Text.Json.ParseArray` |
-| <a id="viper-text-json-parseobject"></a>`ParseObject` | `obj<Viper.Collections.Map>(str)` | `Viper.Text.Json.ParseObject` |
-| <a id="viper-text-json-typeof"></a>`TypeOf` | `str(obj)` | `Viper.Text.Json.TypeOf` |
-
-<a id="viper-text-jsonstream"></a>
-### `Viper.Text.JsonStream`
-
-Provides sAX-style streaming JSON parser.
-
-Create `Viper.Text.JsonStream` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Depth`,
-`TokenType` and operations including `BoolValue`, `Error`, `HasNext`, `Next`.
-
-Constructor: `Viper.Text.JsonStream.New`
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-text-jsonstream-depth"></a>`Depth` | `i64` | read-only |
-| <a id="viper-text-jsonstream-tokentype"></a>`TokenType` | `i64` | read-only |
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-text-jsonstream-boolvalue"></a>`BoolValue` | `i1()` | `Viper.Text.JsonStream.BoolValue` |
-| <a id="viper-text-jsonstream-error"></a>`Error` | `str()` | `Viper.Text.JsonStream.Error` |
-| <a id="viper-text-jsonstream-hasnext"></a>`HasNext` | `i1()` | `Viper.Text.JsonStream.HasNext` |
-| <a id="viper-text-jsonstream-next"></a>`Next` | `i64()` | `Viper.Text.JsonStream.Next` |
-| <a id="viper-text-jsonstream-nextresult"></a>`NextResult` | `obj<Viper.Result>()` | `Viper.Text.JsonStream.NextResult` |
-| <a id="viper-text-jsonstream-numbervalue"></a>`NumberValue` | `f64()` | `Viper.Text.JsonStream.NumberValue` |
-| <a id="viper-text-jsonstream-skip"></a>`Skip` | `void()` | `Viper.Text.JsonStream.Skip` |
-| <a id="viper-text-jsonstream-stringvalue"></a>`StringValue` | `str()` | `Viper.Text.JsonStream.StringValue` |
-| <a id="viper-text-jsonstream-new"></a>`New` | `obj(str)` | `Viper.Text.JsonStream.New` |
-
 <a id="viper-text-uuid"></a>
 ### `Viper.Text.Uuid`
 
-Provides uUID generation and manipulation.
+Provides UUID generation and manipulation.
 
 `Viper.Text.Uuid` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes a property such as `Empty` and
-operations including `FromBytes`, `IsValid`, `ToBytes`.
+construct the class directly. Its public surface exposes properties such as `Empty` and
+operations including `FromBytes`, `IsValid`, `Generate`, `ToBytes`.
 
 #### Properties
 
@@ -241,7 +133,7 @@ operations including `FromBytes`, `IsValid`, `ToBytes`.
 |---|---|---|
 | <a id="viper-text-uuid-frombytes"></a>`FromBytes` | `str(obj)` | `Viper.Text.Uuid.FromBytes` |
 | <a id="viper-text-uuid-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Text.Uuid.IsValid` |
-| <a id="viper-text-uuid-new"></a>`New` | `str()` | `Viper.Text.Uuid.New` |
+| <a id="viper-text-uuid-generate"></a>`Generate` | `str()` | `Viper.Text.Uuid.Generate` |
 | <a id="viper-text-uuid-tobytes"></a>`ToBytes` | `obj(str)` | `Viper.Text.Uuid.ToBytes` |
 
 <a id="viper-text-pluralize"></a>
@@ -250,8 +142,8 @@ operations including `FromBytes`, `IsValid`, `ToBytes`.
 Provides english noun pluralization.
 
 `Viper.Text.Pluralize` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Count`, `Plural`,
-`Singular`.
+construct the class directly. Its public surface exposes operations including `Count`,
+`Plural`, `Singular`.
 
 #### Methods
 
@@ -268,7 +160,7 @@ Provides semantic version parsing and comparison.
 
 `Viper.Text.Version` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Build`, `Major`,
-`Minor` and operations including `BumpMajor`, `BumpMinor`, `BumpPatch`, `Cmp`.
+`Minor` and operations including `BumpMajor`, `BumpMinor`, `BumpPatch`, `CompareTo`.
 
 #### Properties
 
@@ -287,7 +179,7 @@ construct the class directly. Its public surface exposes properties such as `Bui
 | <a id="viper-text-version-bumpmajor"></a>`BumpMajor` | `str()` | `Viper.Text.Version.BumpMajor` |
 | <a id="viper-text-version-bumpminor"></a>`BumpMinor` | `str()` | `Viper.Text.Version.BumpMinor` |
 | <a id="viper-text-version-bumppatch"></a>`BumpPatch` | `str()` | `Viper.Text.Version.BumpPatch` |
-| <a id="viper-text-version-cmp"></a>`Cmp` | `i64(obj)` | `Viper.Text.Version.Cmp` |
+| <a id="viper-text-version-compareto"></a>`CompareTo` | `i64(obj)` | `Viper.Text.Version.CompareTo` |
 | <a id="viper-text-version-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Text.Version.IsValid` |
 | <a id="viper-text-version-satisfies"></a>`Satisfies` | `i1(str)` | `Viper.Text.Version.Satisfies` |
 | <a id="viper-text-version-tostring"></a>`ToString` | `str()` | `Viper.Text.Version.ToString` |
@@ -315,25 +207,6 @@ construct the class directly. Its public surface exposes operations including `C
 | <a id="viper-text-diff-patch"></a>`Patch` | `str(str,obj)` | `Viper.Text.Diff.Patch` |
 | <a id="viper-text-diff-unified"></a>`Unified` | `str(str,str,i64)` | `Viper.Text.Diff.Unified` |
 
-<a id="viper-text-toml"></a>
-### `Viper.Text.Toml`
-
-Provides tOML config parsing and formatting.
-
-`Viper.Text.Toml` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Parse`,
-`IsValid`, `Format`, `Get`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-text-toml-parse"></a>`Parse` | `obj(str)` | `Viper.Text.Toml.Parse` |
-| <a id="viper-text-toml-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Text.Toml.IsValid` |
-| <a id="viper-text-toml-format"></a>`Format` | `str(obj)` | `Viper.Text.Toml.Format` |
-| <a id="viper-text-toml-get"></a>`Get` | `obj(obj,str)` | `Viper.Text.Toml.Get` |
-| <a id="viper-text-toml-getstr"></a>`GetStr` | `str(obj,str)` | `Viper.Text.Toml.GetStr` |
-
 <a id="viper-text-markdown"></a>
 ### `Viper.Text.Markdown`
 
@@ -351,26 +224,6 @@ construct the class directly. Its public surface exposes operations including `T
 | <a id="viper-text-markdown-totext"></a>`ToText` | `str(str)` | `Viper.Text.Markdown.ToText` |
 | <a id="viper-text-markdown-extractlinks"></a>`ExtractLinks` | `seq<str>(str)` | `Viper.Text.Markdown.ExtractLinks` |
 | <a id="viper-text-markdown-extractheadings"></a>`ExtractHeadings` | `seq<str>(str)` | `Viper.Text.Markdown.ExtractHeadings` |
-
-<a id="viper-text-jsonpath"></a>
-### `Viper.Text.JsonPath`
-
-Provides jSONPath query expressions.
-
-`Viper.Text.JsonPath` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Get`, `GetOr`,
-`Has`, `Query`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-text-jsonpath-get"></a>`Get` | `obj(obj,str)` | `Viper.Text.JsonPath.Get` |
-| <a id="viper-text-jsonpath-getor"></a>`GetOr` | `obj(obj,str,obj)` | `Viper.Text.JsonPath.GetOr` |
-| <a id="viper-text-jsonpath-has"></a>`Has` | `i1(obj,str)` | `Viper.Text.JsonPath.Has` |
-| <a id="viper-text-jsonpath-query"></a>`Query` | `obj(obj,str)` | `Viper.Text.JsonPath.Query` |
-| <a id="viper-text-jsonpath-getstr"></a>`GetStr` | `str(obj,str)` | `Viper.Text.JsonPath.GetStr` |
-| <a id="viper-text-jsonpath-getint"></a>`GetInt` | `i64(obj,str)` | `Viper.Text.JsonPath.GetInt` |
 
 <a id="viper-text-stringbuilder"></a>
 ### `Viper.Text.StringBuilder`
@@ -406,20 +259,17 @@ Constructor: `Viper.Text.StringBuilder.New`
 Provides regular expression pattern matching.
 
 `Viper.Text.Pattern` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `IsMatch`, `Find`,
-`FindOption`, `FindFrom`.
+construct the class directly. Its public surface exposes operations including `IsMatch`,
+`Find`, `FindFrom`, `FindPos`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-text-pattern-ismatch"></a>`IsMatch` | `i1(str,str)` | `Viper.Text.Pattern.IsMatch` |
-| <a id="viper-text-pattern-find"></a>`Find` | `str(str,str)` | `Viper.Text.Pattern.Find` |
-| <a id="viper-text-pattern-findoption"></a>`FindOption` | `obj<Viper.Option>(str,str)` | `Viper.Text.Pattern.FindOption` |
-| <a id="viper-text-pattern-findfrom"></a>`FindFrom` | `str(str,str,i64)` | `Viper.Text.Pattern.FindFrom` |
-| <a id="viper-text-pattern-findfromoption"></a>`FindFromOption` | `obj<Viper.Option>(str,str,i64)` | `Viper.Text.Pattern.FindFromOption` |
-| <a id="viper-text-pattern-findpos"></a>`FindPos` | `i64(str,str)` | `Viper.Text.Pattern.FindPos` |
-| <a id="viper-text-pattern-findposoption"></a>`FindPosOption` | `obj<Viper.Option>(str,str)` | `Viper.Text.Pattern.FindPosOption` |
+| <a id="viper-text-pattern-find"></a>`Find` | `obj<Viper.Option>(str,str)` | `Viper.Text.Pattern.Find` |
+| <a id="viper-text-pattern-findfrom"></a>`FindFrom` | `obj<Viper.Option>(str,str,i64)` | `Viper.Text.Pattern.FindFrom` |
+| <a id="viper-text-pattern-findpos"></a>`FindPos` | `obj<Viper.Option>(str,str)` | `Viper.Text.Pattern.FindPos` |
 | <a id="viper-text-pattern-findall"></a>`FindAll` | `seq<str>(str,str)` | `Viper.Text.Pattern.FindAll` |
 | <a id="viper-text-pattern-replace"></a>`Replace` | `str(str,str,str)` | `Viper.Text.Pattern.Replace` |
 | <a id="viper-text-pattern-replacefirst"></a>`ReplaceFirst` | `str(str,str,str)` | `Viper.Text.Pattern.ReplaceFirst` |
@@ -432,8 +282,8 @@ construct the class directly. Its public surface exposes operations including `I
 Provides pre-compiled regex for efficient repeated use.
 
 Create `Viper.Text.CompiledPattern` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
-`Pattern` and operations including `IsMatch`, `Find`, `FindOption`, `FindFrom`.
+returned object with the instance members below. Its public surface exposes properties such as
+`Pattern` and operations including `IsMatch`, `Find`, `FindFrom`, `FindPos`.
 
 Constructor: `Viper.Text.CompiledPattern.New`
 
@@ -448,19 +298,16 @@ Constructor: `Viper.Text.CompiledPattern.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-text-compiledpattern-ismatch"></a>`IsMatch` | `i1(str)` | `Viper.Text.CompiledPattern.IsMatch` |
-| <a id="viper-text-compiledpattern-find"></a>`Find` | `str(str)` | `Viper.Text.CompiledPattern.Find` |
-| <a id="viper-text-compiledpattern-findoption"></a>`FindOption` | `obj<Viper.Option>(str)` | `Viper.Text.CompiledPattern.FindOption` |
-| <a id="viper-text-compiledpattern-findfrom"></a>`FindFrom` | `str(str,i64)` | `Viper.Text.CompiledPattern.FindFrom` |
-| <a id="viper-text-compiledpattern-findfromoption"></a>`FindFromOption` | `obj<Viper.Option>(str,i64)` | `Viper.Text.CompiledPattern.FindFromOption` |
-| <a id="viper-text-compiledpattern-findpos"></a>`FindPos` | `i64(str)` | `Viper.Text.CompiledPattern.FindPos` |
-| <a id="viper-text-compiledpattern-findposoption"></a>`FindPosOption` | `obj<Viper.Option>(str)` | `Viper.Text.CompiledPattern.FindPosOption` |
+| <a id="viper-text-compiledpattern-find"></a>`Find` | `obj<Viper.Option>(str)` | `Viper.Text.CompiledPattern.Find` |
+| <a id="viper-text-compiledpattern-findfrom"></a>`FindFrom` | `obj<Viper.Option>(str,i64)` | `Viper.Text.CompiledPattern.FindFrom` |
+| <a id="viper-text-compiledpattern-findpos"></a>`FindPos` | `obj<Viper.Option>(str)` | `Viper.Text.CompiledPattern.FindPos` |
 | <a id="viper-text-compiledpattern-findall"></a>`FindAll` | `seq<str>(str)` | `Viper.Text.CompiledPattern.FindAll` |
 | <a id="viper-text-compiledpattern-captures"></a>`Captures` | `seq<str>(str)` | `Viper.Text.CompiledPattern.Captures` |
 | <a id="viper-text-compiledpattern-capturesfrom"></a>`CapturesFrom` | `seq<str>(str,i64)` | `Viper.Text.CompiledPattern.CapturesFrom` |
 | <a id="viper-text-compiledpattern-replace"></a>`Replace` | `str(str,str)` | `Viper.Text.CompiledPattern.Replace` |
 | <a id="viper-text-compiledpattern-replacefirst"></a>`ReplaceFirst` | `str(str,str)` | `Viper.Text.CompiledPattern.ReplaceFirst` |
 | <a id="viper-text-compiledpattern-split"></a>`Split` | `seq<str>(str)` | `Viper.Text.CompiledPattern.Split` |
-| <a id="viper-text-compiledpattern-splitn"></a>`SplitN` | `seq<str>(str,i64)` | `Viper.Text.CompiledPattern.SplitN` |
+| `Split` | `seq<str>(str,i64)` | `Viper.Text.CompiledPattern.SplitLimited` |
 | <a id="viper-text-compiledpattern-new"></a>`New` | `obj(str)` | `Viper.Text.CompiledPattern.New` |
 
 <a id="viper-text-template"></a>
@@ -489,8 +336,9 @@ construct the class directly. Its public surface exposes operations including `R
 Provides string scanner for lexing and parsing.
 
 Create `Viper.Text.Scanner` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Pos`,
-`IsEnd`, `Remaining` and operations including `Reset`, `Peek`, `PeekAt`, `PeekStr`.
+object with the instance members below. Its public surface exposes properties such as
+`Position`, `IsEnd`, `Remaining` and operations including `Reset`, `Peek`, `PeekAt`,
+`PeekStr`.
 
 Constructor: `Viper.Text.Scanner.New`
 
@@ -498,7 +346,7 @@ Constructor: `Viper.Text.Scanner.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-text-scanner-pos"></a>`Pos` | `i64` | read/write |
+| <a id="viper-text-scanner-position"></a>`Position` | `i64` | read/write |
 | <a id="viper-text-scanner-isend"></a>`IsEnd` | `i1` | read-only |
 | <a id="viper-text-scanner-remaining"></a>`Remaining` | `i64` | read-only |
 | <a id="viper-text-scanner-length"></a>`Length` | `i64` | read-only |
@@ -523,8 +371,8 @@ Constructor: `Viper.Text.Scanner.New`
 | <a id="viper-text-scanner-skip"></a>`Skip` | `void(i64)` | `Viper.Text.Scanner.Skip` |
 | <a id="viper-text-scanner-skipwhitespace"></a>`SkipWhitespace` | `i64()` | `Viper.Text.Scanner.SkipWhitespace` |
 | <a id="viper-text-scanner-readident"></a>`ReadIdent` | `str()` | `Viper.Text.Scanner.ReadIdent` |
-| <a id="viper-text-scanner-readint"></a>`ReadInt` | `str()` | `Viper.Text.Scanner.ReadInt` |
-| <a id="viper-text-scanner-readnumber"></a>`ReadNumber` | `str()` | `Viper.Text.Scanner.ReadNumber` |
+| <a id="viper-text-scanner-readinttoken"></a>`ReadIntToken` | `str()` | `Viper.Text.Scanner.ReadIntToken` |
+| <a id="viper-text-scanner-readnumbertoken"></a>`ReadNumberToken` | `str()` | `Viper.Text.Scanner.ReadNumberToken` |
 | <a id="viper-text-scanner-readquoted"></a>`ReadQuoted` | `str(i64)` | `Viper.Text.Scanner.ReadQuoted` |
 | <a id="viper-text-scanner-readline"></a>`ReadLine` | `str()` | `Viper.Text.Scanner.ReadLine` |
 | <a id="viper-text-scanner-new"></a>`New` | `obj(str)` | `Viper.Text.Scanner.New` |
@@ -551,20 +399,20 @@ construct the class directly. Its public surface exposes operations including `W
 | <a id="viper-text-textwrapper-truncate"></a>`Truncate` | `str(str,i64)` | `Viper.Text.TextWrapper.Truncate` |
 | <a id="viper-text-textwrapper-truncatewith"></a>`TruncateWith` | `str(str,i64,str)` | `Viper.Text.TextWrapper.TruncateWith` |
 | <a id="viper-text-textwrapper-shorten"></a>`Shorten` | `str(str,i64)` | `Viper.Text.TextWrapper.Shorten` |
-| <a id="viper-text-textwrapper-left"></a>`Left` | `str(str,i64)` | `Viper.Text.TextWrapper.Left` |
-| <a id="viper-text-textwrapper-right"></a>`Right` | `str(str,i64)` | `Viper.Text.TextWrapper.Right` |
+| <a id="viper-text-textwrapper-alignleft"></a>`AlignLeft` | `str(str,i64)` | `Viper.Text.TextWrapper.AlignLeft` |
+| <a id="viper-text-textwrapper-alignright"></a>`AlignRight` | `str(str,i64)` | `Viper.Text.TextWrapper.AlignRight` |
 | <a id="viper-text-textwrapper-center"></a>`Center` | `str(str,i64)` | `Viper.Text.TextWrapper.Center` |
 | <a id="viper-text-textwrapper-linecount"></a>`LineCount` | `i64(str)` | `Viper.Text.TextWrapper.LineCount` |
-| <a id="viper-text-textwrapper-maxlinelen"></a>`MaxLineLen` | `i64(str)` | `Viper.Text.TextWrapper.MaxLineLen` |
+| <a id="viper-text-textwrapper-maxlinelength"></a>`MaxLineLength` | `i64(str)` | `Viper.Text.TextWrapper.MaxLineLength` |
 
 <a id="viper-text-html"></a>
 ### `Viper.Text.Html`
 
-Provides hTML parsing and utilities.
+Provides HTML parsing and utilities.
 
 `Viper.Text.Html` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Parse`, `ToText`,
-`Escape`, `Unescape`.
+construct the class directly. Its public surface exposes operations including `Parse`,
+`ToText`, `Escape`, `Unescape`.
 
 #### Methods
 
@@ -596,7 +444,7 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.Diff.Patch` | `str(str,obj)` | `rt_diff_patch` |
 | `Viper.Text.Char.IsIdentifierStart` | `i1(str)` | `rt_text_char_is_identifier_start` |
 | `Viper.Text.Char.IsIdentifierPart` | `i1(str)` | `rt_text_char_is_identifier_part` |
-| `Viper.Text.Char.IsAlnum` | `i1(str)` | `rt_text_char_is_alnum` |
+| `Viper.Text.Char.IsAlphanumeric` | `i1(str)` | `rt_text_char_is_alnum` |
 | `Viper.Text.Pluralize.Plural` | `str(str)` | `rt_pluralize` |
 | `Viper.Text.Pluralize.Singular` | `str(str)` | `rt_singularize` |
 | `Viper.Text.Pluralize.Count` | `str(i64,str)` | `rt_pluralize_count` |
@@ -608,7 +456,7 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-text-version-get-prerelease"></a>`Viper.Text.Version.get_Prerelease` | `str(obj)` | `rt_version_prerelease` |
 | <a id="viper-text-version-get-build"></a>`Viper.Text.Version.get_Build` | `str(obj)` | `rt_version_build` |
 | `Viper.Text.Version.ToString` | `str(obj)` | `rt_version_to_string` |
-| `Viper.Text.Version.Cmp` | `i64(obj,obj)` | `rt_version_cmp` |
+| `Viper.Text.Version.CompareTo` | `i64(obj,obj)` | `rt_version_cmp` |
 | `Viper.Text.Version.Compare` | `i64(str,str)` | `rt_version_compare` |
 | `Viper.Text.Version.ParseMajor` | `i64(str)` | `rt_version_major_str` |
 | `Viper.Text.Version.ParseMinor` | `i64(str)` | `rt_version_minor_str` |
@@ -617,64 +465,18 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.Version.BumpMajor` | `str(obj)` | `rt_version_bump_major` |
 | `Viper.Text.Version.BumpMinor` | `str(obj)` | `rt_version_bump_minor` |
 | `Viper.Text.Version.BumpPatch` | `str(obj)` | `rt_version_bump_patch` |
-| `Viper.Text.Codec.Base64Dec` | `str(str)` | `rt_codec_base64_dec` |
-| `Viper.Text.Codec.Base64Enc` | `str(str)` | `rt_codec_base64_enc` |
-| `Viper.Text.Codec.HexDec` | `str(str)` | `rt_codec_hex_dec` |
-| `Viper.Text.Codec.HexEnc` | `str(str)` | `rt_codec_hex_enc` |
+| `Viper.Text.Codec.Base64Decode` | `str(str)` | `rt_codec_base64_dec` |
+| `Viper.Text.Codec.Base64Encode` | `str(str)` | `rt_codec_base64_enc` |
+| `Viper.Text.Codec.HexDecode` | `str(str)` | `rt_codec_hex_dec` |
+| `Viper.Text.Codec.HexEncode` | `str(str)` | `rt_codec_hex_enc` |
 | `Viper.Text.Codec.UrlDecode` | `str(str)` | `rt_codec_url_decode` |
 | `Viper.Text.Codec.UrlEncode` | `str(str)` | `rt_codec_url_encode` |
-| `Viper.Text.Csv.ParseLine` | `seq<str>(str)` | `rt_csv_parse_line` |
-| `Viper.Text.Csv.ParseLineWith` | `seq<str>(str,str)` | `rt_csv_parse_line_with` |
-| `Viper.Text.Csv.Parse` | `obj(str)` | `rt_csv_parse` |
-| `Viper.Text.Csv.ParseWith` | `obj(str,str)` | `rt_csv_parse_with` |
-| `Viper.Text.Csv.FormatLine` | `str(obj)` | `rt_csv_format_line` |
-| `Viper.Text.Csv.FormatLineWith` | `str(obj,str)` | `rt_csv_format_line_with` |
-| `Viper.Text.Csv.Format` | `str(obj)` | `rt_csv_format` |
-| `Viper.Text.Csv.FormatWith` | `str(obj,str)` | `rt_csv_format_with` |
-| `Viper.Text.Csv.IsValid` | `i1(str)` | `rt_csv_is_valid` |
 | `Viper.Text.FuzzyMatch.Score` | `i64(str,str)` | `rt_fuzzy_match_score` |
 | `Viper.Text.FuzzyMatch.Match` | `obj<Viper.Collections.Map>(str,str)` | `rt_fuzzy_match_match` |
-| `Viper.Text.Ini.Parse` | `obj(str)` | `rt_ini_parse` |
-| `Viper.Text.Ini.Format` | `str(obj)` | `rt_ini_format` |
-| `Viper.Text.Ini.Get` | `str(obj,str,str)` | `rt_ini_get` |
-| `Viper.Text.Ini.Set` | `void(obj,str,str,str)` | `rt_ini_set` |
-| `Viper.Text.Ini.HasSection` | `i1(obj,str)` | `rt_ini_has_section` |
-| `Viper.Text.Ini.Sections` | `obj(obj)` | `rt_ini_sections` |
-| `Viper.Text.Ini.Remove` | `i1(obj,str,str)` | `rt_ini_remove` |
-| `Viper.Text.Json.Parse` | `obj(str)` | `rt_json_parse` |
-| `Viper.Text.Json.ParseObject` | `obj<Viper.Collections.Map>(str)` | `rt_json_parse_object` |
-| `Viper.Text.Json.ParseArray` | `obj(str)` | `rt_json_parse_array` |
-| `Viper.Text.Json.Format` | `str(obj)` | `rt_json_format` |
-| `Viper.Text.Json.FormatPretty` | `str(obj,i64)` | `rt_json_format_pretty` |
-| `Viper.Text.Json.IsValid` | `i1(str)` | `rt_json_is_valid` |
-| `Viper.Text.Json.TypeOf` | `str(obj)` | `rt_json_type_of` |
-| `Viper.Text.Json.NewObject` | `obj<Viper.Collections.Map>()` | `rt_map_new` |
-| `Viper.Text.JsonStream.New` | `obj(str)` | `rt_json_stream_new` |
-| `Viper.Text.JsonStream.Next` | `i64(obj)` | `rt_json_stream_next` |
-| `Viper.Text.JsonStream.NextResult` | `obj<Viper.Result>(obj)` | `rt_json_stream_next_result` |
-| `Viper.Text.JsonStream.TokenType` | `i64(obj)` | `rt_json_stream_token_type` |
-| `Viper.Text.JsonStream.StringValue` | `str(obj)` | `rt_json_stream_string_value` |
-| `Viper.Text.JsonStream.NumberValue` | `f64(obj)` | `rt_json_stream_number_value` |
-| `Viper.Text.JsonStream.BoolValue` | `i1(obj)` | `rt_json_stream_bool_value` |
-| `Viper.Text.JsonStream.Depth` | `i64(obj)` | `rt_json_stream_depth` |
-| `Viper.Text.JsonStream.Skip` | `void(obj)` | `rt_json_stream_skip` |
-| `Viper.Text.JsonStream.HasNext` | `i1(obj)` | `rt_json_stream_has_next` |
-| `Viper.Text.JsonStream.Error` | `str(obj)` | `rt_json_stream_error` |
-| `Viper.Text.Toml.Parse` | `obj(str)` | `rt_toml_parse` |
-| `Viper.Text.Toml.IsValid` | `i1(str)` | `rt_toml_is_valid` |
-| `Viper.Text.Toml.Format` | `str(obj)` | `rt_toml_format` |
-| `Viper.Text.Toml.Get` | `obj(obj,str)` | `rt_toml_get` |
-| `Viper.Text.Toml.GetStr` | `str(obj,str)` | `rt_toml_get_str` |
 | `Viper.Text.Markdown.ToHtml` | `str(str)` | `rt_markdown_to_html` |
 | `Viper.Text.Markdown.ToText` | `str(str)` | `rt_markdown_to_text` |
 | `Viper.Text.Markdown.ExtractLinks` | `seq<str>(str)` | `rt_markdown_extract_links` |
 | `Viper.Text.Markdown.ExtractHeadings` | `seq<str>(str)` | `rt_markdown_extract_headings` |
-| `Viper.Text.JsonPath.Get` | `obj(obj,str)` | `rt_jsonpath_get` |
-| `Viper.Text.JsonPath.GetOr` | `obj(obj,str,obj)` | `rt_jsonpath_get_or` |
-| `Viper.Text.JsonPath.Has` | `i1(obj,str)` | `rt_jsonpath_has` |
-| `Viper.Text.JsonPath.Query` | `obj(obj,str)` | `rt_jsonpath_query` |
-| `Viper.Text.JsonPath.GetStr` | `str(obj,str)` | `rt_jsonpath_get_str` |
-| `Viper.Text.JsonPath.GetInt` | `i64(obj,str)` | `rt_jsonpath_get_int` |
 | `Viper.Text.Html.Parse` | `obj(str)` | `rt_html_parse` |
 | `Viper.Text.Html.ToText` | `str(str)` | `rt_html_to_text` |
 | `Viper.Text.Html.Escape` | `str(str)` | `rt_html_escape` |
@@ -685,7 +487,7 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-text-uuid-get-empty"></a>`Viper.Text.Uuid.get_Empty` | `str()` | `rt_guid_empty` |
 | `Viper.Text.Uuid.FromBytes` | `str(obj)` | `rt_guid_from_bytes` |
 | `Viper.Text.Uuid.IsValid` | `i1(str)` | `rt_guid_is_valid` |
-| `Viper.Text.Uuid.New` | `str()` | `rt_guid_new` |
+| `Viper.Text.Uuid.Generate` | `str()` | `rt_guid_new` |
 | `Viper.Text.Uuid.ToBytes` | `obj(str)` | `rt_guid_to_bytes` |
 | `Viper.Text.StringBuilder.Append` | `obj(obj,str)` | `rt_text_sb_append` |
 | `Viper.Text.StringBuilder.AppendLine` | `obj(obj,str)` | `rt_text_sb_append_line` |
@@ -695,12 +497,9 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.StringBuilder.New` | `obj()` | `rt_sb_new` |
 | `Viper.Text.StringBuilder.ToString` | `str(obj)` | `rt_text_sb_to_string` |
 | `Viper.Text.Pattern.IsMatch` | `i1(str,str)` | `rt_pattern_is_match` |
-| `Viper.Text.Pattern.Find` | `str(str,str)` | `rt_pattern_find` |
-| `Viper.Text.Pattern.FindOption` | `obj<Viper.Option>(str,str)` | `rt_pattern_find_option` |
-| `Viper.Text.Pattern.FindFrom` | `str(str,str,i64)` | `rt_pattern_find_from` |
-| `Viper.Text.Pattern.FindFromOption` | `obj<Viper.Option>(str,str,i64)` | `rt_pattern_find_from_option` |
-| `Viper.Text.Pattern.FindPos` | `i64(str,str)` | `rt_pattern_find_pos` |
-| `Viper.Text.Pattern.FindPosOption` | `obj<Viper.Option>(str,str)` | `rt_pattern_find_pos_option` |
+| `Viper.Text.Pattern.Find` | `obj<Viper.Option>(str,str)` | `rt_pattern_find_option` |
+| `Viper.Text.Pattern.FindFrom` | `obj<Viper.Option>(str,str,i64)` | `rt_pattern_find_from_option` |
+| `Viper.Text.Pattern.FindPos` | `obj<Viper.Option>(str,str)` | `rt_pattern_find_pos_option` |
 | `Viper.Text.Pattern.FindAll` | `seq<str>(str,str)` | `rt_pattern_find_all` |
 | `Viper.Text.Pattern.Replace` | `str(str,str,str)` | `rt_pattern_replace` |
 | `Viper.Text.Pattern.ReplaceFirst` | `str(str,str,str)` | `rt_pattern_replace_first` |
@@ -709,22 +508,19 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.CompiledPattern.New` | `obj(str)` | `rt_compiled_pattern_new` |
 | <a id="viper-text-compiledpattern-get-pattern"></a>`Viper.Text.CompiledPattern.get_Pattern` | `str(obj)` | `rt_compiled_pattern_get_pattern` |
 | `Viper.Text.CompiledPattern.IsMatch` | `i1(obj,str)` | `rt_compiled_pattern_is_match` |
-| `Viper.Text.CompiledPattern.Find` | `str(obj,str)` | `rt_compiled_pattern_find` |
-| `Viper.Text.CompiledPattern.FindOption` | `obj<Viper.Option>(obj,str)` | `rt_compiled_pattern_find_option` |
-| `Viper.Text.CompiledPattern.FindFrom` | `str(obj,str,i64)` | `rt_compiled_pattern_find_from` |
-| `Viper.Text.CompiledPattern.FindFromOption` | `obj<Viper.Option>(obj,str,i64)` | `rt_compiled_pattern_find_from_option` |
-| `Viper.Text.CompiledPattern.FindPos` | `i64(obj,str)` | `rt_compiled_pattern_find_pos` |
-| `Viper.Text.CompiledPattern.FindPosOption` | `obj<Viper.Option>(obj,str)` | `rt_compiled_pattern_find_pos_option` |
+| `Viper.Text.CompiledPattern.Find` | `obj<Viper.Option>(obj,str)` | `rt_compiled_pattern_find_option` |
+| `Viper.Text.CompiledPattern.FindFrom` | `obj<Viper.Option>(obj,str,i64)` | `rt_compiled_pattern_find_from_option` |
+| `Viper.Text.CompiledPattern.FindPos` | `obj<Viper.Option>(obj,str)` | `rt_compiled_pattern_find_pos_option` |
 | `Viper.Text.CompiledPattern.FindAll` | `seq<str>(obj,str)` | `rt_compiled_pattern_find_all` |
 | `Viper.Text.CompiledPattern.Captures` | `seq<str>(obj,str)` | `rt_compiled_pattern_captures` |
 | `Viper.Text.CompiledPattern.CapturesFrom` | `seq<str>(obj,str,i64)` | `rt_compiled_pattern_captures_from` |
 | `Viper.Text.CompiledPattern.Replace` | `str(obj,str,str)` | `rt_compiled_pattern_replace` |
 | `Viper.Text.CompiledPattern.ReplaceFirst` | `str(obj,str,str)` | `rt_compiled_pattern_replace_first` |
 | `Viper.Text.CompiledPattern.Split` | `seq<str>(obj,str)` | `rt_compiled_pattern_split` |
-| `Viper.Text.CompiledPattern.SplitN` | `seq<str>(obj,str,i64)` | `rt_compiled_pattern_split_n` |
+| <a id="viper-text-compiledpattern-splitlimited"></a>`Viper.Text.CompiledPattern.SplitLimited` | `seq<str>(obj,str,i64)` | `rt_compiled_pattern_split_n` |
 | `Viper.Text.Scanner.New` | `obj(str)` | `rt_scanner_new` |
-| <a id="viper-text-scanner-get-pos"></a>`Viper.Text.Scanner.get_Pos` | `i64(obj)` | `rt_scanner_pos` |
-| <a id="viper-text-scanner-set-pos"></a>`Viper.Text.Scanner.set_Pos` | `void(obj,i64)` | `rt_scanner_set_pos` |
+| <a id="viper-text-scanner-get-position"></a>`Viper.Text.Scanner.get_Position` | `i64(obj)` | `rt_scanner_pos` |
+| <a id="viper-text-scanner-set-position"></a>`Viper.Text.Scanner.set_Position` | `void(obj,i64)` | `rt_scanner_set_pos` |
 | <a id="viper-text-scanner-get-isend"></a>`Viper.Text.Scanner.get_IsEnd` | `i1(obj)` | `rt_scanner_is_end` |
 | <a id="viper-text-scanner-get-remaining"></a>`Viper.Text.Scanner.get_Remaining` | `i64(obj)` | `rt_scanner_remaining` |
 | <a id="viper-text-scanner-get-length"></a>`Viper.Text.Scanner.get_Length` | `i64(obj)` | `rt_scanner_len` |
@@ -744,8 +540,8 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.Scanner.Skip` | `void(obj,i64)` | `rt_scanner_skip` |
 | `Viper.Text.Scanner.SkipWhitespace` | `i64(obj)` | `rt_scanner_skip_whitespace` |
 | `Viper.Text.Scanner.ReadIdent` | `str(obj)` | `rt_scanner_read_ident` |
-| `Viper.Text.Scanner.ReadInt` | `str(obj)` | `rt_scanner_read_int` |
-| `Viper.Text.Scanner.ReadNumber` | `str(obj)` | `rt_scanner_read_number` |
+| `Viper.Text.Scanner.ReadIntToken` | `str(obj)` | `rt_scanner_read_int` |
+| `Viper.Text.Scanner.ReadNumberToken` | `str(obj)` | `rt_scanner_read_number` |
 | `Viper.Text.Scanner.ReadQuoted` | `str(obj,i64)` | `rt_scanner_read_quoted` |
 | `Viper.Text.Scanner.ReadLine` | `str(obj)` | `rt_scanner_read_line` |
 | `Viper.Text.TextWrapper.Wrap` | `str(str,i64)` | `rt_textwrap_wrap` |
@@ -757,11 +553,11 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.TextWrapper.Truncate` | `str(str,i64)` | `rt_textwrap_truncate` |
 | `Viper.Text.TextWrapper.TruncateWith` | `str(str,i64,str)` | `rt_textwrap_truncate_with` |
 | `Viper.Text.TextWrapper.Shorten` | `str(str,i64)` | `rt_textwrap_shorten` |
-| `Viper.Text.TextWrapper.Left` | `str(str,i64)` | `rt_textwrap_left` |
-| `Viper.Text.TextWrapper.Right` | `str(str,i64)` | `rt_textwrap_right` |
+| `Viper.Text.TextWrapper.AlignLeft` | `str(str,i64)` | `rt_textwrap_left` |
+| `Viper.Text.TextWrapper.AlignRight` | `str(str,i64)` | `rt_textwrap_right` |
 | `Viper.Text.TextWrapper.Center` | `str(str,i64)` | `rt_textwrap_center` |
 | `Viper.Text.TextWrapper.LineCount` | `i64(str)` | `rt_textwrap_line_count` |
-| `Viper.Text.TextWrapper.MaxLineLen` | `i64(str)` | `rt_textwrap_max_line_len` |
+| `Viper.Text.TextWrapper.MaxLineLength` | `i64(str)` | `rt_textwrap_max_line_len` |
 | `Viper.Text.Template.Render` | `str(str,obj)` | `rt_template_render` |
 | `Viper.Text.Template.RenderSeq` | `str(str,obj)` | `rt_template_render_seq` |
 | `Viper.Text.Template.RenderWith` | `str(str,obj,str,str)` | `rt_template_render_with` |
@@ -773,14 +569,11 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.Fmt.IntPad` | `str(i64,i64,str)` | `rt_fmt_int_pad` |
 | `Viper.Text.Fmt.Num` | `str(f64)` | `rt_fmt_num` |
 | `Viper.Text.Fmt.NumFixed` | `str(f64,i64)` | `rt_fmt_num_fixed` |
-| `Viper.Text.Fmt.NumSci` | `str(f64,i64)` | `rt_fmt_num_sci` |
-| `Viper.Text.Fmt.NumPct` | `str(f64,i64)` | `rt_fmt_num_pct` |
 | `Viper.Text.Fmt.Scientific` | `str(f64,i64)` | `rt_fmt_num_sci` |
 | `Viper.Text.Fmt.Percent` | `str(f64,i64)` | `rt_fmt_num_pct` |
 | `Viper.Text.Fmt.Bool` | `str(i1)` | `rt_fmt_bool` |
-| `Viper.Text.Fmt.BoolYN` | `str(i1)` | `rt_fmt_bool_yn` |
 | `Viper.Text.Fmt.YesNo` | `str(i1)` | `rt_fmt_bool_yn` |
-| `Viper.Text.Fmt.Size` | `str(i64)` | `rt_fmt_size` |
+| `Viper.Text.Fmt.SizeBytes` | `str(i64)` | `rt_fmt_size` |
 | `Viper.Text.Fmt.Hex` | `str(i64)` | `rt_fmt_hex` |
 | `Viper.Text.Fmt.HexPad` | `str(i64,i64)` | `rt_fmt_hex_pad` |
 | `Viper.Text.Fmt.Bin` | `str(i64)` | `rt_fmt_bin` |

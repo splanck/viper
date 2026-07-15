@@ -105,8 +105,8 @@ PRINT "Len(3,4,0): "; v34.Len()
 
 ' --- LenSq ---
 PRINT "--- LenSq ---"
-PRINT "LenSq(1,2,3): "; v1.LenSq()
-PRINT "LenSq(3,4,0): "; v34.LenSq()
+PRINT "LenSq(1,2,3): "; v1.LengthSquared()
+PRINT "LenSq(3,4,0): "; v34.LengthSquared()
 
 ' --- Dist ---
 PRINT "--- Dist ---"

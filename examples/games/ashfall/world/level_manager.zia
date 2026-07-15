@@ -28,7 +28,7 @@ bind "./props" as props;
 class LevelManager {
     hide Game3D.World3D world;
     hide G3D.Canvas3D canvas;
-    hide G3D.Physics3DWorld phys;
+    hide G3D.PhysicsWorld3D phys;
     hide ai_core.EnemyManager enemies;
     hide pickups.Pickups pickupSys;
     hide events.EventBus bus;
@@ -63,7 +63,7 @@ class LevelManager {
         bossResolved = false;
     }
 
-    expose func setup(w: Game3D.World3D, c: G3D.Canvas3D, p: G3D.Physics3DWorld,
+    expose func setup(w: Game3D.World3D, c: G3D.Canvas3D, p: G3D.PhysicsWorld3D,
                       en: ai_core.EnemyManager, pk: pickups.Pickups, bus0: events.EventBus,
                       tex: textures.TextureLib, navEnabled: Boolean,
                       ball: ballistics.Ballistics, registry: targets.TargetRegistry) {

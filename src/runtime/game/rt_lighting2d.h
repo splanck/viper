@@ -9,7 +9,9 @@
 // Key invariants:
 //   - Darkness alpha 0=fully lit, 255=pitch black.
 //   - Dynamic lights have a lifetime in frames; lifetime 0 is permanent.
-//   - Non-positive light radii are ignored.
+//   - Non-positive dynamic and tile-light radii are ignored. The player-light
+//     renderer currently retains its 40-pixel outer glow when configured with
+//     radius zero.
 //   - Player light pulses automatically via internal timer.
 //   - Draw() must be called AFTER all game entities are rendered (post-process).
 //
@@ -62,8 +64,10 @@ void rt_lighting2d_clear_lights(rt_lighting2d lit);
 // Per-frame
 /// @brief Tick lifetimes (recycle expired lights) and advance the player-light pulse.
 void rt_lighting2d_update(rt_lighting2d lit);
-/// @brief Render the darkness overlay with all lights cut out, on top of the already-drawn scene.
-/// Call AFTER all entities are rendered. (cam_x, cam_y) is the world-to-screen offset; (player_sx,
+/// @brief Render the darkness overlay, then source-over blend colored glow
+/// discs on top of it. The current renderer does not subtract darkness or
+/// reveal the underlying scene inside a light. Call AFTER all entities are
+/// rendered. (cam_x, cam_y) is the world-to-screen offset; (player_sx,
 /// player_sy) is where the player light should be centered in screen pixels.
 void rt_lighting2d_draw(rt_lighting2d lit,
                         void *canvas,

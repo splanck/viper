@@ -50,19 +50,19 @@ PRINT "Created test files"
 ' --- FilesSeq ---
 PRINT "--- FilesSeq ---"
 DIM files AS OBJECT
-files = Viper.IO.Dir.FilesSeq(testDir)
+files = Viper.IO.Dir.Files(testDir)
 PRINT "FilesSeq returned"
 
 ' --- DirsSeq ---
 PRINT "--- DirsSeq ---"
 DIM dirs AS OBJECT
-dirs = Viper.IO.Dir.DirsSeq(testDir)
+dirs = Viper.IO.Dir.Dirs(testDir)
 PRINT "DirsSeq returned"
 
 ' --- ListSeq ---
 PRINT "--- ListSeq ---"
 DIM lst AS OBJECT
-lst = Viper.IO.Dir.ListSeq(testDir)
+lst = Viper.IO.Dir.List(testDir)
 PRINT "ListSeq returned"
 
 ' --- Entries ---

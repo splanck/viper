@@ -87,7 +87,7 @@ class BuildSystem {
         exitCode = -1;
         lastBuildSuccess = false;
         lastBuildTime = "";
-        startMs = Viper.Time.Clock.Ticks();
+        startMs = Viper.Time.Clock.NowMs();
 
         // The Process runtime spawns via execve(), which neither searches PATH nor
         // resolves a bare name against anything except the child's working directory
@@ -143,7 +143,7 @@ class BuildSystem {
         //    not the IDE's, so a relative override would point at the wrong place.
         var envBin = EnvValue("VIPER_BINARY");
         if envBin != "" and IO.File.Exists(envBin) {
-            return Path.Abs(envBin);
+            return Path.Absolute(envBin);
         }
 
         // 2. Installed layout: viper ships next to the IDE binary.
@@ -154,11 +154,11 @@ class BuildSystem {
                 return colocated;
             }
             // 3. Developer build tree (viperide/bin -> build/src/tools/viper).
-            var devA = Path.Norm(Path.Join(exeDir, Path.Join("../../build/src/tools/viper", exe)));
+            var devA = Path.Normalize(Path.Join(exeDir, Path.Join("../../build/src/tools/viper", exe)));
             if IO.File.Exists(devA) {
                 return devA;
             }
-            var devB = Path.Norm(Path.Join(exeDir, Path.Join("../build/src/tools/viper", exe)));
+            var devB = Path.Normalize(Path.Join(exeDir, Path.Join("../build/src/tools/viper", exe)));
             if IO.File.Exists(devB) {
                 return devB;
             }
@@ -167,7 +167,7 @@ class BuildSystem {
         // 4. Explicit build directory (honours the build scripts' VIPER_BUILD_DIR).
         var buildDir = EnvValue("VIPER_BUILD_DIR");
         if buildDir != "" {
-            var fromBuild = Path.Norm(Path.Join(buildDir, Path.Join("src/tools/viper", exe)));
+            var fromBuild = Path.Normalize(Path.Join(buildDir, Path.Join("src/tools/viper", exe)));
             if IO.File.Exists(fromBuild) {
                 return fromBuild;
             }
@@ -181,7 +181,7 @@ class BuildSystem {
     ///        used as-is when it exists; a bare name is searched on PATH.
     func ResolveBinary(name: String) -> String {
         if name == "" { return ""; }
-        if Path.IsAbs(name) {
+        if Path.IsAbsolute(name) {
             if IO.File.Exists(name) { return name; }
             return "";
         }
@@ -193,7 +193,7 @@ class BuildSystem {
             var entry = Obj.ToString(Seq.Get(entries, i));
             if entry != "" {
                 var cand = Path.Join(entry, name);
-                if IO.File.Exists(cand) { return Path.Abs(cand); }
+                if IO.File.Exists(cand) { return Path.Absolute(cand); }
             }
             i = i + 1;
         }
@@ -275,7 +275,7 @@ class BuildSystem {
         isBuilding = false;
         isRunning = false;
         lastBuildSuccess = code == 0;
-        lastBuildTime = FormatDuration(Viper.Time.Clock.Ticks() - startMs);
+        lastBuildTime = FormatDuration(Viper.Time.Clock.NowMs() - startMs);
         ParseBuildOutput();
     }
 

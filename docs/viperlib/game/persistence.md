@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-06
+last-verified: 2026-07-15
 ---
 
 # SaveData — Game Persistence
@@ -50,8 +50,8 @@ Save keys must be non-empty valid UTF-8 strings without embedded NUL bytes. `Set
 |-------------------------------|----------------------------------|----------------------------------------------------------|
 | `SetInt(key, value)`          | `Void(String, Integer)`          | Store an integer value under a key                       |
 | `SetString(key, value)`       | `Void(String, String)`           | Store a string value under a key                         |
-| `GetInt(key, default)`        | `Integer(String, Integer)`       | Get an integer value, or default if key missing          |
-| `GetString(key, default)`     | `String(String, String)`         | Get a string value, or default if key missing            |
+| `GetInt(key, default)`        | `Integer(String, Integer)`       | Get an integer value, or the default if the key is missing or stores a string |
+| `GetString(key, default)`     | `String(String, String)`         | Get a string value, or the default if the key is missing or stores an integer |
 | `HasKey(key)`                 | `Boolean(String)`                | Check if a key exists                                    |
 | `Remove(key)`                 | `Boolean(String)`                | Remove a key. Returns true if it existed                 |
 | `Clear()`                     | `Void()`                         | Remove all key-value pairs                               |
@@ -98,7 +98,14 @@ func start() {
 
 ### Atomic Writes
 
-`Save()` writes the complete JSON payload to a temporary file in the destination directory, flushes that file, and then replaces the live save file. On POSIX platforms the parent directory is also synced after replacement so the save is durable across power loss more often than a plain rename-only path. There is no incremental or append mode; each save writes the full state atomically.
+`Save()` creates the parent directory, writes the complete JSON payload to an exclusively created
+temporary file in the destination directory, flushes that file, and then replaces the live save
+file. The file and parent directory are synced where the platform supports it. There is no
+incremental or append mode; each save rewrites the full state.
+
+Most write, flush, replacement, and allocation failures return `false`. Directory-creation failure
+and failure to obtain secure randomness for the temporary name currently trap before the Boolean
+result can be observed; do not treat `Save()` as a wholly non-trapping error boundary.
 
 ### Missing Save Files
 

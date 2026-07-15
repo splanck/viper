@@ -269,7 +269,7 @@ func main() {
         return;
     }
     if SemanticJob.IsError(asyncJob) {
-        fail(shell, "async completion error: " + SemanticJob.Error(asyncJob));
+        fail(shell, "async completion error: " + SemanticJob.Error(asyncJob).UnwrapOrStr(""));
         return;
     }
     if completionItemsContain(SemanticJob.CompletionItems(asyncJob), "greet") == false {

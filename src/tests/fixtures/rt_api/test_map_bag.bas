@@ -14,8 +14,8 @@ PRINT "map len after remove: "; m.Count
 m.Clear()
 PRINT "map empty after clear: "; m.IsEmpty
 
-DIM b AS Viper.Collections.Bag
-b = Viper.Collections.Bag.New()
+DIM b AS Viper.Collections.StringSet
+b = Viper.Collections.StringSet.New()
 PRINT "bag empty: "; b.IsEmpty
 b.Add("x")
 b.Add("y")
@@ -34,7 +34,7 @@ cm = Viper.Collections.CountMap.New()
 cm.Inc("a")
 cm.Inc("a")
 cm.Inc("b")
-cm.IncBy("c", 5)
+cm.IncrementBy("c", 5)
 PRINT "cm get a: "; cm.Get("a")
 PRINT "cm get c: "; cm.Get("c")
 PRINT "cm total: "; cm.Total

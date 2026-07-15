@@ -15,7 +15,7 @@ The immersion detail whose absence reads as "indie": footsteps that sound like t
 - **Bone poses:** `Animator3D.GetBoneMatrix/FindBone` (`game3d.md` §Animator3D) — the auto-detect fallback reads foot-bone heights.
 - **Ground query:** `rt_world3d_raycast` down from the foot (`rt_physics3d.h:165`); surface tag from plan 20's `PhysicsHit3D.SurfaceType`; character ground shortcut `Character3D.GetGroundSurfaceType` (plan 20/03).
 - **Playback targets:** `Sound3D.playAt(clip, pos)` with world attenuation defaults (`game3d.md` §Sound3D); `Effects3D.Dust(world, pos)`-style presets and `Decal3D` fading projected quads (`game3d.md` §Effects3D; `rt_decal3d.h`).
-- **Variance precedent:** `Viper.Sound.SoundBank` (round-robin/random clip sets, `audio.md` §SoundBank) — per-surface clip sets reuse it.
+- **Variance precedent:** `Viper.Audio.SoundBank` (round-robin/random clip sets, `audio.md` §SoundBank) — per-surface clip sets reuse it.
 - **Determinism:** clip-variant selection must not use wall-clock randomness — a per-component LCG seeded at bind (deterministic replays stay identical).
 
 ## 3. Design

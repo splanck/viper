@@ -87,7 +87,7 @@ expose func HasIdentifierInput(text: String) -> Boolean {
 expose func FrameBudgetAllows(frameWorkStartMs: Integer, budgetMs: Integer) -> Boolean {
     if frameWorkStartMs <= 0 { return true; }
     if budgetMs <= 0 { return true; }
-    return Viper.Time.Clock.Ticks() - frameWorkStartMs < budgetMs;
+    return Viper.Time.Clock.NowMs() - frameWorkStartMs < budgetMs;
 }
 
 /// @brief Return whether a build/run command may start in the current IDE state.

@@ -9,7 +9,7 @@
 // Purpose: Implements arbitrary-precision integer arithmetic for the Viper
 //          runtime. Uses a base-2^32 little-endian digit array with a separate
 //          sign flag. Covers grade-school add/sub/mul, Knuth Algorithm D for
-//          division, binary GCD, and conversion to/from int64 and strings.
+//          division, Euclidean GCD, and conversion to/from int64 and strings.
 //
 // Key invariants:
 //   - Digits are stored in little-endian order (index 0 = least significant).
@@ -307,7 +307,7 @@ void *rt_bigint_from_i64(int64_t val) {
     return bi;
 }
 
-/// @brief Parse a BigInt from a decimal or 0x-prefixed hexadecimal string.
+/// @brief Parse a BigInt from decimal or 0x/0b/0o-prefixed text.
 /// @details Skips leading whitespace, handles an optional sign character, then
 ///          detects the 0x/0X prefix to choose base 10 or 16. Digits are
 ///          accumulated using grade-school multiply-and-add: for each digit d,
@@ -632,7 +632,9 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
     return result;
 }
 
-/// @brief Convert BigInt to big-endian two's-complement byte array.
+/// @brief Convert BigInt to a big-endian two's-complement byte array.
+/// @warning The current sign-extension decision is incorrect for some negative
+///          magnitudes (for example -129 encodes as 0x7f); see VDOC-203.
 void *rt_bigint_to_bytes(void *a) {
     if (!a) {
         void *b = rt_bytes_new(1);
@@ -1938,7 +1940,7 @@ void *rt_bigint_gcd(void *a, void *b) {
         return NULL;
     }
 
-    // Binary GCD algorithm
+    // Euclidean algorithm using division remainders.
     while (!rt_bigint_is_zero(y)) {
         void *rem = rt_bigint_mod(x, y);
         bigint_release_owned((bigint_t *)x);
@@ -2023,8 +2025,9 @@ int64_t rt_bigint_bit_length(void *a) {
 }
 
 /// @brief Test whether bit n is set (0 = LSB).
-/// @details Locates the digit containing bit n and masks the specific bit.
-///          Out-of-range bit positions (n >= bit_length) return 0.
+/// @details Uses infinite-width two's-complement semantics: positions beyond a
+///          positive magnitude return 0, while positions beyond a negative
+///          magnitude return its sign-extension bit (1).
 /// @param a BigInt to test.
 /// @param n Zero-based bit index.
 /// @return 1 if the bit is set, 0 otherwise.

@@ -1,9 +1,9 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.IO.Watcher.new
+' COVER: Viper.IO.Watcher.New
 ' COVER: Viper.IO.Watcher.EventCreated
 ' COVER: Viper.IO.Watcher.EventDeleted
 ' COVER: Viper.IO.Watcher.EventModified
-' COVER: Viper.IO.Watcher.EventNone
+' COVER: watcher.EventNone
 ' COVER: Viper.IO.Watcher.EventRenamed
 ' COVER: Viper.IO.Watcher.IsWatching
 ' COVER: Viper.IO.Watcher.Path
@@ -39,15 +39,15 @@ DIM event1 AS INTEGER
 DIM event2 AS INTEGER
 event1 = watcher.Poll()
 event2 = watcher.PollFor(50)
-    Viper.Core.Diagnostics.Assert(event1 >= Viper.IO.Watcher.EventNone, "watch.poll")
-    Viper.Core.Diagnostics.Assert(event2 >= Viper.IO.Watcher.EventNone, "watch.pollfor")
+    Viper.Core.Diagnostics.Assert(event1 >= watcher.EventNone, "watch.poll")
+    Viper.Core.Diagnostics.Assert(event2 >= watcher.EventNone, "watch.pollfor")
 
 DIM path1 AS STRING
 DIM type1 AS INTEGER
-IF event1 <> Viper.IO.Watcher.EventNone OR event2 <> Viper.IO.Watcher.EventNone THEN
+IF event1 <> watcher.EventNone OR event2 <> watcher.EventNone THEN
     path1 = watcher.EventPath()
     type1 = watcher.EventType()
-        Viper.Core.Diagnostics.Assert(type1 >= Viper.IO.Watcher.EventNone, "watch.eventtype")
+        Viper.Core.Diagnostics.Assert(type1 >= watcher.EventNone, "watch.eventtype")
 END IF
 
 watcher.Stop()

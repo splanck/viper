@@ -16,7 +16,7 @@ func start() {
 
     var cd = new Viper.Time.Countdown(5000);
     SayInt(cd.Interval);
-    SayBool(cd.Expired);
+    SayBool(cd.IsExpired);
     SayBool(cd.IsRunning);
 
     Say("done");

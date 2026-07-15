@@ -33,8 +33,8 @@ RT_FUNC(Material3DGetReflectivity, rt_material3d_get_reflectivity,"Viper.Graphic
 /// @summary Provides Cube Map 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.CubeMap3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `LoadHdrPanorama`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `LoadHdrPanorama`.
 RT_CLASS_BEGIN("Viper.Graphics3D.CubeMap3D", CubeMap3D, "obj", CubeMap3DNew)
     RT_METHOD("LoadHdrPanorama", "obj<Viper.Graphics3D.CubeMap3D>(str,f64)", CubeMap3DLoadHdrPanorama)
 RT_CLASS_END()
@@ -110,7 +110,6 @@ RT_FUNC(Canvas3DGetActiveOutputHeight, rt_canvas3d_get_active_output_height, "Vi
 RT_FUNC(Canvas3DGetFps,          rt_canvas3d_get_fps,         "Viper.Graphics3D.Canvas3D.get_Fps",         "i64(obj)")
 RT_FUNC(Canvas3DGetDeltaTime,    rt_canvas3d_get_delta_time,  "Viper.Graphics3D.Canvas3D.get_DeltaTime",   "i64(obj)")
 RT_FUNC(Canvas3DGetDeltaTimeSec, rt_canvas3d_get_delta_time_sec, "Viper.Graphics3D.Canvas3D.get_DeltaTimeSec", "f64(obj)")
-RT_FUNC(Canvas3DSetDTMax,        rt_canvas3d_set_dt_max,      "Viper.Graphics3D.Canvas3D.SetDTMax",        "void(obj,i64)")
 RT_FUNC(Canvas3DSetMaxDeltaTime, rt_canvas3d_set_dt_max,      "Viper.Graphics3D.Canvas3D.SetMaxDeltaTime", "void(obj,i64)")
 RT_FUNC(Canvas3DSetQuality,      rt_canvas3d_set_quality,     "Viper.Graphics3D.Canvas3D.SetQuality",      "void(obj,i64)")
 RT_FUNC(Canvas3DGetQualityRequested, rt_canvas3d_get_quality_requested, "Viper.Graphics3D.Canvas3D.get_QualityRequested", "i64(obj)")
@@ -316,7 +315,6 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
     RT_METHOD("Poll", "i64()", Canvas3DPoll)
     RT_METHOD("PollEvent", "i64()", Canvas3DPollEvent)
     RT_METHOD("SetBackfaceCull", "void(i1)", Canvas3DSetBackfaceCull)
-    RT_METHOD("SetDTMax", "void(i64)", Canvas3DSetDTMax)
     RT_METHOD("SetMaxDeltaTime", "void(i64)", Canvas3DSetMaxDeltaTime)
     RT_METHOD("SetQuality", "void(i64)", Canvas3DSetQuality)
     RT_METHOD("SetInputSource", "void(i64)", Canvas3DSetInputSource)
@@ -421,18 +419,14 @@ RT_CLASS_END()
 //=============================================================================
 
 RT_FUNC(Mesh3DNew,              rt_mesh3d_new,              "Viper.Graphics3D.Mesh3D.New",              "obj()")
-RT_FUNC(Mesh3DNewBox,           rt_mesh3d_new_box,          "Viper.Graphics3D.Mesh3D.NewBox",           "obj(f64,f64,f64)")
 RT_FUNC(Mesh3DSimplify,         rt_mesh3d_simplify,         "Viper.Graphics3D.Mesh3D.Simplify",         "obj(obj,i64)")
-RT_FUNC(SceneNode3DGenerateLODs, rt_scene_node3d_generate_lods, "Viper.Graphics3D.SceneNode.GenerateLODs", "void(obj,i64,f64)")
-RT_FUNC(Mesh3DNewSphere,        rt_mesh3d_new_sphere,       "Viper.Graphics3D.Mesh3D.NewSphere",        "obj(f64,i64)")
-RT_FUNC(Mesh3DNewPlane,         rt_mesh3d_new_plane,        "Viper.Graphics3D.Mesh3D.NewPlane",         "obj(f64,f64)")
-RT_FUNC(Mesh3DNewCylinder,      rt_mesh3d_new_cylinder,     "Viper.Graphics3D.Mesh3D.NewCylinder",      "obj(f64,f64,i64)")
+RT_FUNC(SceneNode3DGenerateLODs, rt_scene_node3d_generate_lods, "Viper.Graphics3D.SceneNode.GenerateLods", "void(obj,i64,f64)")
 RT_FUNC(Mesh3DBox,              rt_mesh3d_new_box,          "Viper.Graphics3D.Mesh3D.Box",              "obj(f64,f64,f64)")
 RT_FUNC(Mesh3DSphere,           rt_mesh3d_new_sphere,       "Viper.Graphics3D.Mesh3D.Sphere",           "obj(f64,i64)")
 RT_FUNC(Mesh3DPlane,            rt_mesh3d_new_plane,        "Viper.Graphics3D.Mesh3D.Plane",            "obj(f64,f64)")
 RT_FUNC(Mesh3DCylinder,         rt_mesh3d_new_cylinder,     "Viper.Graphics3D.Mesh3D.Cylinder",         "obj(f64,f64,i64)")
-RT_FUNC(Mesh3DFromOBJ,          rt_mesh3d_from_obj,         "Viper.Graphics3D.Mesh3D.FromOBJ",          "obj(str)")
-RT_FUNC(Mesh3DFromSTL,          rt_mesh3d_from_stl,         "Viper.Graphics3D.Mesh3D.FromSTL",          "obj(str)")
+RT_FUNC(Mesh3DFromOBJ,          rt_mesh3d_from_obj,         "Viper.Graphics3D.Mesh3D.FromObj",          "obj(str)")
+RT_FUNC(Mesh3DFromSTL,          rt_mesh3d_from_stl,         "Viper.Graphics3D.Mesh3D.FromStl",          "obj(str)")
 RT_FUNC(Mesh3DGetVertexCount,   rt_mesh3d_get_vertex_count, "Viper.Graphics3D.Mesh3D.get_VertexCount",  "i64(obj)")
 RT_FUNC(Mesh3DGetTriangleCount, rt_mesh3d_get_triangle_count,"Viper.Graphics3D.Mesh3D.get_TriangleCount","i64(obj)")
 RT_FUNC(Mesh3DGetResident,      rt_mesh3d_get_resident,     "Viper.Graphics3D.Mesh3D.get_Resident",     "i1(obj)")
@@ -446,7 +440,7 @@ RT_FUNC(Mesh3DReserve,          rt_mesh3d_reserve,          "Viper.Graphics3D.Me
 RT_FUNC(Mesh3DAddVertex,        rt_mesh3d_add_vertex,       "Viper.Graphics3D.Mesh3D.AddVertex",        "void(obj,f64,f64,f64,f64,f64,f64,f64,f64)")
 RT_FUNC(Mesh3DAddTriangle,      rt_mesh3d_add_triangle,     "Viper.Graphics3D.Mesh3D.AddTriangle",      "void(obj,i64,i64,i64)")
 RT_FUNC(Mesh3DClear,            rt_mesh3d_clear,            "Viper.Graphics3D.Mesh3D.Clear",            "void(obj)")
-RT_FUNC(Mesh3DRecalcNormals,    rt_mesh3d_recalc_normals,   "Viper.Graphics3D.Mesh3D.RecalcNormals",    "void(obj)")
+RT_FUNC(Mesh3DRecalcNormals,    rt_mesh3d_recalc_normals,   "Viper.Graphics3D.Mesh3D.RecalculateNormals",    "void(obj)")
 RT_FUNC(Mesh3DClone,            rt_mesh3d_clone,            "Viper.Graphics3D.Mesh3D.Clone",            "obj(obj)")
 RT_FUNC(Mesh3DTransform,        rt_mesh3d_transform,        "Viper.Graphics3D.Mesh3D.Transform",        "void(obj,obj)")
 
@@ -454,8 +448,8 @@ RT_FUNC(Mesh3DTransform,        rt_mesh3d_transform,        "Viper.Graphics3D.Me
 /// @details
 /// Create `Viper.Graphics3D.Mesh3D` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `VertexCount`, `TriangleCount`, `Resident` and operations including `NewBox`, `Simplify`,
-/// `NewSphere`, `NewPlane`.
+/// `VertexCount`, `TriangleCount`, `Resident` and operations including `Simplify`, `Box`,
+/// `Sphere`, `Plane`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Mesh3D", Mesh3D, "obj", Mesh3DNew)
     RT_PROP("VertexCount", "i64", Mesh3DGetVertexCount, none)
     RT_PROP("TriangleCount", "i64", Mesh3DGetTriangleCount, none)
@@ -463,29 +457,25 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Mesh3D", Mesh3D, "obj", Mesh3DNew)
     RT_PROP("ResidentBytes", "i64", Mesh3DGetResidentBytes, none)
     RT_PROP("CompactStreams", "i1", Mesh3DGetCompactStreams, Mesh3DSetCompactStreams)
     RT_PROP("RetainedBytes", "i64", Mesh3DGetRetainedBytes, none)
-    RT_METHOD("NewBox", "obj(f64,f64,f64)", Mesh3DNewBox)
     // QEM decimation: returns a NEW mesh; attributes never interpolated.
     RT_METHOD("Simplify", "obj<Viper.Graphics3D.Mesh3D>(i64)", Mesh3DSimplify)
-    RT_METHOD("NewSphere", "obj(f64,i64)", Mesh3DNewSphere)
-    RT_METHOD("NewPlane", "obj(f64,f64)", Mesh3DNewPlane)
-    RT_METHOD("NewCylinder", "obj(f64,f64,i64)", Mesh3DNewCylinder)
     RT_METHOD("Box", "obj(f64,f64,f64)", Mesh3DBox)
     RT_METHOD("Sphere", "obj(f64,i64)", Mesh3DSphere)
     RT_METHOD("Plane", "obj(f64,f64)", Mesh3DPlane)
     RT_METHOD("Cylinder", "obj(f64,f64,i64)", Mesh3DCylinder)
-    RT_METHOD("FromOBJ", "obj(str)", Mesh3DFromOBJ)
-    RT_METHOD("FromSTL", "obj(str)", Mesh3DFromSTL)
+    RT_METHOD("FromObj", "obj(str)", Mesh3DFromOBJ)
+    RT_METHOD("FromStl", "obj(str)", Mesh3DFromSTL)
     RT_METHOD("Reserve", "void(i64,i64)", Mesh3DReserve)
     RT_METHOD("AddVertex", "void(f64,f64,f64,f64,f64,f64,f64,f64)", Mesh3DAddVertex)
     RT_METHOD("AddTriangle", "void(i64,i64,i64)", Mesh3DAddTriangle)
     RT_METHOD("Clear", "void()", Mesh3DClear)
-    RT_METHOD("RecalcNormals", "void()", Mesh3DRecalcNormals)
+    RT_METHOD("RecalculateNormals", "void()", Mesh3DRecalcNormals)
     RT_METHOD("Clone", "obj()", Mesh3DClone)
     RT_METHOD("Transform", "void(obj)", Mesh3DTransform)
     // Frees auxiliary CPU geometry (double positions, build scratch) a
     // finished static mesh no longer needs; returns bytes released.
     RT_METHOD("ReleaseCpuScratch", "i64()", Mesh3DReleaseCpuScratch)
-    RT_METHOD("CalcTangents", "void()", Mesh3DCalcTangents)
+    RT_METHOD("CalculateTangents", "void()", Mesh3DCalcTangents)
     RT_METHOD("SetSkeleton", "void(obj)", Mesh3DSetSkeleton)
     RT_METHOD("SetBoneWeights", "void(i64,i64,f64,i64,f64,i64,f64,i64,f64)", Mesh3DSetBoneWeights)
     RT_METHOD("SetMorphTargets", "void(obj)", Mesh3DSetMorphTargets)
@@ -496,7 +486,7 @@ RT_CLASS_END()
 //=============================================================================
 
 RT_FUNC(Camera3DNew,            rt_camera3d_new,            "Viper.Graphics3D.Camera3D.New",            "obj(f64,f64,f64,f64)")
-RT_FUNC(Camera3DNewHorizontalFov, rt_camera3d_new_horizontal_fov, "Viper.Graphics3D.Camera3D.NewHorizontalFov", "obj(f64,f64,f64,f64)")
+RT_FUNC(Camera3DNewHorizontalFov, rt_camera3d_new_horizontal_fov, "Viper.Graphics3D.Camera3D.WithHorizontalFov", "obj(f64,f64,f64,f64)")
 RT_FUNC(Camera3DNewOrtho,       rt_camera3d_new_ortho,      "Viper.Graphics3D.Camera3D.NewOrtho",       "obj(f64,f64,f64,f64)")
 RT_FUNC(Camera3DIsOrtho,        rt_camera3d_is_ortho,       "Viper.Graphics3D.Camera3D.get_IsOrtho",    "i1(obj)")
 RT_FUNC(Camera3DLookAt,         rt_camera3d_look_at,        "Viper.Graphics3D.Camera3D.LookAt",         "void(obj,obj,obj,obj)")
@@ -526,7 +516,7 @@ RT_FUNC(Camera3DSmoothLookAt,   rt_camera3d_smooth_look_at, "Viper.Graphics3D.Ca
 /// @details
 /// Create `Viper.Graphics3D.Camera3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Fov`, `NearPlane`, `EffectiveNearPlane` and operations including `NewHorizontalFov`,
+/// `Fov`, `NearPlane`, `EffectiveNearPlane` and operations including `WithHorizontalFov`,
 /// `NewOrtho`, `SetHorizontalFov`, `LookAt`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Camera3D", Camera3D, "obj", Camera3DNew)
     RT_PROP("Fov", "f64", Camera3DGetFov, Camera3DSetFov)
@@ -537,7 +527,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Camera3D", Camera3D, "obj", Camera3DNew)
     RT_PROP("Position", "obj<Viper.Math.Vec3>", Camera3DGetPosition, Camera3DSetPosition)
     RT_PROP("Forward", "obj<Viper.Math.Vec3>", Camera3DGetForward, none)
     RT_PROP("Right", "obj<Viper.Math.Vec3>", Camera3DGetRight, none)
-    RT_METHOD("NewHorizontalFov", "obj(f64,f64,f64,f64)", Camera3DNewHorizontalFov)
+    RT_METHOD("WithHorizontalFov", "obj(f64,f64,f64,f64)", Camera3DNewHorizontalFov)
     RT_METHOD("NewOrtho", "obj(f64,f64,f64,f64)", Camera3DNewOrtho)
     RT_METHOD("SetHorizontalFov", "void(f64)", Camera3DSetHorizontalFov)
     RT_METHOD("LookAt", "void(obj,obj,obj)", Camera3DLookAt)
@@ -549,8 +539,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Camera3D", Camera3D, "obj", Camera3DNew)
     RT_METHOD("SmoothFollow", "void(obj,f64,f64,f64,f64)", Camera3DSmoothFollow)
     RT_METHOD("SmoothLookAt", "void(obj,f64,f64)", Camera3DSmoothLookAt)
     RT_PROP("IsOrtho", "i1", Camera3DIsOrtho, none)
-    RT_METHOD("FPSInit", "void()", Camera3DFPSInit)
-    RT_METHOD("FPSUpdate", "void(f64,f64,f64,f64,f64,f64,f64)", Camera3DFPSUpdate)
+    RT_METHOD("FirstPersonInit", "void()", Camera3DFPSInit)
+    RT_METHOD("FirstPersonUpdate", "void(f64,f64,f64,f64,f64,f64,f64)", Camera3DFPSUpdate)
     RT_PROP("Yaw", "f64", Camera3DGetYaw, Camera3DSetYaw)
     RT_PROP("Pitch", "f64", Camera3DGetPitch, Camera3DSetPitch)
 RT_CLASS_END()
@@ -559,8 +549,8 @@ RT_CLASS_END()
 // GRAPHICS 3D - TEXTUREASSET3D
 //=============================================================================
 
-RT_FUNC(TextureAsset3DLoadKTX2,      rt_textureasset3d_load_ktx2,       "Viper.Graphics3D.TextureAsset3D.LoadKTX2",      "obj(str)")
-RT_FUNC(TextureAsset3DLoadKTX2Asset, rt_textureasset3d_load_ktx2_asset, "Viper.Graphics3D.TextureAsset3D.LoadKTX2Asset", "obj(str)")
+RT_FUNC(TextureAsset3DLoadKTX2,      rt_textureasset3d_load_ktx2,       "Viper.Graphics3D.TextureAsset3D.LoadKtx2",      "obj(str)")
+RT_FUNC(TextureAsset3DLoadKTX2Asset, rt_textureasset3d_load_ktx2_asset, "Viper.Graphics3D.TextureAsset3D.LoadKtx2Asset", "obj(str)")
 RT_FUNC(TextureAsset3DGetWidth,      rt_textureasset3d_get_width,       "Viper.Graphics3D.TextureAsset3D.get_Width",     "i64(obj)")
 RT_FUNC(TextureAsset3DGetHeight,     rt_textureasset3d_get_height,      "Viper.Graphics3D.TextureAsset3D.get_Height",    "i64(obj)")
 RT_FUNC(TextureAsset3DGetMipCount,   rt_textureasset3d_get_mip_count,   "Viper.Graphics3D.TextureAsset3D.get_MipCount",  "i64(obj)")
@@ -574,8 +564,8 @@ RT_FUNC(TextureAsset3DSetResidentMipRange, rt_textureasset3d_set_resident_mip_ra
 /// @summary Provides Texture Asset 3D functionality for 3D rendering and scene applications.
 /// @details
 /// `Viper.Graphics3D.TextureAsset3D` exposes a registry-backed runtime surface without requiring
-/// callers to construct the class directly. Its public surface exposes properties such as `Width`,
-/// `Height`, `MipCount` and operations including `LoadKTX2`, `LoadKTX2Asset`,
+/// callers to construct the class directly. Its public surface exposes properties such as
+/// `Width`, `Height`, `MipCount` and operations including `LoadKtx2`, `LoadKtx2Asset`,
 /// `SetResidentMipRange`.
 RT_CLASS_BEGIN("Viper.Graphics3D.TextureAsset3D", TextureAsset3D, "obj", none)
     RT_PROP("Width", "i64", TextureAsset3DGetWidth, none)
@@ -586,8 +576,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.TextureAsset3D", TextureAsset3D, "obj", none)
     RT_PROP("ResidentMipStart", "i64", TextureAsset3DGetResidentMipStart, none)
     RT_PROP("ResidentMipCount", "i64", TextureAsset3DGetResidentMipCount, none)
     RT_PROP("ResidentBytes", "i64", TextureAsset3DGetResidentBytes, none)
-    RT_METHOD("LoadKTX2", "obj<Viper.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2)
-    RT_METHOD("LoadKTX2Asset", "obj<Viper.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2Asset)
+    RT_METHOD("LoadKtx2", "obj<Viper.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2)
+    RT_METHOD("LoadKtx2Asset", "obj<Viper.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2Asset)
     RT_METHOD("SetResidentMipRange", "void(i64,i64)", TextureAsset3DSetResidentMipRange)
 RT_CLASS_END()
 
@@ -596,9 +586,6 @@ RT_CLASS_END()
 //=============================================================================
 
 RT_FUNC(Material3DNew,          rt_material3d_new,          "Viper.Graphics3D.Material3D.New",          "obj()")
-RT_FUNC(Material3DNewColor,     rt_material3d_new_color,    "Viper.Graphics3D.Material3D.NewColor",     "obj(f64,f64,f64)")
-RT_FUNC(Material3DNewTextured,  rt_material3d_new_textured, "Viper.Graphics3D.Material3D.NewTextured",  "obj(obj)")
-RT_FUNC(Material3DNewPBR,       rt_material3d_new_pbr,      "Viper.Graphics3D.Material3D.NewPBR",       "obj(f64,f64,f64)")
 RT_FUNC(Material3DFromColor,    rt_material3d_new_color,    "Viper.Graphics3D.Material3D.FromColor",    "obj(f64,f64,f64)")
 RT_FUNC(Material3DTextured,     rt_material3d_new_textured, "Viper.Graphics3D.Material3D.Textured",     "obj(obj)")
 RT_FUNC(Material3DPBR,          rt_material3d_new_pbr,      "Viper.Graphics3D.Material3D.PBR",          "obj(f64,f64,f64)")
@@ -633,7 +620,7 @@ RT_FUNC(Material3DGetHasTexture,   rt_material3d_get_has_texture,   "Viper.Graph
 RT_FUNC(Material3DGetHasNormalMap, rt_material3d_get_has_normal_map,"Viper.Graphics3D.Material3D.get_HasNormalMap","i1(obj)")
 RT_FUNC(Material3DSetMetallicRoughnessMap, rt_material3d_set_metallic_roughness_map, "Viper.Graphics3D.Material3D.SetMetallicRoughnessMap", "void(obj,obj)")
 RT_FUNC(Material3DGetHasMetallicRoughnessMap, rt_material3d_get_has_metallic_roughness_map, "Viper.Graphics3D.Material3D.get_HasMetallicRoughnessMap", "i1(obj)")
-RT_FUNC(Material3DSetAOMap,        rt_material3d_set_ao_map,        "Viper.Graphics3D.Material3D.SetAOMap",        "void(obj,obj)")
+RT_FUNC(Material3DSetAOMap,        rt_material3d_set_ao_map,        "Viper.Graphics3D.Material3D.SetAmbientOcclusionMap",        "void(obj,obj)")
 RT_FUNC(Material3DSetLightmap, rt_material3d_set_lightmap, "Viper.Graphics3D.Material3D.SetLightmap", "void(obj,obj)")
 RT_FUNC(Material3DGetHasLightmap, rt_material3d_get_has_lightmap, "Viper.Graphics3D.Material3D.get_HasLightmap", "i1(obj)")
 RT_FUNC(Material3DGetHasAmbientOcclusionMap, rt_material3d_get_has_ao_map, "Viper.Graphics3D.Material3D.get_HasAmbientOcclusionMap", "i1(obj)")
@@ -654,14 +641,14 @@ RT_FUNC(Material3DGetShadowMode,   rt_material3d_get_shadow_mode,   "Viper.Graph
 RT_FUNC(Material3DSetDoubleSided,  rt_material3d_set_double_sided,  "Viper.Graphics3D.Material3D.set_DoubleSided", "void(obj,i1)")
 RT_FUNC(Material3DGetDoubleSided,  rt_material3d_get_double_sided,  "Viper.Graphics3D.Material3D.get_DoubleSided", "i1(obj)")
 RT_FUNC(Material3DSetDepthBias,    rt_material3d_set_depth_bias,    "Viper.Graphics3D.Material3D.SetDepthBias",    "void(obj,f64,f64)")
-RT_FUNC(Mesh3DCalcTangents,       rt_mesh3d_calc_tangents,         "Viper.Graphics3D.Mesh3D.CalcTangents",        "void(obj)")
+RT_FUNC(Mesh3DCalcTangents,       rt_mesh3d_calc_tangents,         "Viper.Graphics3D.Mesh3D.CalculateTangents",        "void(obj)")
 
 /// @summary Provides Material 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Material3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Alpha`, `Metallic`, `Roughness` and operations including `NewColor`, `NewTextured`, `NewPBR`,
-/// `FromColor`.
+/// `Alpha`, `Metallic`, `Roughness` and operations including `FromColor`, `Textured`, `PBR`,
+/// `SetColor`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Material3D", Material3D, "obj", Material3DNew)
     RT_PROP("Alpha", "f64", Material3DGetAlpha, Material3DSetAlpha)
     RT_PROP("Metallic", "f64", Material3DGetMetallic, Material3DSetMetallic)
@@ -683,9 +670,6 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Material3D", Material3D, "obj", Material3DNew)
     RT_PROP("HasMetallicRoughnessMap", "i1", Material3DGetHasMetallicRoughnessMap, none)
     RT_PROP("HasAmbientOcclusionMap", "i1", Material3DGetHasAmbientOcclusionMap, none)
     RT_PROP("HasEnvMap", "i1", Material3DGetHasEnvMap, none)
-    RT_METHOD("NewColor", "obj(f64,f64,f64)", Material3DNewColor)
-    RT_METHOD("NewTextured", "obj(obj)", Material3DNewTextured)
-    RT_METHOD("NewPBR", "obj(f64,f64,f64)", Material3DNewPBR)
     RT_METHOD("FromColor", "obj(f64,f64,f64)", Material3DFromColor)
     RT_METHOD("Textured", "obj(obj)", Material3DTextured)
     RT_METHOD("PBR", "obj(f64,f64,f64)", Material3DPBR)
@@ -703,7 +687,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Material3D", Material3D, "obj", Material3DNew)
     RT_METHOD("MakeInstance", "obj()", Material3DMakeInstance)
     RT_METHOD("SetNormalMap", "void(obj)", Material3DSetNormalMap)
     RT_METHOD("SetMetallicRoughnessMap", "void(obj)", Material3DSetMetallicRoughnessMap)
-    RT_METHOD("SetAOMap", "void(obj)", Material3DSetAOMap)
+    RT_METHOD("SetAmbientOcclusionMap", "void(obj)", Material3DSetAOMap)
     RT_METHOD("SetLightmap", "void(obj)", Material3DSetLightmap)
     RT_PROP("HasLightmap", "i1", Material3DGetHasLightmap, none)
     RT_METHOD("SetSpecularMap", "void(obj)", Material3DSetSpecularMap)

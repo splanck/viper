@@ -32,7 +32,7 @@ PRINT "FindOption no match: "; pat.FindOption("abcdef").IsNone
 ' --- FindFrom ---
 PRINT "--- FindFrom ---"
 PRINT "FindFrom pos 6: "; pat.FindFrom("abc123def456", 6)
-DIM foundFrom AS OBJECT = pat.FindFromOption("abc123def456", 6)
+DIM foundFrom AS OBJECT = pat.FindFrom("abc123def456", 6)
 PRINT "FindFromOption IsSome: "; foundFrom.IsSome
 PRINT "FindFromOption value: "; foundFrom.UnwrapStr()
 
@@ -40,10 +40,10 @@ PRINT "FindFromOption value: "; foundFrom.UnwrapStr()
 PRINT "--- FindPos ---"
 PRINT "FindPos 'abc123def': "; pat.FindPos("abc123def")
 PRINT "FindPos 'abcdef': "; pat.FindPos("abcdef")
-DIM foundPos AS OBJECT = pat.FindPosOption("abc123def")
+DIM foundPos AS OBJECT = pat.FindPos("abc123def")
 PRINT "FindPosOption IsSome: "; foundPos.IsSome
 PRINT "FindPosOption value: "; foundPos.UnwrapI64()
-PRINT "FindPosOption no match: "; pat.FindPosOption("abcdef").IsNone
+PRINT "FindPosOption no match: "; pat.FindPos("abcdef").IsNone
 
 ' --- FindAll ---
 PRINT "--- FindAll ---"
@@ -99,7 +99,7 @@ PRINT "Part 3: "; p3
 
 ' --- SplitN ---
 PRINT "--- SplitN ---"
-DIM parts2 AS OBJECT = commaPat.SplitN("one,two;;three,four", 2)
+DIM parts2 AS OBJECT = commaPat.Split("one,two;;three,four", 2)
 PRINT "Part count: "; parts2.Count
 DIM sn0 AS OBJECT = parts2.Get(0)
 PRINT "Part 0: "; sn0

@@ -51,7 +51,7 @@ SIDE_EFFECT_MARKERS = (
     "Viper.Thread",
     "Viper.Graphics",
     "Viper.GUI",
-    "Viper.Sound",
+    "Viper.Audio",
     "Viper.Audio",
     "Viper.Input",
     "Viper.System",

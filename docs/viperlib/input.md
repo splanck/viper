@@ -565,7 +565,7 @@ coordinate system: the origin is at the top left and positive Y points down.
 | `IsCaptured()`   | `Boolean()`               | Return the runtime capture flag                      |
 | `IsHidden()`     | `Boolean()`               | Return whether the cursor is hidden                  |
 | `Release()`      | `Void()`                  | Clear the capture flag and show the cursor           |
-| `SetPos(x, y)`   | `Void(Integer, Integer)`  | Update the stored position and warp the bound cursor |
+| `SetPosition(x, y)`   | `Void(Integer, Integer)`  | Update the stored position and warp the bound cursor |
 | `Show()`         | `Void()`                  | Show the cursor                                     |
 
 `Capture()` is not an operating-system pointer lock or confinement API. By itself it leaves
@@ -638,7 +638,7 @@ func start() {
         c.Poll();
 
         // Draw while left button held
-        if Mouse.Left() {
+        if Mouse.IsDown(Mouse.ButtonLeft) {
             c.Disc(Mouse.X(), Mouse.Y(), 5, Color.RGB(255, 0, 0));
         }
 

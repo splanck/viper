@@ -303,7 +303,7 @@ func runSliceReplay() -> Float {
         game.destroy();
         return fail("software backend routed skinned draws to the GPU path");
     }
-    if (game.getCharacter().Grounded() == false) {
+    if (game.getCharacter().IsGrounded() == false) {
         game.destroy();
         return fail("character did not remain grounded");
     }

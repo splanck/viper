@@ -2,7 +2,7 @@ module TestTreemapTrie;
 bind Viper.Terminal;
 
 func start() {
-    var tm = new Viper.Collections.TreeMap();
+    var tm = new Viper.Collections.SortedMap();
     SayBool(tm.IsEmpty);
     tm.Set("banana", "yellow");
     tm.Set("apple", "red");
@@ -13,7 +13,7 @@ func start() {
     Say(tm.First());
     Say(tm.Last());
     Say(tm.Floor("blueberry"));
-    Say(tm.Ceil("blueberry"));
+    Say(tm.Ceiling("blueberry"));
     tm.Remove("apple");
     SayInt(tm.Count);
     SayInt(tm.Keys().Count);
@@ -45,14 +45,14 @@ func start() {
     Say(ss.At(1));
     SayInt(ss.IndexOf("banana"));
     Say(ss.Floor("blueberry"));
-    Say(ss.Ceil("blueberry"));
+    Say(ss.Ceiling("blueberry"));
     ss.Remove("apple");
     SayInt(ss.Count);
 
     var bm = new Viper.Collections.BiMap();
     SayBool(bm.IsEmpty);
-    bm.Put("one", "1");
-    bm.Put("two", "2");
+    bm.Set("one", "1");
+    bm.Set("two", "2");
     SayInt(bm.Count);
     Say(bm.GetByKey("one"));
     Say(bm.GetByValue("2"));

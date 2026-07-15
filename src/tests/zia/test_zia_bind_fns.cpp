@@ -54,7 +54,7 @@ module TestParse;
 bind Viper.Core.Parse;
 /// @brief Start.
 func start() {    var x = IntOr("42", 0);
-    var y = NumOr("3.14", 0.0);
+    var y = DoubleOr("3.14", 0.0);
 }
 )"));
 }

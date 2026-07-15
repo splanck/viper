@@ -61,8 +61,8 @@ func start() {
 
     // --- Ceil (smallest element >= key) ---
     Say("--- Ceil ---");
-    Say(ss.Ceil("cherry"));   // cherry
-    Say(ss.Ceil("c"));        // cherry (smallest >= "c")
+    Say(ss.Ceiling("cherry"));   // cherry
+    Say(ss.Ceiling("c"));        // cherry (smallest >= "c")
 
     // --- Lower (greatest element < key) ---
     Say("--- Lower ---");
@@ -74,7 +74,7 @@ func start() {
 
     // --- Items ---
     Say("--- Items ---");
-    var items = ss.Items();
+    var items = ss.ToSeq();
     SayInt(items.Count);  // 5
 
     // --- Range ---
@@ -115,7 +115,7 @@ func start() {
 
     // --- Diff ---
     Say("--- Diff ---");
-    var diff = ss.Diff(ss2);
+    var diff = ss.Difference(ss2);
     SayInt(diff.Count);  // 3 (cherry, date, elderberry)
 
     // --- IsSubset ---

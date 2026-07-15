@@ -294,7 +294,7 @@ func ProjectBindPathForIdentifier(identifier: String,
             var doc = docMgr.documents.get(d);
             d = d + 1;
             if doc.filePath == "" or doc.filePath == importingPath { continue; }
-            if Str.ToLower(Path.Ext(doc.filePath)) != ".zia" { continue; }
+            if Str.ToLower(Path.Extension(doc.filePath)) != ".zia" { continue; }
             if ProjectFileDefinesIdentifier(doc.content, identifier) {
                 if candidatePath != doc.filePath {
                     candidatePath = doc.filePath;
@@ -306,7 +306,7 @@ func ProjectBindPathForIdentifier(identifier: String,
     }
 
     if matches != 1 { return ""; }
-    return RelativeProjectBindPath(Path.Dir(importingPath), candidatePath);
+    return RelativeProjectBindPath(Path.Directory(importingPath), candidatePath);
 }
 
 /// @brief Test whether one file defines the identifier needed by another file.
@@ -320,7 +320,7 @@ func IsProjectBindCandidate(filePath: String,
                             identifier: String,
                             docMgr: document_manager.DocumentManager) -> Boolean {
     if filePath == "" or filePath == importingPath { return false; }
-    if Str.ToLower(Path.Ext(filePath)) != ".zia" { return false; }
+    if Str.ToLower(Path.Extension(filePath)) != ".zia" { return false; }
     var content = "";
     if docMgr != null {
         var idx = docMgr.FindByPath(filePath);

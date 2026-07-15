@@ -6,28 +6,28 @@ func start() {
 
     // --- Base64Enc / Base64Dec ---
     Say("--- Base64 ---");
-    var b64 = Codec.Base64Enc("Hello, World!");
+    var b64 = Codec.Base64Encode("Hello, World!");
     Say(b64);
-    Say(Codec.Base64Dec(b64));
+    Say(Codec.Base64Decode(b64));
 
-    var b64_2 = Codec.Base64Enc("Viper Language");
+    var b64_2 = Codec.Base64Encode("Viper Language");
     Say(b64_2);
-    Say(Codec.Base64Dec(b64_2));
+    Say(Codec.Base64Decode(b64_2));
 
     // Empty string
-    var b64_empty = Codec.Base64Enc("");
+    var b64_empty = Codec.Base64Encode("");
     Say(b64_empty);
-    Say(Codec.Base64Dec(b64_empty));
+    Say(Codec.Base64Decode(b64_empty));
 
     // --- HexEnc / HexDec ---
     Say("--- Hex ---");
-    var hex = Codec.HexEnc("Hi!");
+    var hex = Codec.HexEncode("Hi!");
     Say(hex);
-    Say(Codec.HexDec(hex));
+    Say(Codec.HexDecode(hex));
 
-    var hex2 = Codec.HexEnc("ABC");
+    var hex2 = Codec.HexEncode("ABC");
     Say(hex2);
-    Say(Codec.HexDec(hex2));
+    Say(Codec.HexDecode(hex2));
 
     // --- UrlEncode / UrlDecode ---
     Say("--- URL Encoding ---");

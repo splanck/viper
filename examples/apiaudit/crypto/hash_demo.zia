@@ -13,26 +13,26 @@ func start() {
     Say("=== API Audit: Viper.Crypto.Hash ===");
 
     Say("SHA256 of 'hello':");
-    Say(Hash.SHA256("hello"));
+    Say(Hash.Sha256("hello"));
 
     Say("HmacSHA256('hello','key'):");
-    Say(Hash.HmacSHA256("hello", "key"));
+    Say(Hash.HmacSha256("hello", "key"));
 
     Say("--- Legacy.Hash compatibility ---");
     Say("CRC32 of 'hello':");
-    SayInt(LegacyHash.CRC32("hello"));
+    SayInt(Viper.Crypto.Legacy.Hash.Crc32("hello"));
 
     Say("MD5 of 'hello':");
-    Say(LegacyHash.MD5("hello"));
+    Say(Viper.Crypto.Legacy.Hash.Md5("hello"));
 
     Say("SHA1 of 'hello':");
-    Say(LegacyHash.SHA1("hello"));
+    Say(Viper.Crypto.Legacy.Hash.Sha1("hello"));
 
     Say("HmacMD5('hello','key'):");
-    Say(LegacyHash.HmacMD5("hello", "key"));
+    Say(Viper.Crypto.Legacy.Hash.HmacMd5("hello", "key"));
 
     Say("HmacSHA1('hello','key'):");
-    Say(LegacyHash.HmacSHA1("hello", "key"));
+    Say(Viper.Crypto.Legacy.Hash.HmacSha1("hello", "key"));
 
     Say("=== Hash Demo Complete ===");
 }

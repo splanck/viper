@@ -45,7 +45,7 @@ func start() {
 
     // --- Create ---
     Say("--- Create ---");
-    var complex = Dur.Create(1, 2, 30, 15, 500);
+    var complex = Dur.FromParts(1, 2, 30, 15, 500);
     Say("Create(1d, 2h, 30m, 15s, 500ms):");
     SayInt(complex);
 
@@ -125,7 +125,7 @@ func start() {
 
     // --- Abs ---
     Say("--- Abs ---");
-    var neg = Dur.Neg(sec);
+    var neg = Dur.Negate(sec);
     var absVal = Dur.Abs(neg);
     Say("Abs(Neg(90s)) TotalSeconds:");
     SayInt(Dur.TotalSeconds(absVal));
@@ -138,11 +138,11 @@ func start() {
     // --- Cmp ---
     Say("--- Cmp ---");
     Say("Cmp(90s, 5m):");
-    SayInt(Dur.Cmp(sec, min));
+    SayInt(Dur.Compare(sec, min));
     Say("Cmp(5m, 90s):");
-    SayInt(Dur.Cmp(min, sec));
+    SayInt(Dur.Compare(min, sec));
     Say("Cmp(90s, 90s):");
-    SayInt(Dur.Cmp(sec, sec));
+    SayInt(Dur.Compare(sec, sec));
 
     // --- ToString ---
     Say("--- ToString ---");
@@ -154,9 +154,9 @@ func start() {
     // --- ToISO ---
     Say("--- ToISO ---");
     Say("ToISO(Create(1,2,30,15,500)):");
-    Say(Dur.ToISO(complex));
+    Say(Dur.ToIso8601(complex));
     Say("ToISO(FromSeconds(90)):");
-    Say(Dur.ToISO(sec));
+    Say(Dur.ToIso8601(sec));
 
     Say("=== Duration Demo Complete ===");
 }

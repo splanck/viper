@@ -54,7 +54,7 @@ PRINT dropped.Count()
 ' --- ToSeqN ---
 PRINT "--- ToSeqN ---"
 DIM s5 AS OBJECT = Viper.Functional.LazySeq.Range(10, 20, 2)
-DIM partial AS OBJECT = s5.ToSeqN(3)
+DIM partial AS OBJECT = s5.ToSeq(3)
 PRINT "ToSeqN returned obj"
 
 ' --- Concat ---

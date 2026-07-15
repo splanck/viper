@@ -2,14 +2,14 @@
 PRINT "=== API Audit: Viper.Network.Dns ==="
 
 PRINT "--- IsIPv4 ---"
-PRINT Viper.Network.Dns.IsIPv4("192.168.1.1")
-PRINT Viper.Network.Dns.IsIPv4("not-an-ip")
-PRINT Viper.Network.Dns.IsIPv4("::1")
+PRINT Viper.Network.Dns.IsIpv4("192.168.1.1")
+PRINT Viper.Network.Dns.IsIpv4("not-an-ip")
+PRINT Viper.Network.Dns.IsIpv4("::1")
 
 PRINT "--- IsIPv6 ---"
-PRINT Viper.Network.Dns.IsIPv6("::1")
-PRINT Viper.Network.Dns.IsIPv6("fe80::1")
-PRINT Viper.Network.Dns.IsIPv6("192.168.1.1")
+PRINT Viper.Network.Dns.IsIpv6("::1")
+PRINT Viper.Network.Dns.IsIpv6("fe80::1")
+PRINT Viper.Network.Dns.IsIpv6("192.168.1.1")
 
 PRINT "--- IsIP ---"
 PRINT Viper.Network.Dns.IsIP("192.168.1.1")

@@ -21,11 +21,11 @@ func start() {
     scene.ObjectSetInt(obj, "hp", 3);
     scene.ObjectSetStr(obj, "sprite", "sprites/slime.png");
     SayInt(scene.ObjectGetInt(obj, "hp", -1));
-    SayInt(scene.FindObject("slime-1"));
+    SayInt(scene.FindObjectOption("slime-1").UnwrapOrI64(0 - 1));
     SayInt(scene.CountOfType("enemy"));
 
     var json = scene.ToJson();
-    SayBool(String.Has(json, "\"version\""));
+    SayBool(String.Contains(json, "\"version\""));
     var loaded = SceneDocument.LoadJson(json);
     SayBool(loaded.HasErrors());
     SayInt(loaded.GetInt("playerStartX", -1));

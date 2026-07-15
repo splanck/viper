@@ -257,9 +257,9 @@ PRINT "ToInt(-100): "; Viper.Math.BigInt.ToInt(b)
 
 ' --- ToStrBase ---
 PRINT "--- ToStrBase ---"
-PRINT "ToStrBase(255, 16): "; Viper.Math.BigInt.ToStrBase(x255, 16)
-PRINT "ToStrBase(255, 2): "; Viper.Math.BigInt.ToStrBase(x255, 2)
-PRINT "ToStrBase(42, 8): "; Viper.Math.BigInt.ToStrBase(a, 8)
+PRINT "ToStrBase(255, 16): "; Viper.Math.BigInt.ToStringBase(x255, 16)
+PRINT "ToStrBase(255, 2): "; Viper.Math.BigInt.ToStringBase(x255, 2)
+PRINT "ToStrBase(42, 8): "; Viper.Math.BigInt.ToStringBase(a, 8)
 
 ' --- FitsInt ---
 PRINT "--- FitsInt ---"

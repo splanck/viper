@@ -7,7 +7,7 @@
 > protected borders (UV/material seams survive; subset placement keeps surviving-vertex
 > attrs, skinning-safe), boundary edges penalized 10x via perpendicular planes,
 > lazy-invalidation heap with deterministic tie-break, triangle-flip rejection, emits a
-> compacted NEW mesh. `SceneNode.GenerateLODs(levels, ratio)` builds a ratio^k chain
+> compacted NEW mesh. `SceneNode.GenerateLods(levels, ratio)` builds a ratio^k chain
 > (<=4 levels), registers radius-derived distances via AddLOD, enables SetAutoLOD.
 > Test: `g3d_test_mesh_simplify` (dense-sphere budget hit, determinism, no-grow guard,
 > render smoke, LodCount). E31: ASCII FBX with the standard `; FBX` signature now routes
@@ -62,7 +62,7 @@ Viper.Graphics3D.Mesh3D.Simplify(i64)               obj(obj,i64)
       bone weights (collapsed vertex inherits dominant-influence blend, re-normalized),
       normals (recomputed post-collapse), open borders (boundary quadric penalty ×10).
 Viper.Graphics3D.Mesh3D.SimplifyToError(f64)        obj(obj,f64)   — error-bound variant
-Viper.Graphics3D.SceneNode.GenerateLODs(i64,f64)    void(obj,i64,f64)
+Viper.Graphics3D.SceneNode.GenerateLods(i64,f64)    void(obj,i64,f64)
     — (levels 1..4, ratio e.g. 0.4): builds levels with tri counts ×ratio^k via Simplify,
       registers them through AddLOD with distance thresholds derived from mesh bounds,
       enables SetAutoLOD. Skinned meshes supported (weights carried).

@@ -16,7 +16,7 @@
 >   (4–16 taps) rotated by interleaved-gradient noise, normals from screen-space
 >   derivatives of the reconstructed position, and a smoothstep range check that
 >   kills silhouette halos. No G-buffer added.
-> - **TAA:** new `VGFX3D_POSTFX_EFFECT_TAA` (appended enum), `PostFX3D.AddTAA(blend)`
+> - **TAA:** new `VGFX3D_POSTFX_EFFECT_TAA` (appended enum), `PostFX3D.AddTaa(blend)`
 >   (blend clamps to [0.5, 0.98]), Halton(2,3) sub-pixel projection jitter applied at
 >   each backend's `begin_frame` (scene passes only; jittered VP feeds inv/prev
 >   history so consumers stay consistent; the resolve subtracts the jitter delta from
@@ -80,7 +80,7 @@ Replace the in-shader threshold-add with a multi-pass chain (this is the first *
 - New pass + targets: `taa_history_tex` (RGBA16F, persisted across frames), `taa_output` (can alias the ping-pong scratch).
 - Resolve: reproject history via `scene_motion_tex` (already RG velocity), neighborhood min/max clamp (3x3, YCoCg optional-v2), blend factor 0.9 static / down-weighted by velocity; history invalidated on first frame, resize, and origin rebase (reuse the `canvas3d_clear_motion_history` trigger to also clear TAA history).
 - Camera jitter: sub-pixel Halton(2,3) jitter applied to the projection matrix in `begin_frame` **only when TAA enabled** (jitter must also feed `uPrevViewProjection` unjittered pairing — store both jittered/unjittered VPs in the frame history structs).
-- New enum entry `VGFX3D_POSTFX_EFFECT_TAA` (+ internal `POSTFX_TAA`) + snapshot fields (`taa_blend`, `taa_enabled`); exposed as `PostFX3D.AddTAA()`; FXAA and TAA are mutually exclusive in quality profiles (TAA replaces FXAA at CINEMATIC when supported).
+- New enum entry `VGFX3D_POSTFX_EFFECT_TAA` (+ internal `POSTFX_TAA`) + snapshot fields (`taa_blend`, `taa_enabled`); exposed as `PostFX3D.AddTaa()`; FXAA and TAA are mutually exclusive in quality profiles (TAA replaces FXAA at CINEMATIC when supported).
 - **Determinism note:** TAA is temporal — golden probes for TAA use a fixed N-frame warm-up under synthetic clock (the deterministic `RunFrames`/synthetic-input harness Canvas3D already has) so the accumulated result is reproducible.
 - CPU fallback: skip TAA (software = FXAA path); `BackendSupports("taa")` reports capability.
 

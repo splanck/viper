@@ -420,6 +420,9 @@ static void pruneGitignoreCacheLocked() {
     }
 }
 
+/// @brief Return a file modification time truncated to whole seconds.
+/// @details This coarse value is used as the `.gitignore` cache key, so two rewrites within the
+///          same timestamp second can leave cached patterns stale (VDOC-193).
 int64_t fileTimeSeconds(const fs::path &path) {
 #if RT_PLATFORM_WINDOWS
     struct _stat64i32 st{};
@@ -1878,9 +1881,10 @@ struct PendingWorkspaceWrite {
 
 /// @brief Create a same-directory temporary path for a workspace edit target.
 /// @details The path is derived from the target filename plus a process-local
-///          atomic counter. It is used only with exclusive existence checks and
-///          same-directory renames, so successful replacements stay on the same
-///          filesystem as the destination.
+///          atomic counter. Content temps are opened with exclusive-create semantics,
+///          while backup candidates are not reserved before rename (VDOC-196).
+///          Same-directory renames keep successful replacements on the destination
+///          filesystem.
 /// @param file Target file path.
 /// @param suffix Suffix distinguishing content temps from rollback backups.
 /// @return Candidate temporary path.
@@ -2028,9 +2032,11 @@ static void rollbackWorkspaceWrites(const std::vector<PendingWorkspaceWrite> &wr
 }
 
 /// @brief Apply a validated workspace edit batch with best-effort rollback.
-/// @details This routine revalidates edits immediately before writing, applies
-///          edits in descending range order per file, stages every new file
-///          image into a same-directory temporary file, then commits via rename.
+/// @details This routine revalidates edits before staging, applies edits in
+///          descending range order per file, stages every new file image into a
+///          same-directory temporary file, then commits via rename. It does not
+///          recheck a target after staging and before its backup rename, so an
+///          external write in that window can be overwritten (VDOC-195).
 ///          If any backup or replacement fails, earlier replacements are
 ///          restored from their backups and staged temps are removed.
 /// @param edits Runtime Seq of edit maps.

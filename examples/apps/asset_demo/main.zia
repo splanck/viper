@@ -14,7 +14,7 @@ func start() {
     }
 
     // Test 2: Check size
-    var sz = Assets.Size("assets/greeting.txt");
+    var sz = Assets.SizeBytes("assets/greeting.txt");
     if sz > 0 {
         Say("PASS: size > 0");
     } else {

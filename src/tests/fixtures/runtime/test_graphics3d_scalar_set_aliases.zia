@@ -18,7 +18,7 @@ bind Viper.Terminal;
 /// @brief Exercise canonical static `set_*` functions for scalar Graphics3D properties.
 /// @details These are the ABI-shaped property setter functions used by static calls.
 func start() {
-    var mat = Material3D.NewPBR(0.4, 0.5, 0.6);
+    var mat = Material3D.PBR(0.4, 0.5, 0.6);
 
     mat.Metallic = 0.72;
     mat.Roughness = 0.31;
@@ -53,11 +53,11 @@ func start() {
         return;
     }
 
-    var light = Light3D.NewAmbient(0.1, 0.2, 0.3);
-    Light3D.set_Enabled(light, false);
+    var light = Light3D.Ambient(0.1, 0.2, 0.3);
+    Light3D.set_IsEnabled(light, false);
     Light3D.set_CastsShadows(light, true);
 
-    if (Light3D.get_Enabled(light) != false) {
+    if (Light3D.get_IsEnabled(light) != false) {
         Say("FAIL: set_Enabled should update Enabled");
         return;
     }

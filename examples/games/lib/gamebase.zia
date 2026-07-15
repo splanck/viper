@@ -11,7 +11,7 @@ module gamebase;
 //   - Orchestrated scene transitions with fade effects
 //
 // Usage:
-//   entity MyGame extends GameBase {
+//   class MyGame extends GameBase {
 //       override expose func onInit() {
 //           // Setup your game, create scenes, call setScene()
 //       }
@@ -179,7 +179,8 @@ class GameBase {
         return canvas.Height;
     }
 
-    // Set maximum delta time clamp (default 50ms).
+    // Set maximum delta time clamp (default 50ms). Keep max positive: the
+    // current two-step clamp otherwise permits zero or negative dt values.
     expose func setDTMax(max: Integer) {
         dtMax = max;
     }

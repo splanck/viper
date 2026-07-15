@@ -20,13 +20,13 @@ func start() {
 
     Say(ShellCapture("echo hello"));
 
-    Say(Viper.Text.Fmt.Size(1048576));
+    Say(Viper.Text.Fmt.SizeBytes(1048576));
     Say(Viper.Text.Fmt.Ordinal(1));
     Say(Viper.Text.Fmt.Ordinal(2));
     Say(Viper.Text.Fmt.Ordinal(3));
     Say(Viper.Text.Fmt.Ordinal(11));
     Say(Viper.Text.Fmt.IntPad(42, 5, " "));
-    Say(Viper.Text.Fmt.NumPct(0.756, 1));
+    Say(Viper.Text.Fmt.Percent(0.756, 1));
     Say(Viper.Text.Fmt.IntGrouped(1234567, ","));
     Say(Viper.Text.Fmt.ToWords(42));
     Say(Viper.Text.Fmt.NumFixed(3.14159, 2));

@@ -102,13 +102,13 @@ expose func ProblemSeverityColor(severity: String) -> Integer {
 ///          structured schema, so the output panel highlights common words.
 expose func OutputLineColor(line: String) -> Integer {
     var lower = Str.ToLower(line);
-    if Str.Has(lower, "error") or Str.Has(lower, "failed") {
+    if Str.Contains(lower, "error") or Str.Contains(lower, "failed") {
         return ErrorColor();
     }
-    if Str.Has(lower, "warning") or Str.Has(lower, "warn") {
+    if Str.Contains(lower, "warning") or Str.Contains(lower, "warn") {
         return WarningColor();
     }
-    if Str.Has(lower, "success") or Str.Has(lower, "passed") {
+    if Str.Contains(lower, "success") or Str.Contains(lower, "passed") {
         return SuccessColor();
     }
     return 0;

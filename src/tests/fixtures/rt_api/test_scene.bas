@@ -18,12 +18,12 @@ obj = scene.AddObject("enemy", "slime-1", 64, 48)
 scene.ObjectSetInt(obj, "hp", 3)
 scene.ObjectSetStr(obj, "sprite", "sprites/slime.png")
 PRINT scene.ObjectGetInt(obj, "hp", -1)
-PRINT scene.FindObject("slime-1")
+PRINT Viper.Option.UnwrapOrI64(scene.FindObjectOption("slime-1"), -1)
 PRINT scene.CountOfType("enemy")
 
 DIM json AS STRING
 json = scene.ToJson()
-PRINT Viper.String.Has(json, """version""")
+PRINT Viper.String.Contains(json, """version""")
 
 DIM loaded AS OBJECT
 loaded = Viper.Game2D.SceneDocument.LoadJson(json)

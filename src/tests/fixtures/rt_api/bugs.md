@@ -198,7 +198,7 @@ All files now use GC-managed allocation with proper finalizers for internal sub-
 **Layer:** BASIC frontend (lexer)
 **Severity:** Medium
 **Status:** FIXED
-**Repro:** `Viper.Text.Json.Parse("{""name"":""viper""}")` parse error
+**Repro:** `Viper.Data.Json.Parse("{""name"":""viper""}")` parse error
 **Root Cause:** `Lexer.cpp:425-442` — the string lexer loop treated any `"` as end of string with no `""` escape handling.
 **Fix:** Changed lexString() to handle `""` double-quote escape convention: when a `"` is followed by another `"`, consume both and emit a single `"` in the string. Otherwise, treat as closing quote.
 **Regression Test:** `src/tests/basic/regress_bug016_escaped_quotes.bas` — tests doubled-quote strings.
@@ -312,7 +312,7 @@ Uses `rt_obj_new_i64()` for GC-managed allocation, matching the Unix implementat
 **Layer:** Runtime C/C++
 **Severity:** Low to High
 **Status:** FIXED
-**Scope:** `Viper.Text.*`, `Viper.Sound.*`, and utility/core runtime support code.
+**Scope:** `Viper.Text.*`, `Viper.Audio.*`, and utility/core runtime support code.
 
 | Bug | Area | Root Cause | Fix Location | Regression |
 |-----|------|------------|--------------|------------|

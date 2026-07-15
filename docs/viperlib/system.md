@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # System
@@ -22,7 +22,8 @@ last-verified: 2026-07-14
 - [Viper.Runtime.Unsafe](#viperruntimeunsafe)
 - [Viper.Runtime.GC](#viperruntimegc)
 - [Viper.Memory](#vipermemory)
-- [Viper.Memory.GC](#vipermemorygc)
+- [Viper.Runtime.GC](#vipermemorygc)
+- [Viper.Memory.WeakRef](#vipermemoryweakref)
 - [Viper.Terminal](#viperterminal)
 
 ---
@@ -42,9 +43,28 @@ Command-line arguments and environment access.
 | `GetCommandLine()`         | `String()`             | Returns the program arguments joined as a single string                  |
 | `GetVariable(name)`        | `String(String)`       | Returns the value of an environment variable, or `""` when missing      |
 | `HasVariable(name)`        | `Boolean(String)`      | Returns `TRUE` when the environment variable exists                     |
+| `Cwd()`                    | `String()`             | Return the process-wide current working directory                       |
 | `IsNative()`               | `Boolean()`            | Returns `TRUE` when running native code, `FALSE` when running in the VM |
 | `SetVariable(name, value)` | `Void(String, String)` | Sets or overwrites an environment variable (empty value allowed)        |
-| `EndProgram(code)`         | `Void(Integer)`        | Terminates the program with the provided exit code                      |
+| `Exit(code)`         | `Void(Integer)`        | Terminates the program with the provided exit code                      |
+
+### Behavior Notes
+
+- Tool runners expose only program arguments after `--`, so index 0 is the first user argument.
+  A native legacy context that was not initialized by a runner can instead import the host
+  process's complete `argv`, including its executable name. `GetArgument` traps for a negative or
+  out-of-range index.
+- `GetCommandLine` is a lossy display form: it joins stored arguments with one space and adds no
+  quoting or escaping, so argument boundaries cannot always be recovered.
+- A missing variable and a present variable whose value is empty both make `GetVariable` return
+  `""`; use `HasVariable` to distinguish them. Empty names and embedded NUL bytes trap.
+  `SetVariable` changes the current process environment, which normally becomes the inherited
+  environment of subsequently launched children.
+- Host facts (OS, version, user, home directory, core count) live on `Viper.System.Machine`
+  queries documented below. `Cwd` is process-wide and traps if the current directory cannot be
+  determined.
+- `Exit` does not return. The host operating system's exit-status width and normalization
+  still apply to the supplied 64-bit value.
 
 ### Zia Example
 
@@ -107,7 +127,7 @@ Viper.System.Environment.SetVariable("VIPER_UTF8_SAMPLE", "café")
 PRINT Viper.System.Environment.GetVariable("VIPER_UTF8_SAMPLE")
 
 ' Process exit
-' Viper.System.Environment.EndProgram(7)
+' Viper.System.Environment.Exit(7)
 ```
 
 ---
@@ -150,7 +170,10 @@ IF Viper.System.Clipboard.HasText() THEN
 END IF
 ```
 
-The clipboard helpers are available on desktop graphics backends. In headless or graphics-disabled builds, `Get()` returns an empty string, `HasText()` returns `FALSE`, and `Set()` is a no-op.
+The clipboard helpers are available on desktop graphics backends and must be called from the GUI
+main thread there. In headless or graphics-disabled builds, `Get()` returns an empty string,
+`HasText()` returns `FALSE`, and `Set()` is a no-op. Embedded NUL bytes in text passed to `Set` are
+replaced with U+FFFD by the GUI-string bridge rather than truncating the suffix.
 
 ---
 
@@ -164,9 +187,9 @@ Poll-based graceful shutdown requests for long-running servers, games, and tools
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `NONE` | `0` | No shutdown request is pending |
-| `INTERRUPT` | `1` | Ctrl-C / VM interrupt / cooperative interrupt request |
-| `TERMINATE` | `2` | POSIX `SIGTERM`, Windows console close/logoff/shutdown, or cooperative terminate request |
+| `None` | `0` | No shutdown request is pending |
+| `Interrupt` | `1` | VM Ctrl-C / interrupt, or a cooperative interrupt request |
+| `Terminate` | `2` | VM `SIGTERM` / Windows close event, or a cooperative terminate request |
 
 ### Methods
 
@@ -183,6 +206,12 @@ its next `Shutdown.Poll()` call. If a program never polls, Ctrl-C still raises t
 normal `Interrupt` trap. This is deliberately poll-based; signal and console handlers
 only publish atomic state and never run managed callbacks.
 
+Pending reasons are a process-wide atomic bitmask, not per-VM state. `Request` ignores bits other
+than `Interrupt` and `Terminate` and ORs repeated requests together; `Poll` returns and clears the
+accumulated mask. Automatic Ctrl-C, `SIGTERM`, and Windows console-event publication is currently
+wired by the VM. Native/AOT programs do not install equivalent handlers, so they receive only
+cooperative `Request` calls or requests published by an embedding host (VDOC-210).
+
 ### Zia Example
 
 ```rust
@@ -192,14 +221,13 @@ bind Viper.System.Shutdown as Shutdown;
 bind Viper.Terminal;
 
 func start() {
+    Shutdown.Request(Shutdown.Interrupt);
     var running = true;
     while running {
         var reason = Shutdown.Poll();
         if reason != Shutdown.None {
             Say("shutdown requested");
             running = false;
-        } else {
-            tick();
         }
     }
 }
@@ -239,7 +267,7 @@ External command execution for running system commands and capturing output.
 | `ShellCapture(command)`      | `String(String)`       | Run command through shell, capture stdout              |
 | `ShellResult(command)`       | `CommandResult(String)`| Run command through shell and return captured stdout plus exit code |
 | `ShellFull(command)`         | `String(String)`       | Legacy stdout capture paired with `LastExitCode()`     |
-| `LastExitCode()`             | `Integer()`            | Legacy exit code from the most recent `ShellFull()` call |
+| `LastExitCode()`             | `Integer()`            | Thread-local status from the most recent capture-style shell call |
 
 ### Viper.System.CommandResult
 
@@ -251,7 +279,10 @@ Returned by `Exec.ShellResult(command)`.
 | `ExitCode` | Integer | Normalized shell command exit code, or `-1` for launch/signalled failure |
 | `Succeeded` | Boolean | True when `ExitCode == 0` |
 
-Prefer `ShellResult()` for new shell capture code. `ShellFull()` and `LastExitCode()` remain available for compatibility, but the exit code is thread-local state and can be overwritten by a later exec call.
+Prefer `ShellResult()` for new shell capture code. `ShellFull()` and `LastExitCode()` remain
+available for compatibility. `ShellCapture()` and `ShellFull()` update the thread-local slot;
+`ShellResult()` does so internally through `ShellFull()`. `Shell()` and the direct-exec methods do
+not update it, so a later `Shell()` leaves an earlier value in place.
 
 ### Security Warning
 
@@ -272,6 +303,9 @@ Viper.System.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
 ```
 
 ### Zia Example
+
+The commands in the following Zia and BASIC examples are POSIX examples. On Windows, use commands
+and executable paths available on that host.
 
 ```rust
 module ExecDemo;
@@ -339,12 +373,18 @@ END IF
 
 ### Platform Notes
 
-- **Run/RunArgs/Capture/CaptureArgs**: Execute programs directly using `posix_spawn` (Unix) or `CreateProcess` (
-  Windows). Arguments are passed without shell interpretation.
+- **Run/RunArgs/Capture/CaptureArgs**: Execute programs directly, wait for completion, and pass
+  arguments without shell interpretation. Unix uses `posix_spawnp` (including `PATH` lookup);
+  Windows uses `CreateProcessW`.
 - **Shell/ShellCapture**: Use `/bin/sh -c` on Unix or `cmd /c` on Windows. Commands are interpreted by the shell.
-- Exit codes: 0 typically indicates success. Negative values indicate the process was terminated by a signal (Unix) or
-  failed to start.
-- Capture functions return empty string if the program fails to start.
+- Direct execution returns a negative signal number when a Unix child is signalled and `-1` on
+  launch/wait failure. Shell execution normalizes either launch failure or signal termination to
+  `-1`. Windows returns the child or command processor's unsigned 32-bit exit code as an Integer.
+- Capture methods collect stdout only. They return `""` both when a program produces no output and
+  when it cannot start, so those cases are indistinguishable. Captured output is capped at 16 MiB;
+  reaching the cap traps instead of returning a silent prefix.
+- Program, command, and direct-execution argument strings reject embedded NUL bytes. An empty
+  direct program name traps; an empty shell command succeeds with no output.
 
 ---
 
@@ -366,6 +406,15 @@ Streaming child-process control for tools, build jobs, and long-running IDE task
 current environment or a `Seq` of `KEY=value` strings. `cwd` may be `NULL` or empty to inherit the current working
 directory.
 
+`StartWithEnv` replaces the child's entire environment; it does not overlay the listed entries on
+the parent environment. On POSIX, `Start*` uses `posix_spawn` rather than `posix_spawnp`, so supply
+an executable path—bare names are not searched through `PATH`. Startup/OS failures return `NULL`;
+invalid empty/NUL-containing inputs and malformed environment entries trap.
+
+The current Windows `StartWithEnv` path builds a UTF-16 environment block but does not pass
+`CREATE_UNICODE_ENVIRONMENT` to `CreateProcessW`. Explicit environments can therefore be
+misinterpreted on Windows; use inherited environment state until VDOC-212 is fixed.
+
 ### Viper.System.Process.ProcessHandle
 
 | Method         | Signature    | Description                                                  |
@@ -377,8 +426,8 @@ directory.
 | `ReadStderr()` | `String()`   | Returns buffered stderr bytes available now, then clears them |
 | `ReadStdoutResult()` | `Map()` | Returns `text` and `truncated` for buffered stdout |
 | `ReadStderrResult()` | `Map()` | Returns `text` and `truncated` for buffered stderr |
-| `WriteStdin(data)` | `Integer(String)` | Write bytes to the child's standard input |
-| `ExitCode()`   | `Integer()`  | Returns exit code, or `-1` while running/invalid             |
+| `WriteStdin(data)` | `Integer(String)` | Write bytes to stdin; return bytes accepted, or `-1` on failure |
+| `ExitCode()`   | `Integer()`  | Returns exit code; `-1` also represents running/invalid state |
 | `Kill()`       | `Boolean()`  | Requests process termination                                |
 | `Wait()`       | `Integer()`  | Blocks until process exit and returns the exit code          |
 | `Destroy()`    | `Void()`     | Closes process resources; terminates a still-running child   |
@@ -420,12 +469,19 @@ func start() {
 
 - `Start*` executes the program directly; it does not invoke a shell. Use an explicit shell executable only when shell
   syntax is required.
-- POSIX direct exec failures after a successful fork surface as process exit code `126` or `127`.
+- A spawn failure returns `NULL`. Unlike the PTY path, Process uses `posix_spawn`, so a failed POSIX
+  exec does not normally produce a live handle with code `126` or `127`.
 - `ReadStdout()` and `ReadStderr()` are non-blocking incremental reads intended for simple callers. They trap when the runtime had to truncate unread stream data.
 - `ReadStdoutResult()` and `ReadStderrResult()` are preferred for long-running tools and GUI frame loops. They return a map with `text` and `truncated` so callers can surface overflow without crashing.
-- `Kill()` sends a termination request (`SIGTERM` on POSIX, `TerminateProcess` on Windows). `Destroy()` is idempotent
-  and force-cleans a still-running child.
+- `WriteStdin` uses non-blocking pipes on POSIX and may return a partial byte count; callers must
+  retry the remaining suffix. Null/empty data returns 0.
+- `ExitCode()` and `Wait()` return a negative signal number on POSIX. Consequently `-1` is
+  ambiguous: it can mean running/invalid or a child terminated by signal 1.
+- `Kill()` sends a termination request (`SIGTERM` on POSIX, `TerminateProcess` on Windows) without
+  waiting for exit. `Destroy()` is idempotent; POSIX allows 500 ms after `SIGTERM` before
+  `SIGKILL`, while Windows terminates a live child immediately.
 - Output buffers are capped at 16 MB per stream between reads.
+- ViperDOS currently has no asynchronous process backend: every `Start*` call returns `NULL`.
 
 ---
 
@@ -471,6 +527,36 @@ legacy `Read()` method returns a string directly and traps if the runtime had to
 drop unread PTY output; `ReadResult()` reports that condition through the
 `truncated` flag.
 
+`args`, `cwd`, and `env` follow the Process conventions above; a non-null `env` replaces the full
+child environment. On POSIX, the inherited-environment path uses `execvp` and searches `PATH`, but
+the explicit-environment path switches to `execve` and requires an executable path (VDOC-213).
+Initial and resized dimensions default to 80 columns by 24 rows when non-positive and clamp each
+dimension to 4096.
+
+`Open` returns `NULL` for a null program and ordinary startup/unsupported-platform failures. A
+non-null empty or NUL-containing program/cwd, malformed sequence entry, or allocation failure can
+trap. `OpenResult` converts both forms to `Err(String)` and is the preferred API. In Zia, annotate
+the extracted payload because `Result.Unwrap()` has the generic `Object` return type:
+
+```rust
+var opened = Pty.OpenResult(program, args, cwd, env, 80, 24);
+if opened.IsOk {
+    var session: Viper.System.Pty.PtySession = opened.Unwrap();
+    // use session, then call session.Destroy()
+}
+```
+
+On macOS and Linux the backend uses a controlling POSIX PTY; Windows requires ConPTY (Windows 10
+version 1809 or newer); ViperDOS is unsupported. `LastError` is a compatibility, process-global
+side channel and is unsafe under concurrent calls (VDOC-215). `Read`/`ReadResult` share one merged
+stdout/stderr buffer capped at 16 MiB. `Write` can report a partial byte count, and POSIX exit codes
+use the same negative-signal convention as Process. `Destroy` uses the same POSIX 500 ms
+termination grace period.
+
+`Resize` currently returns `TRUE` whenever the session handle is valid, even if the underlying
+`ioctl` or ConPTY resize operation fails; it is an accepted-request indicator, not confirmation of
+an OS resize (VDOC-214).
+
 ---
 
 ## Viper.System.Machine
@@ -483,15 +569,18 @@ System information queries providing read-only access to machine properties.
 
 | Property   | Type      | Description                                                              |
 |------------|-----------|--------------------------------------------------------------------------|
-| `Os`       | `String`  | Operating system name: `"linux"`, `"macos"`, `"windows"`, or `"unknown"` |
+| `Os`       | `String`  | `"linux"`, `"macos"`, `"windows"`, `"viperdos"`, or `"unknown"`          |
 | `OsVer`    | `String`  | Operating system version string (e.g., `"14.2.1"` on macOS)              |
+| `Arch`     | `String`  | CPU architecture identifier                                              |
 | `Host`     | `String`  | Machine hostname                                                         |
 | `User`     | `String`  | Current username                                                         |
 | `Home`     | `String`  | Path to user's home directory                                            |
 | `Temp`     | `String`  | Path to system temporary directory                                       |
 | `Cores`    | `Integer` | Number of logical CPU cores                                              |
 | `MemTotal` | `Integer` | Total RAM in bytes                                                       |
-| `MemFree`  | `Integer` | Available RAM in bytes                                                   |
+| `MemFree`  | `Integer` | Platform-specific free/reclaimable RAM estimate in bytes                 |
+| `PageSize` | `Integer` | Host memory page size in bytes                                           |
+| `PointerSize` | `Integer` | Native pointer width in bits                                           |
 | `Endian`   | `String`  | Byte order: `"little"` or `"big"`                                        |
 
 ### Zia Example
@@ -505,8 +594,10 @@ bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("OS: " + Machine.get_Os());
+    Say("Arch: " + Machine.get_Arch());
     Say("Endian: " + Machine.get_Endian());
     Say("Cores: " + Fmt.Int(Machine.get_Cores()));
+    Say("Pointer bits: " + Fmt.Int(Machine.get_PointerSize()));
     Say("Home: " + Machine.get_Home());
     Say("User: " + Machine.get_User());
 }
@@ -517,7 +608,7 @@ func start() {
 ```basic
 ' Operating system information
 PRINT "OS: "; Viper.System.Machine.Os
-PRINT "Version: "; Viper.System.Machine.OsVer
+PRINT "Version: "; Viper.System.Machine.OsVersion
 
 ' User and host
 PRINT "User: "; Viper.System.Machine.User
@@ -529,8 +620,11 @@ PRINT "Temp: "; Viper.System.Machine.Temp
 
 ' Hardware information
 PRINT "CPU Cores: "; Viper.System.Machine.Cores
-PRINT "Total RAM: "; Viper.System.Machine.MemTotal / 1073741824; " GB"
-PRINT "Free RAM: "; Viper.System.Machine.MemFree / 1073741824; " GB"
+PRINT "Architecture: "; Viper.System.Machine.Arch
+PRINT "Page Size: "; Viper.System.Machine.PageSize
+PRINT "Pointer Bits: "; Viper.System.Machine.PointerSize
+PRINT "Total RAM: "; Viper.System.Machine.MemoryTotal / 1073741824; " GB"
+PRINT "Free RAM: "; Viper.System.Machine.MemoryFree / 1073741824; " GB"
 
 ' System characteristics
 PRINT "Byte Order: "; Viper.System.Machine.get_Endian
@@ -546,7 +640,7 @@ END IF
 
 ' Check available memory before large allocation
 DIM requiredMem AS INTEGER = 1073741824  ' 1 GB
-IF Viper.System.Machine.MemFree > requiredMem THEN
+IF Viper.System.Machine.MemoryFree > requiredMem THEN
     PRINT "Sufficient memory available"
 ELSE
     PRINT "Warning: Low memory"
@@ -555,18 +649,36 @@ END IF
 
 ### Platform Notes
 
-- **OS**: Returns lowercase platform identifier. Compile-time detection.
-- **OSVer**: On macOS reads `kern.osproductversion` via sysctl. On Linux reads `/etc/os-release` VERSION_ID. Falls back
-  to `uname` release string.
+- **OS**: Returns a lowercase, compile-time platform identifier.
+- **OSVer**: macOS reads `kern.osproductversion`; Linux reads `VERSION_ID` from
+  `/etc/os-release`, with a `uname` fallback. Windows currently uses deprecated
+  `GetVersionExA`, whose result depends on the embedding executable's compatibility manifest;
+  unmanifested/custom hosts can receive a compatibility version instead of the real Windows
+  10/11 version (VDOC-216).
 - **Host**: Uses `gethostname()` on Unix, `GetComputerName()` on Windows.
-- **User**: Uses `getpwuid()` on Unix, `GetUserName()` on Windows, with fallback to environment variables.
-- **Home**: Uses `HOME` environment variable on Unix, `USERPROFILE` on Windows.
-- **Temp**: Uses `TMPDIR`/`TMP`/`TEMP` environment variables on Unix (defaulting to `/tmp`), `GetTempPath()` on Windows.
-- **Cores**: Returns logical (hyper-threaded) core count via `sysconf(_SC_NPROCESSORS_ONLN)` on Unix, `GetSystemInfo()`
-  on Windows.
-- **MemTotal/MemFree**: On macOS uses `sysctl` and `host_statistics64`. On Linux uses `sysinfo()`. On Windows uses
-  `GlobalMemoryStatusEx()`.
+- **User**: Uses `getpwuid()` on Unix and `GetUserNameA()` on Windows, with environment fallbacks.
+- **Home**: Uses `HOME` (then the passwd entry) on Unix; Windows tries `USERPROFILE`, then
+  `HOMEDRIVE` + `HOMEPATH`.
+- **Temp**: Uses `TMPDIR`/`TMP`/`TEMP` on Unix (default `/tmp`). Windows uses `GetTempPathA` and
+  falls back to `C:\Temp`.
+- **Cores**: Returns logical (hyper-threaded) cores using `hw.logicalcpu` on macOS,
+  `sysconf(_SC_NPROCESSORS_ONLN)` on other Unix, and `GetSystemInfo()` on Windows. The macOS
+  fallback currently passes through `sysconf` failure as `-1` instead of applying the documented
+  safe minimum (VDOC-219).
+- **Arch**: Returns `x86_64`, `arm64`, `x86`, `arm`, `wasm32`, or `unknown` from compile-time
+  architecture macros. **PageSize** falls back to 4096 if the platform query fails;
+  **PointerSize** is `sizeof(void*) * 8`.
+- **MemTotal/MemFree**: macOS uses `sysctl` and `host_statistics64`; Linux uses `sysinfo`;
+  Windows uses `GlobalMemoryStatusEx`. `MemFree` is not comparable across platforms: Linux returns
+  only `freeram`, macOS adds inactive pages, and Windows returns available physical memory
+  (VDOC-218).
 - **Endian**: Runtime detection via union trick. Most modern systems are little-endian.
+- Windows Host/User/Home/Temp queries use ANSI APIs or narrow environment strings rather than the
+  wide UTF-16 conversion used by `Environment`; non-ASCII names and paths are not guaranteed to be
+  valid UTF-8 (VDOC-217).
+
+`Viper.System.Machine` properties call these same
+Machine implementations and inherit all of their fallbacks and limitations.
 
 ---
 
@@ -604,7 +716,7 @@ integrating with runtime handles that require explicit ownership control.
 - Value-type hooks are for compiler/runtime interop. Size `0` is valid and creates a managed empty value-type object; negative sizes trap. Field registration is idempotent for the same offset/kind and traps for conflicting field kinds.
 - Trap-state hooks are for generated code, runtime bridges, and low-level tests.
   Applications should inspect trap data through `Viper.Diagnostics.CurrentTrap`
-  instead of setting or polling mutable trap fields. `Viper.Error.SetThrowMsg`,
+  instead of setting or polling mutable trap fields. `Viper.Runtime.Unsafe.SetThrowMsg`,
   `ClearThrowMsg`, `SetTrapFields`, and `RaiseKind` remain compatibility names
   for these unsafe hooks.
 
@@ -638,6 +750,10 @@ call these methods directly.
 - `TrackedCount` is useful for detecting object leaks in long-running programs.
 - `TotalCollected()` saturates at the maximum `Integer` value rather than wrapping.
 - `SetThreshold()` treats negative values as `0`.
+- `TrackedCount()` counts only objects registered with the cycle collector; it is not the total
+  number of live runtime heap allocations. Most collection passes may skip promoted objects, with
+  a periodic full scan, so one forced pass is not a guarantee that every newly formed long-lived
+  cycle was examined.
 - These are diagnostic APIs; calling `Collect()` frequently in hot paths can reduce throughput.
 
 ### Zia Example
@@ -667,8 +783,11 @@ func start() {
 PRINT "Tracked objects: "; Viper.Runtime.GC.TrackedCount()
 PRINT "Total collected: "; Viper.Runtime.GC.TotalCollected()
 
-' Run a batch operation that allocates many temporaries
-DoBatchWork()
+' Allocate a small batch of managed values
+DIM values AS OBJECT = Viper.Collections.Seq.New()
+FOR i = 1 TO 100
+    values.Push(Viper.Text.Fmt.Int(i))
+NEXT i
 
 ' Force a GC sweep to reclaim cycle garbage
 DIM freed AS INTEGER = Viper.Runtime.GC.Collect()
@@ -690,7 +809,7 @@ manual reference-count manipulation is intentionally sharp.
 
 ---
 
-## Viper.Memory.GC
+## Viper.Runtime.GC
 
 Compatibility namespace for `Viper.Runtime.GC`.
 
@@ -699,6 +818,64 @@ Compatibility namespace for `Viper.Runtime.GC`.
 `Collect`, `TrackedCount`, `TotalCollected`, `PassCount`, `SetThreshold`, and
 `GetThreshold` remain available here for existing source and IL. New code should
 prefer `Viper.Runtime.GC`.
+
+---
+
+## Viper.Memory.WeakRef
+
+Zeroing weak references to managed objects, arrays, and strings. A weak reference observes its
+target without keeping that target alive.
+
+**Type:** Instance class, constructed with `Viper.Memory.WeakRef.New(target)`
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `New(target)` | `WeakRef(Object)` | Create a weak reference without retaining `target`; `Nothing` is allowed |
+| `Get()` | `Object()` | Return and retain the live target, or `Nothing` after it has been freed or cleared |
+| `Alive()` | `Boolean()` | Return `TRUE` while the target is non-null and still live |
+| `Reset(target)` | `Void(Object)` | Point at a different live managed target, or clear the reference with `Nothing` |
+| `Free()` | `Void()` | Detach from the target and release one owned weak-reference handle |
+
+The registry also exposes compatibility forms `Get(ref)`, `Alive(ref)`, `Reset(ref, target)`, and
+`Free(ref)`. Ordinary source should use the instance forms.
+
+`New` and `Reset` accept managed runtime objects, arrays, string handles, or `Nothing`; a raw,
+freed, or otherwise unsupported pointer traps. They never retain the target. When the target's
+last strong reference is released, registered weak references are set to `Nothing`. `Get`
+atomically promotes a still-live target to a retained strong reference, so a stored result keeps
+the target alive until that result is released.
+
+`Free` is an explicit ownership operation, not just a synonym for `Reset(Nothing)`: it consumes one
+reference to the weak-reference object. If that was its last reference, using the old handle again
+traps as an invalid or freed weak reference. Passing a null weak-reference receiver to the runtime
+helpers returns the neutral result (`Nothing`, `FALSE`, or no-op), but source-level dispatch may
+reject a null receiver before the helper is called.
+
+### Zia Example
+
+```rust
+module WeakRefDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Memory.WeakRef as WeakRef;
+bind Viper.Text.Fmt as Fmt;
+
+func start() {
+    var target = Seq.New();
+    var ref = WeakRef.New(target);
+
+    Say("Target alive: " + Fmt.Bool(ref.Alive()));
+    var promoted = ref.Get(); // A strong reference when non-null
+    Say("Promoted: " + Fmt.Bool(promoted != null));
+
+    ref.Reset(null);
+    Say("After clear: " + Fmt.Bool(ref.Alive()));
+    ref.Free();
+}
+```
 
 ---
 
@@ -717,6 +894,7 @@ Terminal input and output operations.
 | `Print(text)`     | `Void(String)`  | Writes text without a trailing newline (flushes output) |
 | `PrintInt(value)` | `Void(Integer)` | Writes an integer without a trailing newline (flushes)  |
 | `PrintNum(value)` | `Void(Float)`   | Writes a floating-point number without a trailing newline (flushes) |
+| `PrintBool(value)`| `Void(Boolean)` | Writes `true` or `false` without a trailing newline (flushes) |
 | `Say(text)`       | `Void(String)`  | Writes text followed by a newline                       |
 | `SayBool(value)`  | `Void(Boolean)` | Writes `true` or `false` followed by a newline          |
 | `SayInt(value)`   | `Void(Integer)` | Writes an integer followed by a newline                 |
@@ -732,9 +910,9 @@ Terminal input and output operations.
 | `AskResult(prompt)`  | `Result<String, String>(String)` | Prints prompt, reads a line from stdin; returns `Err` with an EOF message on EOF |
 | `ReadLine()`         | `String()`         | Compatibility API; prefer `TryReadLine` or `ReadLineResult` for EOF |
 | `Ask(prompt)`        | `String(String)`   | Compatibility API; prefer `TryAsk` or `AskResult` for EOF     |
-| `GetKey()`           | `String()`         | Blocks for a single key press and returns a 1-character string |
-| `GetKeyTimeout(ms)`  | `String(Integer)`  | Waits up to `ms` for a key; returns `""` on timeout (negative = block) |
-| `InKey()`            | `String()`         | Non-blocking key poll; returns `""` if no key is available   |
+| `ReadKey()`           | `String()`         | Blocks for a single key press and returns a 1-character string |
+| `ReadKeyFor(ms)`  | `String(Integer)`  | Waits up to `ms` for a key; returns `""` on timeout (negative = block) |
+| `PollKey()`            | `String()`         | Non-blocking key poll; returns `""` if no key is available   |
 
 #### Screen Control
 
@@ -743,7 +921,7 @@ Terminal input and output operations.
 | `Clear()`                 | `Void()`                 | Clears the terminal screen (TTY only)                    |
 | `SetPosition(row, col)`   | `Void(Integer, Integer)` | Move cursor to 1-based row/column (clamped to 1)          |
 | `SetColor(fg, bg)`        | `Void(Integer, Integer)` | Set BASIC color codes; use `-1` to leave a channel unchanged |
-| `SetCursorVisible(show)`  | `Void(Integer)`          | Show (`!= 0`) or hide (`0`) the cursor                   |
+| `SetCursorVisible(show)`  | `Void(Boolean)`          | Show or hide the cursor                                  |
 | `SetAltScreen(enable)`    | `Void(Boolean)`          | Enter or exit the alternate screen                       |
 | `Bell()`                  | `Void()`                 | Emits the terminal bell                                  |
 
@@ -754,6 +932,15 @@ Terminal input and output operations.
 | `BeginBatch()`  | `Void()`  | Begin batch mode (defers flushes for terminal control)     |
 | `EndBatch()`    | `Void()`  | End batch mode and flush pending output                   |
 | `Flush()`       | `Void()`  | Force buffered output to be written immediately           |
+
+#### Low-Level Compatibility Methods
+
+| Method             | Signature       | Description |
+|--------------------|-----------------|-------------|
+| `PrintStr(text)`   | `Void(String)`  | Batch-aware low-level string output without a newline |
+| `PrintI64(value)`  | `Void(Integer)` | Batch-aware low-level integer output without a newline |
+| `PrintF64(value)`  | `Void(Float)`   | Batch-aware low-level floating-point output without a newline |
+| `InputLine()`      | `String()`      | Legacy alias for `ReadLine()` |
 
 ### Zia Example
 
@@ -781,6 +968,26 @@ Viper.Terminal.Say("Hello, " + name + "!")
 
 For most BASIC programs, the `PRINT` and `INPUT` statements are more convenient. Use `Viper.Terminal` when you need
 explicit control or are working at the IL level.
+
+- `ReadLine`, `Ask`, and `InputLine` return a null/Nothing string at EOF despite their non-null
+  `String` registry signatures. Use the Option or Result forms when EOF must be represented safely.
+- Key input is byte-oriented. On Windows, extended keys arrive as `_getch` prefix/scan-code calls;
+  on UTF-8 terminals, one Unicode character can require multiple calls. A failed/non-TTY blocking
+  read can return the character with code zero rather than `""`.
+- `ReadKeyFor` is publicly typed with a 64-bit Integer but is registered to a 32-bit runtime
+  implementation. Use `-1` for an indefinite wait or `0..2147483647` milliseconds; larger values
+  narrow and can become negative (VDOC-221). `SetPosition` and `SetColor` likewise narrow Integer
+  arguments to 32 bits.
+- Screen-control methods other than `Bell` are silent no-ops when stdout is not a TTY. `SetColor`
+  ignores the entire request if either channel is below `-1`; values 0–15 select BASIC/bright
+  colors, and values 16 or greater are emitted as ANSI 256-color indexes without a 255 clamp.
+- `SetAltScreen(TRUE)` also enables cached raw input and increments the output-batch depth;
+  `SetAltScreen(FALSE)` decrements the depth and restores input. Repeated enable calls are not
+  idempotent and can leave output batching active, and normal-exit cleanup restores raw mode but
+  does not explicitly exit the alternate screen (VDOC-220).
+- Batching is nested. It defers control-sequence flushes and the low-level `Print*` methods above;
+  the higher-level `Print`, `PrintInt`, `PrintNum`, `PrintBool`, and `Say*` methods explicitly flush
+  and therefore do not remain buffered.
 
 ---
 

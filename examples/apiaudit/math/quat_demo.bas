@@ -92,8 +92,8 @@ PRINT "Len(1,2,3,4): "; q2.Len()
 
 ' --- LenSq ---
 PRINT "--- LenSq ---"
-PRINT "LenSq(identity): "; qi.LenSq()
-PRINT "LenSq(1,2,3,4): "; q2.LenSq()
+PRINT "LenSq(identity): "; qi.LengthSquared()
+PRINT "LenSq(1,2,3,4): "; q2.LengthSquared()
 
 ' --- Dot ---
 PRINT "--- Dot ---"

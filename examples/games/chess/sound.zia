@@ -19,7 +19,7 @@
 
 module sound;
 
-bind Viper.Sound;
+bind Viper.Audio;
 
 /// @brief Named procedural audio bank for chess UI/game events.
 class ChessSound {
@@ -41,8 +41,8 @@ class ChessSound {
     }
 
     expose func setup() {
-        if Audio.IsAvailable() == false { return; }
-        if Audio.Init() == 0 { return; }
+        if Mixer.IsAvailable() == false { return; }
+        if Mixer.Init() == 0 { return; }
         bank = SoundBank.New();
         bank.RegisterSound("menu", Synth.Tone(720, 42, 1));
         bank.RegisterSound("start", Synth.Sweep(560, 980, 88, 1));
@@ -68,8 +68,8 @@ class ChessSound {
     expose func shutdown() {
         if ready == false { return; }
         self.stopMusic();
-        Audio.StopAllSounds();
-        Audio.Shutdown();
+        Mixer.StopAllSounds();
+        Mixer.Shutdown();
         ready = false;
     }
 
@@ -100,7 +100,7 @@ class ChessSound {
     hide func playSfx(name: String, volume: Integer) {
         if ready == false { return; }
         if bank.Has(name) {
-            bank.Get(name).PlayExGroup(volume, 0, 1);
+            bank.Get(name).PlayGroup(volume, 0, 1);
         }
     }
 
@@ -114,9 +114,9 @@ class ChessSound {
             musicOut = 0;
             sfxOut = 0;
         }
-        Audio.SetMasterVolume(masterOut);
-        Audio.SetGroupVolume(0, musicOut);
-        Audio.SetGroupVolume(1, sfxOut);
+        Mixer.SetMasterVolume(masterOut);
+        Mixer.SetGroupVolume(0, musicOut);
+        Mixer.SetGroupVolume(1, sfxOut);
     }
 }
 

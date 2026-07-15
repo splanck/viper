@@ -17,8 +17,8 @@ func start() {
     SayInt(IndexOf("abcde", "cd"));
     SayInt(IndexOf("abcde", "zz"));
     SayInt(IndexOfFrom("abcabc", 4, "bc"));
-    SayBool(Has("hello", "ell"));
-    SayBool(Has("hello", "xyz"));
+    SayBool(Contains("hello", "ell"));
+    SayBool(Contains("hello", "xyz"));
     SayBool(StartsWith("hello", "hel"));
     SayBool(EndsWith("hello", "llo"));
     SayInt(Count("aabaa", "a"));
@@ -26,16 +26,15 @@ func start() {
     Say(PadLeft("7", 3, "0"));
     Say(PadRight("7", 3, "."));
     Say(Repeat("ab", 3));
-    Say(Flip("abc"));
-    SayInt(Cmp("abc", "abc"));
-    SayInt(CmpNoCase("ABC", "abc"));
+    Say(Reverse("abc"));
+    SayInt(Compare("abc", "abc"));
+    SayInt(CompareIgnoreCase("ABC", "abc"));
     SayInt(Asc("A"));
     Say(Chr(66));
     Say(CamelCase("hello_world"));
     Say(KebabCase("helloWorld"));
     Say(PascalCase("hello_world"));
     Say(SnakeCase("helloWorld"));
-    Say(ScreamingSnake("helloWorld"));
-    Say(FromStr("test"));
+    Say(ScreamingSnakeCase("helloWorld"));
     Say("done");
 }

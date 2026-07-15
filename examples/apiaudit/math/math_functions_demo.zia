@@ -38,17 +38,17 @@ func start() {
     Say("AbsInt(7):");
     SayInt(AbsInt(7));
     Say("Sgn(-3.0):");
-    SayNum(Sgn(-3.0));
+    SayNum(Sign(-3.0));
     Say("Sgn(0.0):");
-    SayNum(Sgn(0.0));
+    SayNum(Sign(0.0));
     Say("Sgn(7.0):");
-    SayNum(Sgn(7.0));
+    SayNum(Sign(7.0));
     Say("SgnInt(-100):");
-    SayInt(SgnInt(-100));
+    SayInt(SignInt(-100));
     Say("SgnInt(0):");
-    SayInt(SgnInt(0));
+    SayInt(SignInt(0));
     Say("SgnInt(42):");
-    SayInt(SgnInt(42));
+    SayInt(SignInt(42));
 
     // --- Rounding ---
     Say("--- Rounding ---");
@@ -71,11 +71,11 @@ func start() {
     Say("Round(-2.5):");
     SayNum(Round(-2.5));
     Say("Trunc(3.9):");
-    SayNum(Trunc(3.9));
+    SayNum(Truncate(3.9));
     Say("Trunc(-3.9):");
-    SayNum(Trunc(-3.9));
+    SayNum(Truncate(-3.9));
     Say("Trunc(4.0):");
-    SayNum(Trunc(4.0));
+    SayNum(Truncate(4.0));
 
     // --- Min / Max ---
     Say("--- Min / Max ---");
@@ -211,15 +211,15 @@ func start() {
     Say("Lerp(0.0, 10.0, 1.0):");
     SayNum(Lerp(0.0, 10.0, 1.0));
     Say("Deg(3.14159265358979):");
-    SayNum(Deg(3.14159265358979));
+    SayNum(ToDegrees(3.14159265358979));
     Say("Deg(0.0):");
-    SayNum(Deg(0.0));
+    SayNum(ToDegrees(0.0));
     Say("Rad(180.0):");
-    SayNum(Rad(180.0));
+    SayNum(ToRadians(180.0));
     Say("Rad(90.0):");
-    SayNum(Rad(90.0));
+    SayNum(ToRadians(90.0));
     Say("Rad(0.0):");
-    SayNum(Rad(0.0));
+    SayNum(ToRadians(0.0));
     Say("Wrap(5.0, 0.0, 3.0):");
     SayNum(Wrap(5.0, 0.0, 3.0));
     Say("Wrap(-1.0, 0.0, 3.0):");

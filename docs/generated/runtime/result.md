@@ -12,8 +12,8 @@
 Represents either a successful value or a structured runtime failure.
 
 `Viper.Result` exposes a registry-backed runtime surface without requiring callers to construct
-the class directly. Its public surface exposes properties such as `IsOk`, `IsErr` and operations
-including `Ok`, `OkStr`, `OkI64`, `OkF64`.
+the class directly. Its public surface exposes properties such as `IsOk`, `IsErr` and
+operations including `Ok`, `OkStr`, `OkI64`, `OkF64`.
 
 #### Properties
 
@@ -42,8 +42,6 @@ including `Ok`, `OkStr`, `OkI64`, `OkF64`.
 | <a id="viper-result-unwraporf64"></a>`UnwrapOrF64` | `f64(f64)` | `Viper.Result.UnwrapOrF64` |
 | <a id="viper-result-unwraperr"></a>`UnwrapErr` | `obj()` | `Viper.Result.UnwrapErr` |
 | <a id="viper-result-unwraperrstr"></a>`UnwrapErrStr` | `str()` | `Viper.Result.UnwrapErrStr` |
-| <a id="viper-result-okvalue"></a>`OkValue` | `obj()` | `Viper.Result.OkValue` |
-| <a id="viper-result-errvalue"></a>`ErrValue` | `obj()` | `Viper.Result.ErrValue` |
 | <a id="viper-result-expect"></a>`Expect` | `obj(str)` | `Viper.Result.Expect` |
 | <a id="viper-result-expecterr"></a>`ExpectErr` | `obj(str)` | `Viper.Result.ExpectErr` |
 | <a id="viper-result-tostring"></a>`ToString` | `str()` | `Viper.Result.ToString` |
@@ -75,8 +73,6 @@ including `Ok`, `OkStr`, `OkI64`, `OkF64`.
 | `Viper.Result.UnwrapOrF64` | `f64(obj,f64)` | `rt_result_unwrap_or_f64` |
 | `Viper.Result.UnwrapErr` | `obj(obj)` | `rt_result_unwrap_err` |
 | `Viper.Result.UnwrapErrStr` | `str(obj)` | `rt_result_unwrap_err_str` |
-| `Viper.Result.OkValue` | `obj(obj)` | `rt_result_ok_value` |
-| `Viper.Result.ErrValue` | `obj(obj)` | `rt_result_err_value` |
 | `Viper.Result.Expect` | `obj(obj,str)` | `rt_result_expect` |
 | `Viper.Result.ExpectErr` | `obj(obj,str)` | `rt_result_expect_err` |
 | `Viper.Result.ToString` | `str(obj)` | `rt_result_to_string` |

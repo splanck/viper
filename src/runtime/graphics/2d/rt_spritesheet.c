@@ -21,8 +21,8 @@
 //   - Named regions are stored in an associative array (string → rect). Lookup
 //     is linear in the number of regions unless a hash map is used internally.
 //   - The atlas Pixels buffer is retained by the sheet and released on destroy.
-//     Extracted frame Pixels objects are independent copies (or views, per
-//     implementation); they do not hold a reference back to the atlas.
+//     Extracted frame Pixels objects are independent copies; they do not hold
+//     a reference back to the atlas.
 //   - A missing/unknown region name returns NULL rather than trapping, so callers
 //     can detect a misspelled frame ID without crashing.
 //

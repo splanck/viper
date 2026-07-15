@@ -106,7 +106,7 @@ Per item: **Gap · Evidence · Proposed API · Beneficiaries · Effort / ADR.**
   *uses* them for the simple cases. But its core editor scheduler can't be built on them because it
   needs **revision/generation supersession** — a job queued for `(path, revN)` must be invalidated
   the instant `revN+1` arrives — which a string-key-only `IsDue(key)` cannot express. So the IDE
-  hand-rolls timing on raw `Viper.Time.Clock.Ticks()`.
+  hand-rolls timing on raw `Viper.Time.Clock.NowMs()`.
 - **Evidence.** Uses of the existing primitives: `editor/semantic_tokens.zia:68`,
   `editor/inlay_hints.zia:42`, `main.zia:280` (autosave Debouncer), `app/workspace_watcher.zia:53`
   (Throttler). Hand-rolled instead: `editor/scheduler.zia` (435 LOC — `Queue(kind, path, revision,

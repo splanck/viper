@@ -1,34 +1,55 @@
-# Viper.Game.UI — GameButton + MenuList Input
+---
+status: active
+audience: public
+last-verified: 2026-07-15
+---
+
+# Viper.Game.UI menu input and GameButton
 
 ## MenuList.HandleInput
 
-Added to the existing MenuList widget: `HandleInput(up, down, confirm)` handles navigation and returns the selected index when confirm is pressed (-1 otherwise). Wraps selection at list boundaries. Hidden or empty menus return `-1` without changing selection. If both `up` and `down` are true, selection does not move but `confirm` still returns the current selected index. Lists are capped at 64 items; adding beyond that cap traps.
+`menu.HandleInput(up, down, confirm)` returns the selected zero-based index when `confirm` is true,
+or `-1` otherwise. Up/down wrap at the ends. When both directions are true, selection does not
+move but confirm still returns it. Hidden and empty menus return `-1` without changing selection.
+
+MenuList holds at most 64 items; the 65th `AddItem` traps. Each label is copied into a 128-byte
+buffer (127 content bytes) and truncation preserves a UTF-8 boundary. The selected index starts at
+zero, `Clear` resets it to zero, and explicit selection clamps to the current item range.
 
 ```rust
-var choice = menuList.HandleInput(upPressed, downPressed, confirmPressed)
-if choice == 0 { startGame() }
-if choice == 1 { showOptions() }
+module MenuListInputExample;
+
+func start() {
+    var menu = Viper.Game.UI.HudMenuList.New(20, 20, 24);
+    menu.AddItem("Start");
+    menu.AddItem("Options");
+    var choice = menu.HandleInput(false, true, true);
+    Viper.Terminal.SayInt(choice);
+}
 ```
 
 ## GameButton
 
-Standalone styled button with normal/selected visual states. For custom menu layouts beyond MenuList.
+`Viper.Game.UI.HudButton` is a styled drawing primitive, not an input/hit-test control. Its main
+surface is:
 
-### API
-- `GameButton.New(x, y, w, h, text)` — Create button
-- `SetText(text)`, `SetColors(normal, selected)`, `SetTextColors(normal, selected)`
-- `SetBorder(width, color)` — width <= 0 disables the border
-- `SetSize(width, height)` — resize the button
-- `Draw(canvas, isSelected)` — Render with state-dependent colors
-- `X`, `Y` — Position (get/set)
-- `Width`, `Height` — Size (get)
-- `Visible`, `TextScale` — Visibility and built-in text scale (get/set)
+- `New(x, y, width, height, text)`, `SetText`, `SetColors`, and `SetTextColors`;
+- `SetBorder(width, color)`: non-positive width disables it, and color zero also suppresses draw;
+- `SetSize`, mutable `X`/`Y`, read-only `Width`/`Height`, and mutable `Visible`/`TextScale`;
+- `Draw(canvas, isSelected)`, accepting a 2D Canvas or Canvas3D and selecting the configured state
+  colors. Hidden buttons are a no-op.
 
-Text is copied into the button, clipped to the inner button width when drawn, and truncated on UTF-8 codepoint boundaries. Invalid constructor or `SetSize` dimensions are clamped to 1 pixel, and very large dimensions are capped at 16384 pixels.
+Dimensions clamp to 1–16,384 pixels and text scale to 1–16. The label is copied into 63 content
+bytes on a UTF-8 boundary, then drawing clips it by the available built-in 8-pixel character cells.
 
-### Example
 ```rust
-var btn = GameButton.New(100, 200, 200, 40, "Start Game")
-btn.SetColors(0x333333, 0x4444AA)
-btn.Draw(canvas, isHighlighted)
+module GameButtonExample;
+
+func start() {
+    var button = Viper.Game.UI.HudButton.New(100, 200, 200, 40, "Start Game");
+    button.SetColors(0x333333, 0x4444AA);
+    button.SetTextColors(0xCCCCCC, 0xFFFFFF);
+    button.set_TextScale(2);
+    Viper.Terminal.SayInt(button.get_Width());
+}
 ```

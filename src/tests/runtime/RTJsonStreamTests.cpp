@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTJsonStreamTests.cpp
-// Purpose: Tests for Viper.Text.JsonStream SAX-style streaming JSON parser.
+// Purpose: Tests for Viper.Data.JsonStream SAX-style streaming JSON parser.
 //
 //===----------------------------------------------------------------------===//
 

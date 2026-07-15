@@ -5,7 +5,7 @@ last-verified: 2026-07-14
 ---
 
 # Specialized Structures
-> F64Buffer, I64Buffer, Bag, BloomFilter, Trie, UnionFind, BitSet, Bytes
+> F64Buffer, I64Buffer, StringSet, BloomFilter, Trie, UnionFind, BitSet, Bytes
 
 **Part of [Viper Runtime Library](../README.md) › [Collections](README.md)**
 
@@ -64,13 +64,13 @@ last-verified: 2026-07-14
 
 ---
 
-## Viper.Collections.Bag
+## Viper.Collections.StringSet
 
 A set data structure for storing unique strings. Efficiently handles membership testing, set operations (union,
 intersection, difference), and enumeration.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Bag()`
+**Constructor:** `NEW Viper.Collections.StringSet()`
 
 ### Properties
 
@@ -87,11 +87,11 @@ intersection, difference), and enumeration.
 | `Remove(str)`   | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
 | `Has(str)`      | `Boolean(String)` | Check if string is in the bag                                |
 | `Clear()`       | `Void()`          | Remove all strings from the bag                              |
-| `Clone()`       | `Bag()`           | Return an independent copy                                   |
+| `Clone()`       | `StringSet()`           | Return an independent copy                                   |
 | `Items()`       | `Seq()`           | Get all strings as a Seq (order undefined)                   |
-| `Union(other)`     | `Bag(Bag)`        | Return new bag with union of both bags                       |
-| `Intersect(other)` | `Bag(Bag)`        | Return new bag with intersection of both bags                |
-| `Diff(other)`   | `Bag(Bag)`        | Return new bag with elements in this but not other           |
+| `Union(other)`     | `StringSet(StringSet)`        | Return new bag with union of both bags                       |
+| `Intersect(other)` | `StringSet(StringSet)`        | Return new bag with intersection of both bags                |
+| `Diff(other)`   | `StringSet(StringSet)`        | Return new bag with elements in this but not other           |
 | `ToSeq()`        | `Seq()`           | Return all strings as a Seq (same as Items)                    |
 | `ToSet()`        | `Set()`           | Return all strings as a new Set                                |
 
@@ -110,7 +110,7 @@ intersection, difference), and enumeration.
 - **Known defect:** `ToSet()` currently inserts unboxed runtime strings into
   the generic `Set`. A separately boxed string with identical text therefore
   does not compare equal: `bag.ToSet().Has(Box.Str("apple"))` can be false even
-  when the bag contains `"apple"`. Continue using `Bag` for string membership,
+  when the bag contains `"apple"`. Continue using `StringSet` for string membership,
   or rebuild a `Set` by adding `Box.Str(...)` values, until VDOC-102 is fixed.
 - Bags are not thread-safe. Concurrent reads are safe only while no thread can
   mutate the bag.
@@ -125,7 +125,7 @@ bind Viper.Collections;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var fruits = new Bag();
+    var fruits = new StringSet();
     fruits.Add("apple");
     fruits.Add("banana");
     fruits.Add("cherry");
@@ -148,7 +148,7 @@ func start() {
 
 ```basic
 ' Create and populate a bag
-DIM fruits AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
+DIM fruits AS Viper.Collections.StringSet = NEW Viper.Collections.StringSet()
 fruits.Add("apple")
 fruits.Add("banana")
 fruits.Add("cherry")
@@ -168,26 +168,26 @@ PRINT removed              ' Output: 1 (was removed)
 PRINT fruits.Has("banana") ' Output: 0 (no longer present)
 
 ' Set operations
-DIM bagA AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
+DIM bagA AS Viper.Collections.StringSet = NEW Viper.Collections.StringSet()
 bagA.Add("a")
 bagA.Add("b")
 bagA.Add("c")
 
-DIM bagB AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
+DIM bagB AS Viper.Collections.StringSet = NEW Viper.Collections.StringSet()
 bagB.Add("b")
 bagB.Add("c")
 bagB.Add("d")
 
 ' Union: elements in either bag
-DIM merged AS Viper.Collections.Bag = bagA.Union(bagB)
+DIM merged AS Viper.Collections.StringSet = bagA.Union(bagB)
 PRINT merged.Count           ' Output: 4 (a, b, c, d)
 
 ' Intersection: elements in both bags
-DIM common AS Viper.Collections.Bag = bagA.Intersect(bagB)
+DIM common AS Viper.Collections.StringSet = bagA.Intersect(bagB)
 PRINT common.Count           ' Output: 2 (b, c)
 
 ' Difference: elements in A but not B
-DIM diff AS Viper.Collections.Bag = bagA.Diff(bagB)
+DIM diff AS Viper.Collections.StringSet = bagA.Diff(bagB)
 PRINT diff.Count             ' Output: 1 (a only)
 
 ' Enumerate all elements
@@ -240,7 +240,7 @@ expected number of elements and desired false positive rate
 - `Count` is an operation count, not a distinct-element count. Adding the same
   non-null string again increments it, although the filter bits may not change.
 - `FalsePositiveRate()` estimates the current false positive rate from the fraction of bits currently set, so duplicate additions do not inflate the estimate.
-- `Fpr()` remains available as a compatibility alias for
+- `FalsePositiveRate()` remains available as a compatibility alias for
   `FalsePositiveRate()`.
 - `Merge` requires matching *derived* bit and hash counts. Filters created with
   different inputs can therefore be compatible if those inputs round to the
@@ -581,7 +581,7 @@ func start() {
     SayInt(uf.SetSize(0));                       // 4 ({0,1,2,3})
     SayInt(uf.SetSize(4));                       // 1 ({4} alone)
 
-    var root = uf.FindRootOption(3);
+    var root = uf.FindRoot(3);
     if root.IsSome {
         SayInt(root.UnwrapI64());                // representative root
     }
@@ -601,7 +601,7 @@ uf = Viper.Collections.UnionFind.New(6)
 PRINT uf.Count               ' 6 (each element is its own set)
 
 ' Find representative
-DIM root AS OBJECT = uf.FindRootOption(0)
+DIM root AS OBJECT = uf.FindRoot(0)
 IF root.IsSome THEN
     PRINT root.UnwrapI64()   ' 0 (own representative)
 END IF

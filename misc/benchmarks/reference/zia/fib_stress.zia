@@ -9,5 +9,5 @@ func fib(n: Integer) -> Integer {
 
 func start() {
     var result: Integer = fib(40);
-    Viper.System.Environment.EndProgram(result);
+    Viper.System.Environment.Exit(result);
 }

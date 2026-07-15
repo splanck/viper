@@ -56,8 +56,7 @@ using namespace il::runtime::names;
 /// @{
 //=============================================================================
 
-/// @brief Check if a string contains a substring. Maps to Viper.String.Has.
-inline constexpr const char *kStringContains = kStringHas;
+// kStringContains comes directly from the canonical catalog (Viper.String.Contains).
 /// @brief Get the length of a string. Maps to Viper.String.get_Length.
 inline constexpr const char *kStringLength = kStringGetLength;
 /// @brief Convert an i64 integer to its string representation.
@@ -93,9 +92,9 @@ inline constexpr const char *kBoxI1 = kCoreBoxI1;
 /// @brief Box a string pointer into a heap-allocated Box object.
 inline constexpr const char *kBoxStr = kCoreBoxStr;
 /// @brief Query the struct type tag stored in a Box object.
-inline constexpr const char *kBoxValueType = kCoreBoxValueType;
+inline constexpr const char *kBoxValueType = kRuntimeUnsafeValueType;
 /// @brief Register an owned field inside a boxed value-type object.
-inline constexpr const char *kBoxValueTypeAddField = kCoreBoxValueTypeAddField;
+inline constexpr const char *kBoxValueTypeAddField = kRuntimeUnsafeValueTypeAddField;
 /// @brief Unbox a Box object to extract the i64 value.
 inline constexpr const char *kUnboxI64 = kCoreBoxToI64;
 /// @brief Unbox a Box object to extract the f64 value.
@@ -125,7 +124,7 @@ inline constexpr const char *kConvertToInt = kCoreConvertToInt64;
 //=============================================================================
 
 /// @brief Parse a string to an f64 value.
-inline constexpr const char *kParseDouble = kCoreParseTryNum;
+inline constexpr const char *kParseDouble = kCoreParseTryDouble;
 /// @brief Parse a string to an i64 value.
 inline constexpr const char *kParseInt64 = kCoreParseTryInt;
 /// @}
@@ -270,8 +269,8 @@ inline constexpr const char *kSeqGetStr = kCollectionsSeqGetStr;
 /// @{
 //=============================================================================
 
-/// @brief Generate a random number. Maps to Viper.Math.Random.Next.
-inline constexpr const char *kMathRandom = kMathRandomNext;
+/// @brief Generate a random number. Maps to Viper.Math.Random.NextDouble.
+inline constexpr const char *kMathRandom = kMathRandomNextDouble;
 /// @brief Sleep for a given number of milliseconds. Maps to Viper.Time.Clock.Sleep.
 inline constexpr const char *kSystemSleep = kTimeClockSleep;
 /// @}
@@ -360,11 +359,11 @@ inline constexpr const char *kRtObjClassId = "rt_obj_class_id";
 //=============================================================================
 
 /// @brief Increment reference count of a heap object.
-inline constexpr const char *kHeapRetain = kMemoryRetain;
+inline constexpr const char *kHeapRetain = kRuntimeUnsafeRetain;
 /// @brief Decrement reference count; free when it reaches zero.
-inline constexpr const char *kHeapRelease = kMemoryRelease;
+inline constexpr const char *kHeapRelease = kRuntimeUnsafeRelease;
 /// @brief Decrement reference count for a string and return the remaining count.
-inline constexpr const char *kHeapReleaseStr = kMemoryReleaseStr;
+inline constexpr const char *kHeapReleaseStr = kRuntimeUnsafeReleaseStr;
 /// @brief Release a string if it's heap-allocated (no-op for static/interned).
 /// @details Uses the C function name directly because it's already registered
 ///          in RuntimeSignatures.cpp (not via runtime.def's mangled name).

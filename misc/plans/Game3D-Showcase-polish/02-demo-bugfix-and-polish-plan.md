@@ -172,7 +172,7 @@ Cons:
 Use:
 
 ```zia
-camera = Camera3D.NewHorizontalFov(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
+camera = Camera3D.WithHorizontalFov(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
 ```
 
 Then set:

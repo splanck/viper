@@ -73,10 +73,10 @@ TEST(BasicRuntimeCalls, LegacyRuntimeOutParameterApisReturnObjects) {
     ASSERT_TRUE(compileOk(R"(
 DIM opt AS OBJECT
 opt = Viper.Core.Parse.TryInt("123")
-opt = Viper.Core.Parse.TryNum("12.5")
+opt = Viper.Core.Parse.TryDouble("12.5")
 opt = Viper.Core.Parse.TryBool("yes")
 opt = Viper.Core.Parse.TryInt("123")
-opt = Viper.Core.Parse.TryNum("12.5")
+opt = Viper.Core.Parse.TryDouble("12.5")
 )"));
 }
 
@@ -118,7 +118,7 @@ DIM seq AS OBJECT
 DIM kept AS OBJECT
 DIM handler AS OBJECT
 seq = Viper.Collections.Seq.New()
-kept = Viper.Collections.Seq.Keep(seq, ADDRESSOF KeepIt)
+kept = Viper.Collections.Seq.Filter(seq, ADDRESSOF KeepIt)
 handler = Viper.Core.MessageBus.Callback(ADDRESSOF OnMessage)
 )"));
 }
@@ -225,13 +225,13 @@ DIM seq2 AS OBJECT
 seq = Viper.Collections.Seq.New()
 list = Viper.Collections.Seq.ToList(seq)
 st = Viper.Collections.Seq.ToSet(seq)
-bag = Viper.Collections.Seq.ToBag(seq)
+bag = Viper.Collections.Seq.ToStringSet(seq)
 queue = Viper.Collections.Seq.ToQueue(seq)
 stack = Viper.Collections.Seq.ToStack(seq)
 deque = Viper.Collections.Seq.ToDeque(seq)
 seq2 = Viper.Collections.List.ToSeq(list)
 seq2 = Viper.Collections.Set.ToSeq(st)
-seq2 = Viper.Collections.Bag.ToSeq(bag)
+seq2 = Viper.Collections.StringSet.ToSeq(bag)
 list = Viper.Collections.Set.ToList(st)
 list = Viper.Collections.Deque.ToList(deque)
 PRINT "ok"
@@ -261,20 +261,20 @@ DIM body AS OBJECT
 DIM q AS OBJECT
 DIM ang AS OBJECT
 DIM sleeping AS BOOLEAN
-body = Viper.Graphics3D.Physics3DBody.NewSphere(1.0, 1.0)
+body = Viper.Graphics3D.PhysicsBody3D.Sphere(1.0, 1.0)
 q = Viper.Math.Quat.Identity()
-Viper.Graphics3D.Physics3DBody.SetOrientation(body, q)
-Viper.Graphics3D.Physics3DBody.SetAngularVelocity(body, 0.0, 1.0, 0.0)
-Viper.Graphics3D.Physics3DBody.ApplyTorque(body, 0.0, 2.0, 0.0)
-Viper.Graphics3D.Physics3DBody.ApplyAngularImpulse(body, 0.0, 1.0, 0.0)
+Viper.Graphics3D.PhysicsBody3D.SetOrientation(body, q)
+Viper.Graphics3D.PhysicsBody3D.SetAngularVelocity(body, 0.0, 1.0, 0.0)
+Viper.Graphics3D.PhysicsBody3D.ApplyTorque(body, 0.0, 2.0, 0.0)
+Viper.Graphics3D.PhysicsBody3D.ApplyAngularImpulse(body, 0.0, 1.0, 0.0)
 body.LinearDamping = 0.2
 body.AngularDamping = 0.3
-body.Kinematic = 1
+body.IsKinematic = 1
 body.CanSleep = 1
 body.UseCcd = 1
 ang = body.AngularVelocity
 q = body.Orientation
-sleeping = body.Sleeping
+sleeping = body.IsSleeping
 body.Sleep()
 body.Wake()
 PRINT sleeping
@@ -292,8 +292,8 @@ DIM xf AS OBJECT
 DIM minv AS OBJECT
 DIM maxv AS OBJECT
 DIM ty AS INTEGER
-mesh = Viper.Graphics3D.Mesh3D.NewBox(2.0, 1.0, 2.0)
-boxCol = Viper.Graphics3D.Collider3D.NewBox(1.0, 0.5, 1.0)
+mesh = Viper.Graphics3D.Mesh3D.Box(2.0, 1.0, 2.0)
+boxCol = Viper.Graphics3D.Collider3D.Box(1.0, 0.5, 1.0)
 hullCol = Viper.Graphics3D.Collider3D.NewConvexHull(mesh)
 compound = Viper.Graphics3D.Collider3D.NewCompound()
 xf = Viper.Graphics3D.Transform3D.New()
@@ -303,7 +303,7 @@ Viper.Graphics3D.Collider3D.AddChild(compound, hullCol, xf)
 minv = Viper.Graphics3D.Collider3D.GetLocalBoundsMin(compound)
 maxv = Viper.Graphics3D.Collider3D.GetLocalBoundsMax(compound)
 ty = compound.Type
-body = Viper.Graphics3D.Physics3DBody.New(1.0)
+body = Viper.Graphics3D.PhysicsBody3D.New(1.0)
 body.Collider = compound
 body.Collider = boxCol
 boxCol = body.Collider
@@ -324,8 +324,8 @@ DIM hit AS OBJECT
 DIM hits AS OBJECT
 DIM count AS INTEGER
 DIM frac AS DOUBLE
-world = Viper.Graphics3D.Physics3DWorld.New(0.0, 0.0, 0.0)
-body = Viper.Graphics3D.Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0)
+world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, 0.0, 0.0)
+body = Viper.Graphics3D.PhysicsBody3D.NewAABB(1.0, 1.0, 1.0, 0.0)
 origin = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
 dir = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
 delta = Viper.Math.Vec3.New(5.0, 0.0, 0.0)
@@ -353,7 +353,7 @@ DIM alpha AS DOUBLE
 DIM beta AS DOUBLE
 DIM threshold AS DOUBLE
 DIM dropped AS INTEGER
-world = Viper.Graphics3D.Physics3DWorld.New(0.0, -9.8, 0.0)
+world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, -9.8, 0.0)
 world.SolverIterations = 4
 world.PositionIterations = 5
 world.ContactBeta = 0.35
@@ -375,7 +375,7 @@ DIM evt AS OBJECT
 DIM cp AS OBJECT
 DIM count AS INTEGER
 DIM sep AS DOUBLE
-world = Viper.Graphics3D.Physics3DWorld.New(0.0, 0.0, 0.0)
+world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, 0.0, 0.0)
 count = world.CollisionEventCount
 count = world.EnterEventCount
 count = world.StayEventCount
@@ -398,6 +398,7 @@ PRINT count
 
 TEST(BasicRuntimeCalls, SceneAssetSurface) {
     ASSERT_TRUE(compileOk(R"(
+DIM res AS OBJECT
 DIM scene AS OBJECT
 DIM parent AS OBJECT
 DIM child AS OBJECT
@@ -411,8 +412,8 @@ DIM count AS INTEGER
 scene = Viper.Graphics3D.SceneGraph.New()
 parent = Viper.Graphics3D.SceneNode.New()
 child = Viper.Graphics3D.SceneNode.New()
-mesh = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0)
-mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.4, 0.6)
+mesh = Viper.Graphics3D.Mesh3D.Box(1.0, 1.0, 1.0)
+mat = Viper.Graphics3D.Material3D.FromColor(0.2, 0.4, 0.6)
 Viper.Graphics3D.SceneNode.set_Name(parent, "parent")
 Viper.Graphics3D.SceneNode.set_Name(child, "child")
 Viper.Graphics3D.SceneNode.SetPosition(parent, 1.0, 2.0, 3.0)
@@ -423,17 +424,18 @@ child.Material = mat
 Viper.Graphics3D.SceneNode.AddChild(parent, child)
 Viper.Graphics3D.SceneGraph.Add(scene, parent)
 count = Viper.Graphics3D.SceneGraph.Save(scene, "tests/runtime/_basic_scene_asset_surface.vscn")
-model = Viper.Graphics3D.SceneAsset.Load("tests/runtime/_basic_scene_asset_surface.vscn")
-count = model.MeshCount
-count = model.MaterialCount
-count = model.SkeletonCount
-count = model.AnimationCount
-count = model.NodeCount
-mesh = model.GetMesh(0)
-mat = model.GetMaterial(0)
-node = model.FindNode("child")
-inst = model.Instantiate()
-instScene = model.InstantiateScene()
+res = Viper.Graphics3D.SceneAsset.LoadResult("tests/runtime/_basic_scene_asset_surface.vscn")
+model = Viper.Result.Unwrap(res)
+count = Viper.Graphics3D.SceneAsset.get_MeshCount(model)
+count = Viper.Graphics3D.SceneAsset.get_MaterialCount(model)
+count = Viper.Graphics3D.SceneAsset.get_SkeletonCount(model)
+count = Viper.Graphics3D.SceneAsset.get_AnimationCount(model)
+count = Viper.Graphics3D.SceneAsset.get_NodeCount(model)
+mesh = Viper.Graphics3D.SceneAsset.GetMesh(model, 0)
+mat = Viper.Graphics3D.SceneAsset.GetMaterial(model, 0)
+node = Viper.Graphics3D.SceneAsset.FindNode(model, "child")
+inst = Viper.Graphics3D.SceneAsset.Instantiate(model)
+instScene = Viper.Graphics3D.SceneAsset.InstantiateScene(model)
 PRINT count
 )"));
 }
@@ -516,7 +518,7 @@ DIM bound AS OBJECT
 scene = Viper.Graphics3D.SceneGraph.New()
 parent = Viper.Graphics3D.SceneNode.New()
 node = Viper.Graphics3D.SceneNode.New()
-body = Viper.Graphics3D.Physics3DBody.NewSphere(0.5, 1.0)
+body = Viper.Graphics3D.PhysicsBody3D.Sphere(0.5, 1.0)
 skel = Viper.Graphics3D.Skeleton3D.New()
 Viper.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Viper.Math.Mat4.Identity())
 Viper.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
@@ -558,9 +560,9 @@ DIM pos AS OBJECT
 DIM vel AS OBJECT
 DIM hasPath AS BOOLEAN
 DIM dist AS DOUBLE
-mesh = Viper.Graphics3D.Mesh3D.NewPlane(20.0, 20.0)
+mesh = Viper.Graphics3D.Mesh3D.Plane(20.0, 20.0)
 nav = Viper.Graphics3D.NavMesh3D.Build(mesh, 0.4, 1.8)
-world = Viper.Graphics3D.Physics3DWorld.New(0.0, -9.8, 0.0)
+world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, -9.8, 0.0)
 character = Viper.Graphics3D.Character3D.New(0.4, 1.8, 80.0)
 character.World = world
 node = Viper.Graphics3D.SceneNode.New()
@@ -597,7 +599,7 @@ DIM source AS OBJECT
 DIM pos AS OBJECT
 DIM vel AS OBJECT
 DIM voice AS INTEGER
-ok = Viper.Sound.Audio.IsAvailable()
+ok = Viper.Audio.Mixer.IsAvailable()
 cam = Viper.Graphics3D.Camera3D.New(60.0, 1.0, 0.1, 100.0)
 Viper.Graphics3D.Camera3D.LookAt(cam, Viper.Math.Vec3.New(0.0, 2.0, 6.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0), Viper.Math.Vec3.New(0.0, 1.0, 0.0))
 scene = Viper.Graphics3D.SceneGraph.New()
@@ -609,13 +611,13 @@ Viper.Graphics3D.SceneGraph.Add(scene, parent)
 listener = Viper.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
-source = Viper.Graphics3D.SoundSource3D.New(Viper.Sound.Synth.Tone(440, 120, 0))
+source = Viper.Graphics3D.SoundSource3D.New(Viper.Audio.Synth.Tone(440, 120, 0))
 source.BindNode(node)
 source.MaxDistance = 18.0
 source.Volume = 70
 source.Looping = 0
 Viper.Graphics3D.SceneGraph.SyncBindings(scene, 0.016)
-Viper.Sound.SpatialAudio3D.SyncBindings(0.016)
+Viper.Audio.SpatialAudio3D.SyncBindings(0.016)
 pos = listener.Position
 pos = source.Position
 vel = listener.Velocity
@@ -643,7 +645,7 @@ DIM normalScale AS DOUBLE
 DIM alphaMode AS INTEGER
 DIM anisotropy AS INTEGER
 DIM doubleSided AS BOOLEAN
-base = Viper.Graphics3D.Material3D.NewPBR(0.8, 0.7, 0.6)
+base = Viper.Graphics3D.Material3D.PBR(0.8, 0.7, 0.6)
 tex = Viper.Graphics.Pixels.New(1, 1)
 base.SetAlbedoMap(tex)
 base.Metallic = 0.9
@@ -652,7 +654,7 @@ base.AmbientOcclusion = 0.85
 base.EmissiveIntensity = 2.5
 base.SetNormalMap(tex)
 base.SetMetallicRoughnessMap(tex)
-base.SetAOMap(tex)
+base.SetAmbientOcclusionMap(tex)
 base.SetEmissiveMap(tex)
 base.NormalScale = 0.75
 base.Anisotropy = 64
@@ -755,7 +757,7 @@ DIM seq AS OBJECT
 DIM out AS OBJECT
 DIM count AS INTEGER
 seq = Viper.Functional.LazySeq.Range(1, 5, 1)
-out = Viper.Functional.LazySeq.ToSeqN(seq, 3)
+out = Viper.Functional.LazySeq.ToSeqLimited(seq, 3)
 count = out.Count
 PRINT count
 )");

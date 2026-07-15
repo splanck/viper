@@ -25,7 +25,7 @@ Simple string templating with placeholder substitution.
 | `RenderSeq(template, values)`             | `String(String, Seq)`               | Replace `{{0}}`, `{{1}}` with Seq values          |
 | `RenderWith(template, values, pre, suf)`  | `String(String, Map, String, String)` | Use custom delimiters instead of `{{` `}}`      |
 | `Has(template, key)`                      | `Boolean(String, String)`           | Check if template contains placeholder for key   |
-| `Keys(template)`                          | Registry: `Seq<String>(String)`; runtime: `Bag` | Extract all unique placeholder keys      |
+| `Keys(template)`                          | Registry: `Seq<String>(String)`; runtime: `StringSet` | Extract all unique placeholder keys      |
 | `Escape(text)`                            | `String(String)`                    | Escape `{{` and `}}` for literal output           |
 
 ### Placeholder Syntax
@@ -45,11 +45,11 @@ Simple string templating with placeholder substitution.
 - Placeholder indices that overflow integer range are ignored (placeholder left as-is)
 - Template rendering and escaping use runtime string byte length, so embedded `NUL` bytes in values are preserved
 - `Escape()` always returns a new string result, even when the input contains no template delimiters
-- `Keys()` returns an owned `Viper.Collections.Bag`, so key order is unspecified and duplicate
+- `Keys()` returns an owned `Viper.Collections.StringSet`, so key order is unspecified and duplicate
   placeholders produce one key. Its registry signature incorrectly declares `Seq<String>`; natural
   Zia member access therefore uses the wrong static type. Until
   [VDOC-044](../../documentation-review-findings.md#vdoc-044--templatekeys-is-registered-as-a-sequence-but-returns-a-bag)
-  is fixed, use an explicit `Viper.Collections.Bag` receiver or a typed BASIC local, as in the
+  is fixed, use an explicit `Viper.Collections.StringSet` receiver or a typed BASIC local, as in the
   example below.
 - Thread safe: all functions are stateless
 
@@ -65,7 +65,7 @@ Simple string templating with placeholder substitution.
 module TemplateDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Json as Json;
+bind Viper.Data.Json as Json;
 
 func start() {
     var data = Json.Parse("{\"name\":\"Zia\",\"version\":\"1.0\"}");
@@ -78,7 +78,7 @@ func start() {
 
 ```basic
 ' Use Json.Parse to create a map for template variables
-DIM data AS OBJECT = Viper.Text.Json.Parse("{""name"":""Zia"",""version"":""1.0""}")
+DIM data AS OBJECT = Viper.Data.Json.Parse("{""name"":""Zia"",""version"":""1.0""}")
 DIM result AS STRING = Viper.Text.Template.Render("Hello {{name}} v{{version}}!", data)
 PRINT result  ' Output: Hello Zia v1.0!
 ```
@@ -152,8 +152,8 @@ IF Viper.Text.Template.Has(template, "name") THEN
     PRINT "Template uses 'name' placeholder"
 END IF
 
-' Get all placeholder keys as a Bag of unique strings
-DIM keys AS Viper.Collections.Bag = Viper.Text.Template.Keys(template)
+' Get all placeholder keys as a StringSet of unique strings
+DIM keys AS Viper.Collections.StringSet = Viper.Text.Template.Keys(template)
 PRINT keys.Count  ' Output: 3
 
 ' Iterate over keys (order not guaranteed)
@@ -300,7 +300,7 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 | `Right(text, width)`              | `String(String, Integer)`        | Right-align text, padding with spaces to width           |
 | `Center(text, width)`             | `String(String, Integer)`        | Center text, padding with spaces to width                |
 | `LineCount(text)`                 | `Integer(String)`                | Count the number of lines in text                        |
-| `MaxLineLen(text)`                | `Integer(String)`                | Get the byte length of the longest line                  |
+| `MaxLineLength(text)`                | `Integer(String)`                | Get the byte length of the longest line                  |
 
 ### Notes
 
@@ -352,7 +352,7 @@ func start() {
 
     // Line metrics
     Say("Lines: " + Fmt.Int(TW.LineCount(lines)));
-    Say("MaxLen: " + Fmt.Int(TW.MaxLineLen(lines)));
+    Say("MaxLen: " + Fmt.Int(TW.MaxLineLength(lines)));
 }
 ```
 
@@ -408,7 +408,7 @@ PRINT Viper.Text.TextWrapper.Hang(block, "    ")
 
 ' Line metrics
 PRINT Viper.Text.TextWrapper.LineCount(block)    ' Output: 3
-PRINT Viper.Text.TextWrapper.MaxLineLen(block)   ' Output: 10
+PRINT Viper.Text.TextWrapper.MaxLineLength(block)   ' Output: 10
 ```
 
 ### Use Cases

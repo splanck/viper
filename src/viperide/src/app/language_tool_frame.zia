@@ -204,7 +204,7 @@ class LanguageToolFrameController {
 
         ConfigureLanguageTools(activeToolPath, activeService, appSettings, engine);
         typedThisFrame = Input.Keyboard.GetText();
-        frameWorkStartMs = Clock.Ticks();
+        frameWorkStartMs = Clock.NowMs();
     }
 
     /// @brief Run bounded workspace indexing and cache refresh work.
@@ -264,26 +264,26 @@ class LanguageToolFrameController {
     ///          automatic completion or signature triggers later in the frame.
     expose func RouteCompletionKeys() {
         if completer == null or completer.isVisible == false { return; }
-        if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyTab()) {
+        if Input.Keyboard.WasPressed(Viper.Input.Key.Tab) {
             completer.AcceptTabKey();
             typedThisFrame = "";
-        } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter()) {
+        } else if Input.Keyboard.WasPressed(Viper.Input.Key.Enter) {
             completer.AcceptSelected();
             typedThisFrame = "";
-        } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
+        } else if Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
             completer.Hide();
             typedThisFrame = "";
-        } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyDown()) {
+        } else if Input.Keyboard.WasPressed(Viper.Input.Key.Down) {
             completer.NavigateDown();
             typedThisFrame = "";
-        } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyUp()) {
+        } else if Input.Keyboard.WasPressed(Viper.Input.Key.Up) {
             completer.NavigateUp();
             typedThisFrame = "";
         } else if completer.AcceptTypedTab(typedThisFrame) {
             typedThisFrame = "";
         } else if completer.AcceptIfEditorInsertedTab() {
             typedThisFrame = "";
-        } else if completer.AcceptHeldTabKey(Input.Keyboard.IsDown(Input.Keyboard.get_KeyTab())) {
+        } else if completer.AcceptHeldTabKey(Input.Keyboard.IsDown(Viper.Input.Key.Tab)) {
             typedThisFrame = "";
         } else if typedThisFrame != "" {
             completer.AcceptIfCommitCharacter(typedThisFrame);
@@ -353,7 +353,7 @@ class LanguageToolFrameController {
         }
         if searcher != null {
             searcher.HandlePanel(shell, projMgr, docMgr, engine);
-            if searcher.active and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
+            if searcher.active and Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
                 searcher.Cancel(shell);
             }
         }

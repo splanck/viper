@@ -27,13 +27,13 @@ void *rt_scenemanager_new(void);
 void rt_scenemanager_add(void *mgr, void *name);
 /// @brief Switch immediately to the named scene (no transition).
 void rt_scenemanager_switch(void *mgr, void *name);
-/// @brief Switch to the named scene with a fade transition over @p duration_ms.
+/// @brief Switch to the named scene after a timer of @p duration_ms; rendering is caller-owned.
 void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_ms);
 /// @brief Tick the manager by @p dt milliseconds (advances any active transition).
 void rt_scenemanager_update(void *mgr, int64_t dt);
-/// @brief Get the name of the currently-active scene (NULL if none).
+/// @brief Get the name of the currently-active scene (empty runtime string if none).
 void *rt_scenemanager_current(void *mgr);
-/// @brief Get the name of the scene that was active before the current one.
+/// @brief Get the prior scene name (empty runtime string if none).
 void *rt_scenemanager_previous(void *mgr);
 /// @brief True if the named scene matches the current scene.
 int8_t rt_scenemanager_is_scene(void *mgr, void *name);

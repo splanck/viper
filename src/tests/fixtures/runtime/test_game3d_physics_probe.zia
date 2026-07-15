@@ -27,19 +27,19 @@ func start() {
     ball.AttachBody(ballDef);
     world.Spawn(ball);
 
-    if (G3D.Physics3DBody.get_CollisionLayer(ground.Body) !=
+    if (G3D.PhysicsBody3D.get_CollisionLayer(ground.Body) !=
         Game3D.Layers.get_World()) {
         fail("StaticPlane did not use world layer");
         return;
     }
-    if (G3D.Physics3DBody.get_UseCcd(ball.Body) == false) {
+    if (G3D.PhysicsBody3D.get_UseCcd(ball.Body) == false) {
         fail("BodyDef did not apply CCD flag");
         return;
     }
 
-    var before = G3D.Physics3DBody.get_Position(ball.Body);
+    var before = G3D.PhysicsBody3D.get_Position(ball.Body);
     world.RunFramesOnly(90, 0.016);
-    var after = G3D.Physics3DBody.get_Position(ball.Body);
+    var after = G3D.PhysicsBody3D.get_Position(ball.Body);
     if (Math.Vec3.get_Y(after) >= Math.Vec3.get_Y(before)) {
         fail("ball did not fall under gravity");
         return;
@@ -50,8 +50,8 @@ func start() {
     }
 
     world.RunFramesOnly(150, 0.016);
-    var restPos = G3D.Physics3DBody.get_Position(ball.Body);
-    var restVel = G3D.Physics3DBody.get_Velocity(ball.Body);
+    var restPos = G3D.PhysicsBody3D.get_Position(ball.Body);
+    var restVel = G3D.PhysicsBody3D.get_Velocity(ball.Body);
     if (Math.Vec3.get_Y(restPos) < 0.45 || Math.Vec3.get_Y(restPos) > 0.85 ||
         Math.Vec3.get_Y(restVel) < -0.20 || Math.Vec3.get_Y(restVel) > 0.20) {
         fail("ball did not settle on the ground body");

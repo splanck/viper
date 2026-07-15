@@ -1,4 +1,4 @@
-PRINT "=== API Audit: Viper.Sound (All Classes) ==="
+PRINT "=== API Audit: Viper.Audio (All Classes) ==="
 PRINT "NOTE: Sound classes require audio hardware. API surface documentation only."
 PRINT ""
 PRINT "--- Audio ---"

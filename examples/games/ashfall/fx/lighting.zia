@@ -87,7 +87,7 @@ class LightRig {
         // Reserved gameplay pulse lights, parked dark.
         var i = 0;
         while i < FX_SLOT_COUNT {
-            var pl = G3D.Light3D.NewPoint(Vec3.New(0.0, -100.0, 0.0), 0.0, 0.0, 0.0, 8.0);
+            var pl = G3D.Light3D.Point(Vec3.New(0.0, -100.0, 0.0), 0.0, 0.0, 0.0, 8.0);
             G3D.Canvas3D.SetLight(canvas, FX_SLOT_BASE + i, pl);
             pulseLight.Add(pl);
             pulseTtl.Add(0.0);
@@ -101,7 +101,7 @@ class LightRig {
                                       Vec3.New(0.0, -1.0, 0.0),
                                       0.96, 0.93, 0.78, 0.035, 11.0, 25.0);
         G3D.Light3D.SetIntensity(flashlight, 2.2);
-        G3D.Light3D.set_Enabled(flashlight, false);
+        G3D.Light3D.set_IsEnabled(flashlight, false);
         G3D.Canvas3D.SetLight(canvas, SLOT_FLASHLIGHT, flashlight);
     }
 
@@ -146,7 +146,7 @@ class LightRig {
             pi = pi + 1;
         }
         G3D.Canvas3D.SetLight(canvas, SLOT_FLASHLIGHT, flashlight);
-        G3D.Light3D.set_Enabled(flashlight, false);
+        G3D.Light3D.set_IsEnabled(flashlight, false);
         flashlightActive = false;
         // Ambient floor.
         G3D.Canvas3D.SetAmbient(canvas, env.ambientR(l), env.ambientG(l), env.ambientB(l));
@@ -154,7 +154,7 @@ class LightRig {
         hasKey = env.sunIntensity(l) > 0.01;
         if hasKey {
             var kd = Vec3.New(env.sunDirX(l), env.sunDirY(l), env.sunDirZ(l));
-            keyLight = G3D.Light3D.NewDirectional(kd,
+            keyLight = G3D.Light3D.Directional(kd,
                 env.sunColR(l) * env.sunIntensity(l),
                 env.sunColG(l) * env.sunIntensity(l),
                 env.sunColB(l) * env.sunIntensity(l));
@@ -165,7 +165,7 @@ class LightRig {
         // Fill.
         if env.fillIntensity(l) > 0.01 {
             var fd = Vec3.New(env.fillDirX(l), env.fillDirY(l), env.fillDirZ(l));
-            var fill = G3D.Light3D.NewDirectional(fd,
+            var fill = G3D.Light3D.Directional(fd,
                 env.fillColR(l) * env.fillIntensity(l),
                 env.fillColG(l) * env.fillIntensity(l),
                 env.fillColB(l) * env.fillIntensity(l));
@@ -221,7 +221,7 @@ class LightRig {
     expose func setFlashlight(on: Boolean, px: Float, py: Float, pz: Float,
                               dx: Float, dy: Float, dz: Float) {
         flashlightActive = on;
-        G3D.Light3D.set_Enabled(flashlight, on);
+        G3D.Light3D.set_IsEnabled(flashlight, on);
         if on == false { return; }
         G3D.Light3D.set_Position(flashlight,
             Vec3.New(px + dx * 0.12, py - 0.06, pz + dz * 0.12));
@@ -273,7 +273,7 @@ class LightRig {
         var k = 0;
         while k < 6 {
             var ang = (k + 0.0) / 6.0 * 6.2831853;
-            var pl = G3D.Light3D.NewPoint(
+            var pl = G3D.Light3D.Point(
                 Vec3.New(Cos(ang) * 22.0, 5.0, Sin(ang) * 22.0), r, g, b, 16.0);
             G3D.Canvas3D.SetLight(canvas, 8 + k, pl);
             k = k + 1;
@@ -289,7 +289,7 @@ class LightRig {
     hide func reinstallKey(mult: Float) {
         var l = levelId;
         var kd = Vec3.New(env.sunDirX(l), env.sunDirY(l), env.sunDirZ(l));
-        keyLight = G3D.Light3D.NewDirectional(kd,
+        keyLight = G3D.Light3D.Directional(kd,
             env.sunColR(l) * env.sunIntensity(l) * mult,
             env.sunColG(l) * env.sunIntensity(l) * mult,
             env.sunColB(l) * env.sunIntensity(l) * mult);

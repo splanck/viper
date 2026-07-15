@@ -89,12 +89,12 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
     }
 
     canvas.ClusteredLighting = false;
-    var fallbackStart = Clock.TicksUs();
+    var fallbackStart = Clock.NowMicros();
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, camera);
     Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
     Canvas3D.End(canvas);
-    var fallbackUs = Clock.TicksUs() - fallbackStart;
+    var fallbackUs = Clock.NowMicros() - fallbackStart;
     var fallbackMax = canvas.MaxActiveLights;
     if (fallbackMax != 16 || canvas.DrawCount != 1) {
         fail("forward fallback light-cap probe failed");
@@ -108,12 +108,12 @@ func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
         return false;
     }
 
-    var clusteredStart = Clock.TicksUs();
+    var clusteredStart = Clock.NowMicros();
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, camera);
     Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
     Canvas3D.End(canvas);
-    var clusteredUs = Clock.TicksUs() - clusteredStart;
+    var clusteredUs = Clock.NowMicros() - clusteredStart;
     if (canvas.DrawCount != 1) {
         fail("clustered lighting probe submitted no draw");
         return false;
@@ -162,7 +162,7 @@ func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
     var groundMat = Material3D.PBR(0.48, 0.50, 0.46);
     var towerMat = Material3D.PBR(0.58, 0.50, 0.42);
 
-    var start = Clock.TicksUs();
+    var start = Clock.NowMicros();
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, camera);
     Canvas3D.DrawMesh(canvas, ground, Mat4.Translate(0.0, -0.12, -5.0), groundMat);
@@ -170,7 +170,7 @@ func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
     Canvas3D.DrawMesh(canvas, tower, Mat4.Translate(1.8, 1.55, -7.0), towerMat);
     Canvas3D.DrawMesh(canvas, tower, Mat4.Translate(0.0, 1.55, -14.0), towerMat);
     Canvas3D.End(canvas);
-    var csmUs = Clock.TicksUs() - start;
+    var csmUs = Clock.NowMicros() - start;
 
     if (canvas.DrawCount != 4) {
         fail("CSM shadow probe submitted an unexpected draw count");
@@ -202,7 +202,7 @@ func runSsrSoftParticleProbe(canvas: Canvas3D) -> Boolean {
     }
 
     var fx = PostFX3D.New();
-    PostFX3D.AddSSR(fx, 0.6, 0.4);
+    PostFX3D.AddSsr(fx, 0.6, 0.4);
     Canvas3D.SetPostFX(canvas, fx);
     if (fx.LastError != "") {
         fail("SSR chain was rejected: " + fx.LastError);
@@ -233,7 +233,7 @@ func runSsrSoftParticleProbe(canvas: Canvas3D) -> Boolean {
     Particles3D.SetLifetime(puffs, 0.8, 1.6);
     Particles3D.Burst(puffs, 48);
 
-    var start = Clock.TicksUs();
+    var start = Clock.NowMicros();
     var frame = 0;
     while (frame < 3) {
         Particles3D.Update(puffs, 1.0 / 60.0);
@@ -245,7 +245,7 @@ func runSsrSoftParticleProbe(canvas: Canvas3D) -> Boolean {
         Canvas3D.End(canvas);
         frame = frame + 1;
     }
-    var ssrUs = Clock.TicksUs() - start;
+    var ssrUs = Clock.NowMicros() - start;
 
     if (canvas.DrawCount < 2) {
         fail("SSR/soft-particle probe submitted an unexpected draw count");

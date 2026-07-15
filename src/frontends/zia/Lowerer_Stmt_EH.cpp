@@ -248,7 +248,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         Value errCode = loadFromSlot(slots.codeSlot, Type(Type::Kind::I32));
         Value errLine = loadFromSlot(slots.lineSlot, Type(Type::Kind::I32));
 
-        emitCall(kErrorRaiseKind, {errKind, errCode, errLine});
+        emitCall(kRuntimeUnsafeRaiseKind, {errKind, errCode, errLine});
 
         // The runtime call raises through the active VM/native trap bridge. Keep
         // a terminator fallback so the IL remains structurally valid if a host
@@ -409,7 +409,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             catchErrorBindings_ = std::move(catchErrorBindingsBackup);
 
             if (!isTerminated())
-                emitCall(kErrorClearThrowMsg, {});
+                emitCall(kRuntimeUnsafeClearThrowMsg, {});
 
             if (hasFinally && stmt->finallyBody && !isTerminated())
                 lowerStmt(stmt->finallyBody.get());
@@ -458,7 +458,7 @@ void Lowerer::lowerThrowStmt(ThrowStmt *stmt) {
             Value errKind = loadFromSlot(active.kindSlot, Type(Type::Kind::I32));
             Value errCode = loadFromSlot(active.codeSlot, Type(Type::Kind::I32));
             Value errLine = loadFromSlot(active.lineSlot, Type(Type::Kind::I32));
-            emitCall(kErrorRaiseKind, {errKind, errCode, errLine});
+            emitCall(kRuntimeUnsafeRaiseKind, {errKind, errCode, errLine});
         }
 
         il::core::Instr trapInstr;
@@ -479,7 +479,7 @@ void Lowerer::lowerThrowStmt(ThrowStmt *stmt) {
         Value msgStr = emitToString(result.value, throwType);
 
         // Store the message via rt_throw_msg_set for catch(e) retrieval.
-        emitCall(kErrorSetThrowMsg, {msgStr});
+        emitCall(kRuntimeUnsafeSetThrowMsg, {msgStr});
     }
 
     // Emit a RuntimeError trap for user-visible throw statements. Plain IL

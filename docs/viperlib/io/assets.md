@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Viper.IO.Assets
@@ -12,7 +12,9 @@ Asset management system for loading embedded and packed resources.
 
 Assets can be:
 
-- **Embedded** in the executable's read-only data (zero disk I/O, declared with `embed` in `viper.project`)
+- **Embedded** in the executable's read-only data (lookup does not read a pack or loose file;
+  declared with `embed` in `viper.project`). Some typed decoders still spill bytes to a private
+  temporary path because their underlying loader requires a filename.
 - **Packed** in `.vpa` files distributed alongside the executable (`pack` in `viper.project`)
 - **Loose** on the filesystem (development workflow, no declaration needed)
 
@@ -53,6 +55,11 @@ Load an asset by name. Returns a typed object based on file extension:
 
 Returns null if not found.
 
+Typed decoding is selected from the extension. In the current implementation, a recognized image
+or audio decoder that cannot decode the bytes falls back to returning the raw `Bytes` object rather
+than trapping or returning null. This makes malformed known-format assets type-unstable; see
+VDOC-181 in the [documentation review log](../../documentation-review-findings.md).
+
 ### Assets.LoadBytes(name: String) -> Bytes?
 
 Load raw bytes regardless of extension. Returns null if not found. A zero-byte loose filesystem asset returns a `Bytes` object with length 0.
@@ -61,7 +68,7 @@ Load raw bytes regardless of extension. Returns null if not found. A zero-byte l
 
 Returns 1 if asset exists (embedded, in pack, or as a regular file on disk), 0 otherwise. Directories and special filesystem nodes are not assets.
 
-### Assets.Size(name: String) -> Integer
+### Assets.SizeBytes(name: String) -> Integer
 
 Returns asset size in bytes, or -1 if the asset is missing or resolves to a non-regular filesystem path such as a directory. A found zero-byte asset reports 0, so zero-byte files are distinguishable from missing assets without a separate `Exists()` call.
 
@@ -92,12 +99,17 @@ Returns the directory containing the running executable. Uses platform-specific 
 - Windows: `GetModuleFileNameA()`
 - Linux: `readlink("/proc/self/exe")`
 
+The current adapters use fixed `PATH_MAX`/`MAX_PATH` buffers. Windows also uses the ANSI API.
+Long, unrepresentable, or failed lookups can therefore return `"."`; Linux can accept an
+exact-buffer truncation as a result. Callers that use this for discovery should treat `"."` as a
+fallback rather than proof of the executable's location (VDOC-185).
+
 ## Resolution Order
 
 When `Assets.Load("sprites/hero.png")` or `Assets.Load("asset://sprites/hero.png")` is called:
 
 1. **Embedded registry** (in `.rodata`) — zero disk I/O
-2. **Mounted packs** (last mounted first) — single file read
+2. **Mounted packs** (last mounted first) — entry bytes read on demand from one pack file
 3. **Filesystem** (CWD-relative) — development fallback
 
 This means existing code keeps working during development (step 3), and packaged apps find their assets automatically (steps 1-2).
@@ -146,6 +158,9 @@ The returned `Map` includes:
 Resolution checks absolute paths first, then the scene's directory, then `projectRoot`, then each comma-separated asset root. If no filesystem candidate exists, the resolver checks mounted assets through `Viper.IO.Assets`.
 Filesystem resolution uses existence checks rather than regular-file checks, so
 editor callers that require a file should validate the returned path's kind.
+An empty `assetPath` currently resolves to the project directory when it exists. A relative
+`scenePath` is also interpreted relative to the process working directory, not automatically
+relative to `projectRoot`; pass an absolute scene path until VDOC-197 is repaired.
 
 ## See Also
 

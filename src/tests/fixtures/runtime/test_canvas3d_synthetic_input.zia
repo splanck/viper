@@ -17,7 +17,7 @@ func fail(message: String) {
 }
 
 func applyCameraInput(cam: Camera3D, dt: Float) {
-    Camera3D.FPSUpdate(
+    Camera3D.FirstPersonUpdate(
         cam,
         Mouse.DeltaX() * 0.01,
         0.0 - Mouse.DeltaY() * 0.01,
@@ -35,7 +35,7 @@ func setupCamera() -> Camera3D {
         new Vec3(0.0, 1.0, 5.0),
         new Vec3(0.0, 1.0, 4.0),
         new Vec3(0.0, 1.0, 0.0));
-    Camera3D.FPSInit(cam);
+    Camera3D.FirstPersonInit(cam);
     return cam;
 }
 
@@ -46,7 +46,7 @@ func start() {
     Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.1);
 
     var leftMask = 1;
-    var keyW = Keyboard.get_KeyW();
+    var keyW = Viper.Input.Key.W;
     var camA = setupCamera();
     var camB = setupCamera();
 
@@ -62,11 +62,11 @@ func start() {
         fail("synthetic mouse delta mismatch");
         return;
     }
-    if (Mouse.WasPressed(Mouse.get_ButtonLeft()) == false || Mouse.Left() == false) {
+    if (Mouse.WasPressed(Mouse.get_ButtonLeft()) == false || Mouse.IsDown(Viper.Input.Mouse.ButtonLeft) == false) {
         fail("synthetic mouse button press mismatch");
         return;
     }
-    if (near(Mouse.WheelYF(), 2.0, 0.001) == false) {
+    if (near(Mouse.WheelYFloat(), 2.0, 0.001) == false) {
         fail("synthetic wheel precision mismatch");
         return;
     }
@@ -89,11 +89,11 @@ func start() {
         fail("synthetic key up did not reach Keyboard");
         return;
     }
-    if (Mouse.WasReleased(Mouse.get_ButtonLeft()) == false || Mouse.Left()) {
+    if (Mouse.WasReleased(Mouse.get_ButtonLeft()) == false || Mouse.IsDown(Viper.Input.Mouse.ButtonLeft)) {
         fail("synthetic mouse button release mismatch");
         return;
     }
-    if (Mouse.DeltaX() != 0 || Mouse.DeltaY() != 0 || near(Mouse.WheelYF(), 0.0, 0.001) == false) {
+    if (Mouse.DeltaX() != 0 || Mouse.DeltaY() != 0 || near(Mouse.WheelYFloat(), 0.0, 0.001) == false) {
         fail("synthetic queues were not consumed exactly once");
         return;
     }

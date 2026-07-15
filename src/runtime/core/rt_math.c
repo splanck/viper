@@ -7,15 +7,15 @@
 //
 // File: src/runtime/core/rt_math.c
 // Purpose: Thin C-library wrappers providing the BASIC runtime's math ABI.
-//   Each function delegates to the corresponding IEEE-754 standard routine
-//   (sqrt, floor, ceil, sin, cos, etc.) to ensure consistent special-value
-//   behaviour (NaN, ±Inf) across VM and native execution paths. The one
+//   Each function delegates to the corresponding C math-library routine
+//   (sqrt, floor, ceil, sin, cos, etc.) so its operation-specific special-value
+//   behaviour is shared across VM and native execution paths. The one
 //   exception is rt_abs_i64, which adds an overflow check and fires rt_trap
 //   on INT64_MIN because abs(INT64_MIN) is undefined in two's complement.
 //
 // Key invariants:
-//   - All floating-point functions propagate NaN and ±Inf unchanged per
-//     IEEE-754; no extra trapping is added for these inputs.
+//   - Floating-point wrappers do not add traps for NaN or infinities; each
+//     operation follows its C math-library semantics.
 //   - rt_abs_i64(INT64_MIN) fires rt_trap("integer overflow in abs").
 //   - All functions are exposed with C linkage (extern "C") so C++ callers
 //     and both the VM and native backends can link them directly.
@@ -145,8 +145,8 @@ long long rt_sgn_i64(long long v) {
 }
 
 /// @brief Compute the sign of a double-precision floating-point value.
-/// @details Returns -1.0 for negative values (including negative zero),
-///          0.0 for zero, and 1.0 for positive values.  NaN returns NaN.
+/// @details Returns -1.0 for negative values, 0.0 for either signed zero, and
+///          1.0 for positive values. NaN returns NaN. The zero result is +0.0.
 /// @param v Floating-point input.
 /// @return -1.0, 0.0, or 1.0 depending on the sign of @p v.
 double rt_sgn_f64(double v) {

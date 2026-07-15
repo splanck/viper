@@ -19,12 +19,12 @@ func start() {
     var up = new Vec3(0.0, 1.0, 0.0);
     Camera3D.LookAt(camera, eye, target, up);
 
-    var box = Mesh3D.NewBox(2.0, 2.0, 2.0);
-    var mat = Material3D.NewColor(0.2, 0.6, 0.3);
+    var box = Mesh3D.Box(2.0, 2.0, 2.0);
+    var mat = Material3D.FromColor(0.2, 0.6, 0.3);
     var xform = Mat4.Identity();
 
     var sunDir = new Vec3(-1.0, -1.0, -0.5);
-    var sun = Light3D.NewDirectional(sunDir, 1.0, 1.0, 1.0);
+    var sun = Light3D.Directional(sunDir, 1.0, 1.0, 1.0);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.2, 0.2, 0.2);
 

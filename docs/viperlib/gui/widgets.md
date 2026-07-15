@@ -224,7 +224,7 @@ volume.SetValue(50)
 volume.SetSize(200, 20)
 
 ' Use value
-Viper.Sound.Audio.SetMasterVolume(INT(volume.Value))
+Viper.Audio.Mixer.SetMasterVolume(INT(volume.Value))
 ```
 
 ```rust
@@ -590,7 +590,7 @@ preview.LoadFile("photo.png");
 ### Color Widgets
 
 The native GUI layer includes `ColorSwatch`, `ColorPalette`, and `ColorPicker` widgets for C applications and demos.
-`ColorPalette` renders its swatch grid directly and selection callbacks fire once per completed click. `ColorPicker.SetColor()`, `SetRGB()`, and `SetAlpha()` synchronize their child sliders and preview swatch before emitting one external change callback, so observers no longer see transient intermediate colors.
+`ColorPalette` renders its swatch grid directly and selection callbacks fire once per completed click. `ColorPicker.SetColor()`, `SetRgb()`, and `SetAlpha()` synchronize their child sliders and preview swatch before emitting one external change callback, so observers no longer see transient intermediate colors.
 
 ---
 

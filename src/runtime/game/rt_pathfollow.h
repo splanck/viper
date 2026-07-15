@@ -14,8 +14,9 @@
 //   - Fixed-point convention: 1000 = 1.0 for coordinates, speed, and progress.
 //
 // Ownership/Lifetime:
-//   - Caller owns the rt_pathfollow handle; destroy with rt_pathfollow_destroy.
-//   - No reference counting; explicit destruction is required.
+//   - PathFollower handles are reference-counted GC objects. The object owns a
+//     lazily allocated segment-length cache freed by its finalizer.
+//   - rt_pathfollow_destroy releases the caller's reference.
 //
 // Links: src/runtime/game/rt_pathfollow.c (implementation),
 // src/runtime/game/rt_tween.h

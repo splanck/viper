@@ -117,7 +117,7 @@ but it should not happen accidentally.
 
 Move constants to `Viper.Input.Key`. Leave state methods on `Keyboard`.
 
-#### `Viper.Game3D.Keys`
+#### `Viper.Input.Key`
 
 Delete or hide after `Viper.Input.Key` exists.
 

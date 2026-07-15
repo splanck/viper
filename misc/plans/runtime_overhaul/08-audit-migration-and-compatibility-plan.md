@@ -73,7 +73,7 @@ unless the pair is allowlisted as a command-style mutation.
 
 Fail on:
 
-- `Viper.Game3D.Keys`
+- `Viper.Input.Key`
 - new key constants outside input namespace
 - 3D render/asset primitives under `Viper.Game3D`
 - game controllers under `Viper.Graphics3D`

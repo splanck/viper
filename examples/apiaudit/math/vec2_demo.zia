@@ -71,7 +71,7 @@ func start() {
 
     // --- Neg ---
     Say("--- Neg ---");
-    var vneg = Vec2.Neg(v1);
+    var vneg = Vec2.Negate(v1);
     Say("Neg(3,4) X:");
     SayNum(vneg.X);
     Say("Neg(3,4) Y:");
@@ -103,7 +103,7 @@ func start() {
     // --- LenSq ---
     Say("--- LenSq ---");
     Say("LenSq(3,4):");
-    SayNum(Vec2.LenSq(v1));
+    SayNum(Vec2.LengthSquared(v1));
 
     // --- Dist ---
     Say("--- Dist ---");

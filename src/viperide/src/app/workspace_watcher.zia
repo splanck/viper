@@ -324,7 +324,7 @@ func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState) {
         state.lastEntryCount = -1;
         state.lastFingerprint = 0;
     }
-    state.rescanThrottle.Try();
+    state.rescanThrottle.TryAcquire();
 }
 
 /// @brief Periodically rescan workspace structure when native watcher is quiet.
@@ -347,7 +347,7 @@ func PumpWorkspaceWatcherFallbackScan(shell: app_shell.AppShell,
                                       engine: editor_engine.EditorEngine,
                                       state: WorkspaceWatcherState) {
     if state == null or state.rootPaths.count() == 0 { return; }
-    if state.rescanThrottle.Try() == false {
+    if state.rescanThrottle.TryAcquire() == false {
         return;
     }
     var changed = false;
@@ -421,7 +421,7 @@ func HandleWorkspaceWatcherEvents(shell: app_shell.AppShell,
         if typeName == "created" or typeName == "deleted" or typeName == "renamed" {
             refreshTree = true;
         }
-        if eventPath != "" and Str.ToLower(Path.Ext(eventPath)) == ".zia" {
+        if eventPath != "" and Str.ToLower(Path.Extension(eventPath)) == ".zia" {
             if typeName == "deleted" or typeName == "renamed" {
                 indexer.RemoveFile(eventPath);
             } else {

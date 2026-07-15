@@ -16,7 +16,7 @@ qe = Viper.Math.Quat.FromEuler(0.0, 0.0, 0.0)
 PRINT "euler w: "; qe.W
 
 PRINT "quat len: "; qi.Len()
-PRINT "quat lensq: "; qi.LenSq()
+PRINT "quat lensq: "; qi.LengthSquared()
 
 DIM qc AS Viper.Math.Quat
 qc = qi.Conjugate()

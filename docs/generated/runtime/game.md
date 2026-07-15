@@ -48,7 +48,8 @@ Provides Timer functionality for game applications.
 
 Create `Viper.Game.Timer` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes properties such as `IsRunning`,
-`IsExpired`, `IsRepeating` and operations including `Start`, `StartRepeating`, `Stop`, `Reset`.
+`IsExpired`, `IsRepeating` and operations including `Start`, `StartRepeating`, `Stop`,
+`Reset`.
 
 Constructor: `Viper.Game.Timer.New`
 
@@ -87,9 +88,9 @@ Constructor: `Viper.Game.Timer.New`
 Provides State Machine functionality for game applications.
 
 Create `Viper.Game.StateMachine` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Current`,
-`Previous`, `JustEntered` and operations including `AddState`, `SetInitial`, `IsState`,
-`Transition`.
+object with the instance members below. Its public surface exposes properties such as
+`Current`, `Previous`, `JustEntered` and operations including `AddState`, `SetInitial`,
+`IsState`, `Transition`.
 
 Constructor: `Viper.Game.StateMachine.New`
 
@@ -125,8 +126,8 @@ Provides Anim State Machine functionality for game applications.
 
 Create `Viper.Game.AnimStateMachine` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`CurrentState`, `PreviousState`, `JustEntered` and operations including `AddState`, `AddNamed`,
-`AddEvent`, `ClearEvents`.
+`CurrentState`, `PreviousState`, `JustEntered` and operations including `AddState`,
+`AddNamed`, `AddEvent`, `ClearEvents`.
 
 Constructor: `Viper.Game.AnimStateMachine.New`
 
@@ -143,8 +144,6 @@ Constructor: `Viper.Game.AnimStateMachine.New`
 | <a id="viper-game-animstatemachine-isanimfinished"></a>`IsAnimFinished` | `i1` | read-only |
 | <a id="viper-game-animstatemachine-progress"></a>`Progress` | `i64` | read-only |
 | <a id="viper-game-animstatemachine-statename"></a>`StateName` | `obj` | read-only |
-| <a id="viper-game-animstatemachine-eventfired"></a>`EventFired` | `i1` | read-only |
-| <a id="viper-game-animstatemachine-eventsfiredcount"></a>`EventsFiredCount` | `i64` | read-only |
 
 #### Methods
 
@@ -154,7 +153,6 @@ Constructor: `Viper.Game.AnimStateMachine.New`
 | <a id="viper-game-animstatemachine-addnamed"></a>`AddNamed` | `void(str,i64,i64,i64,i1)` | `Viper.Game.AnimStateMachine.AddNamed` |
 | <a id="viper-game-animstatemachine-addevent"></a>`AddEvent` | `i1(i64,i64,i64)` | `Viper.Game.AnimStateMachine.AddEvent` |
 | <a id="viper-game-animstatemachine-clearevents"></a>`ClearEvents` | `void(i64)` | `Viper.Game.AnimStateMachine.ClearEvents` |
-| <a id="viper-game-animstatemachine-eventfiredid"></a>`EventFiredId` | `i64(i64)` | `Viper.Game.AnimStateMachine.EventFiredId` |
 | <a id="viper-game-animstatemachine-pollevents"></a>`PollEvents` | `obj<Viper.Game.AnimationEventBatch>()` | `Viper.Game.AnimStateMachine.PollEvents` |
 | <a id="viper-game-animstatemachine-setinitial"></a>`SetInitial` | `i1(i64)` | `Viper.Game.AnimStateMachine.SetInitial` |
 | <a id="viper-game-animstatemachine-transition"></a>`Transition` | `i1(i64)` | `Viper.Game.AnimStateMachine.Transition` |
@@ -170,7 +168,7 @@ Constructor: `Viper.Game.AnimStateMachine.New`
 Provides Animation Event Batch functionality for game applications.
 
 `Viper.Game.AnimationEventBatch` exposes a registry-backed runtime surface without requiring
-callers to construct the class directly. Its public surface exposes a property such as `Count`
+callers to construct the class directly. Its public surface exposes properties such as `Count`
 and operations including `GetId`, `Contains`, `Ids`.
 
 #### Properties
@@ -207,7 +205,6 @@ Constructor: `Viper.Game.AnimTimeline.New`
 | <a id="viper-game-animtimeline-isfinished"></a>`IsFinished` | `i1` | read-only |
 | <a id="viper-game-animtimeline-currentframe"></a>`CurrentFrame` | `i64` | read-only |
 | <a id="viper-game-animtimeline-looping"></a>`Looping` | `i1` | read/write |
-| <a id="viper-game-animtimeline-eventsfiredcount"></a>`EventsFiredCount` | `i64` | read-only |
 
 #### Methods
 
@@ -220,7 +217,6 @@ Constructor: `Viper.Game.AnimTimeline.New`
 | <a id="viper-game-animtimeline-pause"></a>`Pause` | `void()` | `Viper.Game.AnimTimeline.Pause` |
 | <a id="viper-game-animtimeline-stop"></a>`Stop` | `void()` | `Viper.Game.AnimTimeline.Stop` |
 | <a id="viper-game-animtimeline-advance"></a>`Advance` | `void(i64)` | `Viper.Game.AnimTimeline.Advance` |
-| <a id="viper-game-animtimeline-eventfiredid"></a>`EventFiredId` | `i64(i64)` | `Viper.Game.AnimTimeline.EventFiredId` |
 | <a id="viper-game-animtimeline-pollevents"></a>`PollEvents` | `obj<Viper.Game.AnimationEventBatch>()` | `Viper.Game.AnimTimeline.PollEvents` |
 | <a id="viper-game-animtimeline-trackisactive"></a>`TrackIsActive` | `i1(i64)` | `Viper.Game.AnimTimeline.TrackIsActive` |
 | <a id="viper-game-animtimeline-trackprogress"></a>`TrackProgress` | `f64(i64)` | `Viper.Game.AnimTimeline.TrackProgress` |
@@ -302,7 +298,7 @@ Constructor: `Viper.Game.ButtonGroup.New`
 | <a id="viper-game-buttongroup-clearchangedflag"></a>`ClearChangedFlag` | `void()` | `Viper.Game.ButtonGroup.ClearChangedFlag` |
 | <a id="viper-game-buttongroup-getat"></a>`GetAt` | `i64(i64)` | `Viper.Game.ButtonGroup.GetAt` |
 | <a id="viper-game-buttongroup-selectnext"></a>`SelectNext` | `i64()` | `Viper.Game.ButtonGroup.SelectNext` |
-| <a id="viper-game-buttongroup-selectprev"></a>`SelectPrev` | `i64()` | `Viper.Game.ButtonGroup.SelectPrev` |
+| <a id="viper-game-buttongroup-selectprevious"></a>`SelectPrevious` | `i64()` | `Viper.Game.ButtonGroup.SelectPrevious` |
 | <a id="viper-game-buttongroup-new"></a>`New` | `obj()` | `Viper.Game.ButtonGroup.New` |
 | <a id="viper-game-buttongroup-destroy"></a>`Destroy` | `void(obj)` | `Viper.Game.ButtonGroup.Destroy` |
 
@@ -458,8 +454,8 @@ Constructor: `Viper.Game.SpriteAnimation.New`
 Provides Collision Rect functionality for game applications.
 
 Create `Viper.Game.CollisionRect` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-`Width` and operations including `SetPosition`, `SetSize`, `Set`, `SetCenter`.
+object with the instance members below. Its public surface exposes properties such as `X`,
+`Y`, `Width` and operations including `SetPosition`, `SetSize`, `Set`, `SetCenter`.
 
 Constructor: `Viper.Game.CollisionRect.New`
 
@@ -584,7 +580,8 @@ Provides 2D rigid body.
 
 Create `Viper.Game.Physics2D.Body` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`X`, `Y`, `PrevX` and operations including `SetPos`, `SetVel`, `ApplyForce`, `ApplyImpulse`.
+`X`, `Y`, `PrevX` and operations including `NewCircle`, `SetPosition`, `SetVelocity`,
+`ApplyForce`.
 
 Constructor: `Viper.Game.Physics2D.Body.New`
 
@@ -613,8 +610,9 @@ Constructor: `Viper.Game.Physics2D.Body.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-physics2d-body-setpos"></a>`SetPos` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.SetPos` |
-| <a id="viper-game-physics2d-body-setvel"></a>`SetVel` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.SetVel` |
+| <a id="viper-game-physics2d-body-newcircle"></a>`NewCircle` | `obj(f64,f64,f64,f64)` | `Viper.Game.Physics2D.Body.NewCircle` |
+| <a id="viper-game-physics2d-body-setposition"></a>`SetPosition` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.SetPosition` |
+| <a id="viper-game-physics2d-body-setvelocity"></a>`SetVelocity` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.SetVelocity` |
 | <a id="viper-game-physics2d-body-applyforce"></a>`ApplyForce` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.ApplyForce` |
 | <a id="viper-game-physics2d-body-applyimpulse"></a>`ApplyImpulse` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.ApplyImpulse` |
 | <a id="viper-game-physics2d-body-new"></a>`New` | `obj(f64,f64,f64,f64,f64)` | `Viper.Game.Physics2D.Body.New` |
@@ -652,54 +650,14 @@ Constructor: `Viper.Game.Physics2D.Projectile2D.New`
 | <a id="viper-game-physics2d-projectile2d-timetoground"></a>`TimeToGround` | `f64()` | `Viper.Game.Physics2D.Projectile2D.TimeToGround` |
 | <a id="viper-game-physics2d-projectile2d-new"></a>`New` | `obj(f64,f64,f64,f64,f64,f64)` | `Viper.Game.Physics2D.Projectile2D.New` |
 
-<a id="viper-game-physics2d-circlebody"></a>
-### `Viper.Game.Physics2D.CircleBody`
-
-Provides circular 2D rigid body constructor.
-
-Create `Viper.Game.Physics2D.CircleBody` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes properties such as
-`X`, `Y`, `PrevX` and operations including `SetPos`, `SetVel`, `ApplyForce`, `ApplyImpulse`.
-
-Constructor: `Viper.Game.Physics2D.CircleBody.New`
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-game-physics2d-circlebody-x"></a>`X` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-y"></a>`Y` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-prevx"></a>`PrevX` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-prevy"></a>`PrevY` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-velocityx"></a>`VelocityX` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-velocityy"></a>`VelocityY` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-radius"></a>`Radius` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-iscircle"></a>`IsCircle` | `i1` | read-only |
-| <a id="viper-game-physics2d-circlebody-restitution"></a>`Restitution` | `f64` | read/write |
-| <a id="viper-game-physics2d-circlebody-friction"></a>`Friction` | `f64` | read/write |
-| <a id="viper-game-physics2d-circlebody-isstatic"></a>`IsStatic` | `i1` | read-only |
-| <a id="viper-game-physics2d-circlebody-mass"></a>`Mass` | `f64` | read-only |
-| <a id="viper-game-physics2d-circlebody-collisionlayer"></a>`CollisionLayer` | `i64` | read/write |
-| <a id="viper-game-physics2d-circlebody-collisionmask"></a>`CollisionMask` | `i64` | read/write |
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-game-physics2d-circlebody-setpos"></a>`SetPos` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.SetPos` |
-| <a id="viper-game-physics2d-circlebody-setvel"></a>`SetVel` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.SetVel` |
-| <a id="viper-game-physics2d-circlebody-applyforce"></a>`ApplyForce` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.ApplyForce` |
-| <a id="viper-game-physics2d-circlebody-applyimpulse"></a>`ApplyImpulse` | `void(f64,f64)` | `Viper.Game.Physics2D.Body.ApplyImpulse` |
-| <a id="viper-game-physics2d-circlebody-new"></a>`New` | `obj(f64,f64,f64,f64)` | `Viper.Game.Physics2D.CircleBody.New` |
-
 <a id="viper-game-physics2d-distancejoint"></a>
 ### `Viper.Game.Physics2D.DistanceJoint`
 
 Provides Distance Joint functionality for game applications.
 
 Create `Viper.Game.Physics2D.DistanceJoint` values through its registered constructor and use
-the returned object with the instance members below. Its public surface exposes properties such
-as `Length`, `Type`, `BodyA`.
+the returned object with the instance members below. Its public surface exposes properties
+such as `Length`, `Type`, `BodyA`.
 
 Constructor: `Viper.Game.Physics2D.DistanceJoint.New`
 
@@ -922,8 +880,8 @@ Constructor: `Viper.Game.Dialogue.New`
 | <a id="viper-game-dialogue-update"></a>`Update` | `void(i64)` | `Viper.Game.Dialogue.Update` |
 | <a id="viper-game-dialogue-advance"></a>`Advance` | `void()` | `Viper.Game.Dialogue.Advance` |
 | <a id="viper-game-dialogue-skip"></a>`Skip` | `void()` | `Viper.Game.Dialogue.Skip` |
-| <a id="viper-game-dialogue-setbgcolor"></a>`SetBgColor` | `void(i64,i64)` | `Viper.Game.Dialogue.SetBgColor` |
-| <a id="viper-game-dialogue-setpos"></a>`SetPos` | `void(i64,i64)` | `Viper.Game.Dialogue.SetPos` |
+| <a id="viper-game-dialogue-setbackgroundcolor"></a>`SetBackgroundColor` | `void(i64,i64)` | `Viper.Game.Dialogue.SetBackgroundColor` |
+| <a id="viper-game-dialogue-setposition"></a>`SetPosition` | `void(i64,i64)` | `Viper.Game.Dialogue.SetPosition` |
 | <a id="viper-game-dialogue-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.Game.Dialogue.SetSize` |
 | <a id="viper-game-dialogue-draw"></a>`Draw` | `void(obj)` | `Viper.Game.Dialogue.Draw` |
 | <a id="viper-game-dialogue-new"></a>`New` | `obj(i64,i64,i64,i64)` | `Viper.Game.Dialogue.New` |
@@ -1005,8 +963,8 @@ Constructor: `Viper.Game.PlatformerController.New`
 Provides Quests functionality for game applications.
 
 Create `Viper.Game.Quests` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes a property such as `ActiveCount` and
-operations including `AddQuest`, `AddStage`, `AddFlag`, `AddCounter`.
+with the instance members below. Its public surface exposes properties such as `ActiveCount`
+and operations including `AddQuest`, `AddStage`, `AddFlag`, `AddCounter`.
 
 Constructor: `Viper.Game.Quests.New`
 
@@ -1052,7 +1010,7 @@ Constructor: `Viper.Game.Quests.New`
 Provides Quest State constants and static operations for game applications.
 
 `Viper.Game.QuestState` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `Hidden`, `Active`, `Complete`.
+Its public surface exposes properties such as `Hidden`, `Active`, `Complete`.
 
 #### Properties
 
@@ -1068,8 +1026,9 @@ surface exposes properties such as `Hidden`, `Active`, `Complete`.
 
 Provides Quest Event Kind constants and static operations for game applications.
 
-`Viper.Game.QuestEventKind` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Activated`, `ObjectiveProgress`, `ObjectiveComplete`.
+`Viper.Game.QuestEventKind` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Activated`, `ObjectiveProgress`,
+`ObjectiveComplete`.
 
 #### Properties
 
@@ -1126,7 +1085,8 @@ Provides character-by-character text reveal.
 
 Create `Viper.Game.Typewriter` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`VisibleText`, `FullText`, `IsActive` and operations including `Say`, `Update`, `Skip`, `Reset`.
+`VisibleText`, `FullText`, `IsActive` and operations including `Say`, `Update`, `Skip`,
+`Reset`.
 
 Constructor: `Viper.Game.Typewriter.New`
 
@@ -1159,8 +1119,8 @@ Constructor: `Viper.Game.Typewriter.New`
 Provides positioned text widget.
 
 Create `Viper.Game.UI.HudLabel` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-`Color` and operations including `SetText`, `SetPos`, `Draw`.
+object with the instance members below. Its public surface exposes properties such as `X`,
+`Y`, `Color` and operations including `SetText`, `SetPosition`, `Draw`.
 
 Constructor: `Viper.Game.UI.HudLabel.New`
 
@@ -1180,97 +1140,98 @@ Constructor: `Viper.Game.UI.HudLabel.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-game-ui-hudlabel-settext"></a>`SetText` | `void(str)` | `Viper.Game.UI.HudLabel.SetText` |
-| <a id="viper-game-ui-hudlabel-setpos"></a>`SetPos` | `void(i64,i64)` | `Viper.Game.UI.HudLabel.SetPos` |
+| <a id="viper-game-ui-hudlabel-setposition"></a>`SetPosition` | `void(i64,i64)` | `Viper.Game.UI.HudLabel.SetPosition` |
 | <a id="viper-game-ui-hudlabel-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.HudLabel.Draw` |
 | <a id="viper-game-ui-hudlabel-new"></a>`New` | `obj(i64,i64,str,i64)` | `Viper.Game.UI.HudLabel.New` |
 
-<a id="viper-game-ui-bar"></a>
-### `Viper.Game.UI.Bar`
+<a id="viper-game-ui-hudbar"></a>
+### `Viper.Game.UI.HudBar`
 
 Provides progress/health/XP bar.
 
 Create `Viper.Game.UI.Bar` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes properties such as `Value`, `Max`,
-`Border` and operations including `SetValue`, `SetPos`, `SetSize`, `SetColors`.
+`Border` and operations including `SetValue`, `SetPosition`, `SetSize`, `SetColors`.
 
-Constructor: `Viper.Game.UI.Bar.New`
+Constructor: `Viper.Game.UI.HudBar.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-bar-value"></a>`Value` | `i64` | read-only |
-| <a id="viper-game-ui-bar-max"></a>`Max` | `i64` | read-only |
-| <a id="viper-game-ui-bar-border"></a>`Border` | `i64` | read/write |
-| <a id="viper-game-ui-bar-direction"></a>`Direction` | `i64` | read/write |
-| <a id="viper-game-ui-bar-visible"></a>`Visible` | `i1` | read/write |
+| <a id="viper-game-ui-hudbar-value"></a>`Value` | `i64` | read-only |
+| <a id="viper-game-ui-hudbar-max"></a>`Max` | `i64` | read-only |
+| <a id="viper-game-ui-hudbar-border"></a>`Border` | `i64` | read/write |
+| <a id="viper-game-ui-hudbar-direction"></a>`Direction` | `i64` | read/write |
+| <a id="viper-game-ui-hudbar-visible"></a>`Visible` | `i1` | read/write |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-bar-setvalue"></a>`SetValue` | `void(i64,i64)` | `Viper.Game.UI.Bar.SetValue` |
-| <a id="viper-game-ui-bar-setpos"></a>`SetPos` | `void(i64,i64)` | `Viper.Game.UI.Bar.SetPos` |
-| <a id="viper-game-ui-bar-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.Game.UI.Bar.SetSize` |
-| <a id="viper-game-ui-bar-setcolors"></a>`SetColors` | `void(i64,i64)` | `Viper.Game.UI.Bar.SetColors` |
-| <a id="viper-game-ui-bar-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.Bar.Draw` |
-| <a id="viper-game-ui-bar-new"></a>`New` | `obj(i64,i64,i64,i64,i64,i64)` | `Viper.Game.UI.Bar.New` |
+| <a id="viper-game-ui-hudbar-setvalue"></a>`SetValue` | `void(i64,i64)` | `Viper.Game.UI.HudBar.SetValue` |
+| <a id="viper-game-ui-hudbar-setposition"></a>`SetPosition` | `void(i64,i64)` | `Viper.Game.UI.HudBar.SetPosition` |
+| <a id="viper-game-ui-hudbar-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.Game.UI.HudBar.SetSize` |
+| <a id="viper-game-ui-hudbar-setcolors"></a>`SetColors` | `void(i64,i64)` | `Viper.Game.UI.HudBar.SetColors` |
+| <a id="viper-game-ui-hudbar-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.HudBar.Draw` |
+| <a id="viper-game-ui-hudbar-new"></a>`New` | `obj(i64,i64,i64,i64,i64,i64)` | `Viper.Game.UI.HudBar.New` |
 
-<a id="viper-game-ui-panel"></a>
-### `Viper.Game.UI.Panel`
+<a id="viper-game-ui-hudpanel"></a>
+### `Viper.Game.UI.HudPanel`
 
 Provides semi-transparent background panel.
 
 Create `Viper.Game.UI.Panel` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`CornerRadius`, `Visible` and operations including `SetPos`, `SetSize`, `SetColor`, `SetBorder`.
+`CornerRadius`, `Visible` and operations including `SetPosition`, `SetSize`, `SetColor`,
+`SetBorder`.
 
-Constructor: `Viper.Game.UI.Panel.New`
+Constructor: `Viper.Game.UI.HudPanel.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-panel-cornerradius"></a>`CornerRadius` | `i64` | read/write |
-| <a id="viper-game-ui-panel-visible"></a>`Visible` | `i1` | read/write |
+| <a id="viper-game-ui-hudpanel-cornerradius"></a>`CornerRadius` | `i64` | read/write |
+| <a id="viper-game-ui-hudpanel-visible"></a>`Visible` | `i1` | read/write |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-panel-setpos"></a>`SetPos` | `void(i64,i64)` | `Viper.Game.UI.Panel.SetPos` |
-| <a id="viper-game-ui-panel-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.Game.UI.Panel.SetSize` |
-| <a id="viper-game-ui-panel-setcolor"></a>`SetColor` | `void(i64,i64)` | `Viper.Game.UI.Panel.SetColor` |
-| <a id="viper-game-ui-panel-setborder"></a>`SetBorder` | `void(i64,i64)` | `Viper.Game.UI.Panel.SetBorder` |
-| <a id="viper-game-ui-panel-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.Panel.Draw` |
-| <a id="viper-game-ui-panel-new"></a>`New` | `obj(i64,i64,i64,i64,i64,i64)` | `Viper.Game.UI.Panel.New` |
+| <a id="viper-game-ui-hudpanel-setposition"></a>`SetPosition` | `void(i64,i64)` | `Viper.Game.UI.HudPanel.SetPosition` |
+| <a id="viper-game-ui-hudpanel-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.Game.UI.HudPanel.SetSize` |
+| <a id="viper-game-ui-hudpanel-setcolor"></a>`SetColor` | `void(i64,i64)` | `Viper.Game.UI.HudPanel.SetColor` |
+| <a id="viper-game-ui-hudpanel-setborder"></a>`SetBorder` | `void(i64,i64)` | `Viper.Game.UI.HudPanel.SetBorder` |
+| <a id="viper-game-ui-hudpanel-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.HudPanel.Draw` |
+| <a id="viper-game-ui-hudpanel-new"></a>`New` | `obj(i64,i64,i64,i64,i64,i64)` | `Viper.Game.UI.HudPanel.New` |
 
-<a id="viper-game-ui-nineslice"></a>
-### `Viper.Game.UI.NineSlice`
+<a id="viper-game-ui-hudnineslice"></a>
+### `Viper.Game.UI.HudNineSlice`
 
 Provides scalable bordered UI element.
 
 Create `Viper.Game.UI.NineSlice` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Tint` and
-operations including `Draw`.
+object with the instance members below. Its public surface exposes properties such as `Tint`
+and operations including `Draw`.
 
-Constructor: `Viper.Game.UI.NineSlice.New`
+Constructor: `Viper.Game.UI.HudNineSlice.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-nineslice-tint"></a>`Tint` | `i64` | read/write |
+| <a id="viper-game-ui-hudnineslice-tint"></a>`Tint` | `i64` | read/write |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-nineslice-draw"></a>`Draw` | `void(obj,i64,i64,i64,i64)` | `Viper.Game.UI.NineSlice.Draw` |
-| <a id="viper-game-ui-nineslice-new"></a>`New` | `obj(obj,i64,i64,i64,i64)` | `Viper.Game.UI.NineSlice.New` |
+| <a id="viper-game-ui-hudnineslice-draw"></a>`Draw` | `void(obj,i64,i64,i64,i64)` | `Viper.Game.UI.HudNineSlice.Draw` |
+| <a id="viper-game-ui-hudnineslice-new"></a>`New` | `obj(obj,i64,i64,i64,i64)` | `Viper.Game.UI.HudNineSlice.New` |
 
-<a id="viper-game-ui-menulist"></a>
-### `Viper.Game.UI.MenuList`
+<a id="viper-game-ui-hudmenulist"></a>
+### `Viper.Game.UI.HudMenuList`
 
 Provides vertical menu with selection highlight.
 
@@ -1278,29 +1239,29 @@ Create `Viper.Game.UI.MenuList` values through its registered constructor and us
 object with the instance members below. Its public surface exposes properties such as
 `Selected`, `Count`, `Font` and operations including `AddItem`, `Clear`, `MoveUp`, `MoveDown`.
 
-Constructor: `Viper.Game.UI.MenuList.New`
+Constructor: `Viper.Game.UI.HudMenuList.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-menulist-selected"></a>`Selected` | `i64` | read/write |
-| <a id="viper-game-ui-menulist-count"></a>`Count` | `i64` | read-only |
-| <a id="viper-game-ui-menulist-font"></a>`Font` | `obj` | read/write |
-| <a id="viper-game-ui-menulist-visible"></a>`Visible` | `i1` | read/write |
+| <a id="viper-game-ui-hudmenulist-selected"></a>`Selected` | `i64` | read/write |
+| <a id="viper-game-ui-hudmenulist-count"></a>`Count` | `i64` | read-only |
+| <a id="viper-game-ui-hudmenulist-font"></a>`Font` | `obj` | read/write |
+| <a id="viper-game-ui-hudmenulist-visible"></a>`Visible` | `i1` | read/write |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-menulist-additem"></a>`AddItem` | `void(str)` | `Viper.Game.UI.MenuList.AddItem` |
-| <a id="viper-game-ui-menulist-clear"></a>`Clear` | `void()` | `Viper.Game.UI.MenuList.Clear` |
-| <a id="viper-game-ui-menulist-moveup"></a>`MoveUp` | `void()` | `Viper.Game.UI.MenuList.MoveUp` |
-| <a id="viper-game-ui-menulist-movedown"></a>`MoveDown` | `void()` | `Viper.Game.UI.MenuList.MoveDown` |
-| <a id="viper-game-ui-menulist-setcolors"></a>`SetColors` | `void(i64,i64,i64)` | `Viper.Game.UI.MenuList.SetColors` |
-| <a id="viper-game-ui-menulist-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.MenuList.Draw` |
-| <a id="viper-game-ui-menulist-handleinput"></a>`HandleInput` | `i64(i1,i1,i1)` | `Viper.Game.UI.MenuList.HandleInput` |
-| <a id="viper-game-ui-menulist-new"></a>`New` | `obj(i64,i64,i64)` | `Viper.Game.UI.MenuList.New` |
+| <a id="viper-game-ui-hudmenulist-additem"></a>`AddItem` | `void(str)` | `Viper.Game.UI.HudMenuList.AddItem` |
+| <a id="viper-game-ui-hudmenulist-clear"></a>`Clear` | `void()` | `Viper.Game.UI.HudMenuList.Clear` |
+| <a id="viper-game-ui-hudmenulist-moveup"></a>`MoveUp` | `void()` | `Viper.Game.UI.HudMenuList.MoveUp` |
+| <a id="viper-game-ui-hudmenulist-movedown"></a>`MoveDown` | `void()` | `Viper.Game.UI.HudMenuList.MoveDown` |
+| <a id="viper-game-ui-hudmenulist-setcolors"></a>`SetColors` | `void(i64,i64,i64)` | `Viper.Game.UI.HudMenuList.SetColors` |
+| <a id="viper-game-ui-hudmenulist-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.HudMenuList.Draw` |
+| <a id="viper-game-ui-hudmenulist-handleinput"></a>`HandleInput` | `i64(i1,i1,i1)` | `Viper.Game.UI.HudMenuList.HandleInput` |
+| <a id="viper-game-ui-hudmenulist-new"></a>`New` | `obj(i64,i64,i64)` | `Viper.Game.UI.HudMenuList.New` |
 
 <a id="viper-game-ui-hudtextinput"></a>
 ### `Viper.Game.UI.HudTextInput`
@@ -1309,8 +1270,8 @@ Provides editable single-line text field.
 
 Create `Viper.Game.UI.HudTextInput` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Text`, `Visible`, `Enabled` and operations including `TextLength`, `GetCursor`, `SetCursor`,
-`SelectAll`.
+`Text`, `Visible`, `IsEnabled` and operations including `TextLength`, `GetCursor`,
+`SetCursor`, `SelectAll`.
 
 Constructor: `Viper.Game.UI.HudTextInput.New`
 
@@ -1320,7 +1281,7 @@ Constructor: `Viper.Game.UI.HudTextInput.New`
 |---|---|---|
 | <a id="viper-game-ui-hudtextinput-text"></a>`Text` | `str` | read/write |
 | <a id="viper-game-ui-hudtextinput-visible"></a>`Visible` | `i1` | read/write |
-| <a id="viper-game-ui-hudtextinput-enabled"></a>`Enabled` | `i1` | read/write |
+| <a id="viper-game-ui-hudtextinput-isenabled"></a>`IsEnabled` | `i1` | read/write |
 | <a id="viper-game-ui-hudtextinput-focused"></a>`Focused` | `i1` | read/write |
 | <a id="viper-game-ui-hudtextinput-textcolor"></a>`TextColor` | `i64` | read/write |
 | <a id="viper-game-ui-hudtextinput-backgroundcolor"></a>`BackgroundColor` | `i64` | read/write |
@@ -1353,8 +1314,8 @@ Constructor: `Viper.Game.UI.HudTextInput.New`
 | <a id="viper-game-ui-hudtextinput-setmaxcodepoints"></a>`SetMaxCodepoints` | `void(i64)` | `Viper.Game.UI.HudTextInput.SetMaxCodepoints` |
 | <a id="viper-game-ui-hudtextinput-new"></a>`New` | `obj(i64,i64,i64,i64)` | `Viper.Game.UI.HudTextInput.New` |
 
-<a id="viper-game-ui-table"></a>
-### `Viper.Game.UI.Table`
+<a id="viper-game-ui-hudtable"></a>
+### `Viper.Game.UI.HudTable`
 
 Provides sortable, scrollable table widget.
 
@@ -1363,41 +1324,39 @@ object with the instance members below. Its public surface exposes properties su
 `ColumnCount`, `RowCount`, `SortColumn` and operations including `AddColumn`,
 `SetColumnSortable`, `AddRow`, `SetCell`.
 
-Constructor: `Viper.Game.UI.Table.New`
+Constructor: `Viper.Game.UI.HudTable.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-table-columncount"></a>`ColumnCount` | `i64` | read-only |
-| <a id="viper-game-ui-table-rowcount"></a>`RowCount` | `i64` | read-only |
-| <a id="viper-game-ui-table-sortcolumn"></a>`SortColumn` | `i64` | read-only |
-| <a id="viper-game-ui-table-sortdescending"></a>`SortDescending` | `i1` | read-only |
-| <a id="viper-game-ui-table-scroll"></a>`Scroll` | `i64` | read/write |
-| <a id="viper-game-ui-table-selectedrow"></a>`SelectedRow` | `i64` | read/write |
+| <a id="viper-game-ui-hudtable-columncount"></a>`ColumnCount` | `i64` | read-only |
+| <a id="viper-game-ui-hudtable-rowcount"></a>`RowCount` | `i64` | read-only |
+| <a id="viper-game-ui-hudtable-sortcolumn"></a>`SortColumn` | `i64` | read-only |
+| <a id="viper-game-ui-hudtable-sortdescending"></a>`SortDescending` | `i1` | read-only |
+| <a id="viper-game-ui-hudtable-scroll"></a>`Scroll` | `i64` | read/write |
+| <a id="viper-game-ui-hudtable-selectedrow"></a>`SelectedRow` | `i64` | read/write |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-table-addcolumn"></a>`AddColumn` | `i64(str,i64,i64)` | `Viper.Game.UI.Table.AddColumn` |
-| <a id="viper-game-ui-table-setcolumnsortable"></a>`SetColumnSortable` | `void(i64,i1,i1)` | `Viper.Game.UI.Table.SetColumnSortable` |
-| <a id="viper-game-ui-table-addrow"></a>`AddRow` | `i64()` | `Viper.Game.UI.Table.AddRow` |
-| <a id="viper-game-ui-table-setcell"></a>`SetCell` | `void(i64,i64,str)` | `Viper.Game.UI.Table.SetCell` |
-| <a id="viper-game-ui-table-getcell"></a>`GetCell` | `str(i64,i64)` | `Viper.Game.UI.Table.GetCell` |
-| <a id="viper-game-ui-table-removerow"></a>`RemoveRow` | `void(i64)` | `Viper.Game.UI.Table.RemoveRow` |
-| <a id="viper-game-ui-table-clearrows"></a>`ClearRows` | `void()` | `Viper.Game.UI.Table.ClearRows` |
-| <a id="viper-game-ui-table-sortby"></a>`SortBy` | `void(i64,i1)` | `Viper.Game.UI.Table.SortBy` |
-| <a id="viper-game-ui-table-handleclick"></a>`HandleClick` | `i64(i64,i64)` | `Viper.Game.UI.Table.HandleClick` |
-| <a id="viper-game-ui-table-handleclickresult"></a>`HandleClickResult` | `obj<Viper.Game.UI.TableClickResult>(i64,i64)` | `Viper.Game.UI.Table.HandleClickResult` |
-| <a id="viper-game-ui-table-lastheaderclick"></a>`LastHeaderClick` | `i64()` | `Viper.Game.UI.Table.LastHeaderClick` |
-| <a id="viper-game-ui-table-handlescroll"></a>`HandleScroll` | `void(i64)` | `Viper.Game.UI.Table.HandleScroll` |
-| <a id="viper-game-ui-table-handlekey"></a>`HandleKey` | `void(i64)` | `Viper.Game.UI.Table.HandleKey` |
-| <a id="viper-game-ui-table-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.Table.Draw` |
-| <a id="viper-game-ui-table-new"></a>`New` | `obj(i64,i64,i64,i64)` | `Viper.Game.UI.Table.New` |
+| <a id="viper-game-ui-hudtable-addcolumn"></a>`AddColumn` | `i64(str,i64,i64)` | `Viper.Game.UI.HudTable.AddColumn` |
+| <a id="viper-game-ui-hudtable-setcolumnsortable"></a>`SetColumnSortable` | `void(i64,i1,i1)` | `Viper.Game.UI.HudTable.SetColumnSortable` |
+| <a id="viper-game-ui-hudtable-addrow"></a>`AddRow` | `i64()` | `Viper.Game.UI.HudTable.AddRow` |
+| <a id="viper-game-ui-hudtable-setcell"></a>`SetCell` | `void(i64,i64,str)` | `Viper.Game.UI.HudTable.SetCell` |
+| <a id="viper-game-ui-hudtable-getcell"></a>`GetCell` | `str(i64,i64)` | `Viper.Game.UI.HudTable.GetCell` |
+| <a id="viper-game-ui-hudtable-removerow"></a>`RemoveRow` | `void(i64)` | `Viper.Game.UI.HudTable.RemoveRow` |
+| <a id="viper-game-ui-hudtable-clearrows"></a>`ClearRows` | `void()` | `Viper.Game.UI.HudTable.ClearRows` |
+| <a id="viper-game-ui-hudtable-sortby"></a>`SortBy` | `void(i64,i1)` | `Viper.Game.UI.HudTable.SortBy` |
+| <a id="viper-game-ui-hudtable-handleclick"></a>`HandleClick` | `obj<Viper.Game.UI.HudTableClickResult>(i64,i64)` | `Viper.Game.UI.HudTable.HandleClick` |
+| <a id="viper-game-ui-hudtable-handlescroll"></a>`HandleScroll` | `void(i64)` | `Viper.Game.UI.HudTable.HandleScroll` |
+| <a id="viper-game-ui-hudtable-handlekey"></a>`HandleKey` | `void(i64)` | `Viper.Game.UI.HudTable.HandleKey` |
+| <a id="viper-game-ui-hudtable-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.HudTable.Draw` |
+| <a id="viper-game-ui-hudtable-new"></a>`New` | `obj(i64,i64,i64,i64)` | `Viper.Game.UI.HudTable.New` |
 
-<a id="viper-game-ui-tableclickresult"></a>
-### `Viper.Game.UI.TableClickResult`
+<a id="viper-game-ui-hudtableclickresult"></a>
+### `Viper.Game.UI.HudTableClickResult`
 
 Provides structured table click outcome.
 
@@ -1409,53 +1368,53 @@ callers to construct the class directly. Its public surface exposes properties s
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-tableclickresult-kind"></a>`Kind` | `i64` | read-only |
-| <a id="viper-game-ui-tableclickresult-isnone"></a>`IsNone` | `i1` | read-only |
-| <a id="viper-game-ui-tableclickresult-isrow"></a>`IsRow` | `i1` | read-only |
-| <a id="viper-game-ui-tableclickresult-isheader"></a>`IsHeader` | `i1` | read-only |
+| <a id="viper-game-ui-hudtableclickresult-kind"></a>`Kind` | `i64` | read-only |
+| <a id="viper-game-ui-hudtableclickresult-isnone"></a>`IsNone` | `i1` | read-only |
+| <a id="viper-game-ui-hudtableclickresult-isrow"></a>`IsRow` | `i1` | read-only |
+| <a id="viper-game-ui-hudtableclickresult-isheader"></a>`IsHeader` | `i1` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-tableclickresult-rowoption"></a>`RowOption` | `obj<Viper.Option>()` | `Viper.Game.UI.TableClickResult.RowOption` |
-| <a id="viper-game-ui-tableclickresult-columnoption"></a>`ColumnOption` | `obj<Viper.Option>()` | `Viper.Game.UI.TableClickResult.ColumnOption` |
+| <a id="viper-game-ui-hudtableclickresult-rowoption"></a>`RowOption` | `obj<Viper.Option>()` | `Viper.Game.UI.HudTableClickResult.RowOption` |
+| <a id="viper-game-ui-hudtableclickresult-columnoption"></a>`ColumnOption` | `obj<Viper.Option>()` | `Viper.Game.UI.HudTableClickResult.ColumnOption` |
 
-<a id="viper-game-ui-modal"></a>
-### `Viper.Game.UI.Modal`
+<a id="viper-game-ui-hudmodal"></a>
+### `Viper.Game.UI.HudModal`
 
 Provides modal dialog with buttons and child widgets.
 
 Create `Viper.Game.UI.Modal` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `IsOpen`,
-`Result` and operations including `NewAt`, `SetTitle`, `SetContent`, `AddButton`.
+object with the instance members below. Its public surface exposes properties such as
+`IsOpen`, `Result` and operations including `NewAt`, `SetTitle`, `SetContent`, `AddButton`.
 
-Constructor: `Viper.Game.UI.Modal.New`
+Constructor: `Viper.Game.UI.HudModal.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-modal-isopen"></a>`IsOpen` | `i1` | read-only |
-| <a id="viper-game-ui-modal-result"></a>`Result` | `i64` | read-only |
+| <a id="viper-game-ui-hudmodal-isopen"></a>`IsOpen` | `i1` | read-only |
+| <a id="viper-game-ui-hudmodal-result"></a>`Result` | `i64` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-modal-newat"></a>`NewAt` | `obj(i64,i64,i64,i64)` | `Viper.Game.UI.Modal.NewAt` |
-| <a id="viper-game-ui-modal-settitle"></a>`SetTitle` | `void(str)` | `Viper.Game.UI.Modal.SetTitle` |
-| <a id="viper-game-ui-modal-setcontent"></a>`SetContent` | `void(str)` | `Viper.Game.UI.Modal.SetContent` |
-| <a id="viper-game-ui-modal-addbutton"></a>`AddButton` | `i64(str,i64)` | `Viper.Game.UI.Modal.AddButton` |
-| <a id="viper-game-ui-modal-setdefaultbutton"></a>`SetDefaultButton` | `void(i64)` | `Viper.Game.UI.Modal.SetDefaultButton` |
-| <a id="viper-game-ui-modal-setcancelbutton"></a>`SetCancelButton` | `void(i64)` | `Viper.Game.UI.Modal.SetCancelButton` |
-| <a id="viper-game-ui-modal-addchild"></a>`AddChild` | `void(obj)` | `Viper.Game.UI.Modal.AddChild` |
-| <a id="viper-game-ui-modal-open"></a>`Open` | `void()` | `Viper.Game.UI.Modal.Open` |
-| <a id="viper-game-ui-modal-close"></a>`Close` | `void()` | `Viper.Game.UI.Modal.Close` |
-| <a id="viper-game-ui-modal-handlekey"></a>`HandleKey` | `i64(i64,i1)` | `Viper.Game.UI.Modal.HandleKey` |
-| <a id="viper-game-ui-modal-handleclick"></a>`HandleClick` | `i64(i64,i64)` | `Viper.Game.UI.Modal.HandleClick` |
-| <a id="viper-game-ui-modal-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.Modal.Draw` |
-| <a id="viper-game-ui-modal-new"></a>`New` | `obj(i64,i64)` | `Viper.Game.UI.Modal.New` |
+| <a id="viper-game-ui-hudmodal-newat"></a>`NewAt` | `obj(i64,i64,i64,i64)` | `Viper.Game.UI.HudModal.NewAt` |
+| <a id="viper-game-ui-hudmodal-settitle"></a>`SetTitle` | `void(str)` | `Viper.Game.UI.HudModal.SetTitle` |
+| <a id="viper-game-ui-hudmodal-setcontent"></a>`SetContent` | `void(str)` | `Viper.Game.UI.HudModal.SetContent` |
+| <a id="viper-game-ui-hudmodal-addbutton"></a>`AddButton` | `i64(str,i64)` | `Viper.Game.UI.HudModal.AddButton` |
+| <a id="viper-game-ui-hudmodal-setdefaultbutton"></a>`SetDefaultButton` | `void(i64)` | `Viper.Game.UI.HudModal.SetDefaultButton` |
+| <a id="viper-game-ui-hudmodal-setcancelbutton"></a>`SetCancelButton` | `void(i64)` | `Viper.Game.UI.HudModal.SetCancelButton` |
+| <a id="viper-game-ui-hudmodal-addchild"></a>`AddChild` | `void(obj)` | `Viper.Game.UI.HudModal.AddChild` |
+| <a id="viper-game-ui-hudmodal-open"></a>`Open` | `void()` | `Viper.Game.UI.HudModal.Open` |
+| <a id="viper-game-ui-hudmodal-close"></a>`Close` | `void()` | `Viper.Game.UI.HudModal.Close` |
+| <a id="viper-game-ui-hudmodal-handlekey"></a>`HandleKey` | `i64(i64,i1)` | `Viper.Game.UI.HudModal.HandleKey` |
+| <a id="viper-game-ui-hudmodal-handleclick"></a>`HandleClick` | `i64(i64,i64)` | `Viper.Game.UI.HudModal.HandleClick` |
+| <a id="viper-game-ui-hudmodal-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.HudModal.Draw` |
+| <a id="viper-game-ui-hudmodal-new"></a>`New` | `obj(i64,i64)` | `Viper.Game.UI.HudModal.New` |
 
 <a id="viper-game-ui-hudslider"></a>
 ### `Viper.Game.UI.HudSlider`
@@ -1463,7 +1422,7 @@ Constructor: `Viper.Game.UI.Modal.New`
 Provides integer slider control.
 
 Create `Viper.Game.UI.HudSlider` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Value`
+object with the instance members below. Its public surface exposes properties such as `Value`
 and operations including `SetStep`, `SetLabel`, `HandleKey`, `HandleMouseDown`.
 
 Constructor: `Viper.Game.UI.HudSlider.New`
@@ -1541,39 +1500,39 @@ Constructor: `Viper.Game.UI.HudTooltip.New`
 | <a id="viper-game-ui-hudtooltip-draw"></a>`Draw` | `void(obj)` | `Viper.Game.UI.HudTooltip.Draw` |
 | <a id="viper-game-ui-hudtooltip-new"></a>`New` | `obj()` | `Viper.Game.UI.HudTooltip.New` |
 
-<a id="viper-game-ui-gamebutton"></a>
-### `Viper.Game.UI.GameButton`
+<a id="viper-game-ui-hudbutton"></a>
+### `Viper.Game.UI.HudButton`
 
 Provides styled button for game menus and custom HUDs.
 
 Create `Viper.Game.UI.GameButton` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-`Width` and operations including `SetText`, `SetSize`, `SetColors`, `SetTextColors`.
+object with the instance members below. Its public surface exposes properties such as `X`,
+`Y`, `Width` and operations including `SetText`, `SetSize`, `SetColors`, `SetTextColors`.
 
-Constructor: `Viper.Game.UI.GameButton.New`
+Constructor: `Viper.Game.UI.HudButton.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game-ui-gamebutton-x"></a>`X` | `i64` | read/write |
-| <a id="viper-game-ui-gamebutton-y"></a>`Y` | `i64` | read/write |
-| <a id="viper-game-ui-gamebutton-width"></a>`Width` | `i64` | read-only |
-| <a id="viper-game-ui-gamebutton-height"></a>`Height` | `i64` | read-only |
-| <a id="viper-game-ui-gamebutton-visible"></a>`Visible` | `i1` | read/write |
-| <a id="viper-game-ui-gamebutton-textscale"></a>`TextScale` | `i64` | read/write |
+| <a id="viper-game-ui-hudbutton-x"></a>`X` | `i64` | read/write |
+| <a id="viper-game-ui-hudbutton-y"></a>`Y` | `i64` | read/write |
+| <a id="viper-game-ui-hudbutton-width"></a>`Width` | `i64` | read-only |
+| <a id="viper-game-ui-hudbutton-height"></a>`Height` | `i64` | read-only |
+| <a id="viper-game-ui-hudbutton-visible"></a>`Visible` | `i1` | read/write |
+| <a id="viper-game-ui-hudbutton-textscale"></a>`TextScale` | `i64` | read/write |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game-ui-gamebutton-settext"></a>`SetText` | `void(str)` | `Viper.Game.UI.GameButton.SetText` |
-| <a id="viper-game-ui-gamebutton-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.Game.UI.GameButton.SetSize` |
-| <a id="viper-game-ui-gamebutton-setcolors"></a>`SetColors` | `void(i64,i64)` | `Viper.Game.UI.GameButton.SetColors` |
-| <a id="viper-game-ui-gamebutton-settextcolors"></a>`SetTextColors` | `void(i64,i64)` | `Viper.Game.UI.GameButton.SetTextColors` |
-| <a id="viper-game-ui-gamebutton-setborder"></a>`SetBorder` | `void(i64,i64)` | `Viper.Game.UI.GameButton.SetBorder` |
-| <a id="viper-game-ui-gamebutton-draw"></a>`Draw` | `void(obj,i1)` | `Viper.Game.UI.GameButton.Draw` |
-| <a id="viper-game-ui-gamebutton-new"></a>`New` | `obj(i64,i64,i64,i64,str)` | `Viper.Game.UI.GameButton.New` |
+| <a id="viper-game-ui-hudbutton-settext"></a>`SetText` | `void(str)` | `Viper.Game.UI.HudButton.SetText` |
+| <a id="viper-game-ui-hudbutton-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.Game.UI.HudButton.SetSize` |
+| <a id="viper-game-ui-hudbutton-setcolors"></a>`SetColors` | `void(i64,i64)` | `Viper.Game.UI.HudButton.SetColors` |
+| <a id="viper-game-ui-hudbutton-settextcolors"></a>`SetTextColors` | `void(i64,i64)` | `Viper.Game.UI.HudButton.SetTextColors` |
+| <a id="viper-game-ui-hudbutton-setborder"></a>`SetBorder` | `void(i64,i64)` | `Viper.Game.UI.HudButton.SetBorder` |
+| <a id="viper-game-ui-hudbutton-draw"></a>`Draw` | `void(obj,i1)` | `Viper.Game.UI.HudButton.Draw` |
+| <a id="viper-game-ui-hudbutton-new"></a>`New` | `obj(i64,i64,i64,i64,str)` | `Viper.Game.UI.HudButton.New` |
 
 <a id="viper-game-pathresult"></a>
 ### `Viper.Game.PathResult`
@@ -1592,7 +1551,6 @@ construct the class directly. Its public surface exposes properties such as `Fou
 | <a id="viper-game-pathresult-steps"></a>`Steps` | `i64` | read-only |
 | <a id="viper-game-pathresult-cost"></a>`Cost` | `i64` | read-only |
 | <a id="viper-game-pathresult-stepcount"></a>`StepCount` | `i64` | read-only |
-| <a id="viper-game-pathresult-length"></a>`Length` | `i64` | read-only |
 | <a id="viper-game-pathresult-path"></a>`Path` | `obj` | read-only |
 
 <a id="viper-game-pathfinder"></a>
@@ -1602,7 +1560,8 @@ Provides Pathfinder functionality for game applications.
 
 Create `Viper.Game.Pathfinder` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Width`,
-`Height`, `Diagonal` and operations including `SetWalkable`, `IsWalkable`, `SetCost`, `GetCost`.
+`Height`, `Diagonal` and operations including `SetWalkable`, `IsWalkable`, `SetCost`,
+`GetCost`.
 
 Constructor: `Viper.Game.Pathfinder.New`
 
@@ -1614,8 +1573,6 @@ Constructor: `Viper.Game.Pathfinder.New`
 | <a id="viper-game-pathfinder-height"></a>`Height` | `i64` | read-only |
 | <a id="viper-game-pathfinder-diagonal"></a>`Diagonal` | `i1` | read/write |
 | <a id="viper-game-pathfinder-maxsteps"></a>`MaxSteps` | `i64` | read/write |
-| <a id="viper-game-pathfinder-laststeps"></a>`LastSteps` | `i64` | read-only |
-| <a id="viper-game-pathfinder-lastfound"></a>`LastFound` | `i1` | read-only |
 
 #### Methods
 
@@ -1625,11 +1582,8 @@ Constructor: `Viper.Game.Pathfinder.New`
 | <a id="viper-game-pathfinder-iswalkable"></a>`IsWalkable` | `i1(i64,i64)` | `Viper.Game.Pathfinder.IsWalkable` |
 | <a id="viper-game-pathfinder-setcost"></a>`SetCost` | `void(i64,i64,i64)` | `Viper.Game.Pathfinder.SetCost` |
 | <a id="viper-game-pathfinder-getcost"></a>`GetCost` | `i64(i64,i64)` | `Viper.Game.Pathfinder.GetCost` |
-| <a id="viper-game-pathfinder-findpath"></a>`FindPath` | `obj(i64,i64,i64,i64)` | `Viper.Game.Pathfinder.FindPath` |
-| <a id="viper-game-pathfinder-findpathresult"></a>`FindPathResult` | `obj<Viper.Game.PathResult>(i64,i64,i64,i64)` | `Viper.Game.Pathfinder.FindPathResult` |
-| <a id="viper-game-pathfinder-findpathlength"></a>`FindPathLength` | `i64(i64,i64,i64,i64)` | `Viper.Game.Pathfinder.FindPathLength` |
-| <a id="viper-game-pathfinder-findnearest"></a>`FindNearest` | `obj(i64,i64,i64)` | `Viper.Game.Pathfinder.FindNearest` |
-| <a id="viper-game-pathfinder-findnearestresult"></a>`FindNearestResult` | `obj<Viper.Game.PathResult>(i64,i64,i64)` | `Viper.Game.Pathfinder.FindNearestResult` |
+| <a id="viper-game-pathfinder-findpath"></a>`FindPath` | `obj<Viper.Game.PathResult>(i64,i64,i64,i64)` | `Viper.Game.Pathfinder.FindPath` |
+| <a id="viper-game-pathfinder-findnearest"></a>`FindNearest` | `obj<Viper.Game.PathResult>(i64,i64,i64)` | `Viper.Game.Pathfinder.FindNearest` |
 | <a id="viper-game-pathfinder-destroy"></a>`Destroy` | `void()` | `Viper.Game.Pathfinder.Destroy` |
 | <a id="viper-game-pathfinder-new"></a>`New` | `obj(i64,i64)` | `Viper.Game.Pathfinder.New` |
 | <a id="viper-game-pathfinder-fromtilemap"></a>`FromTilemap` | `obj(obj)` | `Viper.Game.Pathfinder.FromTilemap` |
@@ -1680,8 +1634,8 @@ Constructor: `Viper.Game.PathFollower.New`
 Provides Query Result functionality for game applications.
 
 `Viper.Game.QueryResult` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes properties such as `Count`, `Truncated`
-and operations including `GetId`, `Contains`, `Ids`.
+construct the class directly. Its public surface exposes properties such as `Count`,
+`Truncated` and operations including `GetId`, `Contains`, `Ids`.
 
 #### Properties
 
@@ -1704,8 +1658,8 @@ and operations including `GetId`, `Contains`, `Ids`.
 Provides Quadtree Pair Result functionality for game applications.
 
 `Viper.Game.QuadtreePairResult` exposes a registry-backed runtime surface without requiring
-callers to construct the class directly. Its public surface exposes properties such as `Count`,
-`Truncated` and operations including `First`, `Second`.
+callers to construct the class directly. Its public surface exposes properties such as
+`Count`, `Truncated` and operations including `First`, `Second`.
 
 #### Properties
 
@@ -1728,7 +1682,7 @@ Provides Quadtree functionality for game applications.
 
 Create `Viper.Game.Quadtree` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`ItemCount`, `ResultCount` and operations including `Clear`, `Insert`, `Remove`, `Update`.
+`ItemCount` and operations including `Clear`, `Insert`, `Remove`, `Update`.
 
 Constructor: `Viper.Game.Quadtree.New`
 
@@ -1737,7 +1691,6 @@ Constructor: `Viper.Game.Quadtree.New`
 | Property | Type | Access |
 |---|---|---|
 | <a id="viper-game-quadtree-itemcount"></a>`ItemCount` | `i64` | read-only |
-| <a id="viper-game-quadtree-resultcount"></a>`ResultCount` | `i64` | read-only |
 
 #### Methods
 
@@ -1747,17 +1700,9 @@ Constructor: `Viper.Game.Quadtree.New`
 | <a id="viper-game-quadtree-insert"></a>`Insert` | `i1(i64,i64,i64,i64,i64)` | `Viper.Game.Quadtree.Insert` |
 | <a id="viper-game-quadtree-remove"></a>`Remove` | `i1(i64)` | `Viper.Game.Quadtree.Remove` |
 | <a id="viper-game-quadtree-update"></a>`Update` | `i1(i64,i64,i64,i64,i64)` | `Viper.Game.Quadtree.Update` |
-| <a id="viper-game-quadtree-queryrect"></a>`QueryRect` | `i64(i64,i64,i64,i64)` | `Viper.Game.Quadtree.QueryRect` |
-| <a id="viper-game-quadtree-querypoint"></a>`QueryPoint` | `i64(i64,i64,i64)` | `Viper.Game.Quadtree.QueryPoint` |
-| <a id="viper-game-quadtree-queryrectresult"></a>`QueryRectResult` | `obj<Viper.Game.QueryResult>(i64,i64,i64,i64)` | `Viper.Game.Quadtree.QueryRectResult` |
-| <a id="viper-game-quadtree-querypointresult"></a>`QueryPointResult` | `obj<Viper.Game.QueryResult>(i64,i64,i64)` | `Viper.Game.Quadtree.QueryPointResult` |
-| <a id="viper-game-quadtree-getresult"></a>`GetResult` | `i64(i64)` | `Viper.Game.Quadtree.GetResult` |
-| <a id="viper-game-quadtree-getpairs"></a>`GetPairs` | `i64()` | `Viper.Game.Quadtree.GetPairs` |
+| <a id="viper-game-quadtree-queryrect"></a>`QueryRect` | `obj<Viper.Game.QueryResult>(i64,i64,i64,i64)` | `Viper.Game.Quadtree.QueryRect` |
+| <a id="viper-game-quadtree-querypoint"></a>`QueryPoint` | `obj<Viper.Game.QueryResult>(i64,i64,i64)` | `Viper.Game.Quadtree.QueryPoint` |
 | <a id="viper-game-quadtree-querypairs"></a>`QueryPairs` | `obj<Viper.Game.QuadtreePairResult>()` | `Viper.Game.Quadtree.QueryPairs` |
-| <a id="viper-game-quadtree-pairfirst"></a>`PairFirst` | `i64(i64)` | `Viper.Game.Quadtree.PairFirst` |
-| <a id="viper-game-quadtree-pairsecond"></a>`PairSecond` | `i64(i64)` | `Viper.Game.Quadtree.PairSecond` |
-| <a id="viper-game-quadtree-querywastruncated"></a>`QueryWasTruncated` | `i1()` | `Viper.Game.Quadtree.QueryWasTruncated` |
-| <a id="viper-game-quadtree-pairswastruncated"></a>`PairsWasTruncated` | `i1()` | `Viper.Game.Quadtree.PairsWasTruncated` |
 | <a id="viper-game-quadtree-new"></a>`New` | `obj(i64,i64,i64,i64)` | `Viper.Game.Quadtree.New` |
 | <a id="viper-game-quadtree-destroy"></a>`Destroy` | `void(obj)` | `Viper.Game.Quadtree.Destroy` |
 
@@ -1865,11 +1810,8 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.AnimStateMachine.Play` | `void(obj,str)` | `rt_animstate_play` |
 | <a id="viper-game-animstatemachine-get-statename"></a>`Viper.Game.AnimStateMachine.get_StateName` | `obj(obj)` | `rt_animstate_current_name` |
 | `Viper.Game.AnimStateMachine.SetEventFrame` | `void(obj,i64)` | `rt_animstate_set_event_frame` |
-| <a id="viper-game-animstatemachine-get-eventfired"></a>`Viper.Game.AnimStateMachine.get_EventFired` | `i1(obj)` | `rt_animstate_event_fired` |
 | `Viper.Game.AnimStateMachine.AddEvent` | `i1(obj,i64,i64,i64)` | `rt_animstate_add_event` |
 | `Viper.Game.AnimStateMachine.ClearEvents` | `void(obj,i64)` | `rt_animstate_clear_events` |
-| `Viper.Game.AnimStateMachine.EventsFiredCount` | `i64(obj)` | `rt_animstate_events_fired_count` |
-| `Viper.Game.AnimStateMachine.EventFiredId` | `i64(obj,i64)` | `rt_animstate_event_fired_id` |
 | `Viper.Game.AnimStateMachine.PollEvents` | `obj<Viper.Game.AnimationEventBatch>(obj)` | `rt_animstate_poll_events` |
 | <a id="viper-game-animationeventbatch-get-count"></a>`Viper.Game.AnimationEventBatch.get_Count` | `i64(obj)` | `rt_animation_event_batch_count` |
 | `Viper.Game.AnimationEventBatch.GetId` | `i64(obj,i64)` | `rt_animation_event_batch_get_id` |
@@ -1887,8 +1829,6 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-animtimeline-get-currentframe"></a>`Viper.Game.AnimTimeline.get_CurrentFrame` | `i64(obj)` | `rt_animtimeline_get_current_frame` |
 | <a id="viper-game-animtimeline-set-looping"></a>`Viper.Game.AnimTimeline.set_Looping` | `void(obj,i1)` | `rt_animtimeline_set_looping` |
 | `Viper.Game.AnimTimeline.Advance` | `void(obj,i64)` | `rt_animtimeline_advance` |
-| `Viper.Game.AnimTimeline.EventsFiredCount` | `i64(obj)` | `rt_animtimeline_events_fired_count` |
-| `Viper.Game.AnimTimeline.EventFiredId` | `i64(obj,i64)` | `rt_animtimeline_event_fired_id` |
 | `Viper.Game.AnimTimeline.PollEvents` | `obj<Viper.Game.AnimationEventBatch>(obj)` | `rt_animtimeline_poll_events` |
 | `Viper.Game.AnimTimeline.TrackIsActive` | `i1(obj,i64)` | `rt_animtimeline_track_is_active` |
 | `Viper.Game.AnimTimeline.TrackProgress` | `f64(obj,i64)` | `rt_animtimeline_track_progress` |
@@ -1929,7 +1869,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.ButtonGroup.ClearChangedFlag` | `void(obj)` | `rt_buttongroup_clear_changed_flag` |
 | `Viper.Game.ButtonGroup.GetAt` | `i64(obj,i64)` | `rt_buttongroup_get_at` |
 | `Viper.Game.ButtonGroup.SelectNext` | `i64(obj)` | `rt_buttongroup_select_next` |
-| `Viper.Game.ButtonGroup.SelectPrev` | `i64(obj)` | `rt_buttongroup_select_prev` |
+| `Viper.Game.ButtonGroup.SelectPrevious` | `i64(obj)` | `rt_buttongroup_select_prev` |
 | `Viper.Game.SmoothValue.New` | `obj(f64,f64)` | `rt_smoothvalue_new` |
 | `Viper.Game.SmoothValue.Destroy` | `void(obj)` | `rt_smoothvalue_destroy` |
 | <a id="viper-game-smoothvalue-get-value"></a>`Viper.Game.SmoothValue.get_Value` | `f64(obj)` | `rt_smoothvalue_get` |
@@ -2051,6 +1991,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.Physics2D.World.ContactNY` | `f64(obj,i64)` | `rt_physics2d_world_contact_ny` |
 | `Viper.Game.Physics2D.World.ContactDepth` | `f64(obj,i64)` | `rt_physics2d_world_contact_depth` |
 | `Viper.Game.Physics2D.Body.New` | `obj(f64,f64,f64,f64,f64)` | `rt_physics2d_body_new` |
+| `Viper.Game.Physics2D.Body.NewCircle` | `obj(f64,f64,f64,f64)` | `rt_physics2d_circle_body_new` |
 | <a id="viper-game-physics2d-body-get-x"></a>`Viper.Game.Physics2D.Body.get_X` | `f64(obj)` | `rt_physics2d_body_x` |
 | <a id="viper-game-physics2d-body-get-y"></a>`Viper.Game.Physics2D.Body.get_Y` | `f64(obj)` | `rt_physics2d_body_y` |
 | <a id="viper-game-physics2d-body-get-prevx"></a>`Viper.Game.Physics2D.Body.get_PrevX` | `f64(obj)` | `rt_physics2d_body_prev_x` |
@@ -2059,8 +2000,8 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-physics2d-body-get-height"></a>`Viper.Game.Physics2D.Body.get_Height` | `f64(obj)` | `rt_physics2d_body_h` |
 | <a id="viper-game-physics2d-body-get-velocityx"></a>`Viper.Game.Physics2D.Body.get_VelocityX` | `f64(obj)` | `rt_physics2d_body_vx` |
 | <a id="viper-game-physics2d-body-get-velocityy"></a>`Viper.Game.Physics2D.Body.get_VelocityY` | `f64(obj)` | `rt_physics2d_body_vy` |
-| `Viper.Game.Physics2D.Body.SetPos` | `void(obj,f64,f64)` | `rt_physics2d_body_set_pos` |
-| `Viper.Game.Physics2D.Body.SetVel` | `void(obj,f64,f64)` | `rt_physics2d_body_set_vel` |
+| `Viper.Game.Physics2D.Body.SetPosition` | `void(obj,f64,f64)` | `rt_physics2d_body_set_pos` |
+| `Viper.Game.Physics2D.Body.SetVelocity` | `void(obj,f64,f64)` | `rt_physics2d_body_set_vel` |
 | `Viper.Game.Physics2D.Body.ApplyForce` | `void(obj,f64,f64)` | `rt_physics2d_body_apply_force` |
 | `Viper.Game.Physics2D.Body.ApplyImpulse` | `void(obj,f64,f64)` | `rt_physics2d_body_apply_impulse` |
 | <a id="viper-game-physics2d-body-get-restitution"></a>`Viper.Game.Physics2D.Body.get_Restitution` | `f64(obj)` | `rt_physics2d_body_restitution` |
@@ -2085,7 +2026,6 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-physics2d-projectile2d-get-haslanded"></a>`Viper.Game.Physics2D.Projectile2D.get_HasLanded` | `i1(obj)` | `rt_projectile2d_has_landed` |
 | <a id="viper-game-physics2d-projectile2d-get-totaltime"></a>`Viper.Game.Physics2D.Projectile2D.get_TotalTime` | `f64(obj)` | `rt_projectile2d_total_time` |
 | `Viper.Game.Physics2D.Projectile2D.TimeToGround` | `f64(obj)` | `rt_projectile2d_time_to_ground` |
-| `Viper.Game.Physics2D.CircleBody.New` | `obj(f64,f64,f64,f64)` | `rt_physics2d_circle_body_new` |
 | <a id="viper-game-physics2d-body-get-radius"></a>`Viper.Game.Physics2D.Body.get_Radius` | `f64(obj)` | `rt_physics2d_body_radius` |
 | <a id="viper-game-physics2d-body-get-iscircle"></a>`Viper.Game.Physics2D.Body.get_IsCircle` | `i1(obj)` | `rt_physics2d_body_is_circle` |
 | `Viper.Game.Physics2D.DistanceJoint.New` | `obj(obj,obj,f64)` | `rt_physics2d_distance_joint_new` |
@@ -2148,7 +2088,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.ScreenFX.Draw` | `void(obj,obj,i64,i64)` | `rt_screenfx_draw` |
 | `Viper.Game.UI.HudLabel.New` | `obj(i64,i64,str,i64)` | `rt_uilabel_new` |
 | `Viper.Game.UI.HudLabel.SetText` | `void(obj,str)` | `rt_uilabel_set_text` |
-| `Viper.Game.UI.HudLabel.SetPos` | `void(obj,i64,i64)` | `rt_uilabel_set_pos` |
+| `Viper.Game.UI.HudLabel.SetPosition` | `void(obj,i64,i64)` | `rt_uilabel_set_pos` |
 | <a id="viper-game-ui-hudlabel-set-color"></a>`Viper.Game.UI.HudLabel.set_Color` | `void(obj,i64)` | `rt_uilabel_set_color` |
 | <a id="viper-game-ui-hudlabel-set-font"></a>`Viper.Game.UI.HudLabel.set_Font` | `void(obj,obj)` | `rt_uilabel_set_font` |
 | <a id="viper-game-ui-hudlabel-set-scale"></a>`Viper.Game.UI.HudLabel.set_Scale` | `void(obj,i64)` | `rt_uilabel_set_scale` |
@@ -2156,40 +2096,40 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.UI.HudLabel.Draw` | `void(obj,obj)` | `rt_uilabel_draw` |
 | <a id="viper-game-ui-hudlabel-get-x"></a>`Viper.Game.UI.HudLabel.get_X` | `i64(obj)` | `rt_uilabel_get_x` |
 | <a id="viper-game-ui-hudlabel-get-y"></a>`Viper.Game.UI.HudLabel.get_Y` | `i64(obj)` | `rt_uilabel_get_y` |
-| `Viper.Game.UI.Bar.New` | `obj(i64,i64,i64,i64,i64,i64)` | `rt_uibar_new` |
-| `Viper.Game.UI.Bar.SetValue` | `void(obj,i64,i64)` | `rt_uibar_set_value` |
-| `Viper.Game.UI.Bar.SetPos` | `void(obj,i64,i64)` | `rt_uibar_set_pos` |
-| `Viper.Game.UI.Bar.SetSize` | `void(obj,i64,i64)` | `rt_uibar_set_size` |
-| `Viper.Game.UI.Bar.SetColors` | `void(obj,i64,i64)` | `rt_uibar_set_colors` |
-| <a id="viper-game-ui-bar-set-border"></a>`Viper.Game.UI.Bar.set_Border` | `void(obj,i64)` | `rt_uibar_set_border` |
-| <a id="viper-game-ui-bar-set-direction"></a>`Viper.Game.UI.Bar.set_Direction` | `void(obj,i64)` | `rt_uibar_set_direction` |
-| <a id="viper-game-ui-bar-set-visible"></a>`Viper.Game.UI.Bar.set_Visible` | `void(obj,i1)` | `rt_uibar_set_visible` |
-| `Viper.Game.UI.Bar.Draw` | `void(obj,obj)` | `rt_uibar_draw` |
-| <a id="viper-game-ui-bar-get-value"></a>`Viper.Game.UI.Bar.get_Value` | `i64(obj)` | `rt_uibar_get_value` |
-| <a id="viper-game-ui-bar-get-max"></a>`Viper.Game.UI.Bar.get_Max` | `i64(obj)` | `rt_uibar_get_max` |
-| `Viper.Game.UI.Panel.New` | `obj(i64,i64,i64,i64,i64,i64)` | `rt_uipanel_new` |
-| `Viper.Game.UI.Panel.SetPos` | `void(obj,i64,i64)` | `rt_uipanel_set_pos` |
-| `Viper.Game.UI.Panel.SetSize` | `void(obj,i64,i64)` | `rt_uipanel_set_size` |
-| `Viper.Game.UI.Panel.SetColor` | `void(obj,i64,i64)` | `rt_uipanel_set_color` |
-| `Viper.Game.UI.Panel.SetBorder` | `void(obj,i64,i64)` | `rt_uipanel_set_border` |
-| <a id="viper-game-ui-panel-set-cornerradius"></a>`Viper.Game.UI.Panel.set_CornerRadius` | `void(obj,i64)` | `rt_uipanel_set_corner_radius` |
-| <a id="viper-game-ui-panel-set-visible"></a>`Viper.Game.UI.Panel.set_Visible` | `void(obj,i1)` | `rt_uipanel_set_visible` |
-| `Viper.Game.UI.Panel.Draw` | `void(obj,obj)` | `rt_uipanel_draw` |
-| `Viper.Game.UI.NineSlice.New` | `obj(obj,i64,i64,i64,i64)` | `rt_uinineslice_new` |
-| `Viper.Game.UI.NineSlice.Draw` | `void(obj,obj,i64,i64,i64,i64)` | `rt_uinineslice_draw` |
-| <a id="viper-game-ui-nineslice-set-tint"></a>`Viper.Game.UI.NineSlice.set_Tint` | `void(obj,i64)` | `rt_uinineslice_set_tint` |
-| `Viper.Game.UI.MenuList.New` | `obj(i64,i64,i64)` | `rt_uimenulist_new` |
-| `Viper.Game.UI.MenuList.AddItem` | `void(obj,str)` | `rt_uimenulist_add_item` |
-| `Viper.Game.UI.MenuList.Clear` | `void(obj)` | `rt_uimenulist_clear` |
-| <a id="viper-game-ui-menulist-get-selected"></a>`Viper.Game.UI.MenuList.get_Selected` | `i64(obj)` | `rt_uimenulist_get_selected` |
-| <a id="viper-game-ui-menulist-set-selected"></a>`Viper.Game.UI.MenuList.set_Selected` | `void(obj,i64)` | `rt_uimenulist_set_selected` |
-| `Viper.Game.UI.MenuList.MoveUp` | `void(obj)` | `rt_uimenulist_move_up` |
-| `Viper.Game.UI.MenuList.MoveDown` | `void(obj)` | `rt_uimenulist_move_down` |
-| `Viper.Game.UI.MenuList.SetColors` | `void(obj,i64,i64,i64)` | `rt_uimenulist_set_colors` |
-| <a id="viper-game-ui-menulist-set-font"></a>`Viper.Game.UI.MenuList.set_Font` | `void(obj,obj)` | `rt_uimenulist_set_font` |
-| <a id="viper-game-ui-menulist-set-visible"></a>`Viper.Game.UI.MenuList.set_Visible` | `void(obj,i1)` | `rt_uimenulist_set_visible` |
-| <a id="viper-game-ui-menulist-get-count"></a>`Viper.Game.UI.MenuList.get_Count` | `i64(obj)` | `rt_uimenulist_get_count` |
-| `Viper.Game.UI.MenuList.Draw` | `void(obj,obj)` | `rt_uimenulist_draw` |
+| `Viper.Game.UI.HudBar.New` | `obj(i64,i64,i64,i64,i64,i64)` | `rt_uibar_new` |
+| `Viper.Game.UI.HudBar.SetValue` | `void(obj,i64,i64)` | `rt_uibar_set_value` |
+| `Viper.Game.UI.HudBar.SetPosition` | `void(obj,i64,i64)` | `rt_uibar_set_pos` |
+| `Viper.Game.UI.HudBar.SetSize` | `void(obj,i64,i64)` | `rt_uibar_set_size` |
+| `Viper.Game.UI.HudBar.SetColors` | `void(obj,i64,i64)` | `rt_uibar_set_colors` |
+| <a id="viper-game-ui-hudbar-set-border"></a>`Viper.Game.UI.HudBar.set_Border` | `void(obj,i64)` | `rt_uibar_set_border` |
+| <a id="viper-game-ui-hudbar-set-direction"></a>`Viper.Game.UI.HudBar.set_Direction` | `void(obj,i64)` | `rt_uibar_set_direction` |
+| <a id="viper-game-ui-hudbar-set-visible"></a>`Viper.Game.UI.HudBar.set_Visible` | `void(obj,i1)` | `rt_uibar_set_visible` |
+| `Viper.Game.UI.HudBar.Draw` | `void(obj,obj)` | `rt_uibar_draw` |
+| <a id="viper-game-ui-hudbar-get-value"></a>`Viper.Game.UI.HudBar.get_Value` | `i64(obj)` | `rt_uibar_get_value` |
+| <a id="viper-game-ui-hudbar-get-max"></a>`Viper.Game.UI.HudBar.get_Max` | `i64(obj)` | `rt_uibar_get_max` |
+| `Viper.Game.UI.HudPanel.New` | `obj(i64,i64,i64,i64,i64,i64)` | `rt_uipanel_new` |
+| `Viper.Game.UI.HudPanel.SetPosition` | `void(obj,i64,i64)` | `rt_uipanel_set_pos` |
+| `Viper.Game.UI.HudPanel.SetSize` | `void(obj,i64,i64)` | `rt_uipanel_set_size` |
+| `Viper.Game.UI.HudPanel.SetColor` | `void(obj,i64,i64)` | `rt_uipanel_set_color` |
+| `Viper.Game.UI.HudPanel.SetBorder` | `void(obj,i64,i64)` | `rt_uipanel_set_border` |
+| <a id="viper-game-ui-hudpanel-set-cornerradius"></a>`Viper.Game.UI.HudPanel.set_CornerRadius` | `void(obj,i64)` | `rt_uipanel_set_corner_radius` |
+| <a id="viper-game-ui-hudpanel-set-visible"></a>`Viper.Game.UI.HudPanel.set_Visible` | `void(obj,i1)` | `rt_uipanel_set_visible` |
+| `Viper.Game.UI.HudPanel.Draw` | `void(obj,obj)` | `rt_uipanel_draw` |
+| `Viper.Game.UI.HudNineSlice.New` | `obj(obj,i64,i64,i64,i64)` | `rt_uinineslice_new` |
+| `Viper.Game.UI.HudNineSlice.Draw` | `void(obj,obj,i64,i64,i64,i64)` | `rt_uinineslice_draw` |
+| <a id="viper-game-ui-hudnineslice-set-tint"></a>`Viper.Game.UI.HudNineSlice.set_Tint` | `void(obj,i64)` | `rt_uinineslice_set_tint` |
+| `Viper.Game.UI.HudMenuList.New` | `obj(i64,i64,i64)` | `rt_uimenulist_new` |
+| `Viper.Game.UI.HudMenuList.AddItem` | `void(obj,str)` | `rt_uimenulist_add_item` |
+| `Viper.Game.UI.HudMenuList.Clear` | `void(obj)` | `rt_uimenulist_clear` |
+| <a id="viper-game-ui-hudmenulist-get-selected"></a>`Viper.Game.UI.HudMenuList.get_Selected` | `i64(obj)` | `rt_uimenulist_get_selected` |
+| <a id="viper-game-ui-hudmenulist-set-selected"></a>`Viper.Game.UI.HudMenuList.set_Selected` | `void(obj,i64)` | `rt_uimenulist_set_selected` |
+| `Viper.Game.UI.HudMenuList.MoveUp` | `void(obj)` | `rt_uimenulist_move_up` |
+| `Viper.Game.UI.HudMenuList.MoveDown` | `void(obj)` | `rt_uimenulist_move_down` |
+| `Viper.Game.UI.HudMenuList.SetColors` | `void(obj,i64,i64,i64)` | `rt_uimenulist_set_colors` |
+| <a id="viper-game-ui-hudmenulist-set-font"></a>`Viper.Game.UI.HudMenuList.set_Font` | `void(obj,obj)` | `rt_uimenulist_set_font` |
+| <a id="viper-game-ui-hudmenulist-set-visible"></a>`Viper.Game.UI.HudMenuList.set_Visible` | `void(obj,i1)` | `rt_uimenulist_set_visible` |
+| <a id="viper-game-ui-hudmenulist-get-count"></a>`Viper.Game.UI.HudMenuList.get_Count` | `i64(obj)` | `rt_uimenulist_get_count` |
+| `Viper.Game.UI.HudMenuList.Draw` | `void(obj,obj)` | `rt_uimenulist_draw` |
 | `Viper.Game.UI.HudTextInput.New` | `obj(i64,i64,i64,i64)` | `rt_uitextinput_new` |
 | <a id="viper-game-ui-hudtextinput-set-text"></a>`Viper.Game.UI.HudTextInput.set_Text` | `void(obj,str)` | `rt_uitextinput_set_text` |
 | <a id="viper-game-ui-hudtextinput-get-text"></a>`Viper.Game.UI.HudTextInput.get_Text` | `str(obj)` | `rt_uitextinput_get_text` |
@@ -2225,50 +2165,48 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.UI.HudTextInput.SetPasswordMode` | `void(obj,i1)` | `rt_uitextinput_set_password_mode` |
 | `Viper.Game.UI.HudTextInput.SetPlaceholder` | `void(obj,str)` | `rt_uitextinput_set_placeholder` |
 | `Viper.Game.UI.HudTextInput.SetMaxCodepoints` | `void(obj,i64)` | `rt_uitextinput_set_max_codepoints` |
-| `Viper.Game.UI.Table.New` | `obj(i64,i64,i64,i64)` | `rt_uitable_new` |
-| `Viper.Game.UI.Table.AddColumn` | `i64(obj,str,i64,i64)` | `rt_uitable_add_column` |
-| `Viper.Game.UI.Table.SetColumnSortable` | `void(obj,i64,i1,i1)` | `rt_uitable_set_column_sortable` |
-| <a id="viper-game-ui-table-get-columncount"></a>`Viper.Game.UI.Table.get_ColumnCount` | `i64(obj)` | `rt_uitable_column_count` |
-| `Viper.Game.UI.Table.AddRow` | `i64(obj)` | `rt_uitable_add_row` |
-| `Viper.Game.UI.Table.SetCell` | `void(obj,i64,i64,str)` | `rt_uitable_set_cell` |
-| `Viper.Game.UI.Table.GetCell` | `str(obj,i64,i64)` | `rt_uitable_get_cell` |
-| `Viper.Game.UI.Table.RemoveRow` | `void(obj,i64)` | `rt_uitable_remove_row` |
-| `Viper.Game.UI.Table.ClearRows` | `void(obj)` | `rt_uitable_clear_rows` |
-| <a id="viper-game-ui-table-get-rowcount"></a>`Viper.Game.UI.Table.get_RowCount` | `i64(obj)` | `rt_uitable_row_count` |
-| `Viper.Game.UI.Table.SortBy` | `void(obj,i64,i1)` | `rt_uitable_sort_by` |
-| <a id="viper-game-ui-table-get-sortcolumn"></a>`Viper.Game.UI.Table.get_SortColumn` | `i64(obj)` | `rt_uitable_get_sort_column` |
-| <a id="viper-game-ui-table-get-sortdescending"></a>`Viper.Game.UI.Table.get_SortDescending` | `i1(obj)` | `rt_uitable_get_sort_descending` |
-| <a id="viper-game-ui-table-set-scroll"></a>`Viper.Game.UI.Table.set_Scroll` | `void(obj,i64)` | `rt_uitable_set_scroll` |
-| <a id="viper-game-ui-table-get-scroll"></a>`Viper.Game.UI.Table.get_Scroll` | `i64(obj)` | `rt_uitable_get_scroll` |
-| <a id="viper-game-ui-table-set-selectedrow"></a>`Viper.Game.UI.Table.set_SelectedRow` | `void(obj,i64)` | `rt_uitable_set_selected_row` |
-| <a id="viper-game-ui-table-get-selectedrow"></a>`Viper.Game.UI.Table.get_SelectedRow` | `i64(obj)` | `rt_uitable_get_selected_row` |
-| `Viper.Game.UI.Table.HandleClick` | `i64(obj,i64,i64)` | `rt_uitable_handle_click` |
-| `Viper.Game.UI.Table.HandleClickResult` | `obj<Viper.Game.UI.TableClickResult>(obj,i64,i64)` | `rt_uitable_handle_click_result` |
-| `Viper.Game.UI.Table.LastHeaderClick` | `i64(obj)` | `rt_uitable_last_header_click` |
-| `Viper.Game.UI.Table.HandleScroll` | `void(obj,i64)` | `rt_uitable_handle_scroll` |
-| `Viper.Game.UI.Table.HandleKey` | `void(obj,i64)` | `rt_uitable_handle_key` |
-| `Viper.Game.UI.Table.Draw` | `void(obj,obj)` | `rt_uitable_draw` |
-| <a id="viper-game-ui-tableclickresult-get-kind"></a>`Viper.Game.UI.TableClickResult.get_Kind` | `i64(obj)` | `rt_table_click_result_kind` |
-| <a id="viper-game-ui-tableclickresult-get-isnone"></a>`Viper.Game.UI.TableClickResult.get_IsNone` | `i1(obj)` | `rt_table_click_result_is_none` |
-| <a id="viper-game-ui-tableclickresult-get-isrow"></a>`Viper.Game.UI.TableClickResult.get_IsRow` | `i1(obj)` | `rt_table_click_result_is_row` |
-| <a id="viper-game-ui-tableclickresult-get-isheader"></a>`Viper.Game.UI.TableClickResult.get_IsHeader` | `i1(obj)` | `rt_table_click_result_is_header` |
-| `Viper.Game.UI.TableClickResult.RowOption` | `obj<Viper.Option>(obj)` | `rt_table_click_result_row_option` |
-| `Viper.Game.UI.TableClickResult.ColumnOption` | `obj<Viper.Option>(obj)` | `rt_table_click_result_column_option` |
-| `Viper.Game.UI.Modal.New` | `obj(i64,i64)` | `rt_uimodal_new` |
-| `Viper.Game.UI.Modal.NewAt` | `obj(i64,i64,i64,i64)` | `rt_uimodal_new_at` |
-| `Viper.Game.UI.Modal.SetTitle` | `void(obj,str)` | `rt_uimodal_set_title` |
-| `Viper.Game.UI.Modal.SetContent` | `void(obj,str)` | `rt_uimodal_set_content` |
-| `Viper.Game.UI.Modal.AddButton` | `i64(obj,str,i64)` | `rt_uimodal_add_button` |
-| `Viper.Game.UI.Modal.SetDefaultButton` | `void(obj,i64)` | `rt_uimodal_set_default_button` |
-| `Viper.Game.UI.Modal.SetCancelButton` | `void(obj,i64)` | `rt_uimodal_set_cancel_button` |
-| `Viper.Game.UI.Modal.AddChild` | `void(obj,obj)` | `rt_uimodal_add_child` |
-| `Viper.Game.UI.Modal.Open` | `void(obj)` | `rt_uimodal_open` |
-| `Viper.Game.UI.Modal.Close` | `void(obj)` | `rt_uimodal_close` |
-| <a id="viper-game-ui-modal-get-isopen"></a>`Viper.Game.UI.Modal.get_IsOpen` | `i1(obj)` | `rt_uimodal_is_open` |
-| <a id="viper-game-ui-modal-get-result"></a>`Viper.Game.UI.Modal.get_Result` | `i64(obj)` | `rt_uimodal_get_result` |
-| `Viper.Game.UI.Modal.HandleKey` | `i64(obj,i64,i1)` | `rt_uimodal_handle_key` |
-| `Viper.Game.UI.Modal.HandleClick` | `i64(obj,i64,i64)` | `rt_uimodal_handle_click` |
-| `Viper.Game.UI.Modal.Draw` | `void(obj,obj)` | `rt_uimodal_draw` |
+| `Viper.Game.UI.HudTable.New` | `obj(i64,i64,i64,i64)` | `rt_uitable_new` |
+| `Viper.Game.UI.HudTable.AddColumn` | `i64(obj,str,i64,i64)` | `rt_uitable_add_column` |
+| `Viper.Game.UI.HudTable.SetColumnSortable` | `void(obj,i64,i1,i1)` | `rt_uitable_set_column_sortable` |
+| <a id="viper-game-ui-hudtable-get-columncount"></a>`Viper.Game.UI.HudTable.get_ColumnCount` | `i64(obj)` | `rt_uitable_column_count` |
+| `Viper.Game.UI.HudTable.AddRow` | `i64(obj)` | `rt_uitable_add_row` |
+| `Viper.Game.UI.HudTable.SetCell` | `void(obj,i64,i64,str)` | `rt_uitable_set_cell` |
+| `Viper.Game.UI.HudTable.GetCell` | `str(obj,i64,i64)` | `rt_uitable_get_cell` |
+| `Viper.Game.UI.HudTable.RemoveRow` | `void(obj,i64)` | `rt_uitable_remove_row` |
+| `Viper.Game.UI.HudTable.ClearRows` | `void(obj)` | `rt_uitable_clear_rows` |
+| <a id="viper-game-ui-hudtable-get-rowcount"></a>`Viper.Game.UI.HudTable.get_RowCount` | `i64(obj)` | `rt_uitable_row_count` |
+| `Viper.Game.UI.HudTable.SortBy` | `void(obj,i64,i1)` | `rt_uitable_sort_by` |
+| <a id="viper-game-ui-hudtable-get-sortcolumn"></a>`Viper.Game.UI.HudTable.get_SortColumn` | `i64(obj)` | `rt_uitable_get_sort_column` |
+| <a id="viper-game-ui-hudtable-get-sortdescending"></a>`Viper.Game.UI.HudTable.get_SortDescending` | `i1(obj)` | `rt_uitable_get_sort_descending` |
+| <a id="viper-game-ui-hudtable-set-scroll"></a>`Viper.Game.UI.HudTable.set_Scroll` | `void(obj,i64)` | `rt_uitable_set_scroll` |
+| <a id="viper-game-ui-hudtable-get-scroll"></a>`Viper.Game.UI.HudTable.get_Scroll` | `i64(obj)` | `rt_uitable_get_scroll` |
+| <a id="viper-game-ui-hudtable-set-selectedrow"></a>`Viper.Game.UI.HudTable.set_SelectedRow` | `void(obj,i64)` | `rt_uitable_set_selected_row` |
+| <a id="viper-game-ui-hudtable-get-selectedrow"></a>`Viper.Game.UI.HudTable.get_SelectedRow` | `i64(obj)` | `rt_uitable_get_selected_row` |
+| `Viper.Game.UI.HudTable.HandleClick` | `obj<Viper.Game.UI.HudTableClickResult>(obj,i64,i64)` | `rt_uitable_handle_click_result` |
+| `Viper.Game.UI.HudTable.HandleScroll` | `void(obj,i64)` | `rt_uitable_handle_scroll` |
+| `Viper.Game.UI.HudTable.HandleKey` | `void(obj,i64)` | `rt_uitable_handle_key` |
+| `Viper.Game.UI.HudTable.Draw` | `void(obj,obj)` | `rt_uitable_draw` |
+| <a id="viper-game-ui-hudtableclickresult-get-kind"></a>`Viper.Game.UI.HudTableClickResult.get_Kind` | `i64(obj)` | `rt_table_click_result_kind` |
+| <a id="viper-game-ui-hudtableclickresult-get-isnone"></a>`Viper.Game.UI.HudTableClickResult.get_IsNone` | `i1(obj)` | `rt_table_click_result_is_none` |
+| <a id="viper-game-ui-hudtableclickresult-get-isrow"></a>`Viper.Game.UI.HudTableClickResult.get_IsRow` | `i1(obj)` | `rt_table_click_result_is_row` |
+| <a id="viper-game-ui-hudtableclickresult-get-isheader"></a>`Viper.Game.UI.HudTableClickResult.get_IsHeader` | `i1(obj)` | `rt_table_click_result_is_header` |
+| `Viper.Game.UI.HudTableClickResult.RowOption` | `obj<Viper.Option>(obj)` | `rt_table_click_result_row_option` |
+| `Viper.Game.UI.HudTableClickResult.ColumnOption` | `obj<Viper.Option>(obj)` | `rt_table_click_result_column_option` |
+| `Viper.Game.UI.HudModal.New` | `obj(i64,i64)` | `rt_uimodal_new` |
+| `Viper.Game.UI.HudModal.NewAt` | `obj(i64,i64,i64,i64)` | `rt_uimodal_new_at` |
+| `Viper.Game.UI.HudModal.SetTitle` | `void(obj,str)` | `rt_uimodal_set_title` |
+| `Viper.Game.UI.HudModal.SetContent` | `void(obj,str)` | `rt_uimodal_set_content` |
+| `Viper.Game.UI.HudModal.AddButton` | `i64(obj,str,i64)` | `rt_uimodal_add_button` |
+| `Viper.Game.UI.HudModal.SetDefaultButton` | `void(obj,i64)` | `rt_uimodal_set_default_button` |
+| `Viper.Game.UI.HudModal.SetCancelButton` | `void(obj,i64)` | `rt_uimodal_set_cancel_button` |
+| `Viper.Game.UI.HudModal.AddChild` | `void(obj,obj)` | `rt_uimodal_add_child` |
+| `Viper.Game.UI.HudModal.Open` | `void(obj)` | `rt_uimodal_open` |
+| `Viper.Game.UI.HudModal.Close` | `void(obj)` | `rt_uimodal_close` |
+| <a id="viper-game-ui-hudmodal-get-isopen"></a>`Viper.Game.UI.HudModal.get_IsOpen` | `i1(obj)` | `rt_uimodal_is_open` |
+| <a id="viper-game-ui-hudmodal-get-result"></a>`Viper.Game.UI.HudModal.get_Result` | `i64(obj)` | `rt_uimodal_get_result` |
+| `Viper.Game.UI.HudModal.HandleKey` | `i64(obj,i64,i1)` | `rt_uimodal_handle_key` |
+| `Viper.Game.UI.HudModal.HandleClick` | `i64(obj,i64,i64)` | `rt_uimodal_handle_click` |
+| `Viper.Game.UI.HudModal.Draw` | `void(obj,obj)` | `rt_uimodal_draw` |
 | `Viper.Game.UI.HudSlider.New` | `obj(i64,i64,i64,i64,i64,i64)` | `rt_uislider_new` |
 | <a id="viper-game-ui-hudslider-set-value"></a>`Viper.Game.UI.HudSlider.set_Value` | `void(obj,i64)` | `rt_uislider_set_value` |
 | <a id="viper-game-ui-hudslider-get-value"></a>`Viper.Game.UI.HudSlider.get_Value` | `i64(obj)` | `rt_uislider_get_value` |
@@ -2301,11 +2239,11 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-dialogue-set-font"></a>`Viper.Game.Dialogue.set_Font` | `void(obj,obj)` | `rt_dialogue_set_font` |
 | <a id="viper-game-dialogue-set-textcolor"></a>`Viper.Game.Dialogue.set_TextColor` | `void(obj,i64)` | `rt_dialogue_set_text_color` |
 | <a id="viper-game-dialogue-set-speakercolor"></a>`Viper.Game.Dialogue.set_SpeakerColor` | `void(obj,i64)` | `rt_dialogue_set_speaker_color` |
-| `Viper.Game.Dialogue.SetBgColor` | `void(obj,i64,i64)` | `rt_dialogue_set_bg_color` |
+| `Viper.Game.Dialogue.SetBackgroundColor` | `void(obj,i64,i64)` | `rt_dialogue_set_bg_color` |
 | <a id="viper-game-dialogue-set-bordercolor"></a>`Viper.Game.Dialogue.set_BorderColor` | `void(obj,i64)` | `rt_dialogue_set_border_color` |
 | <a id="viper-game-dialogue-set-padding"></a>`Viper.Game.Dialogue.set_Padding` | `void(obj,i64)` | `rt_dialogue_set_padding` |
 | <a id="viper-game-dialogue-set-textscale"></a>`Viper.Game.Dialogue.set_TextScale` | `void(obj,i64)` | `rt_dialogue_set_text_scale` |
-| `Viper.Game.Dialogue.SetPos` | `void(obj,i64,i64)` | `rt_dialogue_set_pos` |
+| `Viper.Game.Dialogue.SetPosition` | `void(obj,i64,i64)` | `rt_dialogue_set_pos` |
 | `Viper.Game.Dialogue.SetSize` | `void(obj,i64,i64)` | `rt_dialogue_set_size` |
 | `Viper.Game.Dialogue.Say` | `void(obj,str,str)` | `rt_dialogue_say` |
 | `Viper.Game.Dialogue.SayText` | `void(obj,str)` | `rt_dialogue_say_text` |
@@ -2395,24 +2333,24 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-behavior-update"></a>`Viper.Game.Behavior.Update` | `void(obj,obj,obj,i64,i64,i64)` | `rt_behavior_update` |
 | <a id="viper-game-behavior-get-shootready"></a>`Viper.Game.Behavior.get_ShootReady` | `i1(obj)` | `rt_behavior_shoot_ready` |
 | <a id="viper-game-behavior-get-animframe"></a>`Viper.Game.Behavior.get_AnimFrame` | `i64(obj)` | `rt_behavior_anim_frame` |
-| `Viper.Game.UI.GameButton.New` | `obj(i64,i64,i64,i64,str)` | `rt_gamebutton_new` |
-| `Viper.Game.UI.GameButton.SetText` | `void(obj,str)` | `rt_gamebutton_set_text` |
-| `Viper.Game.UI.GameButton.SetColors` | `void(obj,i64,i64)` | `rt_gamebutton_set_colors` |
-| `Viper.Game.UI.GameButton.SetTextColors` | `void(obj,i64,i64)` | `rt_gamebutton_set_text_colors` |
-| `Viper.Game.UI.GameButton.SetBorder` | `void(obj,i64,i64)` | `rt_gamebutton_set_border` |
-| `Viper.Game.UI.GameButton.Draw` | `void(obj,obj,i1)` | `rt_gamebutton_draw` |
-| <a id="viper-game-ui-gamebutton-get-x"></a>`Viper.Game.UI.GameButton.get_X` | `i64(obj)` | `rt_gamebutton_get_x` |
-| <a id="viper-game-ui-gamebutton-get-y"></a>`Viper.Game.UI.GameButton.get_Y` | `i64(obj)` | `rt_gamebutton_get_y` |
-| <a id="viper-game-ui-gamebutton-get-width"></a>`Viper.Game.UI.GameButton.get_Width` | `i64(obj)` | `rt_gamebutton_get_width` |
-| <a id="viper-game-ui-gamebutton-get-height"></a>`Viper.Game.UI.GameButton.get_Height` | `i64(obj)` | `rt_gamebutton_get_height` |
-| <a id="viper-game-ui-gamebutton-set-x"></a>`Viper.Game.UI.GameButton.set_X` | `void(obj,i64)` | `rt_gamebutton_set_x` |
-| <a id="viper-game-ui-gamebutton-set-y"></a>`Viper.Game.UI.GameButton.set_Y` | `void(obj,i64)` | `rt_gamebutton_set_y` |
-| `Viper.Game.UI.GameButton.SetSize` | `void(obj,i64,i64)` | `rt_gamebutton_set_size` |
-| <a id="viper-game-ui-gamebutton-set-visible"></a>`Viper.Game.UI.GameButton.set_Visible` | `void(obj,i1)` | `rt_gamebutton_set_visible` |
-| <a id="viper-game-ui-gamebutton-get-visible"></a>`Viper.Game.UI.GameButton.get_Visible` | `i1(obj)` | `rt_gamebutton_get_visible` |
-| <a id="viper-game-ui-gamebutton-set-textscale"></a>`Viper.Game.UI.GameButton.set_TextScale` | `void(obj,i64)` | `rt_gamebutton_set_text_scale` |
-| <a id="viper-game-ui-gamebutton-get-textscale"></a>`Viper.Game.UI.GameButton.get_TextScale` | `i64(obj)` | `rt_gamebutton_get_text_scale` |
-| `Viper.Game.UI.MenuList.HandleInput` | `i64(obj,i1,i1,i1)` | `rt_uimenulist_handle_input` |
+| `Viper.Game.UI.HudButton.New` | `obj(i64,i64,i64,i64,str)` | `rt_gamebutton_new` |
+| `Viper.Game.UI.HudButton.SetText` | `void(obj,str)` | `rt_gamebutton_set_text` |
+| `Viper.Game.UI.HudButton.SetColors` | `void(obj,i64,i64)` | `rt_gamebutton_set_colors` |
+| `Viper.Game.UI.HudButton.SetTextColors` | `void(obj,i64,i64)` | `rt_gamebutton_set_text_colors` |
+| `Viper.Game.UI.HudButton.SetBorder` | `void(obj,i64,i64)` | `rt_gamebutton_set_border` |
+| `Viper.Game.UI.HudButton.Draw` | `void(obj,obj,i1)` | `rt_gamebutton_draw` |
+| <a id="viper-game-ui-hudbutton-get-x"></a>`Viper.Game.UI.HudButton.get_X` | `i64(obj)` | `rt_gamebutton_get_x` |
+| <a id="viper-game-ui-hudbutton-get-y"></a>`Viper.Game.UI.HudButton.get_Y` | `i64(obj)` | `rt_gamebutton_get_y` |
+| <a id="viper-game-ui-hudbutton-get-width"></a>`Viper.Game.UI.HudButton.get_Width` | `i64(obj)` | `rt_gamebutton_get_width` |
+| <a id="viper-game-ui-hudbutton-get-height"></a>`Viper.Game.UI.HudButton.get_Height` | `i64(obj)` | `rt_gamebutton_get_height` |
+| <a id="viper-game-ui-hudbutton-set-x"></a>`Viper.Game.UI.HudButton.set_X` | `void(obj,i64)` | `rt_gamebutton_set_x` |
+| <a id="viper-game-ui-hudbutton-set-y"></a>`Viper.Game.UI.HudButton.set_Y` | `void(obj,i64)` | `rt_gamebutton_set_y` |
+| `Viper.Game.UI.HudButton.SetSize` | `void(obj,i64,i64)` | `rt_gamebutton_set_size` |
+| <a id="viper-game-ui-hudbutton-set-visible"></a>`Viper.Game.UI.HudButton.set_Visible` | `void(obj,i1)` | `rt_gamebutton_set_visible` |
+| <a id="viper-game-ui-hudbutton-get-visible"></a>`Viper.Game.UI.HudButton.get_Visible` | `i1(obj)` | `rt_gamebutton_get_visible` |
+| <a id="viper-game-ui-hudbutton-set-textscale"></a>`Viper.Game.UI.HudButton.set_TextScale` | `void(obj,i64)` | `rt_gamebutton_set_text_scale` |
+| <a id="viper-game-ui-hudbutton-get-textscale"></a>`Viper.Game.UI.HudButton.get_TextScale` | `i64(obj)` | `rt_gamebutton_get_text_scale` |
+| `Viper.Game.UI.HudMenuList.HandleInput` | `i64(obj,i1,i1,i1)` | `rt_uimenulist_handle_input` |
 | <a id="viper-game-raycast-haslineofsight"></a>`Viper.Game.Raycast.HasLineOfSight` | `i1(obj,i64,i64,i64,i64)` | `rt_has_line_of_sight` |
 | `Viper.Game.Collision.LineRect` | `i1(f64,f64,f64,f64,f64,f64,f64,f64)` | `rt_collision_line_rect` |
 | `Viper.Game.Collision.LineCircle` | `i1(f64,f64,f64,f64,f64,f64,f64)` | `rt_collision_line_circle` |
@@ -2475,18 +2413,12 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-pathfinder-set-maxsteps"></a>`Viper.Game.Pathfinder.set_MaxSteps` | `void(obj,i64)` | `rt_pathfinder_set_max_steps` |
 | <a id="viper-game-pathfinder-get-width"></a>`Viper.Game.Pathfinder.get_Width` | `i64(obj)` | `rt_pathfinder_get_width` |
 | <a id="viper-game-pathfinder-get-height"></a>`Viper.Game.Pathfinder.get_Height` | `i64(obj)` | `rt_pathfinder_get_height` |
-| `Viper.Game.Pathfinder.FindPath` | `obj(obj,i64,i64,i64,i64)` | `rt_pathfinder_find_path` |
-| `Viper.Game.Pathfinder.FindPathResult` | `obj<Viper.Game.PathResult>(obj,i64,i64,i64,i64)` | `rt_pathfinder_find_path_result` |
-| `Viper.Game.Pathfinder.FindPathLength` | `i64(obj,i64,i64,i64,i64)` | `rt_pathfinder_find_path_length` |
-| `Viper.Game.Pathfinder.FindNearest` | `obj(obj,i64,i64,i64)` | `rt_pathfinder_find_nearest` |
-| `Viper.Game.Pathfinder.FindNearestResult` | `obj<Viper.Game.PathResult>(obj,i64,i64,i64)` | `rt_pathfinder_find_nearest_result` |
-| <a id="viper-game-pathfinder-get-laststeps"></a>`Viper.Game.Pathfinder.get_LastSteps` | `i64(obj)` | `rt_pathfinder_get_last_steps` |
-| <a id="viper-game-pathfinder-get-lastfound"></a>`Viper.Game.Pathfinder.get_LastFound` | `i1(obj)` | `rt_pathfinder_get_last_found` |
+| `Viper.Game.Pathfinder.FindPath` | `obj<Viper.Game.PathResult>(obj,i64,i64,i64,i64)` | `rt_pathfinder_find_path_result` |
+| `Viper.Game.Pathfinder.FindNearest` | `obj<Viper.Game.PathResult>(obj,i64,i64,i64)` | `rt_pathfinder_find_nearest_result` |
 | <a id="viper-game-pathresult-get-found"></a>`Viper.Game.PathResult.get_Found` | `i1(obj)` | `rt_path_result_found` |
 | <a id="viper-game-pathresult-get-steps"></a>`Viper.Game.PathResult.get_Steps` | `i64(obj)` | `rt_path_result_steps` |
 | <a id="viper-game-pathresult-get-cost"></a>`Viper.Game.PathResult.get_Cost` | `i64(obj)` | `rt_path_result_cost` |
 | <a id="viper-game-pathresult-get-stepcount"></a>`Viper.Game.PathResult.get_StepCount` | `i64(obj)` | `rt_path_result_step_count` |
-| <a id="viper-game-pathresult-get-length"></a>`Viper.Game.PathResult.get_Length` | `i64(obj)` | `rt_path_result_length` |
 | <a id="viper-game-pathresult-get-path"></a>`Viper.Game.PathResult.get_Path` | `obj(obj)` | `rt_path_result_path` |
 | `Viper.Game.PathFollower.New` | `obj()` | `rt_pathfollow_new` |
 | `Viper.Game.PathFollower.Destroy` | `void(obj)` | `rt_pathfollow_destroy` |
@@ -2515,24 +2447,15 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.Quadtree.Insert` | `i1(obj,i64,i64,i64,i64,i64)` | `rt_quadtree_insert` |
 | `Viper.Game.Quadtree.Remove` | `i1(obj,i64)` | `rt_quadtree_remove` |
 | `Viper.Game.Quadtree.Update` | `i1(obj,i64,i64,i64,i64,i64)` | `rt_quadtree_update` |
-| `Viper.Game.Quadtree.QueryRect` | `i64(obj,i64,i64,i64,i64)` | `rt_quadtree_query_rect` |
-| `Viper.Game.Quadtree.QueryPoint` | `i64(obj,i64,i64,i64)` | `rt_quadtree_query_point` |
-| `Viper.Game.Quadtree.QueryRectResult` | `obj<Viper.Game.QueryResult>(obj,i64,i64,i64,i64)` | `rt_quadtree_query_rect_result` |
-| `Viper.Game.Quadtree.QueryPointResult` | `obj<Viper.Game.QueryResult>(obj,i64,i64,i64)` | `rt_quadtree_query_point_result` |
-| `Viper.Game.Quadtree.GetResult` | `i64(obj,i64)` | `rt_quadtree_get_result` |
-| <a id="viper-game-quadtree-get-resultcount"></a>`Viper.Game.Quadtree.get_ResultCount` | `i64(obj)` | `rt_quadtree_result_count` |
+| `Viper.Game.Quadtree.QueryRect` | `obj<Viper.Game.QueryResult>(obj,i64,i64,i64,i64)` | `rt_quadtree_query_rect_result` |
+| `Viper.Game.Quadtree.QueryPoint` | `obj<Viper.Game.QueryResult>(obj,i64,i64,i64)` | `rt_quadtree_query_point_result` |
 | <a id="viper-game-queryresult-get-count"></a>`Viper.Game.QueryResult.get_Count` | `i64(obj)` | `rt_game_query_result_count` |
 | `Viper.Game.QueryResult.GetId` | `i64(obj,i64)` | `rt_game_query_result_get_id` |
 | `Viper.Game.QueryResult.Contains` | `i1(obj,i64)` | `rt_game_query_result_contains` |
 | <a id="viper-game-queryresult-get-truncated"></a>`Viper.Game.QueryResult.get_Truncated` | `i1(obj)` | `rt_game_query_result_truncated` |
 | `Viper.Game.QueryResult.Ids` | `obj(obj)` | `rt_game_query_result_ids` |
 | <a id="viper-game-quadtree-get-itemcount"></a>`Viper.Game.Quadtree.get_ItemCount` | `i64(obj)` | `rt_quadtree_item_count` |
-| `Viper.Game.Quadtree.GetPairs` | `i64(obj)` | `rt_quadtree_get_pairs` |
 | `Viper.Game.Quadtree.QueryPairs` | `obj<Viper.Game.QuadtreePairResult>(obj)` | `rt_quadtree_query_pairs` |
-| `Viper.Game.Quadtree.PairFirst` | `i64(obj,i64)` | `rt_quadtree_pair_first` |
-| `Viper.Game.Quadtree.PairSecond` | `i64(obj,i64)` | `rt_quadtree_pair_second` |
-| `Viper.Game.Quadtree.QueryWasTruncated` | `i1(obj)` | `rt_quadtree_query_was_truncated` |
-| `Viper.Game.Quadtree.PairsWasTruncated` | `i1(obj)` | `rt_quadtree_pairs_was_truncated` |
 | <a id="viper-game-quadtreepairresult-get-count"></a>`Viper.Game.QuadtreePairResult.get_Count` | `i64(obj)` | `rt_quadtree_pair_result_count` |
 | `Viper.Game.QuadtreePairResult.First` | `i64(obj,i64)` | `rt_quadtree_pair_result_first` |
 | `Viper.Game.QuadtreePairResult.Second` | `i64(obj,i64)` | `rt_quadtree_pair_result_second` |

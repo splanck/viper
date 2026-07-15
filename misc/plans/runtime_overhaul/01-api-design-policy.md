@@ -62,7 +62,7 @@ abstraction levels.
 Examples:
 
 - Input key constants belong in one canonical input namespace, not both
-  `Viper.Input.Keyboard` and `Viper.Game3D.Keys`.
+  `Viper.Input.Keyboard` and `Viper.Input.Key`.
 - 3D file loading should have one low-level asset model and optional high-level
   convenience wrappers, not parallel vocabularies that imply different concepts.
 - Map-like mutation should not alternate between `Set` and `Put` except where
@@ -134,9 +134,9 @@ Decision:
 
 Decision:
 
-- Prefer `Mesh3D.Box(...)` over `Mesh3D.NewBox(...)`.
-- Prefer `Light3D.Point(...)` over `Light3D.NewPoint(...)`.
-- Prefer `World3D.WithCamera(...)` over `World3D.NewWithCamera(...)`.
+- Prefer `Mesh3D.Box(...)` over `Mesh3D.Box(...)`.
+- Prefer `Light3D.Point(...)` over `Light3D.Point(...)`.
+- Prefer `World3D.WithCamera(...)` over `World3D.WithCamera(...)`.
 - Keep `FromOBJ`, `FromSTL`, `LoadKTX2`, and similar import names when the file
   format is the point.
 
@@ -169,7 +169,7 @@ Candidates:
 
 - `Viper.Input.Keyboard`
 - `Viper.Graphics3D.Canvas3D`
-- `Viper.Game3D.Keys`
+- `Viper.Input.Key`
 - `Viper.GUI.CodeEditor`
 - `Viper.Graphics.Canvas`
 - `Viper.Game2D.SceneDocument`

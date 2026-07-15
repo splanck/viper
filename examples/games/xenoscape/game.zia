@@ -658,7 +658,7 @@ class Game {
 
         var exeDir = Path.ExeDir();
         var exePath = Path.Join(Path.Join(exeDir, "sounds"), "jump.wav");
-        if File.Exists(exePath) { return exeDir + Path.Sep(); }
+        if File.Exists(exePath) { return exeDir + Path.Separator(); }
 
         var rootPath = "examples/games/xenoscape/sounds/jump.wav";
         if File.Exists(rootPath) { return "examples/games/xenoscape/"; }

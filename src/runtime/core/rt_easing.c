@@ -7,8 +7,8 @@
 //
 // File: src/runtime/core/rt_easing.c
 // Purpose: Implements the standard easing function library for animation and
-//          motion interpolation. Covers linear, polynomial (quad/cubic/quart/
-//          quint), sinusoidal, exponential, circular, elastic, back, and bounce
+//          motion interpolation. Covers linear, polynomial (quad/cubic/quart),
+//          sinusoidal, exponential, circular, elastic, back, and bounce
 //          families, each in ease-in, ease-out, and ease-in-out variants.
 //
 // Key invariants:
@@ -17,8 +17,9 @@
 //     values slightly outside [0, 1] by design.
 //   - Functions are pure: no side effects, no global state, safe to call
 //     concurrently from multiple threads.
-//   - Input values outside [0, 1] produce extrapolated results; callers are
-//     responsible for clamping if strict domain adherence is required.
+//   - Inputs are not uniformly clamped: polynomial/sine/back/bounce functions
+//     extrapolate, exponential/elastic functions pin endpoints, and circular
+//     functions can return NaN outside their square-root domains.
 //   - M_PI is defined locally if the math header does not provide it.
 //
 // Ownership/Lifetime:

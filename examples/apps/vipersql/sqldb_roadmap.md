@@ -1634,9 +1634,9 @@ These classes **already exist** in Viper.* but aren't used by ViperSQL yet:
 | `Viper.Collections.Set` | Linear membership scans | GROUP BY column sets, DISTINCT tracking |
 | `Viper.Threads.ConcurrentMap` | Monitor-wrapped parallel lists | Thread-safe shared state in server.zia |
 | `Viper.Threads.RwLock` | Exclusive monitors everywhere | Phase 16 MVCC (readers shouldn't block writers) |
-| `Viper.Collections.TreeMap` | No in-memory ordered index | Range scan optimization (WHERE BETWEEN) |
+| `Viper.Collections.SortedMap` | No in-memory ordered index | Range scan optimization (WHERE BETWEEN) |
 | `Viper.Collections.Heap` | Full sort + take N | ORDER BY ... LIMIT N optimization (top-k) |
-| `Viper.Text.Json` / `JsonPath` | Pure-Zia JSON parser | Phase 25 ✓ (implemented with custom parser for safety) |
+| `Viper.Data.Json` / `JsonPath` | Pure-Zia JSON parser | Phase 25 ✓ (implemented with custom parser for safety) |
 | `Viper.Math.BigInt` | Not implemented | Phase 24 DECIMAL/NUMERIC type (60% effort reduction) |
 | `Viper.Threads.Pool` | One thread per connection | Phase 23 Connection Pooling (50% effort reduction) |
 | `Viper.Threads.SafeI64` | Not implemented | Phase 18 Sequences (atomic counter IS a sequence) |

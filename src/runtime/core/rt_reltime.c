@@ -165,9 +165,10 @@ rt_string rt_reltime_format(int64_t timestamp) {
 // rt_reltime_format_duration
 // ---------------------------------------------------------------------------
 
-/// @brief Format a millisecond duration as a human-readable relative string.
-/// @details Converts to the most appropriate unit (e.g. "2.5 seconds", "1 hour").
-///          Always uses the largest unit that produces a value >= 1.
+/// @brief Format a millisecond duration as compact whole-second components.
+/// @details Emits nonzero day/hour/minute/second fields such as `1d 5h 20m`.
+///          The millisecond remainder is discarded. Negative sub-second values
+///          currently preserve their sign and therefore render as `-0s` (VDOC-227).
 /// @param duration_ms Duration in milliseconds.
 /// @return Newly allocated runtime string.
 rt_string rt_reltime_format_duration(int64_t duration_ms) {

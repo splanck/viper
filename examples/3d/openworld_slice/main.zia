@@ -145,7 +145,7 @@ class OpenWorldSlice {
         return glbFixtureLoaded &&
                audioFixtureLoaded &&
                glbFixtureProp != null &&
-               world.FindEntityOption("FixtureGLBTriangle").IsSome &&
+               world.FindEntity("FixtureGLBTriangle").IsSome &&
                hasNode("GlbTriangle");
     }
 
@@ -175,7 +175,7 @@ class OpenWorldSlice {
     }
 
     expose func hasNode(name: String) -> Boolean {
-        return world.FindNodeOption(name).IsSome;
+        return world.FindNode(name).IsSome;
     }
 
     expose func setStreamCenter(x: Float, z: Float) {
@@ -222,8 +222,8 @@ class OpenWorldSlice {
 
     expose func run() {
         fps.CaptureMouse();
-        while (world.Tick()) {
-            var dt = world.Dt;
+        while (world.Update()) {
+            var dt = world.DeltaTime;
             if (dt <= 0.0) { dt = 0.016; }
             if (dt > 0.050) { dt = 0.050; }
             stepFixed(dt);
@@ -238,9 +238,9 @@ class OpenWorldSlice {
     }
 
     hide func setupTextureAssets() {
-        groundTexture = TextureAsset3D.LoadKTX2Asset("assets/textures/checker_rgba8.ktx2");
+        groundTexture = TextureAsset3D.LoadKtx2Asset("assets/textures/checker_rgba8.ktx2");
         TextureAsset3D.SetResidentMipRange(groundTexture, 0, 1);
-        compressedTexture = TextureAsset3D.LoadKTX2Asset("assets/textures/marker_bc7.ktx2");
+        compressedTexture = TextureAsset3D.LoadKtx2Asset("assets/textures/marker_bc7.ktx2");
         TextureAsset3D.SetResidentMipRange(compressedTexture, 0, 1);
     }
 
@@ -444,7 +444,7 @@ class OpenWorldSlice {
 
     hide func completeAsyncAsset() {
         if (asyncSpawned || asyncHandle == null) { return; }
-        if (asyncHandle.Ready == false) { return; }
+        if (asyncHandle.IsReady == false) { return; }
         asyncProp = asyncHandle.GetEntity();
         if (asyncProp == null) { return; }
         asyncProp.Name = "AsyncTriangle";

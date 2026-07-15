@@ -20,18 +20,18 @@ func start() {
 
     // --- Inc / Len ---
     Say("--- Inc / Len ---");
-    SayInt(cm.Inc("apple"));     // 1 (first time)
-    SayInt(cm.Inc("apple"));     // 2
-    SayInt(cm.Inc("banana"));    // 1
-    SayInt(cm.Inc("cherry"));    // 1
-    SayInt(cm.Inc("cherry"));    // 2
-    SayInt(cm.Inc("cherry"));    // 3
+    SayInt(cm.Increment("apple"));     // 1 (first time)
+    SayInt(cm.Increment("apple"));     // 2
+    SayInt(cm.Increment("banana"));    // 1
+    SayInt(cm.Increment("cherry"));    // 1
+    SayInt(cm.Increment("cherry"));    // 2
+    SayInt(cm.Increment("cherry"));    // 3
     SayInt(cm.Count);              // 3
     SayBool(cm.IsEmpty);         // 0
 
     // --- IncBy ---
     Say("--- IncBy ---");
-    SayInt(cm.IncBy("banana", 5));  // 6 (was 1, now 6)
+    SayInt(cm.IncrementBy("banana", 5));  // 6 (was 1, now 6)
 
     // --- Get ---
     Say("--- Get ---");
@@ -57,8 +57,8 @@ func start() {
 
     // --- Dec ---
     Say("--- Dec ---");
-    SayInt(cm.Dec("apple"));    // 1 (was 2, now 1)
-    SayInt(cm.Dec("apple"));    // 0 (was 1, removed)
+    SayInt(cm.Decrement("apple"));    // 1 (was 2, now 1)
+    SayInt(cm.Decrement("apple"));    // 0 (was 1, removed)
     SayBool(cm.Has("apple"));   // 0
     SayInt(cm.Count);             // 3
 

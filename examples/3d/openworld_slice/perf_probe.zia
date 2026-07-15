@@ -29,10 +29,10 @@ func fmt(value: Float) -> String {
 }
 
 func start() {
-    var setupStart = Clock.TicksUs();
+    var setupStart = Clock.NowMicros();
     var game = new OpenWorldSlice();
     game.setup("Open World Slice Perf Probe", 192, 108);
-    var setupUs = Clock.TicksUs() - setupStart;
+    var setupUs = Clock.NowMicros() - setupStart;
 
     var canvas = game.getCanvas();
     var backend = canvas.Backend;
@@ -52,14 +52,14 @@ func start() {
     }
 
     var frames = 120;
-    var frameStart = Clock.TicksUs();
+    var frameStart = Clock.NowMicros();
     i = 0;
     while (i < frames) {
         game.stepFixed(1.0 / 60.0);
         game.renderFrame();
         i = i + 1;
     }
-    var frameUs = Clock.TicksUs() - frameStart;
+    var frameUs = Clock.NowMicros() - frameStart;
 
     var world = game.getWorld();
     if (frameUs <= 0 ||

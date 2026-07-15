@@ -5,7 +5,7 @@ bind Viper.Math;
 bind Viper.Terminal;
 
 func start() {
-    var mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var mesh = Mesh3D.Plane(20.0, 20.0);
     var nav = NavMesh3D.Build(mesh, 0.4, 1.8);
 
     var scene = SceneGraph.New();
@@ -43,7 +43,7 @@ func start() {
         return;
     }
 
-    var world = Physics3DWorld.New(0.0, -9.8, 0.0);
+    var world = PhysicsWorld3D.New(0.0, -9.8, 0.0);
     var character = Character3D.New(0.4, 1.8, 80.0);
     Character3D.set_World(character, world);
     NavAgent3D.BindCharacter(agent, character);

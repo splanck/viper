@@ -24,8 +24,8 @@ func start() {
     SayBool(u.HasQueryParam("miss"));
 
     // --- Url: static methods ---
-    Say(Viper.Network.Url.Encode("hello world&foo=bar"));
-    Say(Viper.Network.Url.Decode("hello%20world%26foo%3Dbar"));
+    Say(Viper.Text.Codec.UrlEncode("hello world&foo=bar"));
+    Say(Viper.Text.Codec.UrlDecode("hello%20world%26foo%3Dbar"));
     SayBool(Viper.Network.Url.IsValid("https://example.com"));
     SayBool(Viper.Network.Url.IsValid("not a url"));
 

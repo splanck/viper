@@ -90,7 +90,7 @@ func start() {
 
     // --- DelQueryParam ---
     Say("--- DelQueryParam ---");
-    u2.DelQueryParam("page");
+    u2.RemoveQueryParam("page");
     SayBool(u2.HasQueryParam("page"));
     Say(u2.get_Full());
 

@@ -724,7 +724,7 @@ ext_error:
 ///
 /// **Absolute path detection:**
 /// - Unix: Starts with `/`
-/// - Windows: Starts with `X:\` (drive letter) or `\\` (UNC path)
+/// - Windows: Starts with `X:\` (drive-rooted), `\\` (UNC), or a single root separator
 ///
 /// **Examples:**
 /// | Input                    | Result | Notes                    |
@@ -814,6 +814,8 @@ int64_t rt_path_is_abs(rt_string path) {
 /// @note O(n) time complexity where n is path length.
 /// @note Uses current working directory at time of call.
 /// @note Always returns normalized path (no redundant components).
+/// @note On Windows, drive-relative input such as `C:foo` is currently joined to
+///       the process CWD as ordinary relative text and can produce a malformed path.
 ///
 /// @see rt_path_is_abs For checking if path is absolute
 /// @see rt_path_norm For normalizing without making absolute

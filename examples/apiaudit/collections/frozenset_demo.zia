@@ -37,7 +37,7 @@ func start() {
 
     // --- Items ---
     Say("--- Items ---");
-    var all = fs.Items();
+    var all = fs.ToSeq();
     SayInt(all.Count);            // 3
 
     // --- Union ---
@@ -58,7 +58,7 @@ func start() {
 
     // --- Diff ---
     Say("--- Diff ---");
-    var diff = fs.Diff(fs2);
+    var diff = fs.Difference(fs2);
     SayInt(diff.Count);           // 2 (apple, banana)
     SayBool(diff.Has("apple"));  // 1
     SayBool(diff.Has("cherry")); // 0

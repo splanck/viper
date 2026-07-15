@@ -1497,8 +1497,10 @@ rt_string rt_savedata_get_path(void *obj) {
 ///     `~/.local/share/<app>`.
 ///
 /// The directory (including parents) is created on demand so callers can
-/// write settings/saves immediately. The app name is validated with the same
-/// traversal-safe rules as SaveData game names.
+/// write settings/saves immediately. The app name is checked with the same
+/// C-string traversal rules as SaveData game names; unlike SaveData.New, this
+/// entry point currently does not compare that prefix with the runtime String's
+/// full byte length, so an embedded NUL can hide an unchecked suffix (VDOC-199).
 ///
 /// @param app_name Application folder name (alphanumeric/dash/underscore).
 /// @return GC-managed absolute path string (no trailing separator).

@@ -13,8 +13,8 @@
 ' COVER: Viper.Graphics.Canvas.Plot
 ' COVER: Viper.Graphics.Canvas.Poll
 ' COVER: Viper.Graphics.Canvas.Ring
-' COVER: Viper.Graphics.Color.RGB
-' COVER: Viper.Graphics.Color.RGBA
+' COVER: Viper.Graphics.Color.Rgb
+' COVER: Viper.Graphics.Color.Rgba
 ' COVER: Viper.Graphics.Pixels.New
 ' COVER: Viper.Graphics.Pixels.Height
 ' COVER: Viper.Graphics.Pixels.Width
@@ -31,16 +31,16 @@ canvas = NEW Viper.Graphics.Canvas("Runtime Canvas", 64, 48)
 
 Viper.Core.Diagnostics.AssertEq(canvas.Width, 64, "canvas.width")
 Viper.Core.Diagnostics.AssertEq(canvas.Height, 48, "canvas.height")
-Viper.Core.Diagnostics.Assert(canvas.ShouldClose = 0 OR canvas.ShouldClose = 1, "canvas.shouldclose")
+Viper.Core.Diagnostics.Assert(canvas.ShouldClose = FALSE OR canvas.ShouldClose = TRUE, "canvas.shouldclose")
 
 DIM red AS INTEGER
 DIM green AS INTEGER
 DIM blue AS INTEGER
 DIM white AS INTEGER
-red = Viper.Graphics.Color.RGB(255, 0, 0)
-green = Viper.Graphics.Color.RGB(0, 255, 0)
-blue = Viper.Graphics.Color.RGBA(0, 0, 255, 255)
-white = Viper.Graphics.Color.RGB(255, 255, 255)
+red = Viper.Graphics.Color.Rgb(255, 0, 0)
+green = Viper.Graphics.Color.Rgb(0, 255, 0)
+blue = Viper.Graphics.Color.Rgba(0, 0, 255, 255)
+white = Viper.Graphics.Color.Rgb(255, 255, 255)
 
 canvas.Clear(white)
 canvas.Box(2, 2, 10, 8, red)
@@ -55,7 +55,7 @@ evt = canvas.Poll()
 Viper.Core.Diagnostics.Assert(evt >= 0, "canvas.poll")
 
 DIM held AS INTEGER
-held = canvas.KeyHeld(Viper.Input.Keyboard.KeyA)
+held = canvas.KeyHeld(Viper.Input.Key.A)
 Viper.Core.Diagnostics.Assert(held = 0 OR held = 1, "canvas.keyheld")
 
 canvas.Flip()
@@ -85,7 +85,7 @@ Viper.Core.Diagnostics.AssertEq(clone.Get(1, 1), blue, "pixels.clone")
 pixels.Clear()
 Viper.Core.Diagnostics.AssertEq(pixels.Get(0, 0), 0, "pixels.clear")
 
-DIM buf AS Viper.Collections.Bytes
+DIM buf AS Viper.IO.BinaryBuffer
 buf = clone.ToBytes()
 Viper.Core.Diagnostics.AssertEq(buf.Length, 4 * 3 * 4, "pixels.tobytes")
 

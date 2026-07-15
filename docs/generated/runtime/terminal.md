@@ -12,28 +12,26 @@
 Provides terminal input, output, styling, and screen-control operations.
 
 `Viper.Terminal` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Ask`,
-`AskResult`, `BeginBatch`, `Bell`.
+construct the class directly. Its public surface exposes operations including `AskResult`,
+`BeginBatch`, `Bell`, `Clear`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-terminal-ask"></a>`Ask` | `str(str)` | `Viper.Terminal.Ask` |
 | <a id="viper-terminal-askresult"></a>`AskResult` | `obj<Viper.Result>(str)` | `Viper.Terminal.AskResult` |
 | <a id="viper-terminal-beginbatch"></a>`BeginBatch` | `void()` | `Viper.Terminal.BeginBatch` |
 | <a id="viper-terminal-bell"></a>`Bell` | `void()` | `Viper.Terminal.Bell` |
 | <a id="viper-terminal-clear"></a>`Clear` | `void()` | `Viper.Terminal.Clear` |
 | <a id="viper-terminal-endbatch"></a>`EndBatch` | `void()` | `Viper.Terminal.EndBatch` |
 | <a id="viper-terminal-flush"></a>`Flush` | `void()` | `Viper.Terminal.Flush` |
-| <a id="viper-terminal-getkey"></a>`GetKey` | `str()` | `Viper.Terminal.GetKey` |
-| <a id="viper-terminal-getkeytimeout"></a>`GetKeyTimeout` | `str(i64)` | `Viper.Terminal.GetKeyTimeout` |
-| <a id="viper-terminal-inkey"></a>`InKey` | `str()` | `Viper.Terminal.InKey` |
+| <a id="viper-terminal-readkey"></a>`ReadKey` | `str()` | `Viper.Terminal.ReadKey` |
+| <a id="viper-terminal-readkeyfor"></a>`ReadKeyFor` | `str(i64)` | `Viper.Terminal.ReadKeyFor` |
+| <a id="viper-terminal-pollkey"></a>`PollKey` | `str()` | `Viper.Terminal.PollKey` |
 | <a id="viper-terminal-print"></a>`Print` | `void(str)` | `Viper.Terminal.Print` |
 | <a id="viper-terminal-printint"></a>`PrintInt` | `void(i64)` | `Viper.Terminal.PrintInt` |
 | <a id="viper-terminal-printnum"></a>`PrintNum` | `void(f64)` | `Viper.Terminal.PrintNum` |
 | <a id="viper-terminal-printbool"></a>`PrintBool` | `void(i1)` | `Viper.Terminal.PrintBool` |
-| <a id="viper-terminal-readline"></a>`ReadLine` | `str()` | `Viper.Terminal.ReadLine` |
 | <a id="viper-terminal-readlineresult"></a>`ReadLineResult` | `obj<Viper.Result>()` | `Viper.Terminal.ReadLineResult` |
 | <a id="viper-terminal-say"></a>`Say` | `void(str)` | `Viper.Terminal.Say` |
 | <a id="viper-terminal-saybool"></a>`SayBool` | `void(i1)` | `Viper.Terminal.SayBool` |
@@ -48,7 +46,7 @@ construct the class directly. Its public surface exposes operations including `A
 | <a id="viper-terminal-printf64"></a>`PrintF64` | `void(f64)` | `Viper.Terminal.PrintF64` |
 | <a id="viper-terminal-printi64"></a>`PrintI64` | `void(i64)` | `Viper.Terminal.PrintI64` |
 | <a id="viper-terminal-printstr"></a>`PrintStr` | `void(str)` | `Viper.Terminal.PrintStr` |
-| <a id="viper-terminal-inputline"></a>`InputLine` | `str()` | `Viper.Terminal.InputLine` |
+| <a id="viper-terminal-readline"></a>`ReadLine` | `str()` | `Viper.Terminal.ReadLine` |
 
 ## Functions
 
@@ -58,23 +56,17 @@ construct the class directly. Its public surface exposes operations including `A
 | `Viper.Terminal.SayBool` | `void(i1)` | `rt_term_say_bool` |
 | `Viper.Terminal.SayInt` | `void(i64)` | `rt_term_say_i64` |
 | `Viper.Terminal.SayNum` | `void(f64)` | `rt_term_say_f64` |
-| `Viper.Terminal.PrintF64` | `void(f64)` | `rt_print_f64` |
-| `Viper.Terminal.PrintI64` | `void(i64)` | `rt_print_i64` |
-| `Viper.Terminal.PrintStr` | `void(str)` | `rt_print_str` |
 | `Viper.Terminal.Print` | `void(str)` | `rt_term_print` |
 | `Viper.Terminal.PrintInt` | `void(i64)` | `rt_term_print_i64` |
 | `Viper.Terminal.PrintNum` | `void(f64)` | `rt_term_print_f64` |
 | `Viper.Terminal.PrintBool` | `void(i1)` | `rt_term_print_bool` |
-| `Viper.Terminal.Ask` | `str(str)` | `rt_term_ask` |
 | `Viper.Terminal.AskResult` | `obj<Viper.Result>(str)` | `rt_term_ask_result` |
-| `Viper.Terminal.GetKey` | `str()` | `rt_getkey_str` |
-| `Viper.Terminal.GetKeyTimeout` | `str(i64)` | `rt_getkey_timeout_i32` |
-| `Viper.Terminal.InKey` | `str()` | `rt_inkey_str` |
-| `Viper.Terminal.ReadLine` | `str()` | `rt_term_read_line` |
+| `Viper.Terminal.ReadKey` | `str()` | `rt_getkey_str` |
+| `Viper.Terminal.ReadKeyFor` | `str(i64)` | `rt_getkey_timeout_i32` |
+| `Viper.Terminal.PollKey` | `str()` | `rt_inkey_str` |
 | `Viper.Terminal.ReadLineResult` | `obj<Viper.Result>()` | `rt_term_read_line_result` |
 | `Viper.Terminal.TryAsk` | `obj<Viper.Option>(str)` | `rt_term_try_ask` |
 | `Viper.Terminal.TryReadLine` | `obj<Viper.Option>()` | `rt_term_try_read_line` |
-| `Viper.Terminal.InputLine` | `str()` | `rt_input_line` |
 | `Viper.Terminal.Bell` | `void()` | `rt_bell` |
 | `Viper.Terminal.Clear` | `void()` | `rt_term_cls` |
 | `Viper.Terminal.SetAltScreen` | `void(i1)` | `rt_term_alt_screen_i32` |

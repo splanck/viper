@@ -30,5 +30,5 @@ FOR i = 0 TO 49999999
     r = Combine(i)
     sum = (sum + r) MOD 268435456
 NEXT i
-Viper.System.Environment.EndProgram(sum)
+Viper.System.Environment.Exit(sum)
 END

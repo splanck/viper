@@ -52,7 +52,7 @@ func start() {
     tl.AddMarker(0.05, 7);
     tl.AddSubtitle(0.0, 0.4, "hello");
     world.PlayTimeline(tl);
-    if (tl.Playing == false) {
+    if (tl.IsPlaying == false) {
         fail("timeline did not start playing");
         return;
     }
@@ -70,7 +70,7 @@ func start() {
         world.StepSimulation(0.1);
         j = j + 1;
     }
-    if (tl.Finished == false) {
+    if (tl.IsFinished == false) {
         fail("timeline did not finish");
         return;
     }
@@ -83,21 +83,21 @@ func start() {
     dlg.Say("Guide", "Mind the gap.");
     dlg.Show();
     world.StepSimulation(0.05);
-    if (dlg.Active == false) {
+    if (dlg.IsActive == false) {
         fail("dialogue did not activate");
         return;
     }
     dlg.Advance();
     dlg.Advance();
     world.StepSimulation(0.05);
-    if (dlg.Active == false) {
+    if (dlg.IsActive == false) {
         fail("dialogue ended after only the first of two lines");
         return;
     }
     dlg.Advance();
     dlg.Advance();
     world.StepSimulation(0.05);
-    if (dlg.Active) {
+    if (dlg.IsActive) {
         fail("dialogue still active after all lines consumed");
         return;
     }

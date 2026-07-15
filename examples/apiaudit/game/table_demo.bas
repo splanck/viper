@@ -1,8 +1,8 @@
-' API Audit: Viper.Game.UI.Table and TableClickResult (BASIC)
-PRINT "=== API Audit: Viper.Game.UI.Table ==="
+' API Audit: Viper.Game.UI.HudTable and TableClickResult (BASIC)
+PRINT "=== API Audit: Viper.Game.UI.HudTable ==="
 
 DIM table AS OBJECT
-table = Viper.Game.UI.Table.New(0, 0, 220, 96)
+table = Viper.Game.UI.HudTable.New(0, 0, 220, 96)
 table.AddColumn("Name", 100, 0)
 table.AddColumn("Score", 80, 0)
 table.SetColumnSortable(1, 1, 1)
@@ -18,7 +18,7 @@ table.SetCell(rowB, 1, "30")
 
 PRINT "--- Header click result ---"
 DIM headerClick AS OBJECT
-headerClick = table.HandleClickResult(120, 4)
+headerClick = table.HandleClick(120, 4)
 PRINT headerClick.IsHeader
 PRINT headerClick.IsRow
 DIM headerColumn AS OBJECT
@@ -28,7 +28,7 @@ PRINT headerColumn.UnwrapI64()
 
 PRINT "--- Row click result ---"
 DIM rowClick AS OBJECT
-rowClick = table.HandleClickResult(10, 40)
+rowClick = table.HandleClick(10, 40)
 PRINT rowClick.IsRow
 PRINT rowClick.IsHeader
 DIM selectedRow AS OBJECT
@@ -38,7 +38,7 @@ PRINT selectedRow.UnwrapI64()
 
 PRINT "--- Miss click result ---"
 DIM missClick AS OBJECT
-missClick = table.HandleClickResult(400, 400)
+missClick = table.HandleClick(400, 400)
 PRINT missClick.IsNone
 PRINT missClick.RowOption().IsNone
 PRINT missClick.ColumnOption().IsNone

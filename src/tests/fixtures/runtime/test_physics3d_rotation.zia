@@ -1,4 +1,4 @@
-// Test: Physics3DBody rotation, damping, sleep, kinematic motion, and CCD surface.
+// Test: PhysicsBody3D rotation, damping, sleep, kinematic motion, and CCD surface.
 module TestPhysics3DRotation;
 
 bind Viper.Graphics3D;
@@ -6,66 +6,66 @@ bind Viper.Math;
 bind Viper.Terminal;
 
 func start() {
-    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
-    var body = Physics3DBody.NewSphere(1.0, 1.0);
-    Physics3DWorld.Add(world, body);
+    var world = PhysicsWorld3D.New(0.0, 0.0, 0.0);
+    var body = PhysicsBody3D.Sphere(1.0, 1.0);
+    PhysicsWorld3D.Add(world, body);
 
     var identity = Quat.Identity();
-    Physics3DBody.SetOrientation(body, identity);
-    var q0 = Physics3DBody.get_Orientation(body);
+    PhysicsBody3D.SetOrientation(body, identity);
+    var q0 = PhysicsBody3D.get_Orientation(body);
     if (Quat.get_W(q0) != 1.0) {
         Say("FAIL: orientation should start at identity");
         return;
     }
 
-    Physics3DBody.ApplyTorque(body, 0.0, 4.0, 0.0);
-    Physics3DWorld.Step(world, 1.0);
+    PhysicsBody3D.ApplyTorque(body, 0.0, 4.0, 0.0);
+    PhysicsWorld3D.Step(world, 1.0);
 
-    var ang = Physics3DBody.get_AngularVelocity(body);
+    var ang = PhysicsBody3D.get_AngularVelocity(body);
     if (Vec3.get_Y(ang) <= 2.0) {
         Say("FAIL: torque should change angular velocity");
         return;
     }
 
-    var q1 = Physics3DBody.get_Orientation(body);
+    var q1 = PhysicsBody3D.get_Orientation(body);
     if (Quat.get_W(q1) >= 0.95) {
         Say("FAIL: angular integration should change orientation");
         return;
     }
 
-    Physics3DBody.set_AngularDamping(body, 1.0);
-    var before = Physics3DBody.get_AngularVelocity(body).Y;
-    Physics3DWorld.Step(world, 1.0);
-    var after = Physics3DBody.get_AngularVelocity(body).Y;
+    PhysicsBody3D.set_AngularDamping(body, 1.0);
+    var before = PhysicsBody3D.get_AngularVelocity(body).Y;
+    PhysicsWorld3D.Step(world, 1.0);
+    var after = PhysicsBody3D.get_AngularVelocity(body).Y;
     if (after >= before) {
         Say("FAIL: angular damping should reduce angular velocity");
         return;
     }
 
-    Physics3DBody.Sleep(body);
-    if (Physics3DBody.get_Sleeping(body) == false) {
+    PhysicsBody3D.Sleep(body);
+    if (PhysicsBody3D.get_IsSleeping(body) == false) {
         Say("FAIL: Sleep should mark the body sleeping");
         return;
     }
-    Physics3DBody.Wake(body);
-    if (Physics3DBody.get_Sleeping(body) != false) {
+    PhysicsBody3D.Wake(body);
+    if (PhysicsBody3D.get_IsSleeping(body) != false) {
         Say("FAIL: Wake should clear the sleeping flag");
         return;
     }
 
-    Physics3DBody.set_Kinematic(body, true);
-    Physics3DBody.SetVelocity(body, 2.0, 0.0, 0.0);
-    Physics3DBody.SetAngularVelocity(body, 0.0, 1.0, 0.0);
-    var pos0 = Physics3DBody.get_Position(body);
-    Physics3DWorld.Step(world, 0.5);
-    var pos1 = Physics3DBody.get_Position(body);
+    PhysicsBody3D.set_IsKinematic(body, true);
+    PhysicsBody3D.SetVelocity(body, 2.0, 0.0, 0.0);
+    PhysicsBody3D.SetAngularVelocity(body, 0.0, 1.0, 0.0);
+    var pos0 = PhysicsBody3D.get_Position(body);
+    PhysicsWorld3D.Step(world, 0.5);
+    var pos1 = PhysicsBody3D.get_Position(body);
     if (Vec3.get_X(pos1) <= Vec3.get_X(pos0)) {
         Say("FAIL: kinematic body should move from explicit velocity");
         return;
     }
 
-    Physics3DBody.set_UseCcd(body, true);
-    if (Physics3DBody.get_UseCcd(body) == false) {
+    PhysicsBody3D.set_UseCcd(body, true);
+    if (PhysicsBody3D.get_UseCcd(body) == false) {
         Say("FAIL: CCD flag should round-trip");
         return;
     }

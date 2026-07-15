@@ -163,8 +163,8 @@ The Bug #45 fix also resolved this inconsistency. Now both fields and methods wo
 **Description:**
 Terminal input functions have different names than expected:
 - `Viper.Terminal.ReadLine()` - reads a line of text (blocking)
-- `Viper.Terminal.GetKey()` - reads a single key (blocking)
-- `Viper.Terminal.InKey()` - reads a key if available (non-blocking)
+- `Viper.Terminal.ReadKey()` - reads a single key (blocking)
+- `Viper.Terminal.PollKey()` - reads a key if available (non-blocking)
 
 **Resolution:**
 Use the correct function names as listed above.

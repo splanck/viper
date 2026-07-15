@@ -422,7 +422,7 @@ class Pager {
         }
 
         var f = IO.BinFile.Open(filename, "r");
-        var fileSize = f.Size;
+        var fileSize = f.SizeBytes;
         var startOffset = pageId * PAGE_SIZE;
 
         if startOffset + PAGE_SIZE > fileSize {
@@ -521,7 +521,7 @@ class Pager {
             f.Close();
         } else {
             var f = IO.BinFile.Open(filename, "rw");
-            var fileSize = f.Size;
+            var fileSize = f.SizeBytes;
             if startOffset > fileSize {
                 f.Seek(fileSize, 0);
                 var padLen = startOffset - fileSize;

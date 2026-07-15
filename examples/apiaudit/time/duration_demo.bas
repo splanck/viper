@@ -89,7 +89,7 @@ PRINT "Cmp(90s,90s): "; Viper.Time.Duration.Cmp(sec, sec)
 ' --- ToString / ToISO ---
 PRINT "--- ToString / ToISO ---"
 PRINT "ToString: "; Viper.Time.Duration.ToString(cx)
-PRINT "ToISO: "; Viper.Time.Duration.ToISO(cx)
+PRINT "ToISO: "; Viper.Time.Duration.ToIso8601(cx)
 
 PRINT "=== Duration Demo Complete ==="
 END

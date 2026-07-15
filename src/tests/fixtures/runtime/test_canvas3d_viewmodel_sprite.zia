@@ -29,11 +29,11 @@ func start() {
     var up = new Vec3(0.0, 1.0, 0.0);
     Camera3D.LookAt(cam, eye, target, up);
 
-    var wall = Mesh3D.NewBox(20.0, 20.0, 0.2);
-    var wallMat = Material3D.NewColor(1.0, 0.0, 0.0);
+    var wall = Mesh3D.Box(20.0, 20.0, 0.2);
+    var wallMat = Material3D.FromColor(1.0, 0.0, 0.0);
     Material3D.SetUnlit(wallMat, true);
-    var weapon = Mesh3D.NewBox(0.5, 0.5, 0.5);
-    var weaponMat = Material3D.NewColor(0.0, 1.0, 0.0);
+    var weapon = Mesh3D.Box(0.5, 0.5, 0.5);
+    var weaponMat = Material3D.FromColor(0.0, 1.0, 0.0);
     Material3D.SetUnlit(weaponMat, true);
     var ident = Mat4.Identity();
     var weaponXform = Mat4.Translate(0.0, 0.0, -2.0);

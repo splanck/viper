@@ -255,13 +255,13 @@ func main() {
     engine.SetText(idleLarge);
     engine.editor.SetWordWrap(false);
     engine.editor.ResetPerfStats();
-    var moveStart = Viper.Time.Clock.Ticks();
+    var moveStart = Viper.Time.Clock.NowMs();
     var moveIdx = 0;
     while moveIdx < 1000 {
         engine.editor.SetCursor(moveIdx % 5000, 4);
         moveIdx = moveIdx + 1;
     }
-    var moveElapsed = Viper.Time.Clock.Ticks() - moveStart;
+    var moveElapsed = Viper.Time.Clock.NowMs() - moveStart;
     if moveElapsed > 250 {
         fail(shell, "large-buffer cursor movement exceeded budget: " + moveElapsed + "ms");
         return;
@@ -298,9 +298,9 @@ func main() {
         foldIdx = foldIdx + 1;
     }
     engine.SetText(foldStressSource);
-    var foldStartMs = Viper.Time.Clock.Ticks();
+    var foldStartMs = Viper.Time.Clock.NowMs();
     var foldCount = symbols.ApplySemanticFoldRegions(engine, foldStressRaw, 0, foldStressSource);
-    var foldElapsedMs = Viper.Time.Clock.Ticks() - foldStartMs;
+    var foldElapsedMs = Viper.Time.Clock.NowMs() - foldStartMs;
     if foldCount != 200 {
         fail(shell, "semantic fold perf count: " + foldCount);
         return;

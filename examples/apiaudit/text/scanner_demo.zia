@@ -15,7 +15,7 @@ func start() {
     // --- New ---
     Say("--- New ---");
     var sc = Scanner.New("Hello, World! 42 3.14 \"quoted\"");
-    SayInt(sc.Pos);         // 0
+    SayInt(sc.Position);         // 0
     SayBool(sc.IsEnd);      // 0
     SayInt(sc.Length);         // string length
     SayInt(sc.Remaining);   // same as Len at start
@@ -36,45 +36,45 @@ func start() {
     // --- Read (consume one char, return char code) ---
     Say("--- Read ---");
     SayInt(sc.Read());      // 72 ('H')
-    SayInt(sc.Pos);         // 1
+    SayInt(sc.Position);         // 1
     SayInt(sc.Read());      // 101 ('e')
-    SayInt(sc.Pos);         // 2
+    SayInt(sc.Position);         // 2
 
     // --- ReadStr (consume N chars as string) ---
     Say("--- ReadStr ---");
     Say(sc.ReadStr(3));     // llo
-    SayInt(sc.Pos);         // 5
+    SayInt(sc.Position);         // 5
 
     // --- Match (check if current char matches, no consume) ---
     Say("--- Match ---");
     SayBool(sc.Match(44));  // 1 (44 = ',')
-    SayInt(sc.Pos);         // 5 (not consumed)
+    SayInt(sc.Position);         // 5 (not consumed)
 
     // --- Accept (consume if matches) ---
     Say("--- Accept ---");
     SayBool(sc.Accept(44)); // 1 (consumed ',')
-    SayInt(sc.Pos);         // 6
+    SayInt(sc.Position);         // 6
     SayBool(sc.Accept(44)); // 0 (next is ' ', not ',')
 
     // --- Skip ---
     Say("--- Skip ---");
     sc.Skip(1);             // skip the space
-    SayInt(sc.Pos);         // 7
+    SayInt(sc.Position);         // 7
 
     // --- MatchStr ---
     Say("--- MatchStr ---");
     SayBool(sc.MatchStr("World"));  // 1
-    SayInt(sc.Pos);                 // 7 (not consumed)
+    SayInt(sc.Position);                 // 7 (not consumed)
 
     // --- AcceptStr ---
     Say("--- AcceptStr ---");
     SayBool(sc.AcceptStr("World")); // 1 (consumed)
-    SayInt(sc.Pos);                 // 12
+    SayInt(sc.Position);                 // 12
 
     // --- AcceptAny (accept any char from set) ---
     Say("--- AcceptAny ---");
     SayBool(sc.AcceptAny("!?")); // 1 (consumed '!')
-    SayInt(sc.Pos);              // 13
+    SayInt(sc.Position);              // 13
 
     // --- SkipWhitespace ---
     Say("--- SkipWhitespace ---");
@@ -105,13 +105,13 @@ func start() {
     // --- Reset ---
     Say("--- Reset ---");
     sc.Reset();
-    SayInt(sc.Pos);         // 0
+    SayInt(sc.Position);         // 0
     SayBool(sc.IsEnd);      // 0
 
     // --- Pos (set) ---
     Say("--- Pos set ---");
-    Scanner.set_Pos(sc, 7);
-    SayInt(sc.Pos);         // 7
+    Scanner.set_Position(sc, 7);
+    SayInt(sc.Position);         // 7
 
     // --- ReadUntil (read until char) ---
     Say("--- ReadUntil ---");

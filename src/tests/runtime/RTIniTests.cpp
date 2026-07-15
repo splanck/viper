@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTIniTests.cpp
-// Purpose: Tests for Viper.Text.Ini runtime helpers.
+// Purpose: Tests for Viper.Data.Ini runtime helpers.
 //
 //===----------------------------------------------------------------------===//
 

@@ -6,7 +6,7 @@ bind "document";
 bind "../editor/editor_tabs";
 bind "../services/file_utils";
 
-bind Ini = Viper.Text.Ini;
+bind Ini = Viper.Data.Ini;
 bind Codec = Viper.Text.Codec;
 bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
@@ -47,7 +47,7 @@ class SessionManager {
     expose func Save(docMgr: document_manager.DocumentManager,
                      projMgr: project_manager.ProjectManager) {
         if settingsPath == "" { return; }
-        Dir.MakeAll(Path.Dir(settingsPath));
+        Dir.MakeAll(Path.Directory(settingsPath));
 
         var content = "";
         if IO.File.Exists(settingsPath) {
@@ -100,7 +100,7 @@ class SessionManager {
 
     expose func RecordRecentFile(path: String) {
         if settingsPath == "" or path == "" or IO.File.Exists(path) == false { return; }
-        Dir.MakeAll(Path.Dir(settingsPath));
+        Dir.MakeAll(Path.Directory(settingsPath));
 
         var content = "";
         if IO.File.Exists(settingsPath) {
@@ -229,7 +229,7 @@ class SessionManager {
     /// @param text Document buffer to persist.
     /// @return Base64-encoded representation suitable for `Ini.Set`.
     hide func EncodeRecoveryText(text: String) -> String {
-        return Codec.Base64Enc(text);
+        return Codec.Base64Encode(text);
     }
 
     /// @brief Decode session recovery text from current or legacy settings.
@@ -242,7 +242,7 @@ class SessionManager {
     hide func DecodeRecoveryText(encoded: String, encoding: String) -> String {
         if encoded == "" { return ""; }
         if encoding == "base64" {
-            return Codec.Base64Dec(encoded);
+            return Codec.Base64Decode(encoded);
         }
         return encoded;
     }

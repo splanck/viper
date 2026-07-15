@@ -42,8 +42,8 @@ expose func IsWithinRoot(fullPath: String,
     if fullPath == "" or rootPath == "" { return false; }
     if fullPath == rootPath { return true; }
     var prefix = rootPath;
-    if Str.EndsWith(prefix, Path.Sep()) == false {
-        prefix = prefix + Path.Sep();
+    if Str.EndsWith(prefix, Path.Separator()) == false {
+        prefix = prefix + Path.Separator();
     }
     return Str.StartsWith(fullPath, prefix);
 }
@@ -60,8 +60,8 @@ expose func RelativePath(rootPath: String,
                          fullPath: String) -> String {
     if rootPath == "" or fullPath == "" { return fullPath; }
     var prefix = rootPath;
-    if Str.EndsWith(prefix, Path.Sep()) == false {
-        prefix = prefix + Path.Sep();
+    if Str.EndsWith(prefix, Path.Separator()) == false {
+        prefix = prefix + Path.Separator();
     }
     if Str.StartsWith(fullPath, prefix) {
         return Str.Mid(fullPath, Str.get_Length(prefix) + 1);
@@ -254,5 +254,5 @@ expose func ListContains(items: List,
 /// @return Absolute normalized key suitable for path de-duplication.
 func PathKey(path: String) -> String {
     if path == "" { return ""; }
-    return Path.Norm(Path.Abs(path));
+    return Path.Normalize(Path.Absolute(path));
 }

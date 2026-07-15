@@ -1,8 +1,8 @@
 ' test_text_codec.bas — Codec, Pattern, CompiledPattern, StringBuilder, TextWrapper, Pluralize, Diff
-PRINT "b64enc: "; Viper.Text.Codec.Base64Enc("hello world")
-PRINT "b64dec: "; Viper.Text.Codec.Base64Dec("aGVsbG8gd29ybGQ=")
-PRINT "hexenc: "; Viper.Text.Codec.HexEnc("AB")
-PRINT "hexdec: "; Viper.Text.Codec.HexDec("4142")
+PRINT "b64enc: "; Viper.Text.Codec.Base64Encode("hello world")
+PRINT "b64dec: "; Viper.Text.Codec.Base64Decode("aGVsbG8gd29ybGQ=")
+PRINT "hexenc: "; Viper.Text.Codec.HexEncode("AB")
+PRINT "hexdec: "; Viper.Text.Codec.HexDecode("4142")
 PRINT "urlenc: "; Viper.Text.Codec.UrlEncode("hello world&foo=bar")
 PRINT "urldec: "; Viper.Text.Codec.UrlDecode("hello%20world%26foo%3Dbar")
 

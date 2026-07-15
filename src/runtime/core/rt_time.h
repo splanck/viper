@@ -8,7 +8,8 @@
 // by the Viper runtime and the Viper.Time.Clock surface.
 //
 // Key invariants:
-//   - All clock values are monotonic and not tied to wall-clock time.
+//   - Clock values prefer a monotonic source; POSIX uses adjustable realtime as
+//     a failure fallback, and all-source failure returns 0 (VDOC-223).
 //   - Negative sleep durations are clamped to 0.
 //   - All functions are thread-safe and have no shared mutable state.
 //
@@ -31,8 +32,9 @@ extern "C" {
 /// @param ms Milliseconds to sleep; negative values are treated as 0.
 void rt_sleep_ms(int32_t ms);
 
-/// @brief Return monotonic milliseconds from an unspecified epoch.
-/// @return Monotonic millisecond tick count. Traps on signed 64-bit overflow.
+/// @brief Return milliseconds from the best available elapsed-time clock.
+/// @return Tick count, or 0 if all clock queries fail. POSIX's realtime fallback
+/// is adjustable. Traps on signed 64-bit overflow.
 int64_t rt_timer_ms(void);
 
 /// @brief Viper.Time.Clock.Sleep entry point.
@@ -40,11 +42,13 @@ int64_t rt_timer_ms(void);
 void rt_clock_sleep(int64_t ms);
 
 /// @brief Viper.Time.Clock.Ticks entry point.
-/// @return Monotonic millisecond tick count. Traps on signed 64-bit overflow.
+/// @return Tick count, with the fallback behavior of @ref rt_timer_ms. Traps on
+/// signed 64-bit overflow.
 int64_t rt_clock_ticks(void);
 
 /// @brief Viper.Time.Clock.TicksUs entry point.
-/// @return Monotonic microsecond tick count. Traps on signed 64-bit overflow.
+/// @return Microsecond tick count, or 0 if all clock queries fail. POSIX's
+/// realtime fallback is adjustable. Traps on signed 64-bit overflow.
 int64_t rt_clock_ticks_us(void);
 
 #ifdef __cplusplus

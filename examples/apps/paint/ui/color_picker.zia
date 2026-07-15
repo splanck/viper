@@ -79,9 +79,9 @@ class ColorPicker {
     /// @brief Open the picker centered in the window, seeded from a colour.
     expose func open(forBackground: Integer, color: Integer, screenW: Integer, screenH: Integer) {
         target = forBackground;
-        hue = Color.GetH(color);
-        sat = Color.GetS(color);
-        light = Color.GetL(color);
+        hue = Color.GetHue(color);
+        sat = Color.GetSaturation(color);
+        light = Color.GetLightness(color);
         x = (screenW - w) / 2;
         y = (screenH - h) / 2;
         if y < 10 { y = 10; }
@@ -98,7 +98,7 @@ class ColorPicker {
 
     /// @brief Current colour built from the HSL state.
     expose func currentColor() -> Integer {
-        return Color.FromHSL(hue, sat, light);
+        return Color.FromHsl(hue, sat, light);
     }
 
     // --- sub-rectangle helpers -------------------------------------------------
@@ -206,7 +206,7 @@ class ColorPicker {
             var xx = 0;
             while xx < SL_SIZE {
                 var s = xx * 100 / (SL_SIZE - 1);
-                surf.SetRGB(xx, yy, Color.FromHSL(hue, s, l));
+                surf.SetRgb(xx, yy, Color.FromHsl(hue, s, l));
                 xx = xx + 1;
             }
             yy = yy + 1;
@@ -222,7 +222,7 @@ class ColorPicker {
             var hh = yy * 360 / (SL_SIZE - 1);
             var xx = 0;
             while xx < HUE_W {
-                surf.SetRGB(xx, yy, Color.FromHSL(hh, 100, 50));
+                surf.SetRgb(xx, yy, Color.FromHsl(hh, 100, 50));
                 xx = xx + 1;
             }
             yy = yy + 1;
@@ -277,7 +277,7 @@ class ColorPicker {
         gfx.Box(x + PAD, pvY, 36, 24, col);
         gfx.Frame(x + PAD, pvY, 36, 24, config.UI_BORDER);
         gfx.Text(x + PAD + 46, pvY + 2, Color.ToHex(col), config.UI_TEXT);
-        var rgb = "R" + Color.GetR(col) + " G" + Color.GetG(col) + " B" + Color.GetB(col);
+        var rgb = "R" + Color.GetRed(col) + " G" + Color.GetGreen(col) + " B" + Color.GetBlue(col);
         gfx.Text(x + PAD + 46, pvY + 12, rgb, config.UI_TEXT_DIM);
 
         // OK / Cancel buttons.

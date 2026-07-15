@@ -7,8 +7,8 @@ func start() {
     var path = "src/tests/fixtures/runtime/_tmp_material3d_pbr.vscn";
     var scene = SceneGraph.New();
     var node = SceneNode.New();
-    var mesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var mat = Material3D.NewPBR(0.6, 0.4, 0.2);
+    var mesh = Mesh3D.Box(1.0, 1.0, 1.0);
+    var mat = Material3D.PBR(0.6, 0.4, 0.2);
 
     mat.Metallic = 0.7;
     mat.Roughness = 0.3;
@@ -49,47 +49,48 @@ func start() {
         return;
     }
 
-    var model = SceneAsset.Load(path);
-    if (model == null) {
-        Say("FAIL: SceneAsset.Load should read the saved PBR fixture");
+    var loaded = SceneAsset.LoadResult(path);
+    if (not loaded.IsOk) {
+        Say("FAIL: SceneAsset.LoadResult should read the saved PBR fixture");
         return;
     }
+    var model = loaded.Unwrap();
     if (SceneAsset.get_MaterialCount(model) != 1) {
         Say("FAIL: SceneAsset should preserve one shared material");
         return;
     }
 
-    var loaded = SceneAsset.GetMaterial(model, 0);
-    if (loaded == null) {
+    var loadedMat = SceneAsset.GetMaterial(model, 0);
+    if (loadedMat == null) {
         Say("FAIL: SceneAsset.GetMaterial should return the saved PBR material");
         return;
     }
-    if (Material3D.get_Metallic(loaded) < 0.69 || Material3D.get_Metallic(loaded) > 0.71) {
+    if (Material3D.get_Metallic(loadedMat) < 0.69 || Material3D.get_Metallic(loadedMat) > 0.71) {
         Say("FAIL: Metallic should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
-    if (Material3D.get_Roughness(loaded) < 0.29 || Material3D.get_Roughness(loaded) > 0.31) {
+    if (Material3D.get_Roughness(loadedMat) < 0.29 || Material3D.get_Roughness(loadedMat) > 0.31) {
         Say("FAIL: Roughness should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
-    if (Material3D.get_AmbientOcclusion(loaded) < 0.84 || Material3D.get_AmbientOcclusion(loaded) > 0.86) {
+    if (Material3D.get_AmbientOcclusion(loadedMat) < 0.84 || Material3D.get_AmbientOcclusion(loadedMat) > 0.86) {
         Say("FAIL: AO should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
-    if (Material3D.get_EmissiveIntensity(loaded) < 1.49 ||
-        Material3D.get_EmissiveIntensity(loaded) > 1.51) {
+    if (Material3D.get_EmissiveIntensity(loadedMat) < 1.49 ||
+        Material3D.get_EmissiveIntensity(loadedMat) > 1.51) {
         Say("FAIL: EmissiveIntensity should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
-    if (Material3D.get_NormalScale(loaded) < 0.54 || Material3D.get_NormalScale(loaded) > 0.56) {
+    if (Material3D.get_NormalScale(loadedMat) < 0.54 || Material3D.get_NormalScale(loadedMat) > 0.56) {
         Say("FAIL: NormalScale should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
-    if (Material3D.get_AlphaMode(loaded) != 2) {
+    if (Material3D.get_AlphaMode(loadedMat) != 2) {
         Say("FAIL: AlphaMode should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }
-    if (Material3D.get_DoubleSided(loaded) != true) {
+    if (Material3D.get_DoubleSided(loadedMat) != true) {
         Say("FAIL: DoubleSided should round-trip through SceneGraph.Save/SceneAsset.Load");
         return;
     }

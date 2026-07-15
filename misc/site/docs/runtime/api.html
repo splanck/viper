@@ -1745,7 +1745,7 @@ var repeated = Viper.String.Repeat(&quot;-&quot;, 20);      // &quot;-----------
 <td>URL-decode string</td>
 </tr>
 </tbody></table>
-<h3 id="viper-text-csv">Viper.Text.Csv</h3>
+<h3 id="viper-text-csv">Viper.Data.Csv</h3>
 <table><thead><tr>
 <th>Function</th>
 <th>Signature</th>
@@ -1964,7 +1964,7 @@ var decoded = Viper.Text.Codec.Base64Dec(encoded);
 
 // CSV parsing
 var csv = &quot;name,age,city\nAlice,30,NYC\nBob,25,LA&quot;;
-var data = Viper.Text.Csv.Parse(csv);
+var data = Viper.Data.Csv.Parse(csv);
 
 // GUID generation
 var id = Viper.Text.Guid.New();  // &quot;550e8400-e29b-41d4-a716-446655440000&quot;

@@ -125,17 +125,17 @@ class ColorManager {
 
     // Get red component (0-255) from foreground (0x00RRGGBB format)
     expose func getRed() -> Integer {
-        return Color.GetR(foreground);
+        return Color.GetRed(foreground);
     }
 
     // Get green component (0-255) from foreground
     expose func getGreen() -> Integer {
-        return Color.GetG(foreground);
+        return Color.GetGreen(foreground);
     }
 
     // Get blue component (0-255) from foreground
     expose func getBlue() -> Integer {
-        return Color.GetB(foreground);
+        return Color.GetBlue(foreground);
     }
 
     // Set foreground from RGB components

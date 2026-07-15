@@ -556,7 +556,7 @@ struct ViperType {
             return typeArgs[0];
         if (kind == TypeKindSem::Ptr && typeArgs.size() >= 2 &&
             (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
-             name == "Viper.Collections.TreeMap" || name == "Viper.Collections.Trie" ||
+             name == "Viper.Collections.SortedMap" || name == "Viper.Collections.Trie" ||
              name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
              name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
              name == "Viper.Collections.MultiMap"))
@@ -572,7 +572,7 @@ struct ViperType {
             return typeArgs[1];
         if (kind == TypeKindSem::Ptr && typeArgs.size() >= 2 &&
             (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
-             name == "Viper.Collections.TreeMap" || name == "Viper.Collections.Trie" ||
+             name == "Viper.Collections.SortedMap" || name == "Viper.Collections.Trie" ||
              name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
              name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
              name == "Viper.Collections.MultiMap"))

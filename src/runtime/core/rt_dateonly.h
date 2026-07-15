@@ -10,12 +10,13 @@
 // Key invariants:
 //   - Month is 1-indexed (1=January, 12=December); day is 1-indexed.
 //   - Days since epoch are counted from 1970-01-01 (Unix epoch, day 0).
-//   - ISO format for parsing and formatting is exactly YYYY-MM-DD.
+//   - Parsing accepts exactly four unsigned year digits in YYYY-MM-DD. Creation
+//     accepts any signed year, whose formatted text may not round-trip (VDOC-231).
 //   - Date arithmetic traps on signed 64-bit overflow.
 //
 // Ownership/Lifetime:
-//   - DateOnly objects are heap-allocated opaque pointers.
-//   - Callers are responsible for managing object lifetime; no reference counting.
+//   - DateOnly objects are heap-allocated runtime objects managed through Viper's
+//     reference-counting/GC lifetime; source callers do not free them explicitly.
 //
 // Links: src/runtime/core/rt_dateonly.c (implementation), src/runtime/core/rt_string.h
 //
@@ -37,11 +38,11 @@ extern "C" {
 /// @param year Year (e.g., 2024).
 /// @param month Month (1-12).
 /// @param day Day (1-31).
-/// @return Opaque DateOnly object pointer.
+/// @return Opaque DateOnly object pointer, or NULL for an invalid month/day.
 void *rt_dateonly_create(int64_t year, int64_t month, int64_t day);
 
 /// @brief Get today's date.
-/// @return Opaque DateOnly object pointer.
+/// @return Opaque DateOnly object pointer, or NULL if local-time conversion fails.
 void *rt_dateonly_today(void);
 
 /// @brief Parse a date from exact ISO format string (YYYY-MM-DD).
@@ -177,7 +178,7 @@ rt_string rt_dateonly_to_string(void *obj);
 
 /// @brief Format using custom format string.
 /// @param obj Opaque DateOnly object pointer.
-/// @param fmt Format string (supports %Y, %m, %d, %B, %b, %A, %a).
+/// @param fmt Format string (supports %Y, %y, %m, %d, %B, %b, %A, %a, %j, and %%).
 /// @return Formatted string.
 rt_string rt_dateonly_format(void *obj, rt_string fmt);
 

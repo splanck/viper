@@ -157,21 +157,21 @@ func ApplyRenameEdits(edits: Any,
 /// @param edits Sequence of workspace edit maps.
 /// @return Absolute normalized directory path used as rooted validation/apply scope.
 func WorkspaceEditRoot(edits: Any) -> String {
-    var safetyRoot = Path.Norm(Path.Abs("."));
+    var safetyRoot = Path.Normalize(Path.Absolute("."));
     if edits == null or Seq.get_Count(edits) == 0 {
         return safetyRoot;
     }
     var first = Seq.Get(edits, 0);
-    var root = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(first, "file"))));
+    var root = Path.Directory(Path.Normalize(Path.Absolute(Map.GetStr(first, "file"))));
     var i = 1;
     while i < Seq.get_Count(edits) {
         var edit = Seq.Get(edits, i);
-        var editDir = Path.Dir(Path.Norm(Path.Abs(Map.GetStr(edit, "file"))));
+        var editDir = Path.Directory(Path.Normalize(Path.Absolute(Map.GetStr(edit, "file"))));
         while root != "" and PathIsInRoot(root, editDir) == false {
             if root == safetyRoot or PathIsInRoot(safetyRoot, root) == false {
                 return safetyRoot;
             }
-            var parent = Path.Dir(root);
+            var parent = Path.Directory(root);
             if parent == "" or parent == root { break; }
             root = parent;
         }
@@ -190,8 +190,8 @@ func WorkspaceEditRoot(edits: Any) -> String {
 /// @return True when @p path is exactly @p root or begins below it.
 func PathIsInRoot(root: String,
                   path: String) -> Boolean {
-    var nr = Str.ToLower(Path.Norm(Path.Abs(root)));
-    var np = Str.ToLower(Path.Norm(Path.Abs(path)));
+    var nr = Str.ToLower(Path.Normalize(Path.Absolute(root)));
+    var np = Str.ToLower(Path.Normalize(Path.Absolute(path)));
     if nr == np { return true; }
     if Str.EndsWith(nr, "/") or Str.EndsWith(nr, "\\") {
         return Str.StartsWith(np, nr);

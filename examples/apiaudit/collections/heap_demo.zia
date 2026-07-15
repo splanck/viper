@@ -43,10 +43,10 @@ func start() {
 
     // --- TryPeekOption / TryPopOption (safe on empty) ---
     Say("--- TryPeekOption / TryPopOption ---");
-    var tp = h.TryPeekOption();
+    var tp = h.TryPeek();
     SayBool(tp.IsNone);          // 1
     SayBool(h.IsEmpty);         // 1
-    var tpop = h.TryPopOption();
+    var tpop = h.TryPop();
     SayBool(tpop.IsNone);       // 1
     SayBool(h.IsEmpty);         // 1
 

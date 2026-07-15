@@ -12,8 +12,8 @@
 Provides Cube Map 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.CubeMap3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`LoadHdrPanorama`.
+returned object with the instance members below. Its public surface exposes operations
+including `LoadHdrPanorama`.
 
 Constructor: `Viper.Graphics3D.CubeMap3D.New`
 
@@ -168,7 +168,6 @@ Constructor: `Viper.Graphics3D.Canvas3D.New`
 | <a id="viper-graphics3d-canvas3d-poll"></a>`Poll` | `i64()` | `Viper.Graphics3D.Canvas3D.Poll` |
 | <a id="viper-graphics3d-canvas3d-pollevent"></a>`PollEvent` | `i64()` | `Viper.Graphics3D.Canvas3D.PollEvent` |
 | <a id="viper-graphics3d-canvas3d-setbackfacecull"></a>`SetBackfaceCull` | `void(i1)` | `Viper.Graphics3D.Canvas3D.SetBackfaceCull` |
-| <a id="viper-graphics3d-canvas3d-setdtmax"></a>`SetDTMax` | `void(i64)` | `Viper.Graphics3D.Canvas3D.SetDTMax` |
 | <a id="viper-graphics3d-canvas3d-setmaxdeltatime"></a>`SetMaxDeltaTime` | `void(i64)` | `Viper.Graphics3D.Canvas3D.SetMaxDeltaTime` |
 | <a id="viper-graphics3d-canvas3d-setquality"></a>`SetQuality` | `void(i64)` | `Viper.Graphics3D.Canvas3D.SetQuality` |
 | <a id="viper-graphics3d-canvas3d-setinputsource"></a>`SetInputSource` | `void(i64)` | `Viper.Graphics3D.Canvas3D.SetInputSource` |
@@ -254,8 +253,8 @@ Provides Mesh 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Mesh3D` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`VertexCount`, `TriangleCount`, `Resident` and operations including `NewBox`, `Simplify`,
-`NewSphere`, `NewPlane`.
+`VertexCount`, `TriangleCount`, `Resident` and operations including `Simplify`, `Box`,
+`Sphere`, `Plane`.
 
 Constructor: `Viper.Graphics3D.Mesh3D.New`
 
@@ -274,26 +273,22 @@ Constructor: `Viper.Graphics3D.Mesh3D.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-mesh3d-newbox"></a>`NewBox` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Mesh3D.NewBox` |
 | <a id="viper-graphics3d-mesh3d-simplify"></a>`Simplify` | `obj<Viper.Graphics3D.Mesh3D>(i64)` | `Viper.Graphics3D.Mesh3D.Simplify` |
-| <a id="viper-graphics3d-mesh3d-newsphere"></a>`NewSphere` | `obj(f64,i64)` | `Viper.Graphics3D.Mesh3D.NewSphere` |
-| <a id="viper-graphics3d-mesh3d-newplane"></a>`NewPlane` | `obj(f64,f64)` | `Viper.Graphics3D.Mesh3D.NewPlane` |
-| <a id="viper-graphics3d-mesh3d-newcylinder"></a>`NewCylinder` | `obj(f64,f64,i64)` | `Viper.Graphics3D.Mesh3D.NewCylinder` |
 | <a id="viper-graphics3d-mesh3d-box"></a>`Box` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Mesh3D.Box` |
 | <a id="viper-graphics3d-mesh3d-sphere"></a>`Sphere` | `obj(f64,i64)` | `Viper.Graphics3D.Mesh3D.Sphere` |
 | <a id="viper-graphics3d-mesh3d-plane"></a>`Plane` | `obj(f64,f64)` | `Viper.Graphics3D.Mesh3D.Plane` |
 | <a id="viper-graphics3d-mesh3d-cylinder"></a>`Cylinder` | `obj(f64,f64,i64)` | `Viper.Graphics3D.Mesh3D.Cylinder` |
-| <a id="viper-graphics3d-mesh3d-fromobj"></a>`FromOBJ` | `obj(str)` | `Viper.Graphics3D.Mesh3D.FromOBJ` |
-| <a id="viper-graphics3d-mesh3d-fromstl"></a>`FromSTL` | `obj(str)` | `Viper.Graphics3D.Mesh3D.FromSTL` |
+| <a id="viper-graphics3d-mesh3d-fromobj"></a>`FromObj` | `obj(str)` | `Viper.Graphics3D.Mesh3D.FromObj` |
+| <a id="viper-graphics3d-mesh3d-fromstl"></a>`FromStl` | `obj(str)` | `Viper.Graphics3D.Mesh3D.FromStl` |
 | <a id="viper-graphics3d-mesh3d-reserve"></a>`Reserve` | `void(i64,i64)` | `Viper.Graphics3D.Mesh3D.Reserve` |
 | <a id="viper-graphics3d-mesh3d-addvertex"></a>`AddVertex` | `void(f64,f64,f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.Mesh3D.AddVertex` |
 | <a id="viper-graphics3d-mesh3d-addtriangle"></a>`AddTriangle` | `void(i64,i64,i64)` | `Viper.Graphics3D.Mesh3D.AddTriangle` |
 | <a id="viper-graphics3d-mesh3d-clear"></a>`Clear` | `void()` | `Viper.Graphics3D.Mesh3D.Clear` |
-| <a id="viper-graphics3d-mesh3d-recalcnormals"></a>`RecalcNormals` | `void()` | `Viper.Graphics3D.Mesh3D.RecalcNormals` |
+| <a id="viper-graphics3d-mesh3d-recalculatenormals"></a>`RecalculateNormals` | `void()` | `Viper.Graphics3D.Mesh3D.RecalculateNormals` |
 | <a id="viper-graphics3d-mesh3d-clone"></a>`Clone` | `obj()` | `Viper.Graphics3D.Mesh3D.Clone` |
 | <a id="viper-graphics3d-mesh3d-transform"></a>`Transform` | `void(obj)` | `Viper.Graphics3D.Mesh3D.Transform` |
 | <a id="viper-graphics3d-mesh3d-releasecpuscratch"></a>`ReleaseCpuScratch` | `i64()` | `Viper.Graphics3D.Mesh3D.ReleaseCpuScratch` |
-| <a id="viper-graphics3d-mesh3d-calctangents"></a>`CalcTangents` | `void()` | `Viper.Graphics3D.Mesh3D.CalcTangents` |
+| <a id="viper-graphics3d-mesh3d-calculatetangents"></a>`CalculateTangents` | `void()` | `Viper.Graphics3D.Mesh3D.CalculateTangents` |
 | <a id="viper-graphics3d-mesh3d-setskeleton"></a>`SetSkeleton` | `void(obj)` | `Viper.Graphics3D.Mesh3D.SetSkeleton` |
 | <a id="viper-graphics3d-mesh3d-setboneweights"></a>`SetBoneWeights` | `void(i64,i64,f64,i64,f64,i64,f64,i64,f64)` | `Viper.Graphics3D.Mesh3D.SetBoneWeights` |
 | <a id="viper-graphics3d-mesh3d-setmorphtargets"></a>`SetMorphTargets` | `void(obj)` | `Viper.Graphics3D.Mesh3D.SetMorphTargets` |
@@ -306,7 +301,7 @@ Provides Camera 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Camera3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Fov`, `NearPlane`, `EffectiveNearPlane` and operations including `NewHorizontalFov`,
+`Fov`, `NearPlane`, `EffectiveNearPlane` and operations including `WithHorizontalFov`,
 `NewOrtho`, `SetHorizontalFov`, `LookAt`.
 
 Constructor: `Viper.Graphics3D.Camera3D.New`
@@ -331,7 +326,7 @@ Constructor: `Viper.Graphics3D.Camera3D.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-camera3d-newhorizontalfov"></a>`NewHorizontalFov` | `obj(f64,f64,f64,f64)` | `Viper.Graphics3D.Camera3D.NewHorizontalFov` |
+| <a id="viper-graphics3d-camera3d-withhorizontalfov"></a>`WithHorizontalFov` | `obj(f64,f64,f64,f64)` | `Viper.Graphics3D.Camera3D.WithHorizontalFov` |
 | <a id="viper-graphics3d-camera3d-newortho"></a>`NewOrtho` | `obj(f64,f64,f64,f64)` | `Viper.Graphics3D.Camera3D.NewOrtho` |
 | <a id="viper-graphics3d-camera3d-sethorizontalfov"></a>`SetHorizontalFov` | `void(f64)` | `Viper.Graphics3D.Camera3D.SetHorizontalFov` |
 | <a id="viper-graphics3d-camera3d-lookat"></a>`LookAt` | `void(obj,obj,obj)` | `Viper.Graphics3D.Camera3D.LookAt` |
@@ -342,8 +337,8 @@ Constructor: `Viper.Graphics3D.Camera3D.New`
 | <a id="viper-graphics3d-camera3d-shake"></a>`Shake` | `void(f64,f64,f64)` | `Viper.Graphics3D.Camera3D.Shake` |
 | <a id="viper-graphics3d-camera3d-smoothfollow"></a>`SmoothFollow` | `void(obj,f64,f64,f64,f64)` | `Viper.Graphics3D.Camera3D.SmoothFollow` |
 | <a id="viper-graphics3d-camera3d-smoothlookat"></a>`SmoothLookAt` | `void(obj,f64,f64)` | `Viper.Graphics3D.Camera3D.SmoothLookAt` |
-| <a id="viper-graphics3d-camera3d-fpsinit"></a>`FPSInit` | `void()` | `Viper.Graphics3D.Camera3D.FPSInit` |
-| <a id="viper-graphics3d-camera3d-fpsupdate"></a>`FPSUpdate` | `void(f64,f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.Camera3D.FPSUpdate` |
+| <a id="viper-graphics3d-camera3d-firstpersoninit"></a>`FirstPersonInit` | `void()` | `Viper.Graphics3D.Camera3D.FirstPersonInit` |
+| <a id="viper-graphics3d-camera3d-firstpersonupdate"></a>`FirstPersonUpdate` | `void(f64,f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.Camera3D.FirstPersonUpdate` |
 | <a id="viper-graphics3d-camera3d-new"></a>`New` | `obj(f64,f64,f64,f64)` | `Viper.Graphics3D.Camera3D.New` |
 
 <a id="viper-graphics3d-textureasset3d"></a>
@@ -352,8 +347,8 @@ Constructor: `Viper.Graphics3D.Camera3D.New`
 Provides Texture Asset 3D functionality for 3D rendering and scene applications.
 
 `Viper.Graphics3D.TextureAsset3D` exposes a registry-backed runtime surface without requiring
-callers to construct the class directly. Its public surface exposes properties such as `Width`,
-`Height`, `MipCount` and operations including `LoadKTX2`, `LoadKTX2Asset`,
+callers to construct the class directly. Its public surface exposes properties such as
+`Width`, `Height`, `MipCount` and operations including `LoadKtx2`, `LoadKtx2Asset`,
 `SetResidentMipRange`.
 
 #### Properties
@@ -373,8 +368,8 @@ callers to construct the class directly. Its public surface exposes properties s
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-textureasset3d-loadktx2"></a>`LoadKTX2` | `obj<Viper.Graphics3D.TextureAsset3D>(str)` | `Viper.Graphics3D.TextureAsset3D.LoadKTX2` |
-| <a id="viper-graphics3d-textureasset3d-loadktx2asset"></a>`LoadKTX2Asset` | `obj<Viper.Graphics3D.TextureAsset3D>(str)` | `Viper.Graphics3D.TextureAsset3D.LoadKTX2Asset` |
+| <a id="viper-graphics3d-textureasset3d-loadktx2"></a>`LoadKtx2` | `obj<Viper.Graphics3D.TextureAsset3D>(str)` | `Viper.Graphics3D.TextureAsset3D.LoadKtx2` |
+| <a id="viper-graphics3d-textureasset3d-loadktx2asset"></a>`LoadKtx2Asset` | `obj<Viper.Graphics3D.TextureAsset3D>(str)` | `Viper.Graphics3D.TextureAsset3D.LoadKtx2Asset` |
 | <a id="viper-graphics3d-textureasset3d-setresidentmiprange"></a>`SetResidentMipRange` | `void(i64,i64)` | `Viper.Graphics3D.TextureAsset3D.SetResidentMipRange` |
 
 <a id="viper-graphics3d-material3d"></a>
@@ -384,8 +379,8 @@ Provides Material 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Material3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Alpha`, `Metallic`, `Roughness` and operations including `NewColor`, `NewTextured`, `NewPBR`,
-`FromColor`.
+`Alpha`, `Metallic`, `Roughness` and operations including `FromColor`, `Textured`, `PBR`,
+`SetColor`.
 
 Constructor: `Viper.Graphics3D.Material3D.New`
 
@@ -421,9 +416,6 @@ Constructor: `Viper.Graphics3D.Material3D.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-material3d-newcolor"></a>`NewColor` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Material3D.NewColor` |
-| <a id="viper-graphics3d-material3d-newtextured"></a>`NewTextured` | `obj(obj)` | `Viper.Graphics3D.Material3D.NewTextured` |
-| <a id="viper-graphics3d-material3d-newpbr"></a>`NewPBR` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Material3D.NewPBR` |
 | <a id="viper-graphics3d-material3d-fromcolor"></a>`FromColor` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Material3D.FromColor` |
 | <a id="viper-graphics3d-material3d-textured"></a>`Textured` | `obj(obj)` | `Viper.Graphics3D.Material3D.Textured` |
 | <a id="viper-graphics3d-material3d-pbr"></a>`PBR` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Material3D.PBR` |
@@ -439,7 +431,7 @@ Constructor: `Viper.Graphics3D.Material3D.New`
 | <a id="viper-graphics3d-material3d-makeinstance"></a>`MakeInstance` | `obj()` | `Viper.Graphics3D.Material3D.MakeInstance` |
 | <a id="viper-graphics3d-material3d-setnormalmap"></a>`SetNormalMap` | `void(obj)` | `Viper.Graphics3D.Material3D.SetNormalMap` |
 | <a id="viper-graphics3d-material3d-setmetallicroughnessmap"></a>`SetMetallicRoughnessMap` | `void(obj)` | `Viper.Graphics3D.Material3D.SetMetallicRoughnessMap` |
-| <a id="viper-graphics3d-material3d-setaomap"></a>`SetAOMap` | `void(obj)` | `Viper.Graphics3D.Material3D.SetAOMap` |
+| <a id="viper-graphics3d-material3d-setambientocclusionmap"></a>`SetAmbientOcclusionMap` | `void(obj)` | `Viper.Graphics3D.Material3D.SetAmbientOcclusionMap` |
 | <a id="viper-graphics3d-material3d-setlightmap"></a>`SetLightmap` | `void(obj)` | `Viper.Graphics3D.Material3D.SetLightmap` |
 | <a id="viper-graphics3d-material3d-setspecularmap"></a>`SetSpecularMap` | `void(obj)` | `Viper.Graphics3D.Material3D.SetSpecularMap` |
 | <a id="viper-graphics3d-material3d-setemissivemap"></a>`SetEmissiveMap` | `void(obj)` | `Viper.Graphics3D.Material3D.SetEmissiveMap` |
@@ -456,8 +448,8 @@ Constructor: `Viper.Graphics3D.Material3D.New`
 Provides Light 3D functionality for 3D rendering and scene applications.
 
 `Viper.Graphics3D.Light3D` exposes a registry-backed runtime surface without requiring callers
-to construct the class directly. Its public surface exposes properties such as `Type`, `Color`,
-`Intensity` and operations including `NewDirectional`, `NewPoint`, `NewAmbient`, `NewSpot`.
+to construct the class directly. Its public surface exposes properties such as `Type`,
+`Color`, `Intensity` and operations including `Directional`, `Point`, `Ambient`, `Spot`.
 
 #### Properties
 
@@ -466,7 +458,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-graphics3d-light3d-type"></a>`Type` | `i64` | read-only |
 | <a id="viper-graphics3d-light3d-color"></a>`Color` | `obj<Viper.Math.Vec3>` | read-only |
 | <a id="viper-graphics3d-light3d-intensity"></a>`Intensity` | `f64` | read-only |
-| <a id="viper-graphics3d-light3d-enabled"></a>`Enabled` | `i1` | read/write |
+| <a id="viper-graphics3d-light3d-isenabled"></a>`IsEnabled` | `i1` | read/write |
 | <a id="viper-graphics3d-light3d-castsshadows"></a>`CastsShadows` | `i1` | read/write |
 | <a id="viper-graphics3d-light3d-direction"></a>`Direction` | `obj<Viper.Math.Vec3>` | read/write |
 | <a id="viper-graphics3d-light3d-position"></a>`Position` | `obj<Viper.Math.Vec3>` | read/write |
@@ -476,10 +468,6 @@ to construct the class directly. Its public surface exposes properties such as `
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-light3d-newdirectional"></a>`NewDirectional` | `obj(obj,f64,f64,f64)` | `Viper.Graphics3D.Light3D.NewDirectional` |
-| <a id="viper-graphics3d-light3d-newpoint"></a>`NewPoint` | `obj(obj,f64,f64,f64,f64)` | `Viper.Graphics3D.Light3D.NewPoint` |
-| <a id="viper-graphics3d-light3d-newambient"></a>`NewAmbient` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Light3D.NewAmbient` |
-| <a id="viper-graphics3d-light3d-newspot"></a>`NewSpot` | `obj(obj,obj,f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.Light3D.NewSpot` |
 | <a id="viper-graphics3d-light3d-directional"></a>`Directional` | `obj(obj,f64,f64,f64)` | `Viper.Graphics3D.Light3D.Directional` |
 | <a id="viper-graphics3d-light3d-point"></a>`Point` | `obj(obj,f64,f64,f64,f64)` | `Viper.Graphics3D.Light3D.Point` |
 | <a id="viper-graphics3d-light3d-ambient"></a>`Ambient` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Light3D.Ambient` |
@@ -520,8 +508,7 @@ Constructor: `Viper.Graphics3D.SceneGraph.New`
 | <a id="viper-graphics3d-scenegraph-add"></a>`Add` | `void(obj)` | `Viper.Graphics3D.SceneGraph.Add` |
 | <a id="viper-graphics3d-scenegraph-tryadd"></a>`TryAdd` | `i1(obj)` | `Viper.Graphics3D.SceneGraph.TryAdd` |
 | <a id="viper-graphics3d-scenegraph-remove"></a>`Remove` | `void(obj)` | `Viper.Graphics3D.SceneGraph.Remove` |
-| <a id="viper-graphics3d-scenegraph-find"></a>`Find` | `obj<Viper.Graphics3D.SceneNode>(str)` | `Viper.Graphics3D.SceneGraph.Find` |
-| <a id="viper-graphics3d-scenegraph-findoption"></a>`FindOption` | `obj<Viper.Option>(str)` | `Viper.Graphics3D.SceneGraph.FindOption` |
+| <a id="viper-graphics3d-scenegraph-find"></a>`Find` | `obj<Viper.Option>(str)` | `Viper.Graphics3D.SceneGraph.Find` |
 | <a id="viper-graphics3d-scenegraph-queryaabb"></a>`QueryAABB` | `obj<Viper.Collections.Seq>(obj,obj)` | `Viper.Graphics3D.SceneGraph.QueryAABB` |
 | <a id="viper-graphics3d-scenegraph-querysphere"></a>`QuerySphere` | `obj<Viper.Collections.Seq>(obj,f64)` | `Viper.Graphics3D.SceneGraph.QuerySphere` |
 | <a id="viper-graphics3d-scenegraph-raycastnodes"></a>`RaycastNodes` | `obj<Viper.Graphics3D.SceneNode>(obj,obj,f64)` | `Viper.Graphics3D.SceneGraph.RaycastNodes` |
@@ -584,8 +571,7 @@ Constructor: `Viper.Graphics3D.SceneNode.New`
 | <a id="viper-graphics3d-scenenode-tryaddchild"></a>`TryAddChild` | `i1(obj)` | `Viper.Graphics3D.SceneNode.TryAddChild` |
 | <a id="viper-graphics3d-scenenode-removechild"></a>`RemoveChild` | `void(obj)` | `Viper.Graphics3D.SceneNode.RemoveChild` |
 | <a id="viper-graphics3d-scenenode-getchild"></a>`GetChild` | `obj<Viper.Graphics3D.SceneNode>(i64)` | `Viper.Graphics3D.SceneNode.GetChild` |
-| <a id="viper-graphics3d-scenenode-find"></a>`Find` | `obj(str)` | `Viper.Graphics3D.SceneNode.Find` |
-| <a id="viper-graphics3d-scenenode-findoption"></a>`FindOption` | `obj<Viper.Option>(str)` | `Viper.Graphics3D.SceneNode.FindOption` |
+| <a id="viper-graphics3d-scenenode-find"></a>`Find` | `obj<Viper.Option>(str)` | `Viper.Graphics3D.SceneNode.Find` |
 | <a id="viper-graphics3d-scenenode-bindbody"></a>`BindBody` | `void(obj)` | `Viper.Graphics3D.SceneNode.BindBody` |
 | <a id="viper-graphics3d-scenenode-clearbodybinding"></a>`ClearBodyBinding` | `void()` | `Viper.Graphics3D.SceneNode.ClearBodyBinding` |
 | <a id="viper-graphics3d-scenenode-bindanimator"></a>`BindAnimator` | `void(obj)` | `Viper.Graphics3D.SceneNode.BindAnimator` |
@@ -594,15 +580,15 @@ Constructor: `Viper.Graphics3D.SceneNode.New`
 | <a id="viper-graphics3d-scenenode-attachtobone"></a>`AttachToBone` | `void(obj,i64,f64,f64,f64)` | `Viper.Graphics3D.SceneNode.AttachToBone` |
 | <a id="viper-graphics3d-scenenode-detachbonesocket"></a>`DetachBoneSocket` | `void()` | `Viper.Graphics3D.SceneNode.DetachBoneSocket` |
 | <a id="viper-graphics3d-scenenode-clearnodeanimatorbinding"></a>`ClearNodeAnimatorBinding` | `void()` | `Viper.Graphics3D.SceneNode.ClearNodeAnimatorBinding` |
-| <a id="viper-graphics3d-scenenode-addlod"></a>`AddLOD` | `void(f64,obj)` | `Viper.Graphics3D.SceneNode.AddLOD` |
-| <a id="viper-graphics3d-scenenode-generatelods"></a>`GenerateLODs` | `void(i64,f64)` | `Viper.Graphics3D.SceneNode.GenerateLODs` |
-| <a id="viper-graphics3d-scenenode-setautolod"></a>`SetAutoLOD` | `void(i1,f64)` | `Viper.Graphics3D.SceneNode.SetAutoLOD` |
+| <a id="viper-graphics3d-scenenode-addlod"></a>`AddLod` | `void(f64,obj)` | `Viper.Graphics3D.SceneNode.AddLod` |
+| <a id="viper-graphics3d-scenenode-generatelods"></a>`GenerateLods` | `void(i64,f64)` | `Viper.Graphics3D.SceneNode.GenerateLods` |
+| <a id="viper-graphics3d-scenenode-setautolod"></a>`SetAutoLod` | `void(i1,f64)` | `Viper.Graphics3D.SceneNode.SetAutoLod` |
 | <a id="viper-graphics3d-scenenode-setimpostor"></a>`SetImpostor` | `void(f64,obj)` | `Viper.Graphics3D.SceneNode.SetImpostor` |
 | <a id="viper-graphics3d-scenenode-setimpostorframes"></a>`SetImpostorFrames` | `void(f64,obj,i64)` | `Viper.Graphics3D.SceneNode.SetImpostorFrames` |
 | <a id="viper-graphics3d-scenenode-setstatic"></a>`SetStatic` | `void(i1)` | `Viper.Graphics3D.SceneNode.SetStatic` |
 | <a id="viper-graphics3d-scenenode-getstatic"></a>`GetStatic` | `i1()` | `Viper.Graphics3D.SceneNode.GetStatic` |
 | <a id="viper-graphics3d-scenenode-getimpostorframeindex"></a>`GetImpostorFrameIndex` | `i64()` | `Viper.Graphics3D.SceneNode.GetImpostorFrameIndex` |
-| <a id="viper-graphics3d-scenenode-clearlod"></a>`ClearLOD` | `void()` | `Viper.Graphics3D.SceneNode.ClearLOD` |
+| <a id="viper-graphics3d-scenenode-clearlod"></a>`ClearLod` | `void()` | `Viper.Graphics3D.SceneNode.ClearLod` |
 | <a id="viper-graphics3d-scenenode-getlodmesh"></a>`GetLodMesh` | `obj(i64)` | `Viper.Graphics3D.SceneNode.GetLodMesh` |
 | <a id="viper-graphics3d-scenenode-getloddistance"></a>`GetLodDistance` | `f64(i64)` | `Viper.Graphics3D.SceneNode.GetLodDistance` |
 | <a id="viper-graphics3d-scenenode-setlodresident"></a>`SetLodResident` | `void(i64,i1)` | `Viper.Graphics3D.SceneNode.SetLodResident` |
@@ -642,8 +628,8 @@ Provides Node Animator 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.NodeAnimator3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`ClipCount`, `CurrentClip`, `Playing` and operations including `GetClip`, `GetClipName`, `Play`,
-`Stop`.
+`ClipCount`, `CurrentClip`, `IsPlaying` and operations including `GetClip`, `GetClipName`,
+`Play`, `Stop`.
 
 Constructor: `Viper.Graphics3D.NodeAnimator3D.New`
 
@@ -653,7 +639,7 @@ Constructor: `Viper.Graphics3D.NodeAnimator3D.New`
 |---|---|---|
 | <a id="viper-graphics3d-nodeanimator3d-clipcount"></a>`ClipCount` | `i64` | read-only |
 | <a id="viper-graphics3d-nodeanimator3d-currentclip"></a>`CurrentClip` | `str` | read-only |
-| <a id="viper-graphics3d-nodeanimator3d-playing"></a>`Playing` | `i1` | read-only |
+| <a id="viper-graphics3d-nodeanimator3d-isplaying"></a>`IsPlaying` | `i1` | read-only |
 | <a id="viper-graphics3d-nodeanimator3d-speed"></a>`Speed` | `f64` | read-only |
 | <a id="viper-graphics3d-nodeanimator3d-time"></a>`Time` | `f64` | read-only |
 
@@ -677,8 +663,8 @@ Provides Skeleton 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Skeleton3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`BoneCount`, `AliasCount` and operations including `AddBone`, `ComputeInverseBind`, `FindBone`,
-`FindBoneOption`.
+`BoneCount`, `AliasCount` and operations including `AddBone`, `ComputeInverseBind`,
+`FindBoneOption`, `GetBoneName`.
 
 Constructor: `Viper.Graphics3D.Skeleton3D.New`
 
@@ -695,7 +681,6 @@ Constructor: `Viper.Graphics3D.Skeleton3D.New`
 |---|---|---|
 | <a id="viper-graphics3d-skeleton3d-addbone"></a>`AddBone` | `i64(str,i64,obj)` | `Viper.Graphics3D.Skeleton3D.AddBone` |
 | <a id="viper-graphics3d-skeleton3d-computeinversebind"></a>`ComputeInverseBind` | `void()` | `Viper.Graphics3D.Skeleton3D.ComputeInverseBind` |
-| <a id="viper-graphics3d-skeleton3d-findbone"></a>`FindBone` | `i64(str)` | `Viper.Graphics3D.Skeleton3D.FindBone` |
 | <a id="viper-graphics3d-skeleton3d-findboneoption"></a>`FindBoneOption` | `obj<Viper.Option>(str)` | `Viper.Graphics3D.Skeleton3D.FindBoneOption` |
 | <a id="viper-graphics3d-skeleton3d-getbonename"></a>`GetBoneName` | `str(i64)` | `Viper.Graphics3D.Skeleton3D.GetBoneName` |
 | <a id="viper-graphics3d-skeleton3d-setbonealias"></a>`SetBoneAlias` | `void(str,str)` | `Viper.Graphics3D.Skeleton3D.SetBoneAlias` |
@@ -764,16 +749,13 @@ Constructor: `Viper.Graphics3D.AnimPlayer3D.New`
 Provides Asset Diagnostics 3D constants and static operations for 3D rendering and scene applications.
 
 `Viper.Graphics3D.AssetDiagnostics3D` is a static runtime surface and does not require an
-instance. Its public surface exposes properties such as `LastLoadError`, `LastLoadErrorCode`,
-`LoadWarningCount` and operations including `GetLoadWarning`, `GetLoadWarnings`,
-`GetImportReport`.
+instance. Its public surface exposes properties such as `LoadWarningCount` and operations
+including `GetLoadWarning`, `GetLoadWarnings`, `GetImportReport`.
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-graphics3d-assetdiagnostics3d-lastloaderror"></a>`LastLoadError` | `str` | read-only |
-| <a id="viper-graphics3d-assetdiagnostics3d-lastloaderrorcode"></a>`LastLoadErrorCode` | `i64` | read-only |
 | <a id="viper-graphics3d-assetdiagnostics3d-loadwarningcount"></a>`LoadWarningCount` | `i64` | read-only |
 
 #### Methods
@@ -785,9 +767,9 @@ instance. Its public surface exposes properties such as `LastLoadError`, `LastLo
 | <a id="viper-graphics3d-assetdiagnostics3d-getimportreport"></a>`GetImportReport` | `str()` | `Viper.Graphics3D.AssetDiagnostics3D.GetImportReport` |
 
 <a id="viper-graphics3d-gltf"></a>
-### `Viper.Graphics3D.GLTF`
+### `Viper.Graphics3D.Gltf`
 
-Provides GLTF functionality for 3D rendering and scene applications.
+Provides glTF model import for 3D rendering and scene applications.
 
 `Viper.Graphics3D.GLTF` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `MeshCount`,
@@ -804,15 +786,15 @@ construct the class directly. Its public surface exposes properties such as `Mes
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-gltf-load"></a>`Load` | `obj<Viper.Graphics3D.GLTF>(str)` | `Viper.Graphics3D.GLTF.Load` |
-| <a id="viper-graphics3d-gltf-loadasset"></a>`LoadAsset` | `obj<Viper.Graphics3D.GLTF>(str)` | `Viper.Graphics3D.GLTF.LoadAsset` |
-| <a id="viper-graphics3d-gltf-getmesh"></a>`GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(i64)` | `Viper.Graphics3D.GLTF.GetMesh` |
-| <a id="viper-graphics3d-gltf-getmaterial"></a>`GetMaterial` | `obj<Viper.Graphics3D.Material3D>(i64)` | `Viper.Graphics3D.GLTF.GetMaterial` |
+| <a id="viper-graphics3d-gltf-load"></a>`Load` | `obj<Viper.Graphics3D.Gltf>(str)` | `Viper.Graphics3D.Gltf.Load` |
+| <a id="viper-graphics3d-gltf-loadasset"></a>`LoadAsset` | `obj<Viper.Graphics3D.Gltf>(str)` | `Viper.Graphics3D.Gltf.LoadAsset` |
+| <a id="viper-graphics3d-gltf-getmesh"></a>`GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(i64)` | `Viper.Graphics3D.Gltf.GetMesh` |
+| <a id="viper-graphics3d-gltf-getmaterial"></a>`GetMaterial` | `obj<Viper.Graphics3D.Material3D>(i64)` | `Viper.Graphics3D.Gltf.GetMaterial` |
 
 <a id="viper-graphics3d-fbx"></a>
-### `Viper.Graphics3D.FBX`
+### `Viper.Graphics3D.Fbx`
 
-Provides FBX functionality for 3D rendering and scene applications.
+Provides FBX model import for 3D rendering and scene applications.
 
 `Viper.Graphics3D.FBX` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `MeshCount`,
@@ -831,13 +813,13 @@ construct the class directly. Its public surface exposes properties such as `Mes
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-fbx-load"></a>`Load` | `obj<Viper.Graphics3D.FBX>(str)` | `Viper.Graphics3D.FBX.Load` |
-| <a id="viper-graphics3d-fbx-getmesh"></a>`GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(i64)` | `Viper.Graphics3D.FBX.GetMesh` |
-| <a id="viper-graphics3d-fbx-getskeleton"></a>`GetSkeleton` | `obj<Viper.Graphics3D.Skeleton3D>()` | `Viper.Graphics3D.FBX.GetSkeleton` |
-| <a id="viper-graphics3d-fbx-getanimation"></a>`GetAnimation` | `obj<Viper.Graphics3D.Animation3D>(i64)` | `Viper.Graphics3D.FBX.GetAnimation` |
-| <a id="viper-graphics3d-fbx-getanimationname"></a>`GetAnimationName` | `str(i64)` | `Viper.Graphics3D.FBX.GetAnimationName` |
-| <a id="viper-graphics3d-fbx-getmaterial"></a>`GetMaterial` | `obj<Viper.Graphics3D.Material3D>(i64)` | `Viper.Graphics3D.FBX.GetMaterial` |
-| <a id="viper-graphics3d-fbx-getmorphtarget"></a>`GetMorphTarget` | `obj<Viper.Graphics3D.MorphTarget3D>(i64)` | `Viper.Graphics3D.FBX.GetMorphTarget` |
+| <a id="viper-graphics3d-fbx-load"></a>`Load` | `obj<Viper.Graphics3D.Fbx>(str)` | `Viper.Graphics3D.Fbx.Load` |
+| <a id="viper-graphics3d-fbx-getmesh"></a>`GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(i64)` | `Viper.Graphics3D.Fbx.GetMesh` |
+| <a id="viper-graphics3d-fbx-getskeleton"></a>`GetSkeleton` | `obj<Viper.Graphics3D.Skeleton3D>()` | `Viper.Graphics3D.Fbx.GetSkeleton` |
+| <a id="viper-graphics3d-fbx-getanimation"></a>`GetAnimation` | `obj<Viper.Graphics3D.Animation3D>(i64)` | `Viper.Graphics3D.Fbx.GetAnimation` |
+| <a id="viper-graphics3d-fbx-getanimationname"></a>`GetAnimationName` | `str(i64)` | `Viper.Graphics3D.Fbx.GetAnimationName` |
+| <a id="viper-graphics3d-fbx-getmaterial"></a>`GetMaterial` | `obj<Viper.Graphics3D.Material3D>(i64)` | `Viper.Graphics3D.Fbx.GetMaterial` |
+| <a id="viper-graphics3d-fbx-getmorphtarget"></a>`GetMorphTarget` | `obj<Viper.Graphics3D.MorphTarget3D>(i64)` | `Viper.Graphics3D.Fbx.GetMorphTarget` |
 
 <a id="viper-graphics3d-sceneasset"></a>
 ### `Viper.Graphics3D.SceneAsset`
@@ -846,8 +828,8 @@ Provides Scene Asset functionality for 3D rendering and scene applications.
 
 `Viper.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
 callers to construct the class directly. Its public surface exposes properties such as
-`MeshCount`, `MaterialCount`, `SkeletonCount` and operations including `Load`, `LoadResult`,
-`LoadWithOptions`, `LoadWithOptionsEx`.
+`MeshCount`, `MaterialCount`, `SkeletonCount` and operations including `LoadResult`,
+`LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
 
 #### Properties
 
@@ -866,12 +848,10 @@ callers to construct the class directly. Its public surface exposes properties s
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-sceneasset-load"></a>`Load` | `obj<Viper.Graphics3D.SceneAsset>(str)` | `Viper.Graphics3D.SceneAsset.Load` |
 | <a id="viper-graphics3d-sceneasset-loadresult"></a>`LoadResult` | `obj<Viper.Result>(str)` | `Viper.Graphics3D.SceneAsset.LoadResult` |
 | <a id="viper-graphics3d-sceneasset-loadwithoptions"></a>`LoadWithOptions` | `obj<Viper.Graphics3D.SceneAsset>(str,i1)` | `Viper.Graphics3D.SceneAsset.LoadWithOptions` |
 | <a id="viper-graphics3d-sceneasset-loadwithoptionsex"></a>`LoadWithOptionsEx` | `obj<Viper.Graphics3D.SceneAsset>(str,str)` | `Viper.Graphics3D.SceneAsset.LoadWithOptionsEx` |
 | <a id="viper-graphics3d-sceneasset-loadresultwithoptions"></a>`LoadResultWithOptions` | `obj<Viper.Result>(str,i1)` | `Viper.Graphics3D.SceneAsset.LoadResultWithOptions` |
-| <a id="viper-graphics3d-sceneasset-loadasset"></a>`LoadAsset` | `obj<Viper.Graphics3D.SceneAsset>(str)` | `Viper.Graphics3D.SceneAsset.LoadAsset` |
 | <a id="viper-graphics3d-sceneasset-loadassetresult"></a>`LoadAssetResult` | `obj<Viper.Result>(str)` | `Viper.Graphics3D.SceneAsset.LoadAssetResult` |
 | <a id="viper-graphics3d-sceneasset-getcameracount"></a>`GetCameraCount` | `i64(i64)` | `Viper.Graphics3D.SceneAsset.GetCameraCount` |
 | <a id="viper-graphics3d-sceneasset-getmesh"></a>`GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(i64)` | `Viper.Graphics3D.SceneAsset.GetMesh` |
@@ -884,19 +864,14 @@ callers to construct the class directly. Its public surface exposes properties s
 | <a id="viper-graphics3d-sceneasset-getscenename"></a>`GetSceneName` | `str(i64)` | `Viper.Graphics3D.SceneAsset.GetSceneName` |
 | <a id="viper-graphics3d-sceneasset-getvariantname"></a>`GetVariantName` | `str(i64)` | `Viper.Graphics3D.SceneAsset.GetVariantName` |
 | <a id="viper-graphics3d-sceneasset-applyvariant"></a>`ApplyVariant` | `i64(obj,i64)` | `Viper.Graphics3D.SceneAsset.ApplyVariant` |
-| <a id="viper-graphics3d-sceneasset-generatelods"></a>`GenerateLODs` | `i64(i64,f64)` | `Viper.Graphics3D.SceneAsset.GenerateLODs` |
-| <a id="viper-graphics3d-sceneasset-findnode"></a>`FindNode` | `obj(str)` | `Viper.Graphics3D.SceneAsset.FindNode` |
-| <a id="viper-graphics3d-sceneasset-findnodeoption"></a>`FindNodeOption` | `obj<Viper.Option>(str)` | `Viper.Graphics3D.SceneAsset.FindNodeOption` |
+| <a id="viper-graphics3d-sceneasset-generatelods"></a>`GenerateLods` | `i64(i64,f64)` | `Viper.Graphics3D.SceneAsset.GenerateLods` |
+| <a id="viper-graphics3d-sceneasset-findnode"></a>`FindNode` | `obj<Viper.Option>(str)` | `Viper.Graphics3D.SceneAsset.FindNode` |
 | <a id="viper-graphics3d-sceneasset-instantiate"></a>`Instantiate` | `obj()` | `Viper.Graphics3D.SceneAsset.Instantiate` |
 | <a id="viper-graphics3d-sceneasset-instantiatescene"></a>`InstantiateScene` | `obj()` | `Viper.Graphics3D.SceneAsset.InstantiateScene` |
 | <a id="viper-graphics3d-sceneasset-instantiatesceneat"></a>`InstantiateSceneAt` | `obj<Viper.Graphics3D.SceneGraph>(i64)` | `Viper.Graphics3D.SceneAsset.InstantiateSceneAt` |
-| <a id="viper-graphics3d-sceneasset-loadanimation"></a>`LoadAnimation` | `obj<Viper.Graphics3D.Animation3D>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadAnimation` |
 | <a id="viper-graphics3d-sceneasset-loadanimationresult"></a>`LoadAnimationResult` | `obj<Viper.Result>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadAnimationResult` |
-| <a id="viper-graphics3d-sceneasset-loadanimationasset"></a>`LoadAnimationAsset` | `obj<Viper.Graphics3D.Animation3D>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadAnimationAsset` |
 | <a id="viper-graphics3d-sceneasset-loadanimationassetresult"></a>`LoadAnimationAssetResult` | `obj<Viper.Result>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadAnimationAssetResult` |
-| <a id="viper-graphics3d-sceneasset-loadnodeanimation"></a>`LoadNodeAnimation` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadNodeAnimation` |
 | <a id="viper-graphics3d-sceneasset-loadnodeanimationresult"></a>`LoadNodeAnimationResult` | `obj<Viper.Result>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult` |
-| <a id="viper-graphics3d-sceneasset-loadnodeanimationasset"></a>`LoadNodeAnimationAsset` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadNodeAnimationAsset` |
 | <a id="viper-graphics3d-sceneasset-loadnodeanimationassetresult"></a>`LoadNodeAnimationAssetResult` | `obj<Viper.Result>(str,i64)` | `Viper.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult` |
 
 <a id="viper-graphics3d-morphtarget3d"></a>
@@ -905,7 +880,7 @@ callers to construct the class directly. Its public surface exposes properties s
 Provides Morph Target 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.MorphTarget3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `ShapeCount` and operations including `AddShape`, `SetDelta`, `SetNormalDelta`, `SetWeight`.
 
 Constructor: `Viper.Graphics3D.MorphTarget3D.New`
@@ -935,7 +910,7 @@ Provides Particles 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Particles3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Count`, `Emitting`, `Additive` and operations including `SetStretch`, `SetTrail`,
+`Count`, `IsEmitting`, `Additive` and operations including `SetStretch`, `SetTrail`,
 `SetSoftness`, `SetPosition`.
 
 Constructor: `Viper.Graphics3D.Particles3D.New`
@@ -945,7 +920,7 @@ Constructor: `Viper.Graphics3D.Particles3D.New`
 | Property | Type | Access |
 |---|---|---|
 | <a id="viper-graphics3d-particles3d-count"></a>`Count` | `i64` | read-only |
-| <a id="viper-graphics3d-particles3d-emitting"></a>`Emitting` | `i1` | read-only |
+| <a id="viper-graphics3d-particles3d-isemitting"></a>`IsEmitting` | `i1` | read-only |
 | <a id="viper-graphics3d-particles3d-additive"></a>`Additive` | `i1` | read/write |
 | <a id="viper-graphics3d-particles3d-seed"></a>`Seed` | `i64` | read/write |
 
@@ -984,8 +959,8 @@ Provides Post FX 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.PostFX3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Enabled`, `EffectCount`, `LastError` and operations including `AddAutoExposure`, `AddColorLUT`,
-`MakeIdentityLUT`, `AddSunShafts`.
+`IsEnabled`, `EffectCount`, `LastError` and operations including `AddAutoExposure`,
+`AddColorLut`, `MakeIdentityLut`, `AddSunShafts`.
 
 Constructor: `Viper.Graphics3D.PostFX3D.New`
 
@@ -993,7 +968,7 @@ Constructor: `Viper.Graphics3D.PostFX3D.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-graphics3d-postfx3d-enabled"></a>`Enabled` | `i1` | read/write |
+| <a id="viper-graphics3d-postfx3d-isenabled"></a>`IsEnabled` | `i1` | read/write |
 | <a id="viper-graphics3d-postfx3d-effectcount"></a>`EffectCount` | `i64` | read-only |
 | <a id="viper-graphics3d-postfx3d-lasterror"></a>`LastError` | `str` | read-only |
 
@@ -1002,22 +977,22 @@ Constructor: `Viper.Graphics3D.PostFX3D.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-graphics3d-postfx3d-addautoexposure"></a>`AddAutoExposure` | `void(f64,f64,f64)` | `Viper.Graphics3D.PostFX3D.AddAutoExposure` |
-| <a id="viper-graphics3d-postfx3d-addcolorlut"></a>`AddColorLUT` | `void(obj,f64)` | `Viper.Graphics3D.PostFX3D.AddColorLUT` |
-| <a id="viper-graphics3d-postfx3d-makeidentitylut"></a>`MakeIdentityLUT` | `obj()` | `Viper.Graphics3D.PostFX3D.MakeIdentityLUT` |
+| <a id="viper-graphics3d-postfx3d-addcolorlut"></a>`AddColorLut` | `void(obj,f64)` | `Viper.Graphics3D.PostFX3D.AddColorLut` |
+| <a id="viper-graphics3d-postfx3d-makeidentitylut"></a>`MakeIdentityLut` | `obj()` | `Viper.Graphics3D.PostFX3D.MakeIdentityLut` |
 | <a id="viper-graphics3d-postfx3d-addsunshafts"></a>`AddSunShafts` | `void(f64,f64,i64)` | `Viper.Graphics3D.PostFX3D.AddSunShafts` |
 | <a id="viper-graphics3d-postfx3d-addbloom"></a>`AddBloom` | `void(f64,f64,i64)` | `Viper.Graphics3D.PostFX3D.AddBloom` |
 | <a id="viper-graphics3d-postfx3d-addtonemap"></a>`AddTonemap` | `void(i64,f64)` | `Viper.Graphics3D.PostFX3D.AddTonemap` |
-| <a id="viper-graphics3d-postfx3d-addfxaa"></a>`AddFXAA` | `void()` | `Viper.Graphics3D.PostFX3D.AddFXAA` |
+| <a id="viper-graphics3d-postfx3d-addfxaa"></a>`AddFxaa` | `void()` | `Viper.Graphics3D.PostFX3D.AddFxaa` |
 | <a id="viper-graphics3d-postfx3d-addcolorgrade"></a>`AddColorGrade` | `void(f64,f64,f64)` | `Viper.Graphics3D.PostFX3D.AddColorGrade` |
 | <a id="viper-graphics3d-postfx3d-addvignette"></a>`AddVignette` | `void(f64,f64)` | `Viper.Graphics3D.PostFX3D.AddVignette` |
 | <a id="viper-graphics3d-postfx3d-clear"></a>`Clear` | `void()` | `Viper.Graphics3D.PostFX3D.Clear` |
 | <a id="viper-graphics3d-postfx3d-newquality"></a>`NewQuality` | `obj(obj,i64)` | `Viper.Graphics3D.PostFX3D.NewQuality` |
-| <a id="viper-graphics3d-postfx3d-addssao"></a>`AddSSAO` | `void(f64,f64,i64)` | `Viper.Graphics3D.PostFX3D.AddSSAO` |
-| <a id="viper-graphics3d-postfx3d-adddof"></a>`AddDOF` | `void(f64,f64,f64)` | `Viper.Graphics3D.PostFX3D.AddDOF` |
+| <a id="viper-graphics3d-postfx3d-addssao"></a>`AddSsao` | `void(f64,f64,i64)` | `Viper.Graphics3D.PostFX3D.AddSsao` |
+| <a id="viper-graphics3d-postfx3d-adddof"></a>`AddDof` | `void(f64,f64,f64)` | `Viper.Graphics3D.PostFX3D.AddDof` |
 | <a id="viper-graphics3d-postfx3d-setdoffocus"></a>`SetDofFocus` | `i1(f64)` | `Viper.Graphics3D.PostFX3D.SetDofFocus` |
 | <a id="viper-graphics3d-postfx3d-addmotionblur"></a>`AddMotionBlur` | `void(f64,i64)` | `Viper.Graphics3D.PostFX3D.AddMotionBlur` |
-| <a id="viper-graphics3d-postfx3d-addtaa"></a>`AddTAA` | `void(f64)` | `Viper.Graphics3D.PostFX3D.AddTAA` |
-| <a id="viper-graphics3d-postfx3d-addssr"></a>`AddSSR` | `void(f64,f64)` | `Viper.Graphics3D.PostFX3D.AddSSR` |
+| <a id="viper-graphics3d-postfx3d-addtaa"></a>`AddTaa` | `void(f64)` | `Viper.Graphics3D.PostFX3D.AddTaa` |
+| <a id="viper-graphics3d-postfx3d-addssr"></a>`AddSsr` | `void(f64,f64)` | `Viper.Graphics3D.PostFX3D.AddSsr` |
 | <a id="viper-graphics3d-postfx3d-new"></a>`New` | `obj()` | `Viper.Graphics3D.PostFX3D.New` |
 
 <a id="viper-graphics3d-rayhit3d"></a>
@@ -1025,8 +1000,8 @@ Constructor: `Viper.Graphics3D.PostFX3D.New`
 
 Provides Ray Hit 3D constants and static operations for 3D rendering and scene applications.
 
-`Viper.Graphics3D.RayHit3D` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Distance`, `Point`, `Normal`.
+`Viper.Graphics3D.RayHit3D` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Distance`, `Point`, `Normal`.
 
 #### Properties
 
@@ -1088,7 +1063,7 @@ Constructor: `Viper.Graphics3D.SoundSource3D.New`
 | <a id="viper-graphics3d-soundsource3d-position"></a>`Position` | `obj<Viper.Math.Vec3>` | read/write |
 | <a id="viper-graphics3d-soundsource3d-velocity"></a>`Velocity` | `obj<Viper.Math.Vec3>` | read/write |
 | <a id="viper-graphics3d-soundsource3d-dopplerfactor"></a>`DopplerFactor` | `f64` | read-only |
-| <a id="viper-graphics3d-soundsource3d-refdistance"></a>`RefDistance` | `f64` | read/write |
+| <a id="viper-graphics3d-soundsource3d-referencedistance"></a>`ReferenceDistance` | `f64` | read/write |
 | <a id="viper-graphics3d-soundsource3d-maxdistance"></a>`MaxDistance` | `f64` | read/write |
 | <a id="viper-graphics3d-soundsource3d-volume"></a>`Volume` | `i64` | read/write |
 | <a id="viper-graphics3d-soundsource3d-pitch"></a>`Pitch` | `f64` | read/write |
@@ -1108,82 +1083,82 @@ Constructor: `Viper.Graphics3D.SoundSource3D.New`
 | <a id="viper-graphics3d-soundsource3d-clearnodebinding"></a>`ClearNodeBinding` | `void()` | `Viper.Graphics3D.SoundSource3D.ClearNodeBinding` |
 | <a id="viper-graphics3d-soundsource3d-new"></a>`New` | `obj(obj)` | `Viper.Graphics3D.SoundSource3D.New` |
 
-<a id="viper-graphics3d-physics3dworld"></a>
-### `Viper.Graphics3D.Physics3DWorld`
+<a id="viper-graphics3d-physicsworld3d"></a>
+### `Viper.Graphics3D.PhysicsWorld3D`
 
 Provides Physics 3D World functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Physics3DWorld` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`BodyCount`, `CollisionCount`, `CollisionEventCount` and operations including `SetMaxQueryHits`,
-`Step`, `StepFixed`, `Add`.
+`BodyCount`, `CollisionCount`, `CollisionEventCount` and operations including
+`SetMaxQueryHits`, `Step`, `StepFixed`, `Add`.
 
-Constructor: `Viper.Graphics3D.Physics3DWorld.New`
+Constructor: `Viper.Graphics3D.PhysicsWorld3D.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-graphics3d-physics3dworld-bodycount"></a>`BodyCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-collisioncount"></a>`CollisionCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-collisioneventcount"></a>`CollisionEventCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-entereventcount"></a>`EnterEventCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-stayeventcount"></a>`StayEventCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-exiteventcount"></a>`ExitEventCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-jointcount"></a>`JointCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-lastccdrequestedsubsteps"></a>`LastCcdRequestedSubsteps` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-lastccdsubsteps"></a>`LastCcdSubsteps` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-ccdsubstepclampedcount"></a>`CcdSubstepClampedCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-lastccdclampedbodycount"></a>`LastCcdClampedBodyCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-ccdsubstepclampedbodycount"></a>`CcdSubstepClampedBodyCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-ccdtoicount"></a>`CcdToiCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-maxqueryhits"></a>`MaxQueryHits` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-broadphasefallbackcount"></a>`BroadphaseFallbackCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-querybroadphaserebuildcount"></a>`QueryBroadphaseRebuildCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-solveriterations"></a>`SolverIterations` | `i64` | read/write |
-| <a id="viper-graphics3d-physics3dworld-positioniterations"></a>`PositionIterations` | `i64` | read/write |
-| <a id="viper-graphics3d-physics3dworld-contactbeta"></a>`ContactBeta` | `f64` | read/write |
-| <a id="viper-graphics3d-physics3dworld-restitutionthreshold"></a>`RestitutionThreshold` | `f64` | read/write |
-| <a id="viper-graphics3d-physics3dworld-fixedstepalpha"></a>`FixedStepAlpha` | `f64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-droppedfixedsteps"></a>`DroppedFixedSteps` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-lastsolverislandcount"></a>`LastSolverIslandCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-lastsolveractivebodycount"></a>`LastSolverActiveBodyCount` | `i64` | read-only |
-| <a id="viper-graphics3d-physics3dworld-lastsolvercontactcount"></a>`LastSolverContactCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-bodycount"></a>`BodyCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-collisioncount"></a>`CollisionCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-collisioneventcount"></a>`CollisionEventCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-entereventcount"></a>`EnterEventCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-stayeventcount"></a>`StayEventCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-exiteventcount"></a>`ExitEventCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-jointcount"></a>`JointCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-lastccdrequestedsubsteps"></a>`LastCcdRequestedSubsteps` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-lastccdsubsteps"></a>`LastCcdSubsteps` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-ccdsubstepclampedcount"></a>`CcdSubstepClampedCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-lastccdclampedbodycount"></a>`LastCcdClampedBodyCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-ccdsubstepclampedbodycount"></a>`CcdSubstepClampedBodyCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-ccdtoicount"></a>`CcdToiCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-maxqueryhits"></a>`MaxQueryHits` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-broadphasefallbackcount"></a>`BroadphaseFallbackCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-querybroadphaserebuildcount"></a>`QueryBroadphaseRebuildCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-solveriterations"></a>`SolverIterations` | `i64` | read/write |
+| <a id="viper-graphics3d-physicsworld3d-positioniterations"></a>`PositionIterations` | `i64` | read/write |
+| <a id="viper-graphics3d-physicsworld3d-contactbeta"></a>`ContactBeta` | `f64` | read/write |
+| <a id="viper-graphics3d-physicsworld3d-restitutionthreshold"></a>`RestitutionThreshold` | `f64` | read/write |
+| <a id="viper-graphics3d-physicsworld3d-fixedstepalpha"></a>`FixedStepAlpha` | `f64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-droppedfixedsteps"></a>`DroppedFixedSteps` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-lastsolverislandcount"></a>`LastSolverIslandCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-lastsolveractivebodycount"></a>`LastSolverActiveBodyCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physicsworld3d-lastsolvercontactcount"></a>`LastSolverContactCount` | `i64` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-physics3dworld-setmaxqueryhits"></a>`SetMaxQueryHits` | `void(i64)` | `Viper.Graphics3D.Physics3DWorld.SetMaxQueryHits` |
-| <a id="viper-graphics3d-physics3dworld-step"></a>`Step` | `void(f64)` | `Viper.Graphics3D.Physics3DWorld.Step` |
-| <a id="viper-graphics3d-physics3dworld-stepfixed"></a>`StepFixed` | `i64(f64,f64,i64)` | `Viper.Graphics3D.Physics3DWorld.StepFixed` |
-| <a id="viper-graphics3d-physics3dworld-add"></a>`Add` | `void(obj)` | `Viper.Graphics3D.Physics3DWorld.Add` |
-| <a id="viper-graphics3d-physics3dworld-tryadd"></a>`TryAdd` | `i1(obj)` | `Viper.Graphics3D.Physics3DWorld.TryAdd` |
-| <a id="viper-graphics3d-physics3dworld-remove"></a>`Remove` | `void(obj)` | `Viper.Graphics3D.Physics3DWorld.Remove` |
-| <a id="viper-graphics3d-physics3dworld-containsbody"></a>`ContainsBody` | `i1(obj)` | `Viper.Graphics3D.Physics3DWorld.ContainsBody` |
-| <a id="viper-graphics3d-physics3dworld-setgravity"></a>`SetGravity` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DWorld.SetGravity` |
-| <a id="viper-graphics3d-physics3dworld-addjoint"></a>`AddJoint` | `void(obj,i64)` | `Viper.Graphics3D.Physics3DWorld.AddJoint` |
-| <a id="viper-graphics3d-physics3dworld-removejoint"></a>`RemoveJoint` | `void(obj)` | `Viper.Graphics3D.Physics3DWorld.RemoveJoint` |
-| <a id="viper-graphics3d-physics3dworld-raycast"></a>`Raycast` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,i64)` | `Viper.Graphics3D.Physics3DWorld.Raycast` |
-| <a id="viper-graphics3d-physics3dworld-raycastall"></a>`RaycastAll` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)` | `Viper.Graphics3D.Physics3DWorld.RaycastAll` |
-| <a id="viper-graphics3d-physics3dworld-sweepsphere"></a>`SweepSphere` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,f64,obj,i64)` | `Viper.Graphics3D.Physics3DWorld.SweepSphere` |
-| <a id="viper-graphics3d-physics3dworld-sweepcapsule"></a>`SweepCapsule` | `obj(obj,obj,f64,obj,i64)` | `Viper.Graphics3D.Physics3DWorld.SweepCapsule` |
-| <a id="viper-graphics3d-physics3dworld-overlapsphere"></a>`OverlapSphere` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,f64,i64)` | `Viper.Graphics3D.Physics3DWorld.OverlapSphere` |
-| <a id="viper-graphics3d-physics3dworld-overlapaabb"></a>`OverlapAABB` | `obj(obj,obj,i64)` | `Viper.Graphics3D.Physics3DWorld.OverlapAABB` |
-| <a id="viper-graphics3d-physics3dworld-rebaseorigin"></a>`RebaseOrigin` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DWorld.RebaseOrigin` |
-| <a id="viper-graphics3d-physics3dworld-probeclearance"></a>`ProbeClearance` | `i1(obj<Viper.Math.Vec3>,f64,f64,i64)` | `Viper.Graphics3D.Physics3DWorld.ProbeClearance` |
-| <a id="viper-graphics3d-physics3dworld-probeledge"></a>`ProbeLedge` | `obj<Viper.Graphics3D.LedgeHit3D>(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `Viper.Graphics3D.Physics3DWorld.ProbeLedge` |
-| <a id="viper-graphics3d-physics3dworld-probevault"></a>`ProbeVault` | `obj<Viper.Graphics3D.LedgeHit3D>(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `Viper.Graphics3D.Physics3DWorld.ProbeVault` |
-| <a id="viper-graphics3d-physics3dworld-getcollisionbodya"></a>`GetCollisionBodyA` | `obj(i64)` | `Viper.Graphics3D.Physics3DWorld.GetCollisionBodyA` |
-| <a id="viper-graphics3d-physics3dworld-getcollisionbodyb"></a>`GetCollisionBodyB` | `obj(i64)` | `Viper.Graphics3D.Physics3DWorld.GetCollisionBodyB` |
-| <a id="viper-graphics3d-physics3dworld-getcollisionnormal"></a>`GetCollisionNormal` | `obj(i64)` | `Viper.Graphics3D.Physics3DWorld.GetCollisionNormal` |
-| <a id="viper-graphics3d-physics3dworld-getcollisiondepth"></a>`GetCollisionDepth` | `f64(i64)` | `Viper.Graphics3D.Physics3DWorld.GetCollisionDepth` |
-| <a id="viper-graphics3d-physics3dworld-getcollisionevent"></a>`GetCollisionEvent` | `obj(i64)` | `Viper.Graphics3D.Physics3DWorld.GetCollisionEvent` |
-| <a id="viper-graphics3d-physics3dworld-getenterevent"></a>`GetEnterEvent` | `obj(i64)` | `Viper.Graphics3D.Physics3DWorld.GetEnterEvent` |
-| <a id="viper-graphics3d-physics3dworld-getstayevent"></a>`GetStayEvent` | `obj(i64)` | `Viper.Graphics3D.Physics3DWorld.GetStayEvent` |
-| <a id="viper-graphics3d-physics3dworld-getexitevent"></a>`GetExitEvent` | `obj(i64)` | `Viper.Graphics3D.Physics3DWorld.GetExitEvent` |
-| <a id="viper-graphics3d-physics3dworld-clearcollisionevents"></a>`ClearCollisionEvents` | `void()` | `Viper.Graphics3D.Physics3DWorld.ClearCollisionEvents` |
-| <a id="viper-graphics3d-physics3dworld-new"></a>`New` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Physics3DWorld.New` |
+| <a id="viper-graphics3d-physicsworld3d-setmaxqueryhits"></a>`SetMaxQueryHits` | `void(i64)` | `Viper.Graphics3D.PhysicsWorld3D.SetMaxQueryHits` |
+| <a id="viper-graphics3d-physicsworld3d-step"></a>`Step` | `void(f64)` | `Viper.Graphics3D.PhysicsWorld3D.Step` |
+| <a id="viper-graphics3d-physicsworld3d-stepfixed"></a>`StepFixed` | `i64(f64,f64,i64)` | `Viper.Graphics3D.PhysicsWorld3D.StepFixed` |
+| <a id="viper-graphics3d-physicsworld3d-add"></a>`Add` | `void(obj)` | `Viper.Graphics3D.PhysicsWorld3D.Add` |
+| <a id="viper-graphics3d-physicsworld3d-tryadd"></a>`TryAdd` | `i1(obj)` | `Viper.Graphics3D.PhysicsWorld3D.TryAdd` |
+| <a id="viper-graphics3d-physicsworld3d-remove"></a>`Remove` | `void(obj)` | `Viper.Graphics3D.PhysicsWorld3D.Remove` |
+| <a id="viper-graphics3d-physicsworld3d-containsbody"></a>`ContainsBody` | `i1(obj)` | `Viper.Graphics3D.PhysicsWorld3D.ContainsBody` |
+| <a id="viper-graphics3d-physicsworld3d-setgravity"></a>`SetGravity` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsWorld3D.SetGravity` |
+| <a id="viper-graphics3d-physicsworld3d-addjoint"></a>`AddJoint` | `void(obj,i64)` | `Viper.Graphics3D.PhysicsWorld3D.AddJoint` |
+| <a id="viper-graphics3d-physicsworld3d-removejoint"></a>`RemoveJoint` | `void(obj)` | `Viper.Graphics3D.PhysicsWorld3D.RemoveJoint` |
+| <a id="viper-graphics3d-physicsworld3d-raycast"></a>`Raycast` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,i64)` | `Viper.Graphics3D.PhysicsWorld3D.Raycast` |
+| <a id="viper-graphics3d-physicsworld3d-raycastall"></a>`RaycastAll` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)` | `Viper.Graphics3D.PhysicsWorld3D.RaycastAll` |
+| <a id="viper-graphics3d-physicsworld3d-sweepsphere"></a>`SweepSphere` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,f64,obj,i64)` | `Viper.Graphics3D.PhysicsWorld3D.SweepSphere` |
+| <a id="viper-graphics3d-physicsworld3d-sweepcapsule"></a>`SweepCapsule` | `obj(obj,obj,f64,obj,i64)` | `Viper.Graphics3D.PhysicsWorld3D.SweepCapsule` |
+| <a id="viper-graphics3d-physicsworld3d-overlapsphere"></a>`OverlapSphere` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,f64,i64)` | `Viper.Graphics3D.PhysicsWorld3D.OverlapSphere` |
+| <a id="viper-graphics3d-physicsworld3d-overlapaabb"></a>`OverlapAABB` | `obj(obj,obj,i64)` | `Viper.Graphics3D.PhysicsWorld3D.OverlapAABB` |
+| <a id="viper-graphics3d-physicsworld3d-rebaseorigin"></a>`RebaseOrigin` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsWorld3D.RebaseOrigin` |
+| <a id="viper-graphics3d-physicsworld3d-probeclearance"></a>`ProbeClearance` | `i1(obj<Viper.Math.Vec3>,f64,f64,i64)` | `Viper.Graphics3D.PhysicsWorld3D.ProbeClearance` |
+| <a id="viper-graphics3d-physicsworld3d-probeledge"></a>`ProbeLedge` | `obj<Viper.Graphics3D.LedgeHit3D>(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `Viper.Graphics3D.PhysicsWorld3D.ProbeLedge` |
+| <a id="viper-graphics3d-physicsworld3d-probevault"></a>`ProbeVault` | `obj<Viper.Graphics3D.LedgeHit3D>(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `Viper.Graphics3D.PhysicsWorld3D.ProbeVault` |
+| <a id="viper-graphics3d-physicsworld3d-getcollisionbodya"></a>`GetCollisionBodyA` | `obj(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetCollisionBodyA` |
+| <a id="viper-graphics3d-physicsworld3d-getcollisionbodyb"></a>`GetCollisionBodyB` | `obj(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetCollisionBodyB` |
+| <a id="viper-graphics3d-physicsworld3d-getcollisionnormal"></a>`GetCollisionNormal` | `obj(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetCollisionNormal` |
+| <a id="viper-graphics3d-physicsworld3d-getcollisiondepth"></a>`GetCollisionDepth` | `f64(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetCollisionDepth` |
+| <a id="viper-graphics3d-physicsworld3d-getcollisionevent"></a>`GetCollisionEvent` | `obj(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetCollisionEvent` |
+| <a id="viper-graphics3d-physicsworld3d-getenterevent"></a>`GetEnterEvent` | `obj(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetEnterEvent` |
+| <a id="viper-graphics3d-physicsworld3d-getstayevent"></a>`GetStayEvent` | `obj(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetStayEvent` |
+| <a id="viper-graphics3d-physicsworld3d-getexitevent"></a>`GetExitEvent` | `obj(i64)` | `Viper.Graphics3D.PhysicsWorld3D.GetExitEvent` |
+| <a id="viper-graphics3d-physicsworld3d-clearcollisionevents"></a>`ClearCollisionEvents` | `void()` | `Viper.Graphics3D.PhysicsWorld3D.ClearCollisionEvents` |
+| <a id="viper-graphics3d-physicsworld3d-new"></a>`New` | `obj(f64,f64,f64)` | `Viper.Graphics3D.PhysicsWorld3D.New` |
 
 <a id="viper-graphics3d-physicshit3d"></a>
 ### `Viper.Graphics3D.PhysicsHit3D`
@@ -1198,7 +1173,7 @@ Its public surface exposes properties such as `SurfaceType`, `Body`, `Collider`.
 | Property | Type | Access |
 |---|---|---|
 | <a id="viper-graphics3d-physicshit3d-surfacetype"></a>`SurfaceType` | `i64` | read-only |
-| <a id="viper-graphics3d-physicshit3d-body"></a>`Body` | `obj<Viper.Graphics3D.Physics3DBody>` | read-only |
+| <a id="viper-graphics3d-physicshit3d-body"></a>`Body` | `obj<Viper.Graphics3D.PhysicsBody3D>` | read-only |
 | <a id="viper-graphics3d-physicshit3d-collider"></a>`Collider` | `obj<Viper.Graphics3D.Collider3D>` | read-only |
 | <a id="viper-graphics3d-physicshit3d-point"></a>`Point` | `obj<Viper.Math.Vec3>` | read-only |
 | <a id="viper-graphics3d-physicshit3d-normal"></a>`Normal` | `obj<Viper.Math.Vec3>` | read-only |
@@ -1227,7 +1202,7 @@ Constructor: `Viper.Graphics3D.Ragdoll3D.New`
 | <a id="viper-graphics3d-ragdoll3d-radiusscale"></a>`RadiusScale` | `f64` | read/write |
 | <a id="viper-graphics3d-ragdoll3d-minbonelength"></a>`MinBoneLength` | `f64` | read/write |
 | <a id="viper-graphics3d-ragdoll3d-bodycount"></a>`BodyCount` | `i64` | read-only |
-| <a id="viper-graphics3d-ragdoll3d-active"></a>`Active` | `i1` | read-only |
+| <a id="viper-graphics3d-ragdoll3d-isactive"></a>`IsActive` | `i1` | read-only |
 
 #### Methods
 
@@ -1238,7 +1213,7 @@ Constructor: `Viper.Graphics3D.Ragdoll3D.New`
 | <a id="viper-graphics3d-ragdoll3d-deactivate"></a>`Deactivate` | `void(f64)` | `Viper.Graphics3D.Ragdoll3D.Deactivate` |
 | <a id="viper-graphics3d-ragdoll3d-setpowered"></a>`SetPowered` | `void(i64,f64)` | `Viper.Graphics3D.Ragdoll3D.SetPowered` |
 | <a id="viper-graphics3d-ragdoll3d-step"></a>`Step` | `void(f64)` | `Viper.Graphics3D.Ragdoll3D.Step` |
-| <a id="viper-graphics3d-ragdoll3d-getbody"></a>`GetBody` | `obj<Viper.Graphics3D.Physics3DBody>(str)` | `Viper.Graphics3D.Ragdoll3D.GetBody` |
+| <a id="viper-graphics3d-ragdoll3d-getbody"></a>`GetBody` | `obj<Viper.Graphics3D.PhysicsBody3D>(str)` | `Viper.Graphics3D.Ragdoll3D.GetBody` |
 | <a id="viper-graphics3d-ragdoll3d-new"></a>`New` | `obj(obj<Viper.Graphics3D.Skeleton3D>)` | `Viper.Graphics3D.Ragdoll3D.New` |
 
 <a id="viper-graphics3d-ledgehit3d"></a>
@@ -1246,8 +1221,8 @@ Constructor: `Viper.Graphics3D.Ragdoll3D.New`
 
 Provides Ledge Hit 3D constants and static operations for 3D rendering and scene applications.
 
-`Viper.Graphics3D.LedgeHit3D` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `GrabPoint`, `SurfaceNormal`, `WallNormal`.
+`Viper.Graphics3D.LedgeHit3D` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `GrabPoint`, `SurfaceNormal`, `WallNormal`.
 
 #### Properties
 
@@ -1290,8 +1265,8 @@ operations including `Get`.
 Provides Collision Event 3D constants and static operations for 3D rendering and scene applications.
 
 `Viper.Graphics3D.CollisionEvent3D` is a static runtime surface and does not require an
-instance. Its public surface exposes properties such as `SurfaceTypeA`, `SurfaceTypeB`, `BodyA`
-and operations including `GetContact`, `GetContactPoint`, `GetContactNormal`,
+instance. Its public surface exposes properties such as `SurfaceTypeA`, `SurfaceTypeB`,
+`BodyA` and operations including `GetContact`, `GetContactPoint`, `GetContactNormal`,
 `GetContactSeparation`.
 
 #### Properties
@@ -1341,8 +1316,8 @@ Provides Collider 3D functionality for 3D rendering and scene applications.
 
 `Viper.Graphics3D.Collider3D` exposes a registry-backed runtime surface without requiring
 callers to construct the class directly. Its public surface exposes properties such as
-`Friction`, `Restitution`, `SurfaceType` and operations including `NewBox`, `NewSphere`,
-`NewCapsule`, `Box`.
+`Friction`, `Restitution`, `SurfaceType` and operations including `Box`, `Sphere`, `Capsule`,
+`NewConvexHull`.
 
 #### Properties
 
@@ -1357,9 +1332,6 @@ callers to construct the class directly. Its public surface exposes properties s
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-collider3d-newbox"></a>`NewBox` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Collider3D.NewBox` |
-| <a id="viper-graphics3d-collider3d-newsphere"></a>`NewSphere` | `obj(f64)` | `Viper.Graphics3D.Collider3D.NewSphere` |
-| <a id="viper-graphics3d-collider3d-newcapsule"></a>`NewCapsule` | `obj(f64,f64)` | `Viper.Graphics3D.Collider3D.NewCapsule` |
 | <a id="viper-graphics3d-collider3d-box"></a>`Box` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Collider3D.Box` |
 | <a id="viper-graphics3d-collider3d-sphere"></a>`Sphere` | `obj(f64)` | `Viper.Graphics3D.Collider3D.Sphere` |
 | <a id="viper-graphics3d-collider3d-capsule"></a>`Capsule` | `obj(f64,f64)` | `Viper.Graphics3D.Collider3D.Capsule` |
@@ -1372,8 +1344,8 @@ callers to construct the class directly. Its public surface exposes properties s
 | <a id="viper-graphics3d-collider3d-getlocalboundsmin"></a>`GetLocalBoundsMin` | `obj()` | `Viper.Graphics3D.Collider3D.GetLocalBoundsMin` |
 | <a id="viper-graphics3d-collider3d-getlocalboundsmax"></a>`GetLocalBoundsMax` | `obj()` | `Viper.Graphics3D.Collider3D.GetLocalBoundsMax` |
 
-<a id="viper-graphics3d-physics3dbody"></a>
-### `Viper.Graphics3D.Physics3DBody`
+<a id="viper-graphics3d-physicsbody3d"></a>
+### `Viper.Graphics3D.PhysicsBody3D`
 
 Provides Physics 3D Body functionality for 3D rendering and scene applications.
 
@@ -1382,56 +1354,56 @@ returned object with the instance members below. Its public surface exposes prop
 `UserData`, `Collider`, `Position` and operations including `NewAABB`, `NewSphere`,
 `NewCapsule`, `SetPosition`.
 
-Constructor: `Viper.Graphics3D.Physics3DBody.New`
+Constructor: `Viper.Graphics3D.PhysicsBody3D.New`
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-graphics3d-physics3dbody-userdata"></a>`UserData` | `i64` | read/write |
-| <a id="viper-graphics3d-physics3dbody-collider"></a>`Collider` | `obj<Viper.Graphics3D.Collider3D>` | read/write |
-| <a id="viper-graphics3d-physics3dbody-position"></a>`Position` | `obj<Viper.Math.Vec3>` | read-only |
-| <a id="viper-graphics3d-physics3dbody-scale"></a>`Scale` | `obj<Viper.Math.Vec3>` | read-only |
-| <a id="viper-graphics3d-physics3dbody-orientation"></a>`Orientation` | `obj<Viper.Math.Quat>` | read-only |
-| <a id="viper-graphics3d-physics3dbody-velocity"></a>`Velocity` | `obj<Viper.Math.Vec3>` | read-only |
-| <a id="viper-graphics3d-physics3dbody-angularvelocity"></a>`AngularVelocity` | `obj<Viper.Math.Vec3>` | read-only |
-| <a id="viper-graphics3d-physics3dbody-restitution"></a>`Restitution` | `f64` | read/write |
-| <a id="viper-graphics3d-physics3dbody-friction"></a>`Friction` | `f64` | read/write |
-| <a id="viper-graphics3d-physics3dbody-lineardamping"></a>`LinearDamping` | `f64` | read/write |
-| <a id="viper-graphics3d-physics3dbody-angulardamping"></a>`AngularDamping` | `f64` | read/write |
-| <a id="viper-graphics3d-physics3dbody-collisionlayer"></a>`CollisionLayer` | `i64` | read/write |
-| <a id="viper-graphics3d-physics3dbody-collisionmask"></a>`CollisionMask` | `i64` | read/write |
-| <a id="viper-graphics3d-physics3dbody-static"></a>`Static` | `i1` | read/write |
-| <a id="viper-graphics3d-physics3dbody-kinematic"></a>`Kinematic` | `i1` | read/write |
-| <a id="viper-graphics3d-physics3dbody-trigger"></a>`Trigger` | `i1` | read/write |
-| <a id="viper-graphics3d-physics3dbody-cansleep"></a>`CanSleep` | `i1` | read/write |
-| <a id="viper-graphics3d-physics3dbody-sleeping"></a>`Sleeping` | `i1` | read-only |
-| <a id="viper-graphics3d-physics3dbody-useccd"></a>`UseCcd` | `i1` | read/write |
-| <a id="viper-graphics3d-physics3dbody-grounded"></a>`Grounded` | `i1` | read-only |
-| <a id="viper-graphics3d-physics3dbody-groundnormal"></a>`GroundNormal` | `obj<Viper.Math.Vec3>` | read-only |
-| <a id="viper-graphics3d-physics3dbody-mass"></a>`Mass` | `f64` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-userdata"></a>`UserData` | `i64` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-collider"></a>`Collider` | `obj<Viper.Graphics3D.Collider3D>` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-position"></a>`Position` | `obj<Viper.Math.Vec3>` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-scale"></a>`Scale` | `obj<Viper.Math.Vec3>` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-orientation"></a>`Orientation` | `obj<Viper.Math.Quat>` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-velocity"></a>`Velocity` | `obj<Viper.Math.Vec3>` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-angularvelocity"></a>`AngularVelocity` | `obj<Viper.Math.Vec3>` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-restitution"></a>`Restitution` | `f64` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-friction"></a>`Friction` | `f64` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-lineardamping"></a>`LinearDamping` | `f64` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-angulardamping"></a>`AngularDamping` | `f64` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-collisionlayer"></a>`CollisionLayer` | `i64` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-collisionmask"></a>`CollisionMask` | `i64` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-isstatic"></a>`IsStatic` | `i1` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-iskinematic"></a>`IsKinematic` | `i1` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-istrigger"></a>`IsTrigger` | `i1` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-cansleep"></a>`CanSleep` | `i1` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-issleeping"></a>`IsSleeping` | `i1` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-useccd"></a>`UseCcd` | `i1` | read/write |
+| <a id="viper-graphics3d-physicsbody3d-isgrounded"></a>`IsGrounded` | `i1` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-groundnormal"></a>`GroundNormal` | `obj<Viper.Math.Vec3>` | read-only |
+| <a id="viper-graphics3d-physicsbody3d-mass"></a>`Mass` | `f64` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-physics3dbody-newaabb"></a>`NewAABB` | `obj(f64,f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.NewAABB` |
-| <a id="viper-graphics3d-physics3dbody-newsphere"></a>`NewSphere` | `obj(f64,f64)` | `Viper.Graphics3D.Physics3DBody.NewSphere` |
-| <a id="viper-graphics3d-physics3dbody-newcapsule"></a>`NewCapsule` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.NewCapsule` |
-| <a id="viper-graphics3d-physics3dbody-setposition"></a>`SetPosition` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.SetPosition` |
-| <a id="viper-graphics3d-physics3dbody-setscale"></a>`SetScale` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.SetScale` |
-| <a id="viper-graphics3d-physics3dbody-setorientation"></a>`SetOrientation` | `void(obj)` | `Viper.Graphics3D.Physics3DBody.SetOrientation` |
-| <a id="viper-graphics3d-physics3dbody-setvelocity"></a>`SetVelocity` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.SetVelocity` |
-| <a id="viper-graphics3d-physics3dbody-setangularvelocity"></a>`SetAngularVelocity` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.SetAngularVelocity` |
-| <a id="viper-graphics3d-physics3dbody-applyforce"></a>`ApplyForce` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.ApplyForce` |
-| <a id="viper-graphics3d-physics3dbody-applyforceatpoint"></a>`ApplyForceAtPoint` | `void(f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.ApplyForceAtPoint` |
-| <a id="viper-graphics3d-physics3dbody-applyimpulse"></a>`ApplyImpulse` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.ApplyImpulse` |
-| <a id="viper-graphics3d-physics3dbody-applyimpulseatpoint"></a>`ApplyImpulseAtPoint` | `void(f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.ApplyImpulseAtPoint` |
-| <a id="viper-graphics3d-physics3dbody-applytorque"></a>`ApplyTorque` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.ApplyTorque` |
-| <a id="viper-graphics3d-physics3dbody-applyangularimpulse"></a>`ApplyAngularImpulse` | `void(f64,f64,f64)` | `Viper.Graphics3D.Physics3DBody.ApplyAngularImpulse` |
-| <a id="viper-graphics3d-physics3dbody-wake"></a>`Wake` | `void()` | `Viper.Graphics3D.Physics3DBody.Wake` |
-| <a id="viper-graphics3d-physics3dbody-sleep"></a>`Sleep` | `void()` | `Viper.Graphics3D.Physics3DBody.Sleep` |
-| <a id="viper-graphics3d-physics3dbody-new"></a>`New` | `obj(f64)` | `Viper.Graphics3D.Physics3DBody.New` |
+| <a id="viper-graphics3d-physicsbody3d-newaabb"></a>`NewAABB` | `obj(f64,f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.NewAABB` |
+| <a id="viper-graphics3d-physicsbody3d-sphere"></a>`Sphere` | `obj(f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.Sphere` |
+| <a id="viper-graphics3d-physicsbody3d-newcapsule"></a>`NewCapsule` | `obj(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.NewCapsule` |
+| <a id="viper-graphics3d-physicsbody3d-setposition"></a>`SetPosition` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.SetPosition` |
+| <a id="viper-graphics3d-physicsbody3d-setscale"></a>`SetScale` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.SetScale` |
+| <a id="viper-graphics3d-physicsbody3d-setorientation"></a>`SetOrientation` | `void(obj)` | `Viper.Graphics3D.PhysicsBody3D.SetOrientation` |
+| <a id="viper-graphics3d-physicsbody3d-setvelocity"></a>`SetVelocity` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.SetVelocity` |
+| <a id="viper-graphics3d-physicsbody3d-setangularvelocity"></a>`SetAngularVelocity` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.SetAngularVelocity` |
+| <a id="viper-graphics3d-physicsbody3d-applyforce"></a>`ApplyForce` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.ApplyForce` |
+| <a id="viper-graphics3d-physicsbody3d-applyforceatpoint"></a>`ApplyForceAtPoint` | `void(f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.ApplyForceAtPoint` |
+| <a id="viper-graphics3d-physicsbody3d-applyimpulse"></a>`ApplyImpulse` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.ApplyImpulse` |
+| <a id="viper-graphics3d-physicsbody3d-applyimpulseatpoint"></a>`ApplyImpulseAtPoint` | `void(f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.ApplyImpulseAtPoint` |
+| <a id="viper-graphics3d-physicsbody3d-applytorque"></a>`ApplyTorque` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.ApplyTorque` |
+| <a id="viper-graphics3d-physicsbody3d-applyangularimpulse"></a>`ApplyAngularImpulse` | `void(f64,f64,f64)` | `Viper.Graphics3D.PhysicsBody3D.ApplyAngularImpulse` |
+| <a id="viper-graphics3d-physicsbody3d-wake"></a>`Wake` | `void()` | `Viper.Graphics3D.PhysicsBody3D.Wake` |
+| <a id="viper-graphics3d-physicsbody3d-sleep"></a>`Sleep` | `void()` | `Viper.Graphics3D.PhysicsBody3D.Sleep` |
+| <a id="viper-graphics3d-physicsbody3d-new"></a>`New` | `obj(f64)` | `Viper.Graphics3D.PhysicsBody3D.New` |
 
 <a id="viper-graphics3d-character3d"></a>
 ### `Viper.Graphics3D.Character3D`
@@ -1440,7 +1412,7 @@ Provides Character 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Character3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`StepHeight`, `World`, `Grounded` and operations including `Move`, `SetSlopeLimit`,
+`StepHeight`, `World`, `IsGrounded` and operations including `Move`, `SetSlopeLimit`,
 `SetPosition`, `TrySetHeight`.
 
 Constructor: `Viper.Graphics3D.Character3D.New`
@@ -1451,7 +1423,7 @@ Constructor: `Viper.Graphics3D.Character3D.New`
 |---|---|---|
 | <a id="viper-graphics3d-character3d-stepheight"></a>`StepHeight` | `f64` | read/write |
 | <a id="viper-graphics3d-character3d-world"></a>`World` | `obj` | read/write |
-| <a id="viper-graphics3d-character3d-grounded"></a>`Grounded` | `i1` | read-only |
+| <a id="viper-graphics3d-character3d-isgrounded"></a>`IsGrounded` | `i1` | read-only |
 | <a id="viper-graphics3d-character3d-justlanded"></a>`JustLanded` | `i1` | read-only |
 | <a id="viper-graphics3d-character3d-position"></a>`Position` | `obj<Viper.Math.Vec3>` | read-only |
 | <a id="viper-graphics3d-character3d-height"></a>`Height` | `f64` | read/write |
@@ -1468,7 +1440,7 @@ Constructor: `Viper.Graphics3D.Character3D.New`
 | <a id="viper-graphics3d-character3d-setposition"></a>`SetPosition` | `void(f64,f64,f64)` | `Viper.Graphics3D.Character3D.SetPosition` |
 | <a id="viper-graphics3d-character3d-trysetheight"></a>`TrySetHeight` | `i1(f64)` | `Viper.Graphics3D.Character3D.TrySetHeight` |
 | <a id="viper-graphics3d-character3d-issliding"></a>`IsSliding` | `i1()` | `Viper.Graphics3D.Character3D.IsSliding` |
-| <a id="viper-graphics3d-character3d-getgroundbody"></a>`GetGroundBody` | `obj<Viper.Graphics3D.Physics3DBody>()` | `Viper.Graphics3D.Character3D.GetGroundBody` |
+| <a id="viper-graphics3d-character3d-getgroundbody"></a>`GetGroundBody` | `obj<Viper.Graphics3D.PhysicsBody3D>()` | `Viper.Graphics3D.Character3D.GetGroundBody` |
 | <a id="viper-graphics3d-character3d-new"></a>`New` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Character3D.New` |
 
 <a id="viper-graphics3d-trigger3d"></a>
@@ -1504,7 +1476,7 @@ Constructor: `Viper.Graphics3D.Trigger3D.New`
 Provides Distance Joint 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.DistanceJoint3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Distance`.
 
 Constructor: `Viper.Graphics3D.DistanceJoint3D.New`
@@ -1552,8 +1524,8 @@ Constructor: `Viper.Graphics3D.SpringJoint3D.New`
 Provides Hinge Joint 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.HingeJoint3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetMotor`, `GetAngle`, `SetLimits`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetMotor`, `GetAngle`, `SetLimits`.
 
 Constructor: `Viper.Graphics3D.HingeJoint3D.New`
 
@@ -1572,7 +1544,7 @@ Constructor: `Viper.Graphics3D.HingeJoint3D.New`
 Provides Rope Joint 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.RopeJoint3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `MaxLength`.
 
 Constructor: `Viper.Graphics3D.RopeJoint3D.New`
@@ -1595,8 +1567,8 @@ Constructor: `Viper.Graphics3D.RopeJoint3D.New`
 Provides Six Dof Joint 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.SixDofJoint3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetLinearLimits`, `SetAngularLimits`, `SetLinearMotor`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetLinearLimits`, `SetAngularLimits`, `SetLinearMotor`.
 
 Constructor: `Viper.Graphics3D.SixDofJoint3D.New`
 
@@ -1690,8 +1662,8 @@ Provides Transform 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Transform3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetEuler`, `SetScale`,
-`Translate`.
+`Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetEuler`,
+`SetScale`, `Translate`.
 
 Constructor: `Viper.Graphics3D.Transform3D.New`
 
@@ -1722,9 +1694,9 @@ Constructor: `Viper.Graphics3D.Transform3D.New`
 Provides Path 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Path3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Length`,
-`PointCount`, `Looping` and operations including `AddPoint`, `GetPositionAt`, `GetDirectionAt`,
-`Clear`.
+object with the instance members below. Its public surface exposes properties such as
+`Length`, `PointCount`, `Looping` and operations including `AddPoint`, `GetPositionAt`,
+`GetDirectionAt`, `Clear`.
 
 Constructor: `Viper.Graphics3D.Path3D.New`
 
@@ -1752,7 +1724,7 @@ Constructor: `Viper.Graphics3D.Path3D.New`
 Provides Instance Batch 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.InstanceBatch3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Count` and operations including `Add`, `Remove`, `Set`, `Clear`.
 
 Constructor: `Viper.Graphics3D.InstanceBatch3D.New`
@@ -1842,8 +1814,8 @@ Provides Time Of Day 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.TimeOfDay3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Hours`, `DayLengthSeconds`, `LatitudeDegrees` and operations including `SetSunLight`, `SetSky`,
-`SetReflectionProbe`, `Advance`.
+`Hours`, `DayLengthSeconds`, `LatitudeDegrees` and operations including `SetSunLight`,
+`SetSky`, `SetReflectionProbe`, `Advance`.
 
 Constructor: `Viper.Graphics3D.TimeOfDay3D.New`
 
@@ -1873,8 +1845,9 @@ Constructor: `Viper.Graphics3D.TimeOfDay3D.New`
 Provides Reflection Probe 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.ReflectionProbe3D` values through its registered constructor and use
-the returned object with the instance members below. Its public surface exposes properties such
-as `Position`, `InfluenceScale`, `Resolution` and operations including `Contains`, `Capture`.
+the returned object with the instance members below. Its public surface exposes properties
+such as `Position`, `InfluenceScale`, `Resolution` and operations including `Contains`,
+`Capture`.
 
 Constructor: `Viper.Graphics3D.ReflectionProbe3D.New`
 
@@ -1902,7 +1875,7 @@ Constructor: `Viper.Graphics3D.ReflectionProbe3D.New`
 Provides Light Probe Grid 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.LightProbeGrid3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `ProbeCount` and operations including `Bake`, `Sample`, `Save`, `Load`.
 
 Constructor: `Viper.Graphics3D.LightProbeGrid3D.New`
@@ -1970,8 +1943,8 @@ Constructor: `Viper.Graphics3D.Terrain3D.New`
 | <a id="viper-graphics3d-terrain3d-setlayerscale"></a>`SetLayerScale` | `void(i64,f64)` | `Viper.Graphics3D.Terrain3D.SetLayerScale` |
 | <a id="viper-graphics3d-terrain3d-getheightat"></a>`GetHeightAt` | `f64(f64,f64)` | `Viper.Graphics3D.Terrain3D.GetHeightAt` |
 | <a id="viper-graphics3d-terrain3d-getnormalat"></a>`GetNormalAt` | `obj(f64,f64)` | `Viper.Graphics3D.Terrain3D.GetNormalAt` |
-| <a id="viper-graphics3d-terrain3d-setloddistances"></a>`SetLODDistances` | `void(f64,f64)` | `Viper.Graphics3D.Terrain3D.SetLODDistances` |
-| <a id="viper-graphics3d-terrain3d-setlodhysteresis"></a>`SetLODHysteresis` | `void(f64)` | `Viper.Graphics3D.Terrain3D.SetLODHysteresis` |
+| <a id="viper-graphics3d-terrain3d-setloddistances"></a>`SetLodDistances` | `void(f64,f64)` | `Viper.Graphics3D.Terrain3D.SetLodDistances` |
+| <a id="viper-graphics3d-terrain3d-setlodhysteresis"></a>`SetLodHysteresis` | `void(f64)` | `Viper.Graphics3D.Terrain3D.SetLodHysteresis` |
 | <a id="viper-graphics3d-terrain3d-setskirtdepth"></a>`SetSkirtDepth` | `void(f64)` | `Viper.Graphics3D.Terrain3D.SetSkirtDepth` |
 | <a id="viper-graphics3d-terrain3d-new"></a>`New` | `obj(i64,i64)` | `Viper.Graphics3D.Terrain3D.New` |
 
@@ -1980,9 +1953,10 @@ Constructor: `Viper.Graphics3D.Terrain3D.New`
 
 Provides Nav Mesh 3D constants and static operations for 3D rendering and scene applications.
 
-`Viper.Graphics3D.NavMesh3D` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `TriangleCount`, `OffMeshLinkCount`, `ObstacleCount`
-and operations including `FindPath`, `FindPathOption`, `SamplePosition`, `IsWalkable`.
+`Viper.Graphics3D.NavMesh3D` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `TriangleCount`, `OffMeshLinkCount`,
+`ObstacleCount` and operations including `FindPathOption`, `SamplePosition`, `IsWalkable`,
+`Build`.
 
 #### Properties
 
@@ -1999,7 +1973,6 @@ and operations including `FindPath`, `FindPathOption`, `SamplePosition`, `IsWalk
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics3d-navmesh3d-findpath"></a>`FindPath` | `obj(obj,obj)` | `Viper.Graphics3D.NavMesh3D.FindPath` |
 | <a id="viper-graphics3d-navmesh3d-findpathoption"></a>`FindPathOption` | `obj<Viper.Option>(obj,obj)` | `Viper.Graphics3D.NavMesh3D.FindPathOption` |
 | <a id="viper-graphics3d-navmesh3d-sampleposition"></a>`SamplePosition` | `obj(obj)` | `Viper.Graphics3D.NavMesh3D.SamplePosition` |
 | <a id="viper-graphics3d-navmesh3d-iswalkable"></a>`IsWalkable` | `i1(obj)` | `Viper.Graphics3D.NavMesh3D.IsWalkable` |
@@ -2071,7 +2044,7 @@ Constructor: `Viper.Graphics3D.NavAgent3D.New`
 Provides Anim Blend 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.AnimBlend3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `StateCount` and operations including `AddState`, `SetWeight`, `SetWeightByName`, `GetWeight`.
 
 Constructor: `Viper.Graphics3D.AnimBlend3D.New`
@@ -2180,8 +2153,8 @@ Constructor: `Viper.Graphics3D.AnimController3D.New`
 | <a id="viper-graphics3d-animcontroller3d-isstateplaying"></a>`IsStatePlaying` | `i1(str)` | `Viper.Graphics3D.AnimController3D.IsStatePlaying` |
 | <a id="viper-graphics3d-animcontroller3d-setstatespeed"></a>`SetStateSpeed` | `void(str,f64)` | `Viper.Graphics3D.AnimController3D.SetStateSpeed` |
 | <a id="viper-graphics3d-animcontroller3d-setstatelooping"></a>`SetStateLooping` | `void(str,i1)` | `Viper.Graphics3D.AnimController3D.SetStateLooping` |
-| <a id="viper-graphics3d-animcontroller3d-setanimationlod"></a>`SetAnimationLOD` | `void(f64,f64)` | `Viper.Graphics3D.AnimController3D.SetAnimationLOD` |
-| <a id="viper-graphics3d-animcontroller3d-setbonelod"></a>`SetBoneLOD` | `void(i64)` | `Viper.Graphics3D.AnimController3D.SetBoneLOD` |
+| <a id="viper-graphics3d-animcontroller3d-setanimationlod"></a>`SetAnimationLod` | `void(f64,f64)` | `Viper.Graphics3D.AnimController3D.SetAnimationLod` |
+| <a id="viper-graphics3d-animcontroller3d-setbonelod"></a>`SetBoneLod` | `void(i64)` | `Viper.Graphics3D.AnimController3D.SetBoneLod` |
 | <a id="viper-graphics3d-animcontroller3d-setblendtree"></a>`SetBlendTree` | `i1(obj)` | `Viper.Graphics3D.AnimController3D.SetBlendTree` |
 | <a id="viper-graphics3d-animcontroller3d-setiksolver"></a>`SetIKSolver` | `i1(obj)` | `Viper.Graphics3D.AnimController3D.SetIKSolver` |
 | <a id="viper-graphics3d-animcontroller3d-addevent"></a>`AddEvent` | `void(str,f64,str)` | `Viper.Graphics3D.AnimController3D.AddEvent` |
@@ -2204,8 +2177,8 @@ Constructor: `Viper.Graphics3D.AnimController3D.New`
 Provides Decal 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Decal3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Expired`
-and operations including `SetLifetime`, `SetDepthBias`, `Update`.
+object with the instance members below. Its public surface exposes properties such as
+`IsExpired` and operations including `SetLifetime`, `SetDepthBias`, `Update`.
 
 Constructor: `Viper.Graphics3D.Decal3D.New`
 
@@ -2213,7 +2186,7 @@ Constructor: `Viper.Graphics3D.Decal3D.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-graphics3d-decal3d-expired"></a>`Expired` | `i1` | read-only |
+| <a id="viper-graphics3d-decal3d-isexpired"></a>`IsExpired` | `i1` | read-only |
 
 #### Methods
 
@@ -2230,8 +2203,8 @@ Constructor: `Viper.Graphics3D.Decal3D.New`
 Provides Lens Flare 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.LensFlare3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`AddElement`.
+returned object with the instance members below. Its public surface exposes operations
+including `AddElement`.
 
 Constructor: `Viper.Graphics3D.LensFlare3D.New`
 
@@ -2248,7 +2221,7 @@ Constructor: `Viper.Graphics3D.LensFlare3D.New`
 Provides Sprite 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Sprite3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Additive` and operations including `SetPosition`, `SetScale`, `SetAnchor`, `SetFrame`.
 
 Constructor: `Viper.Graphics3D.Sprite3D.New`
@@ -2277,8 +2250,9 @@ Constructor: `Viper.Graphics3D.Sprite3D.New`
 Provides Water 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Water3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes operations including
-`SetHeight`, `SetPosition`, `SetWaveParams`, `SetColor`.
+object with the instance members below. Its public surface exposes properties such as
+`SimDistance` and operations including `SetHeight`, `SetPosition`, `SetWaveParams`,
+`SetColor`.
 
 Constructor: `Viper.Graphics3D.Water3D.New`
 
@@ -2312,8 +2286,8 @@ Constructor: `Viper.Graphics3D.Water3D.New`
 Provides Vegetation 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.Vegetation3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetDensityMap`, `SetWindParams`, `SetLODDistances`, `SetBladeSize`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetDensityMap`, `SetWindParams`, `SetLodDistances`, `SetBladeSize`.
 
 Constructor: `Viper.Graphics3D.Vegetation3D.New`
 
@@ -2323,7 +2297,7 @@ Constructor: `Viper.Graphics3D.Vegetation3D.New`
 |---|---|---|
 | <a id="viper-graphics3d-vegetation3d-setdensitymap"></a>`SetDensityMap` | `void(obj)` | `Viper.Graphics3D.Vegetation3D.SetDensityMap` |
 | <a id="viper-graphics3d-vegetation3d-setwindparams"></a>`SetWindParams` | `void(f64,f64,f64)` | `Viper.Graphics3D.Vegetation3D.SetWindParams` |
-| <a id="viper-graphics3d-vegetation3d-setloddistances"></a>`SetLODDistances` | `void(f64,f64)` | `Viper.Graphics3D.Vegetation3D.SetLODDistances` |
+| <a id="viper-graphics3d-vegetation3d-setloddistances"></a>`SetLodDistances` | `void(f64,f64)` | `Viper.Graphics3D.Vegetation3D.SetLodDistances` |
 | <a id="viper-graphics3d-vegetation3d-setbladesize"></a>`SetBladeSize` | `void(f64,f64,f64)` | `Viper.Graphics3D.Vegetation3D.SetBladeSize` |
 | <a id="viper-graphics3d-vegetation3d-setseed"></a>`SetSeed` | `void(i64)` | `Viper.Graphics3D.Vegetation3D.SetSeed` |
 | <a id="viper-graphics3d-vegetation3d-populate"></a>`Populate` | `void(obj,i64)` | `Viper.Graphics3D.Vegetation3D.Populate` |
@@ -2336,8 +2310,8 @@ Constructor: `Viper.Graphics3D.Vegetation3D.New`
 Provides Texture Atlas 3D functionality for 3D rendering and scene applications.
 
 Create `Viper.Graphics3D.TextureAtlas3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`Add`, `GetTexture`.
+returned object with the instance members below. Its public surface exposes operations
+including `Add`, `GetTexture`.
 
 Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 
@@ -2409,7 +2383,6 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-canvas3d-get-fps"></a>`Viper.Graphics3D.Canvas3D.get_Fps` | `i64(obj)` | `rt_canvas3d_get_fps` |
 | <a id="viper-graphics3d-canvas3d-get-deltatime"></a>`Viper.Graphics3D.Canvas3D.get_DeltaTime` | `i64(obj)` | `rt_canvas3d_get_delta_time` |
 | <a id="viper-graphics3d-canvas3d-get-deltatimesec"></a>`Viper.Graphics3D.Canvas3D.get_DeltaTimeSec` | `f64(obj)` | `rt_canvas3d_get_delta_time_sec` |
-| `Viper.Graphics3D.Canvas3D.SetDTMax` | `void(obj,i64)` | `rt_canvas3d_set_dt_max` |
 | `Viper.Graphics3D.Canvas3D.SetMaxDeltaTime` | `void(obj,i64)` | `rt_canvas3d_set_dt_max` |
 | `Viper.Graphics3D.Canvas3D.SetQuality` | `void(obj,i64)` | `rt_canvas3d_set_quality` |
 | <a id="viper-graphics3d-canvas3d-get-qualityrequested"></a>`Viper.Graphics3D.Canvas3D.get_QualityRequested` | `i64(obj)` | `rt_canvas3d_get_quality_requested` |
@@ -2510,18 +2483,14 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-canvas3d-get-renderscale"></a>`Viper.Graphics3D.Canvas3D.get_RenderScale` | `f64(obj)` | `rt_canvas3d_get_render_scale` |
 | `Viper.Graphics3D.Canvas3D.SetFrustumCulling` | `void(obj,i1)` | `rt_canvas3d_set_frustum_culling` |
 | `Viper.Graphics3D.Mesh3D.New` | `obj()` | `rt_mesh3d_new` |
-| `Viper.Graphics3D.Mesh3D.NewBox` | `obj(f64,f64,f64)` | `rt_mesh3d_new_box` |
 | `Viper.Graphics3D.Mesh3D.Simplify` | `obj(obj,i64)` | `rt_mesh3d_simplify` |
-| `Viper.Graphics3D.SceneNode.GenerateLODs` | `void(obj,i64,f64)` | `rt_scene_node3d_generate_lods` |
-| `Viper.Graphics3D.Mesh3D.NewSphere` | `obj(f64,i64)` | `rt_mesh3d_new_sphere` |
-| `Viper.Graphics3D.Mesh3D.NewPlane` | `obj(f64,f64)` | `rt_mesh3d_new_plane` |
-| `Viper.Graphics3D.Mesh3D.NewCylinder` | `obj(f64,f64,i64)` | `rt_mesh3d_new_cylinder` |
+| `Viper.Graphics3D.SceneNode.GenerateLods` | `void(obj,i64,f64)` | `rt_scene_node3d_generate_lods` |
 | `Viper.Graphics3D.Mesh3D.Box` | `obj(f64,f64,f64)` | `rt_mesh3d_new_box` |
 | `Viper.Graphics3D.Mesh3D.Sphere` | `obj(f64,i64)` | `rt_mesh3d_new_sphere` |
 | `Viper.Graphics3D.Mesh3D.Plane` | `obj(f64,f64)` | `rt_mesh3d_new_plane` |
 | `Viper.Graphics3D.Mesh3D.Cylinder` | `obj(f64,f64,i64)` | `rt_mesh3d_new_cylinder` |
-| `Viper.Graphics3D.Mesh3D.FromOBJ` | `obj(str)` | `rt_mesh3d_from_obj` |
-| `Viper.Graphics3D.Mesh3D.FromSTL` | `obj(str)` | `rt_mesh3d_from_stl` |
+| `Viper.Graphics3D.Mesh3D.FromObj` | `obj(str)` | `rt_mesh3d_from_obj` |
+| `Viper.Graphics3D.Mesh3D.FromStl` | `obj(str)` | `rt_mesh3d_from_stl` |
 | <a id="viper-graphics3d-mesh3d-get-vertexcount"></a>`Viper.Graphics3D.Mesh3D.get_VertexCount` | `i64(obj)` | `rt_mesh3d_get_vertex_count` |
 | <a id="viper-graphics3d-mesh3d-get-trianglecount"></a>`Viper.Graphics3D.Mesh3D.get_TriangleCount` | `i64(obj)` | `rt_mesh3d_get_triangle_count` |
 | <a id="viper-graphics3d-mesh3d-get-resident"></a>`Viper.Graphics3D.Mesh3D.get_Resident` | `i1(obj)` | `rt_mesh3d_get_resident` |
@@ -2535,11 +2504,11 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Mesh3D.AddVertex` | `void(obj,f64,f64,f64,f64,f64,f64,f64,f64)` | `rt_mesh3d_add_vertex` |
 | `Viper.Graphics3D.Mesh3D.AddTriangle` | `void(obj,i64,i64,i64)` | `rt_mesh3d_add_triangle` |
 | `Viper.Graphics3D.Mesh3D.Clear` | `void(obj)` | `rt_mesh3d_clear` |
-| `Viper.Graphics3D.Mesh3D.RecalcNormals` | `void(obj)` | `rt_mesh3d_recalc_normals` |
+| `Viper.Graphics3D.Mesh3D.RecalculateNormals` | `void(obj)` | `rt_mesh3d_recalc_normals` |
 | `Viper.Graphics3D.Mesh3D.Clone` | `obj(obj)` | `rt_mesh3d_clone` |
 | `Viper.Graphics3D.Mesh3D.Transform` | `void(obj,obj)` | `rt_mesh3d_transform` |
 | `Viper.Graphics3D.Camera3D.New` | `obj(f64,f64,f64,f64)` | `rt_camera3d_new` |
-| `Viper.Graphics3D.Camera3D.NewHorizontalFov` | `obj(f64,f64,f64,f64)` | `rt_camera3d_new_horizontal_fov` |
+| `Viper.Graphics3D.Camera3D.WithHorizontalFov` | `obj(f64,f64,f64,f64)` | `rt_camera3d_new_horizontal_fov` |
 | `Viper.Graphics3D.Camera3D.NewOrtho` | `obj(f64,f64,f64,f64)` | `rt_camera3d_new_ortho` |
 | <a id="viper-graphics3d-camera3d-get-isortho"></a>`Viper.Graphics3D.Camera3D.get_IsOrtho` | `i1(obj)` | `rt_camera3d_is_ortho` |
 | `Viper.Graphics3D.Camera3D.LookAt` | `void(obj,obj,obj,obj)` | `rt_camera3d_look_at` |
@@ -2563,8 +2532,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Camera3D.Shake` | `void(obj,f64,f64,f64)` | `rt_camera3d_shake` |
 | `Viper.Graphics3D.Camera3D.SmoothFollow` | `void(obj,obj,f64,f64,f64,f64)` | `rt_camera3d_smooth_follow` |
 | `Viper.Graphics3D.Camera3D.SmoothLookAt` | `void(obj,obj,f64,f64)` | `rt_camera3d_smooth_look_at` |
-| `Viper.Graphics3D.TextureAsset3D.LoadKTX2` | `obj(str)` | `rt_textureasset3d_load_ktx2` |
-| `Viper.Graphics3D.TextureAsset3D.LoadKTX2Asset` | `obj(str)` | `rt_textureasset3d_load_ktx2_asset` |
+| `Viper.Graphics3D.TextureAsset3D.LoadKtx2` | `obj(str)` | `rt_textureasset3d_load_ktx2` |
+| `Viper.Graphics3D.TextureAsset3D.LoadKtx2Asset` | `obj(str)` | `rt_textureasset3d_load_ktx2_asset` |
 | <a id="viper-graphics3d-textureasset3d-get-width"></a>`Viper.Graphics3D.TextureAsset3D.get_Width` | `i64(obj)` | `rt_textureasset3d_get_width` |
 | <a id="viper-graphics3d-textureasset3d-get-height"></a>`Viper.Graphics3D.TextureAsset3D.get_Height` | `i64(obj)` | `rt_textureasset3d_get_height` |
 | <a id="viper-graphics3d-textureasset3d-get-mipcount"></a>`Viper.Graphics3D.TextureAsset3D.get_MipCount` | `i64(obj)` | `rt_textureasset3d_get_mip_count` |
@@ -2575,9 +2544,6 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-textureasset3d-get-residentbytes"></a>`Viper.Graphics3D.TextureAsset3D.get_ResidentBytes` | `i64(obj)` | `rt_textureasset3d_get_resident_bytes` |
 | `Viper.Graphics3D.TextureAsset3D.SetResidentMipRange` | `void(obj,i64,i64)` | `rt_textureasset3d_set_resident_mip_range` |
 | `Viper.Graphics3D.Material3D.New` | `obj()` | `rt_material3d_new` |
-| `Viper.Graphics3D.Material3D.NewColor` | `obj(f64,f64,f64)` | `rt_material3d_new_color` |
-| `Viper.Graphics3D.Material3D.NewTextured` | `obj(obj)` | `rt_material3d_new_textured` |
-| `Viper.Graphics3D.Material3D.NewPBR` | `obj(f64,f64,f64)` | `rt_material3d_new_pbr` |
 | `Viper.Graphics3D.Material3D.FromColor` | `obj(f64,f64,f64)` | `rt_material3d_new_color` |
 | `Viper.Graphics3D.Material3D.Textured` | `obj(obj)` | `rt_material3d_new_textured` |
 | `Viper.Graphics3D.Material3D.PBR` | `obj(f64,f64,f64)` | `rt_material3d_new_pbr` |
@@ -2611,7 +2577,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-material3d-get-hasnormalmap"></a>`Viper.Graphics3D.Material3D.get_HasNormalMap` | `i1(obj)` | `rt_material3d_get_has_normal_map` |
 | `Viper.Graphics3D.Material3D.SetMetallicRoughnessMap` | `void(obj,obj)` | `rt_material3d_set_metallic_roughness_map` |
 | <a id="viper-graphics3d-material3d-get-hasmetallicroughnessmap"></a>`Viper.Graphics3D.Material3D.get_HasMetallicRoughnessMap` | `i1(obj)` | `rt_material3d_get_has_metallic_roughness_map` |
-| `Viper.Graphics3D.Material3D.SetAOMap` | `void(obj,obj)` | `rt_material3d_set_ao_map` |
+| `Viper.Graphics3D.Material3D.SetAmbientOcclusionMap` | `void(obj,obj)` | `rt_material3d_set_ao_map` |
 | `Viper.Graphics3D.Material3D.SetLightmap` | `void(obj,obj)` | `rt_material3d_set_lightmap` |
 | <a id="viper-graphics3d-material3d-get-haslightmap"></a>`Viper.Graphics3D.Material3D.get_HasLightmap` | `i1(obj)` | `rt_material3d_get_has_lightmap` |
 | <a id="viper-graphics3d-material3d-get-hasambientocclusionmap"></a>`Viper.Graphics3D.Material3D.get_HasAmbientOcclusionMap` | `i1(obj)` | `rt_material3d_get_has_ao_map` |
@@ -2632,11 +2598,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-material3d-set-doublesided"></a>`Viper.Graphics3D.Material3D.set_DoubleSided` | `void(obj,i1)` | `rt_material3d_set_double_sided` |
 | <a id="viper-graphics3d-material3d-get-doublesided"></a>`Viper.Graphics3D.Material3D.get_DoubleSided` | `i1(obj)` | `rt_material3d_get_double_sided` |
 | `Viper.Graphics3D.Material3D.SetDepthBias` | `void(obj,f64,f64)` | `rt_material3d_set_depth_bias` |
-| `Viper.Graphics3D.Mesh3D.CalcTangents` | `void(obj)` | `rt_mesh3d_calc_tangents` |
-| `Viper.Graphics3D.Light3D.NewDirectional` | `obj(obj,f64,f64,f64)` | `rt_light3d_new_directional` |
-| `Viper.Graphics3D.Light3D.NewPoint` | `obj(obj,f64,f64,f64,f64)` | `rt_light3d_new_point` |
-| `Viper.Graphics3D.Light3D.NewAmbient` | `obj(f64,f64,f64)` | `rt_light3d_new_ambient` |
-| `Viper.Graphics3D.Light3D.NewSpot` | `obj(obj,obj,f64,f64,f64,f64,f64,f64)` | `rt_light3d_new_spot` |
+| `Viper.Graphics3D.Mesh3D.CalculateTangents` | `void(obj)` | `rt_mesh3d_calc_tangents` |
 | `Viper.Graphics3D.Light3D.Directional` | `obj(obj,f64,f64,f64)` | `rt_light3d_new_directional` |
 | `Viper.Graphics3D.Light3D.Point` | `obj(obj,f64,f64,f64,f64)` | `rt_light3d_new_point` |
 | `Viper.Graphics3D.Light3D.Ambient` | `obj(f64,f64,f64)` | `rt_light3d_new_ambient` |
@@ -2648,8 +2610,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-light3d-get-type"></a>`Viper.Graphics3D.Light3D.get_Type` | `i64(obj)` | `rt_light3d_get_type` |
 | <a id="viper-graphics3d-light3d-get-color"></a>`Viper.Graphics3D.Light3D.get_Color` | `obj<Viper.Math.Vec3>(obj)` | `rt_light3d_get_color` |
 | <a id="viper-graphics3d-light3d-get-intensity"></a>`Viper.Graphics3D.Light3D.get_Intensity` | `f64(obj)` | `rt_light3d_get_intensity` |
-| <a id="viper-graphics3d-light3d-set-enabled"></a>`Viper.Graphics3D.Light3D.set_Enabled` | `void(obj,i1)` | `rt_light3d_set_enabled` |
-| <a id="viper-graphics3d-light3d-get-enabled"></a>`Viper.Graphics3D.Light3D.get_Enabled` | `i1(obj)` | `rt_light3d_get_enabled` |
+| <a id="viper-graphics3d-light3d-set-isenabled"></a>`Viper.Graphics3D.Light3D.set_IsEnabled` | `void(obj,i1)` | `rt_light3d_set_enabled` |
+| <a id="viper-graphics3d-light3d-get-isenabled"></a>`Viper.Graphics3D.Light3D.get_IsEnabled` | `i1(obj)` | `rt_light3d_get_enabled` |
 | <a id="viper-graphics3d-light3d-set-castsshadows"></a>`Viper.Graphics3D.Light3D.set_CastsShadows` | `void(obj,i1)` | `rt_light3d_set_casts_shadows` |
 | <a id="viper-graphics3d-light3d-get-castsshadows"></a>`Viper.Graphics3D.Light3D.get_CastsShadows` | `i1(obj)` | `rt_light3d_get_casts_shadows` |
 | <a id="viper-graphics3d-light3d-get-direction"></a>`Viper.Graphics3D.Light3D.get_Direction` | `obj<Viper.Math.Vec3>(obj)` | `rt_light3d_get_direction` |
@@ -2661,8 +2623,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.SceneGraph.Add` | `void(obj,obj)` | `rt_scene3d_add` |
 | `Viper.Graphics3D.SceneGraph.TryAdd` | `i1(obj,obj)` | `rt_scene3d_try_add` |
 | `Viper.Graphics3D.SceneGraph.Remove` | `void(obj,obj)` | `rt_scene3d_remove` |
-| `Viper.Graphics3D.SceneGraph.Find` | `obj<Viper.Graphics3D.SceneNode>(obj,str)` | `rt_scene3d_find` |
-| `Viper.Graphics3D.SceneGraph.FindOption` | `obj<Viper.Option>(obj,str)` | `rt_scene3d_find_option` |
+| `Viper.Graphics3D.SceneGraph.Find` | `obj<Viper.Option>(obj,str)` | `rt_scene3d_find_option` |
 | `Viper.Graphics3D.SceneGraph.QueryAABB` | `obj<Viper.Collections.Seq>(obj,obj,obj)` | `rt_scene3d_query_aabb` |
 | `Viper.Graphics3D.SceneGraph.QuerySphere` | `obj<Viper.Collections.Seq>(obj,obj,f64)` | `rt_scene3d_query_sphere` |
 | `Viper.Graphics3D.SceneGraph.RaycastNodes` | `obj<Viper.Graphics3D.SceneNode>(obj,obj,obj,f64)` | `rt_scene3d_raycast_nodes` |
@@ -2706,8 +2667,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-scenenode-get-childcount"></a>`Viper.Graphics3D.SceneNode.get_ChildCount` | `i64(obj)` | `rt_scene_node3d_child_count` |
 | `Viper.Graphics3D.SceneNode.GetChild` | `obj<Viper.Graphics3D.SceneNode>(obj,i64)` | `rt_scene_node3d_get_child` |
 | <a id="viper-graphics3d-scenenode-get-parent"></a>`Viper.Graphics3D.SceneNode.get_Parent` | `obj<Viper.Graphics3D.SceneNode>(obj)` | `rt_scene_node3d_get_parent` |
-| `Viper.Graphics3D.SceneNode.Find` | `obj<Viper.Graphics3D.SceneNode>(obj,str)` | `rt_scene_node3d_find` |
-| `Viper.Graphics3D.SceneNode.FindOption` | `obj<Viper.Option>(obj,str)` | `rt_scene_node3d_find_option` |
+| `Viper.Graphics3D.SceneNode.Find` | `obj<Viper.Option>(obj,str)` | `rt_scene_node3d_find_option` |
 | <a id="viper-graphics3d-scenenode-set-visible"></a>`Viper.Graphics3D.SceneNode.set_Visible` | `void(obj,i1)` | `rt_scene_node3d_set_visible` |
 | <a id="viper-graphics3d-scenenode-get-visible"></a>`Viper.Graphics3D.SceneNode.get_Visible` | `i1(obj)` | `rt_scene_node3d_get_visible` |
 | <a id="viper-graphics3d-scenenode-set-name"></a>`Viper.Graphics3D.SceneNode.set_Name` | `void(obj,str)` | `rt_scene_node3d_set_name` |
@@ -2727,14 +2687,14 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.SceneNode.BindNodeAnimator` | `void(obj,obj)` | `rt_scene_node3d_bind_node_animator` |
 | `Viper.Graphics3D.SceneNode.ClearNodeAnimatorBinding` | `void(obj)` | `rt_scene_node3d_clear_node_animator_binding` |
 | <a id="viper-graphics3d-scenenode-get-nodeanimator"></a>`Viper.Graphics3D.SceneNode.get_NodeAnimator` | `obj<Viper.Graphics3D.NodeAnimator3D>(obj)` | `rt_scene_node3d_get_node_animator` |
-| `Viper.Graphics3D.SceneNode.AddLOD` | `void(obj,f64,obj)` | `rt_scene_node3d_add_lod` |
-| `Viper.Graphics3D.SceneNode.SetAutoLOD` | `void(obj,i1,f64)` | `rt_scene_node3d_set_auto_lod` |
+| `Viper.Graphics3D.SceneNode.AddLod` | `void(obj,f64,obj)` | `rt_scene_node3d_add_lod` |
+| `Viper.Graphics3D.SceneNode.SetAutoLod` | `void(obj,i1,f64)` | `rt_scene_node3d_set_auto_lod` |
 | `Viper.Graphics3D.SceneNode.SetImpostor` | `void(obj,f64,obj)` | `rt_scene_node3d_set_impostor` |
 | `Viper.Graphics3D.SceneNode.SetImpostorFrames` | `void(obj,f64,obj,i64)` | `rt_scene_node3d_set_impostor_frames` |
 | `Viper.Graphics3D.SceneNode.SetStatic` | `void(obj,i1)` | `rt_scene_node3d_set_static` |
 | `Viper.Graphics3D.SceneNode.GetStatic` | `i1(obj)` | `rt_scene_node3d_get_static` |
 | `Viper.Graphics3D.SceneNode.GetImpostorFrameIndex` | `i64(obj)` | `rt_scene_node3d_get_impostor_frame_index` |
-| `Viper.Graphics3D.SceneNode.ClearLOD` | `void(obj)` | `rt_scene_node3d_clear_lod` |
+| `Viper.Graphics3D.SceneNode.ClearLod` | `void(obj)` | `rt_scene_node3d_clear_lod` |
 | <a id="viper-graphics3d-scenenode-get-lodcount"></a>`Viper.Graphics3D.SceneNode.get_LodCount` | `i64(obj)` | `rt_scene_node3d_get_lod_count` |
 | `Viper.Graphics3D.SceneNode.GetLodMesh` | `obj(obj,i64)` | `rt_scene_node3d_get_lod_mesh` |
 | `Viper.Graphics3D.SceneNode.GetLodDistance` | `f64(obj,i64)` | `rt_scene_node3d_get_lod_distance` |
@@ -2750,7 +2710,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.NodeAnimator3D.GetClip` | `obj<Viper.Graphics3D.NodeAnimation3D>(obj,i64)` | `rt_node_animator3d_get_clip` |
 | `Viper.Graphics3D.NodeAnimator3D.GetClipName` | `str(obj,i64)` | `rt_node_animator3d_get_clip_name` |
 | <a id="viper-graphics3d-nodeanimator3d-get-currentclip"></a>`Viper.Graphics3D.NodeAnimator3D.get_CurrentClip` | `str(obj)` | `rt_node_animator3d_get_current_clip` |
-| <a id="viper-graphics3d-nodeanimator3d-get-playing"></a>`Viper.Graphics3D.NodeAnimator3D.get_Playing` | `i1(obj)` | `rt_node_animator3d_get_playing` |
+| <a id="viper-graphics3d-nodeanimator3d-get-isplaying"></a>`Viper.Graphics3D.NodeAnimator3D.get_IsPlaying` | `i1(obj)` | `rt_node_animator3d_get_playing` |
 | <a id="viper-graphics3d-nodeanimator3d-get-speed"></a>`Viper.Graphics3D.NodeAnimator3D.get_Speed` | `f64(obj)` | `rt_node_animator3d_get_speed` |
 | <a id="viper-graphics3d-nodeanimator3d-get-time"></a>`Viper.Graphics3D.NodeAnimator3D.get_Time` | `f64(obj)` | `rt_node_animator3d_get_time` |
 | `Viper.Graphics3D.NodeAnimator3D.Play` | `i1(obj,str)` | `rt_node_animator3d_play` |
@@ -2764,7 +2724,6 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-skeleton3d-get-aliascount"></a>`Viper.Graphics3D.Skeleton3D.get_AliasCount` | `i64(obj)` | `rt_skeleton3d_get_alias_count` |
 | `Viper.Graphics3D.Skeleton3D.ComputeInverseBind` | `void(obj)` | `rt_skeleton3d_compute_inverse_bind` |
 | <a id="viper-graphics3d-skeleton3d-get-bonecount"></a>`Viper.Graphics3D.Skeleton3D.get_BoneCount` | `i64(obj)` | `rt_skeleton3d_get_bone_count` |
-| `Viper.Graphics3D.Skeleton3D.FindBone` | `i64(obj,str)` | `rt_skeleton3d_find_bone` |
 | `Viper.Graphics3D.Skeleton3D.FindBoneOption` | `obj<Viper.Option>(obj,str)` | `rt_skeleton3d_find_bone_option` |
 | `Viper.Graphics3D.Skeleton3D.GetBoneName` | `str(obj,i64)` | `rt_skeleton3d_get_bone_name` |
 | `Viper.Graphics3D.Animation3D.New` | `obj(str,f64)` | `rt_animation3d_new` |
@@ -2788,34 +2747,30 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Mesh3D.SetSkeleton` | `void(obj,obj)` | `rt_mesh3d_set_skeleton` |
 | `Viper.Graphics3D.Mesh3D.SetBoneWeights` | `void(obj,i64,i64,f64,i64,f64,i64,f64,i64,f64)` | `rt_mesh3d_set_bone_weights` |
 | `Viper.Graphics3D.Canvas3D.DrawMeshSkinned` | `void(obj,obj,obj,obj,obj)` | `rt_canvas3d_draw_mesh_skinned` |
-| `Viper.Graphics3D.FBX.Load` | `obj<Viper.Graphics3D.FBX>(str)` | `rt_fbx_load` |
-| <a id="viper-graphics3d-fbx-get-meshcount"></a>`Viper.Graphics3D.FBX.get_MeshCount` | `i64(obj)` | `rt_fbx_mesh_count` |
-| `Viper.Graphics3D.FBX.GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(obj,i64)` | `rt_fbx_get_mesh` |
-| `Viper.Graphics3D.FBX.GetSkeleton` | `obj<Viper.Graphics3D.Skeleton3D>(obj)` | `rt_fbx_get_skeleton` |
-| <a id="viper-graphics3d-fbx-get-animationcount"></a>`Viper.Graphics3D.FBX.get_AnimationCount` | `i64(obj)` | `rt_fbx_animation_count` |
-| `Viper.Graphics3D.FBX.GetAnimation` | `obj<Viper.Graphics3D.Animation3D>(obj,i64)` | `rt_fbx_get_animation` |
-| `Viper.Graphics3D.FBX.GetAnimationName` | `str(obj,i64)` | `rt_fbx_get_animation_name` |
-| <a id="viper-graphics3d-fbx-get-materialcount"></a>`Viper.Graphics3D.FBX.get_MaterialCount` | `i64(obj)` | `rt_fbx_material_count` |
-| `Viper.Graphics3D.FBX.GetMaterial` | `obj<Viper.Graphics3D.Material3D>(obj,i64)` | `rt_fbx_get_material` |
-| `Viper.Graphics3D.FBX.GetMorphTarget` | `obj<Viper.Graphics3D.MorphTarget3D>(obj,i64)` | `rt_fbx_get_morph_target` |
-| <a id="viper-graphics3d-assetdiagnostics3d-get-lastloaderror"></a>`Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadError` | `str()` | `rt_assets3d_get_last_load_error` |
-| <a id="viper-graphics3d-assetdiagnostics3d-get-lastloaderrorcode"></a>`Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadErrorCode` | `i64()` | `rt_assets3d_get_last_load_error_code` |
+| `Viper.Graphics3D.Fbx.Load` | `obj<Viper.Graphics3D.Fbx>(str)` | `rt_fbx_load` |
+| <a id="viper-graphics3d-fbx-get-meshcount"></a>`Viper.Graphics3D.Fbx.get_MeshCount` | `i64(obj)` | `rt_fbx_mesh_count` |
+| `Viper.Graphics3D.Fbx.GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(obj,i64)` | `rt_fbx_get_mesh` |
+| `Viper.Graphics3D.Fbx.GetSkeleton` | `obj<Viper.Graphics3D.Skeleton3D>(obj)` | `rt_fbx_get_skeleton` |
+| <a id="viper-graphics3d-fbx-get-animationcount"></a>`Viper.Graphics3D.Fbx.get_AnimationCount` | `i64(obj)` | `rt_fbx_animation_count` |
+| `Viper.Graphics3D.Fbx.GetAnimation` | `obj<Viper.Graphics3D.Animation3D>(obj,i64)` | `rt_fbx_get_animation` |
+| `Viper.Graphics3D.Fbx.GetAnimationName` | `str(obj,i64)` | `rt_fbx_get_animation_name` |
+| <a id="viper-graphics3d-fbx-get-materialcount"></a>`Viper.Graphics3D.Fbx.get_MaterialCount` | `i64(obj)` | `rt_fbx_material_count` |
+| `Viper.Graphics3D.Fbx.GetMaterial` | `obj<Viper.Graphics3D.Material3D>(obj,i64)` | `rt_fbx_get_material` |
+| `Viper.Graphics3D.Fbx.GetMorphTarget` | `obj<Viper.Graphics3D.MorphTarget3D>(obj,i64)` | `rt_fbx_get_morph_target` |
 | <a id="viper-graphics3d-assetdiagnostics3d-get-loadwarningcount"></a>`Viper.Graphics3D.AssetDiagnostics3D.get_LoadWarningCount` | `i64()` | `rt_assets3d_get_load_warning_count` |
 | `Viper.Graphics3D.AssetDiagnostics3D.GetLoadWarning` | `str(i64)` | `rt_assets3d_get_load_warning` |
 | `Viper.Graphics3D.AssetDiagnostics3D.GetLoadWarnings` | `str()` | `rt_assets3d_get_load_warnings` |
 | `Viper.Graphics3D.AssetDiagnostics3D.GetImportReport` | `str()` | `rt_assets3d_get_import_report` |
-| `Viper.Graphics3D.GLTF.Load` | `obj<Viper.Graphics3D.GLTF>(str)` | `rt_gltf_load` |
-| `Viper.Graphics3D.GLTF.LoadAsset` | `obj<Viper.Graphics3D.GLTF>(str)` | `rt_gltf_load_asset` |
-| <a id="viper-graphics3d-gltf-get-meshcount"></a>`Viper.Graphics3D.GLTF.get_MeshCount` | `i64(obj)` | `rt_gltf_mesh_count` |
-| `Viper.Graphics3D.GLTF.GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(obj,i64)` | `rt_gltf_get_mesh` |
-| <a id="viper-graphics3d-gltf-get-materialcount"></a>`Viper.Graphics3D.GLTF.get_MaterialCount` | `i64(obj)` | `rt_gltf_material_count` |
-| `Viper.Graphics3D.GLTF.GetMaterial` | `obj<Viper.Graphics3D.Material3D>(obj,i64)` | `rt_gltf_get_material` |
-| `Viper.Graphics3D.SceneAsset.Load` | `obj(str)` | `rt_model3d_load` |
+| `Viper.Graphics3D.Gltf.Load` | `obj<Viper.Graphics3D.Gltf>(str)` | `rt_gltf_load` |
+| `Viper.Graphics3D.Gltf.LoadAsset` | `obj<Viper.Graphics3D.Gltf>(str)` | `rt_gltf_load_asset` |
+| <a id="viper-graphics3d-gltf-get-meshcount"></a>`Viper.Graphics3D.Gltf.get_MeshCount` | `i64(obj)` | `rt_gltf_mesh_count` |
+| `Viper.Graphics3D.Gltf.GetMesh` | `obj<Viper.Graphics3D.Mesh3D>(obj,i64)` | `rt_gltf_get_mesh` |
+| <a id="viper-graphics3d-gltf-get-materialcount"></a>`Viper.Graphics3D.Gltf.get_MaterialCount` | `i64(obj)` | `rt_gltf_material_count` |
+| `Viper.Graphics3D.Gltf.GetMaterial` | `obj<Viper.Graphics3D.Material3D>(obj,i64)` | `rt_gltf_get_material` |
 | `Viper.Graphics3D.SceneAsset.LoadResult` | `obj<Viper.Result>(str)` | `rt_model3d_load_result` |
 | `Viper.Graphics3D.SceneAsset.LoadWithOptions` | `obj(str,i1)` | `rt_model3d_load_with_options` |
 | `Viper.Graphics3D.SceneAsset.LoadWithOptionsEx` | `obj(str,str)` | `rt_model3d_load_with_options_ex` |
 | `Viper.Graphics3D.SceneAsset.LoadResultWithOptions` | `obj<Viper.Result>(str,i1)` | `rt_model3d_load_result_with_options` |
-| `Viper.Graphics3D.SceneAsset.LoadAsset` | `obj(str)` | `rt_model3d_load_asset` |
 | `Viper.Graphics3D.SceneAsset.LoadAssetResult` | `obj<Viper.Result>(str)` | `rt_model3d_load_asset_result` |
 | <a id="viper-graphics3d-sceneasset-get-meshcount"></a>`Viper.Graphics3D.SceneAsset.get_MeshCount` | `i64(obj)` | `rt_model3d_get_mesh_count` |
 | <a id="viper-graphics3d-sceneasset-get-materialcount"></a>`Viper.Graphics3D.SceneAsset.get_MaterialCount` | `i64(obj)` | `rt_model3d_get_material_count` |
@@ -2836,19 +2791,14 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-sceneasset-get-variantcount"></a>`Viper.Graphics3D.SceneAsset.get_VariantCount` | `i64(obj)` | `rt_model3d_get_variant_count` |
 | `Viper.Graphics3D.SceneAsset.GetVariantName` | `str(obj,i64)` | `rt_model3d_get_variant_name` |
 | `Viper.Graphics3D.SceneAsset.ApplyVariant` | `i64(obj,obj,i64)` | `rt_model3d_apply_variant` |
-| `Viper.Graphics3D.SceneAsset.GenerateLODs` | `i64(obj,i64,f64)` | `rt_model3d_generate_lods` |
-| `Viper.Graphics3D.SceneAsset.FindNode` | `obj(obj,str)` | `rt_model3d_find_node` |
-| `Viper.Graphics3D.SceneAsset.FindNodeOption` | `obj<Viper.Option>(obj,str)` | `rt_model3d_find_node_option` |
+| `Viper.Graphics3D.SceneAsset.GenerateLods` | `i64(obj,i64,f64)` | `rt_model3d_generate_lods` |
+| `Viper.Graphics3D.SceneAsset.FindNode` | `obj<Viper.Option>(obj,str)` | `rt_model3d_find_node_option` |
 | `Viper.Graphics3D.SceneAsset.Instantiate` | `obj(obj)` | `rt_model3d_instantiate` |
 | `Viper.Graphics3D.SceneAsset.InstantiateScene` | `obj(obj)` | `rt_model3d_instantiate_scene` |
 | `Viper.Graphics3D.SceneAsset.InstantiateSceneAt` | `obj<Viper.Graphics3D.SceneGraph>(obj,i64)` | `rt_model3d_instantiate_scene_at` |
-| `Viper.Graphics3D.SceneAsset.LoadAnimation` | `obj<Viper.Graphics3D.Animation3D>(str,i64)` | `rt_model3d_load_animation` |
 | `Viper.Graphics3D.SceneAsset.LoadAnimationResult` | `obj<Viper.Result>(str,i64)` | `rt_model3d_load_animation_result` |
-| `Viper.Graphics3D.SceneAsset.LoadAnimationAsset` | `obj<Viper.Graphics3D.Animation3D>(str,i64)` | `rt_model3d_load_animation_asset` |
 | `Viper.Graphics3D.SceneAsset.LoadAnimationAssetResult` | `obj<Viper.Result>(str,i64)` | `rt_model3d_load_animation_asset_result` |
-| `Viper.Graphics3D.SceneAsset.LoadNodeAnimation` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `rt_model3d_load_node_animation` |
 | `Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult` | `obj<Viper.Result>(str,i64)` | `rt_model3d_load_node_animation_result` |
-| `Viper.Graphics3D.SceneAsset.LoadNodeAnimationAsset` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `rt_model3d_load_node_animation_asset` |
 | `Viper.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult` | `obj<Viper.Result>(str,i64)` | `rt_model3d_load_node_animation_asset_result` |
 | `Viper.Graphics3D.MorphTarget3D.New` | `obj(i64)` | `rt_morphtarget3d_new` |
 | `Viper.Graphics3D.MorphTarget3D.AddShape` | `i64(obj,str)` | `rt_morphtarget3d_add_shape` |
@@ -2885,17 +2835,17 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Particles3D.Update` | `void(obj,f64)` | `rt_particles3d_update` |
 | `Viper.Graphics3D.Particles3D.Draw` | `void(obj,obj,obj)` | `rt_particles3d_draw` |
 | <a id="viper-graphics3d-particles3d-get-count"></a>`Viper.Graphics3D.Particles3D.get_Count` | `i64(obj)` | `rt_particles3d_get_count` |
-| <a id="viper-graphics3d-particles3d-get-emitting"></a>`Viper.Graphics3D.Particles3D.get_Emitting` | `i1(obj)` | `rt_particles3d_get_emitting` |
+| <a id="viper-graphics3d-particles3d-get-isemitting"></a>`Viper.Graphics3D.Particles3D.get_IsEmitting` | `i1(obj)` | `rt_particles3d_get_emitting` |
 | <a id="viper-graphics3d-particles3d-set-seed"></a>`Viper.Graphics3D.Particles3D.set_Seed` | `void(obj,i64)` | `rt_particles3d_set_seed` |
 | <a id="viper-graphics3d-particles3d-get-seed"></a>`Viper.Graphics3D.Particles3D.get_Seed` | `i64(obj)` | `rt_particles3d_get_seed` |
 | `Viper.Graphics3D.PostFX3D.New` | `obj()` | `rt_postfx3d_new` |
 | `Viper.Graphics3D.PostFX3D.AddBloom` | `void(obj,f64,f64,i64)` | `rt_postfx3d_add_bloom` |
 | `Viper.Graphics3D.PostFX3D.AddTonemap` | `void(obj,i64,f64)` | `rt_postfx3d_add_tonemap` |
-| `Viper.Graphics3D.PostFX3D.AddFXAA` | `void(obj)` | `rt_postfx3d_add_fxaa` |
+| `Viper.Graphics3D.PostFX3D.AddFxaa` | `void(obj)` | `rt_postfx3d_add_fxaa` |
 | `Viper.Graphics3D.PostFX3D.AddColorGrade` | `void(obj,f64,f64,f64)` | `rt_postfx3d_add_color_grade` |
 | `Viper.Graphics3D.PostFX3D.AddVignette` | `void(obj,f64,f64)` | `rt_postfx3d_add_vignette` |
-| <a id="viper-graphics3d-postfx3d-set-enabled"></a>`Viper.Graphics3D.PostFX3D.set_Enabled` | `void(obj,i1)` | `rt_postfx3d_set_enabled` |
-| <a id="viper-graphics3d-postfx3d-get-enabled"></a>`Viper.Graphics3D.PostFX3D.get_Enabled` | `i1(obj)` | `rt_postfx3d_get_enabled` |
+| <a id="viper-graphics3d-postfx3d-set-isenabled"></a>`Viper.Graphics3D.PostFX3D.set_IsEnabled` | `void(obj,i1)` | `rt_postfx3d_set_enabled` |
+| <a id="viper-graphics3d-postfx3d-get-isenabled"></a>`Viper.Graphics3D.PostFX3D.get_IsEnabled` | `i1(obj)` | `rt_postfx3d_get_enabled` |
 | `Viper.Graphics3D.PostFX3D.Clear` | `void(obj)` | `rt_postfx3d_clear` |
 | <a id="viper-graphics3d-postfx3d-get-effectcount"></a>`Viper.Graphics3D.PostFX3D.get_EffectCount` | `i64(obj)` | `rt_postfx3d_get_effect_count` |
 | `Viper.Graphics3D.PostFX3D.NewQuality` | `obj(obj,i64)` | `rt_postfx3d_new_quality` |
@@ -2918,8 +2868,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-rayhit3d-get-point"></a>`Viper.Graphics3D.RayHit3D.get_Point` | `obj(obj)` | `rt_ray3d_hit_point` |
 | <a id="viper-graphics3d-rayhit3d-get-normal"></a>`Viper.Graphics3D.RayHit3D.get_Normal` | `obj(obj)` | `rt_ray3d_hit_normal` |
 | <a id="viper-graphics3d-rayhit3d-get-triangleindex"></a>`Viper.Graphics3D.RayHit3D.get_TriangleIndex` | `i64(obj)` | `rt_ray3d_hit_triangle` |
-| `Viper.Graphics3D.Camera3D.FPSInit` | `void(obj)` | `rt_camera3d_fps_init` |
-| `Viper.Graphics3D.Camera3D.FPSUpdate` | `void(obj,f64,f64,f64,f64,f64,f64,f64)` | `rt_camera3d_fps_update` |
+| `Viper.Graphics3D.Camera3D.FirstPersonInit` | `void(obj)` | `rt_camera3d_fps_init` |
+| `Viper.Graphics3D.Camera3D.FirstPersonUpdate` | `void(obj,f64,f64,f64,f64,f64,f64,f64)` | `rt_camera3d_fps_update` |
 | <a id="viper-graphics3d-camera3d-get-yaw"></a>`Viper.Graphics3D.Camera3D.get_Yaw` | `f64(obj)` | `rt_camera3d_get_yaw` |
 | <a id="viper-graphics3d-camera3d-get-pitch"></a>`Viper.Graphics3D.Camera3D.get_Pitch` | `f64(obj)` | `rt_camera3d_get_pitch` |
 | <a id="viper-graphics3d-camera3d-set-yaw"></a>`Viper.Graphics3D.Camera3D.set_Yaw` | `void(obj,f64)` | `rt_camera3d_set_yaw` |
@@ -2967,8 +2917,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-soundsource3d-get-dopplerfactor"></a>`Viper.Graphics3D.SoundSource3D.get_DopplerFactor` | `f64(obj)` | `rt_soundsource3d_get_doppler_factor` |
 | <a id="viper-graphics3d-soundsource3d-get-maxdistance"></a>`Viper.Graphics3D.SoundSource3D.get_MaxDistance` | `f64(obj)` | `rt_soundsource3d_get_max_distance` |
 | <a id="viper-graphics3d-soundsource3d-set-maxdistance"></a>`Viper.Graphics3D.SoundSource3D.set_MaxDistance` | `void(obj,f64)` | `rt_soundsource3d_set_max_distance` |
-| <a id="viper-graphics3d-soundsource3d-get-refdistance"></a>`Viper.Graphics3D.SoundSource3D.get_RefDistance` | `f64(obj)` | `rt_soundsource3d_get_ref_distance` |
-| <a id="viper-graphics3d-soundsource3d-set-refdistance"></a>`Viper.Graphics3D.SoundSource3D.set_RefDistance` | `void(obj,f64)` | `rt_soundsource3d_set_ref_distance` |
+| <a id="viper-graphics3d-soundsource3d-get-referencedistance"></a>`Viper.Graphics3D.SoundSource3D.get_ReferenceDistance` | `f64(obj)` | `rt_soundsource3d_get_ref_distance` |
+| <a id="viper-graphics3d-soundsource3d-set-referencedistance"></a>`Viper.Graphics3D.SoundSource3D.set_ReferenceDistance` | `void(obj,f64)` | `rt_soundsource3d_set_ref_distance` |
 | <a id="viper-graphics3d-soundsource3d-get-volume"></a>`Viper.Graphics3D.SoundSource3D.get_Volume` | `i64(obj)` | `rt_soundsource3d_get_volume` |
 | <a id="viper-graphics3d-soundsource3d-set-volume"></a>`Viper.Graphics3D.SoundSource3D.set_Volume` | `void(obj,i64)` | `rt_soundsource3d_set_volume` |
 | <a id="viper-graphics3d-soundsource3d-get-pitch"></a>`Viper.Graphics3D.SoundSource3D.get_Pitch` | `f64(obj)` | `rt_soundsource3d_get_pitch` |
@@ -2985,62 +2935,62 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.SoundSource3D.Stop` | `void(obj)` | `rt_soundsource3d_stop` |
 | `Viper.Graphics3D.SoundSource3D.BindNode` | `void(obj,obj)` | `rt_soundsource3d_bind_node` |
 | `Viper.Graphics3D.SoundSource3D.ClearNodeBinding` | `void(obj)` | `rt_soundsource3d_clear_node_binding` |
-| `Viper.Graphics3D.Physics3DWorld.New` | `obj(f64,f64,f64)` | `rt_world3d_new` |
-| `Viper.Graphics3D.Physics3DWorld.Step` | `void(obj,f64)` | `rt_world3d_step` |
-| `Viper.Graphics3D.Physics3DWorld.StepFixed` | `i64(obj,f64,f64,i64)` | `rt_world3d_step_fixed` |
-| <a id="viper-graphics3d-physics3dworld-get-fixedstepalpha"></a>`Viper.Graphics3D.Physics3DWorld.get_FixedStepAlpha` | `f64(obj)` | `rt_world3d_get_fixed_step_alpha` |
-| <a id="viper-graphics3d-physics3dworld-get-droppedfixedsteps"></a>`Viper.Graphics3D.Physics3DWorld.get_DroppedFixedSteps` | `i64(obj)` | `rt_world3d_get_dropped_fixed_steps` |
-| `Viper.Graphics3D.Physics3DWorld.Add` | `void(obj,obj)` | `rt_world3d_add` |
-| `Viper.Graphics3D.Physics3DWorld.TryAdd` | `i1(obj,obj)` | `rt_world3d_try_add` |
-| `Viper.Graphics3D.Physics3DWorld.Remove` | `void(obj,obj)` | `rt_world3d_remove` |
-| <a id="viper-graphics3d-physics3dworld-get-bodycount"></a>`Viper.Graphics3D.Physics3DWorld.get_BodyCount` | `i64(obj)` | `rt_world3d_body_count` |
-| `Viper.Graphics3D.Physics3DWorld.ContainsBody` | `i1(obj,obj)` | `rt_world3d_contains_body` |
-| <a id="viper-graphics3d-physics3dworld-get-lastccdrequestedsubsteps"></a>`Viper.Graphics3D.Physics3DWorld.get_LastCcdRequestedSubsteps` | `i64(obj)` | `rt_world3d_get_last_ccd_requested_substeps` |
-| <a id="viper-graphics3d-physics3dworld-get-lastccdsubsteps"></a>`Viper.Graphics3D.Physics3DWorld.get_LastCcdSubsteps` | `i64(obj)` | `rt_world3d_get_last_ccd_substeps` |
-| <a id="viper-graphics3d-physics3dworld-get-ccdsubstepclampedcount"></a>`Viper.Graphics3D.Physics3DWorld.get_CcdSubstepClampedCount` | `i64(obj)` | `rt_world3d_get_ccd_substep_clamped_count` |
-| <a id="viper-graphics3d-physics3dworld-get-lastccdclampedbodycount"></a>`Viper.Graphics3D.Physics3DWorld.get_LastCcdClampedBodyCount` | `i64(obj)` | `rt_world3d_get_last_ccd_clamped_body_count` |
-| <a id="viper-graphics3d-physics3dworld-get-ccdsubstepclampedbodycount"></a>`Viper.Graphics3D.Physics3DWorld.get_CcdSubstepClampedBodyCount` | `i64(obj)` | `rt_world3d_get_ccd_substep_clamped_body_count` |
-| <a id="viper-graphics3d-physics3dworld-get-ccdtoicount"></a>`Viper.Graphics3D.Physics3DWorld.get_CcdToiCount` | `i64(obj)` | `rt_world3d_get_ccd_toi_count` |
-| `Viper.Graphics3D.Physics3DWorld.SetMaxQueryHits` | `void(obj,i64)` | `rt_world3d_set_max_query_hits` |
-| <a id="viper-graphics3d-physics3dworld-get-maxqueryhits"></a>`Viper.Graphics3D.Physics3DWorld.get_MaxQueryHits` | `i64(obj)` | `rt_world3d_get_max_query_hits` |
-| <a id="viper-graphics3d-physics3dworld-get-broadphasefallbackcount"></a>`Viper.Graphics3D.Physics3DWorld.get_BroadphaseFallbackCount` | `i64(obj)` | `rt_world3d_get_broadphase_fallback_count` |
-| <a id="viper-graphics3d-physics3dworld-get-querybroadphaserebuildcount"></a>`Viper.Graphics3D.Physics3DWorld.get_QueryBroadphaseRebuildCount` | `i64(obj)` | `rt_world3d_get_query_broadphase_rebuild_count` |
-| <a id="viper-graphics3d-physics3dworld-get-solveriterations"></a>`Viper.Graphics3D.Physics3DWorld.get_SolverIterations` | `i64(obj)` | `rt_world3d_get_solver_iterations` |
-| <a id="viper-graphics3d-physics3dworld-set-solveriterations"></a>`Viper.Graphics3D.Physics3DWorld.set_SolverIterations` | `void(obj,i64)` | `rt_world3d_set_solver_iterations` |
-| <a id="viper-graphics3d-physics3dworld-get-positioniterations"></a>`Viper.Graphics3D.Physics3DWorld.get_PositionIterations` | `i64(obj)` | `rt_world3d_get_position_iterations` |
-| <a id="viper-graphics3d-physics3dworld-set-positioniterations"></a>`Viper.Graphics3D.Physics3DWorld.set_PositionIterations` | `void(obj,i64)` | `rt_world3d_set_position_iterations` |
-| <a id="viper-graphics3d-physics3dworld-get-contactbeta"></a>`Viper.Graphics3D.Physics3DWorld.get_ContactBeta` | `f64(obj)` | `rt_world3d_get_contact_beta` |
-| <a id="viper-graphics3d-physics3dworld-set-contactbeta"></a>`Viper.Graphics3D.Physics3DWorld.set_ContactBeta` | `void(obj,f64)` | `rt_world3d_set_contact_beta` |
-| <a id="viper-graphics3d-physics3dworld-get-restitutionthreshold"></a>`Viper.Graphics3D.Physics3DWorld.get_RestitutionThreshold` | `f64(obj)` | `rt_world3d_get_restitution_threshold` |
-| <a id="viper-graphics3d-physics3dworld-set-restitutionthreshold"></a>`Viper.Graphics3D.Physics3DWorld.set_RestitutionThreshold` | `void(obj,f64)` | `rt_world3d_set_restitution_threshold` |
-| <a id="viper-graphics3d-physics3dworld-get-lastsolverislandcount"></a>`Viper.Graphics3D.Physics3DWorld.get_LastSolverIslandCount` | `i64(obj)` | `rt_world3d_get_last_solver_island_count` |
-| <a id="viper-graphics3d-physics3dworld-get-lastsolveractivebodycount"></a>`Viper.Graphics3D.Physics3DWorld.get_LastSolverActiveBodyCount` | `i64(obj)` | `rt_world3d_get_last_solver_active_body_count` |
-| <a id="viper-graphics3d-physics3dworld-get-lastsolvercontactcount"></a>`Viper.Graphics3D.Physics3DWorld.get_LastSolverContactCount` | `i64(obj)` | `rt_world3d_get_last_solver_contact_count` |
-| `Viper.Graphics3D.Physics3DWorld.SetGravity` | `void(obj,f64,f64,f64)` | `rt_world3d_set_gravity` |
-| <a id="viper-graphics3d-physics3dworld-get-collisioncount"></a>`Viper.Graphics3D.Physics3DWorld.get_CollisionCount` | `i64(obj)` | `rt_world3d_get_collision_count` |
-| `Viper.Graphics3D.Physics3DWorld.GetCollisionBodyA` | `obj(obj,i64)` | `rt_world3d_get_collision_body_a` |
-| `Viper.Graphics3D.Physics3DWorld.GetCollisionBodyB` | `obj(obj,i64)` | `rt_world3d_get_collision_body_b` |
-| `Viper.Graphics3D.Physics3DWorld.GetCollisionNormal` | `obj(obj,i64)` | `rt_world3d_get_collision_normal` |
-| `Viper.Graphics3D.Physics3DWorld.GetCollisionDepth` | `f64(obj,i64)` | `rt_world3d_get_collision_depth` |
-| <a id="viper-graphics3d-physics3dworld-get-collisioneventcount"></a>`Viper.Graphics3D.Physics3DWorld.get_CollisionEventCount` | `i64(obj)` | `rt_world3d_get_collision_event_count` |
-| `Viper.Graphics3D.Physics3DWorld.GetCollisionEvent` | `obj(obj,i64)` | `rt_world3d_get_collision_event` |
-| <a id="viper-graphics3d-physics3dworld-get-entereventcount"></a>`Viper.Graphics3D.Physics3DWorld.get_EnterEventCount` | `i64(obj)` | `rt_world3d_get_enter_event_count` |
-| `Viper.Graphics3D.Physics3DWorld.GetEnterEvent` | `obj(obj,i64)` | `rt_world3d_get_enter_event` |
-| <a id="viper-graphics3d-physics3dworld-get-stayeventcount"></a>`Viper.Graphics3D.Physics3DWorld.get_StayEventCount` | `i64(obj)` | `rt_world3d_get_stay_event_count` |
-| `Viper.Graphics3D.Physics3DWorld.GetStayEvent` | `obj(obj,i64)` | `rt_world3d_get_stay_event` |
-| <a id="viper-graphics3d-physics3dworld-get-exiteventcount"></a>`Viper.Graphics3D.Physics3DWorld.get_ExitEventCount` | `i64(obj)` | `rt_world3d_get_exit_event_count` |
-| `Viper.Graphics3D.Physics3DWorld.GetExitEvent` | `obj(obj,i64)` | `rt_world3d_get_exit_event` |
-| `Viper.Graphics3D.Physics3DWorld.ClearCollisionEvents` | `void(obj)` | `rt_world3d_clear_collision_events` |
-| `Viper.Graphics3D.Physics3DWorld.Raycast` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,obj,f64,i64)` | `rt_world3d_raycast` |
-| `Viper.Graphics3D.Physics3DWorld.RaycastAll` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,obj,f64,i64)` | `rt_world3d_raycast_all` |
-| `Viper.Graphics3D.Physics3DWorld.SweepSphere` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,obj,i64)` | `rt_world3d_sweep_sphere` |
-| `Viper.Graphics3D.Physics3DWorld.SweepCapsule` | `obj(obj,obj,obj,f64,obj,i64)` | `rt_world3d_sweep_capsule` |
-| `Viper.Graphics3D.Physics3DWorld.OverlapSphere` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)` | `rt_world3d_overlap_sphere` |
-| `Viper.Graphics3D.Physics3DWorld.OverlapAABB` | `obj(obj,obj,obj,i64)` | `rt_world3d_overlap_aabb` |
-| `Viper.Graphics3D.Physics3DWorld.RebaseOrigin` | `void(obj,f64,f64,f64)` | `rt_world3d_rebase_origin` |
-| `Viper.Graphics3D.Physics3DWorld.ProbeClearance` | `i1(obj,obj<Viper.Math.Vec3>,f64,f64,i64)` | `rt_world3d_probe_clearance` |
-| `Viper.Graphics3D.Physics3DWorld.ProbeLedge` | `obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `rt_world3d_probe_ledge` |
-| `Viper.Graphics3D.Physics3DWorld.ProbeVault` | `obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `rt_world3d_probe_vault` |
+| `Viper.Graphics3D.PhysicsWorld3D.New` | `obj(f64,f64,f64)` | `rt_world3d_new` |
+| `Viper.Graphics3D.PhysicsWorld3D.Step` | `void(obj,f64)` | `rt_world3d_step` |
+| `Viper.Graphics3D.PhysicsWorld3D.StepFixed` | `i64(obj,f64,f64,i64)` | `rt_world3d_step_fixed` |
+| <a id="viper-graphics3d-physicsworld3d-get-fixedstepalpha"></a>`Viper.Graphics3D.PhysicsWorld3D.get_FixedStepAlpha` | `f64(obj)` | `rt_world3d_get_fixed_step_alpha` |
+| <a id="viper-graphics3d-physicsworld3d-get-droppedfixedsteps"></a>`Viper.Graphics3D.PhysicsWorld3D.get_DroppedFixedSteps` | `i64(obj)` | `rt_world3d_get_dropped_fixed_steps` |
+| `Viper.Graphics3D.PhysicsWorld3D.Add` | `void(obj,obj)` | `rt_world3d_add` |
+| `Viper.Graphics3D.PhysicsWorld3D.TryAdd` | `i1(obj,obj)` | `rt_world3d_try_add` |
+| `Viper.Graphics3D.PhysicsWorld3D.Remove` | `void(obj,obj)` | `rt_world3d_remove` |
+| <a id="viper-graphics3d-physicsworld3d-get-bodycount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_BodyCount` | `i64(obj)` | `rt_world3d_body_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.ContainsBody` | `i1(obj,obj)` | `rt_world3d_contains_body` |
+| <a id="viper-graphics3d-physicsworld3d-get-lastccdrequestedsubsteps"></a>`Viper.Graphics3D.PhysicsWorld3D.get_LastCcdRequestedSubsteps` | `i64(obj)` | `rt_world3d_get_last_ccd_requested_substeps` |
+| <a id="viper-graphics3d-physicsworld3d-get-lastccdsubsteps"></a>`Viper.Graphics3D.PhysicsWorld3D.get_LastCcdSubsteps` | `i64(obj)` | `rt_world3d_get_last_ccd_substeps` |
+| <a id="viper-graphics3d-physicsworld3d-get-ccdsubstepclampedcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_CcdSubstepClampedCount` | `i64(obj)` | `rt_world3d_get_ccd_substep_clamped_count` |
+| <a id="viper-graphics3d-physicsworld3d-get-lastccdclampedbodycount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_LastCcdClampedBodyCount` | `i64(obj)` | `rt_world3d_get_last_ccd_clamped_body_count` |
+| <a id="viper-graphics3d-physicsworld3d-get-ccdsubstepclampedbodycount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_CcdSubstepClampedBodyCount` | `i64(obj)` | `rt_world3d_get_ccd_substep_clamped_body_count` |
+| <a id="viper-graphics3d-physicsworld3d-get-ccdtoicount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_CcdToiCount` | `i64(obj)` | `rt_world3d_get_ccd_toi_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.SetMaxQueryHits` | `void(obj,i64)` | `rt_world3d_set_max_query_hits` |
+| <a id="viper-graphics3d-physicsworld3d-get-maxqueryhits"></a>`Viper.Graphics3D.PhysicsWorld3D.get_MaxQueryHits` | `i64(obj)` | `rt_world3d_get_max_query_hits` |
+| <a id="viper-graphics3d-physicsworld3d-get-broadphasefallbackcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_BroadphaseFallbackCount` | `i64(obj)` | `rt_world3d_get_broadphase_fallback_count` |
+| <a id="viper-graphics3d-physicsworld3d-get-querybroadphaserebuildcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_QueryBroadphaseRebuildCount` | `i64(obj)` | `rt_world3d_get_query_broadphase_rebuild_count` |
+| <a id="viper-graphics3d-physicsworld3d-get-solveriterations"></a>`Viper.Graphics3D.PhysicsWorld3D.get_SolverIterations` | `i64(obj)` | `rt_world3d_get_solver_iterations` |
+| <a id="viper-graphics3d-physicsworld3d-set-solveriterations"></a>`Viper.Graphics3D.PhysicsWorld3D.set_SolverIterations` | `void(obj,i64)` | `rt_world3d_set_solver_iterations` |
+| <a id="viper-graphics3d-physicsworld3d-get-positioniterations"></a>`Viper.Graphics3D.PhysicsWorld3D.get_PositionIterations` | `i64(obj)` | `rt_world3d_get_position_iterations` |
+| <a id="viper-graphics3d-physicsworld3d-set-positioniterations"></a>`Viper.Graphics3D.PhysicsWorld3D.set_PositionIterations` | `void(obj,i64)` | `rt_world3d_set_position_iterations` |
+| <a id="viper-graphics3d-physicsworld3d-get-contactbeta"></a>`Viper.Graphics3D.PhysicsWorld3D.get_ContactBeta` | `f64(obj)` | `rt_world3d_get_contact_beta` |
+| <a id="viper-graphics3d-physicsworld3d-set-contactbeta"></a>`Viper.Graphics3D.PhysicsWorld3D.set_ContactBeta` | `void(obj,f64)` | `rt_world3d_set_contact_beta` |
+| <a id="viper-graphics3d-physicsworld3d-get-restitutionthreshold"></a>`Viper.Graphics3D.PhysicsWorld3D.get_RestitutionThreshold` | `f64(obj)` | `rt_world3d_get_restitution_threshold` |
+| <a id="viper-graphics3d-physicsworld3d-set-restitutionthreshold"></a>`Viper.Graphics3D.PhysicsWorld3D.set_RestitutionThreshold` | `void(obj,f64)` | `rt_world3d_set_restitution_threshold` |
+| <a id="viper-graphics3d-physicsworld3d-get-lastsolverislandcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_LastSolverIslandCount` | `i64(obj)` | `rt_world3d_get_last_solver_island_count` |
+| <a id="viper-graphics3d-physicsworld3d-get-lastsolveractivebodycount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_LastSolverActiveBodyCount` | `i64(obj)` | `rt_world3d_get_last_solver_active_body_count` |
+| <a id="viper-graphics3d-physicsworld3d-get-lastsolvercontactcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_LastSolverContactCount` | `i64(obj)` | `rt_world3d_get_last_solver_contact_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.SetGravity` | `void(obj,f64,f64,f64)` | `rt_world3d_set_gravity` |
+| <a id="viper-graphics3d-physicsworld3d-get-collisioncount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_CollisionCount` | `i64(obj)` | `rt_world3d_get_collision_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetCollisionBodyA` | `obj(obj,i64)` | `rt_world3d_get_collision_body_a` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetCollisionBodyB` | `obj(obj,i64)` | `rt_world3d_get_collision_body_b` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetCollisionNormal` | `obj(obj,i64)` | `rt_world3d_get_collision_normal` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetCollisionDepth` | `f64(obj,i64)` | `rt_world3d_get_collision_depth` |
+| <a id="viper-graphics3d-physicsworld3d-get-collisioneventcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_CollisionEventCount` | `i64(obj)` | `rt_world3d_get_collision_event_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetCollisionEvent` | `obj(obj,i64)` | `rt_world3d_get_collision_event` |
+| <a id="viper-graphics3d-physicsworld3d-get-entereventcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_EnterEventCount` | `i64(obj)` | `rt_world3d_get_enter_event_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetEnterEvent` | `obj(obj,i64)` | `rt_world3d_get_enter_event` |
+| <a id="viper-graphics3d-physicsworld3d-get-stayeventcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_StayEventCount` | `i64(obj)` | `rt_world3d_get_stay_event_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetStayEvent` | `obj(obj,i64)` | `rt_world3d_get_stay_event` |
+| <a id="viper-graphics3d-physicsworld3d-get-exiteventcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_ExitEventCount` | `i64(obj)` | `rt_world3d_get_exit_event_count` |
+| `Viper.Graphics3D.PhysicsWorld3D.GetExitEvent` | `obj(obj,i64)` | `rt_world3d_get_exit_event` |
+| `Viper.Graphics3D.PhysicsWorld3D.ClearCollisionEvents` | `void(obj)` | `rt_world3d_clear_collision_events` |
+| `Viper.Graphics3D.PhysicsWorld3D.Raycast` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,obj,f64,i64)` | `rt_world3d_raycast` |
+| `Viper.Graphics3D.PhysicsWorld3D.RaycastAll` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,obj,f64,i64)` | `rt_world3d_raycast_all` |
+| `Viper.Graphics3D.PhysicsWorld3D.SweepSphere` | `obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,obj,i64)` | `rt_world3d_sweep_sphere` |
+| `Viper.Graphics3D.PhysicsWorld3D.SweepCapsule` | `obj(obj,obj,obj,f64,obj,i64)` | `rt_world3d_sweep_capsule` |
+| `Viper.Graphics3D.PhysicsWorld3D.OverlapSphere` | `obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)` | `rt_world3d_overlap_sphere` |
+| `Viper.Graphics3D.PhysicsWorld3D.OverlapAABB` | `obj(obj,obj,obj,i64)` | `rt_world3d_overlap_aabb` |
+| `Viper.Graphics3D.PhysicsWorld3D.RebaseOrigin` | `void(obj,f64,f64,f64)` | `rt_world3d_rebase_origin` |
+| `Viper.Graphics3D.PhysicsWorld3D.ProbeClearance` | `i1(obj,obj<Viper.Math.Vec3>,f64,f64,i64)` | `rt_world3d_probe_clearance` |
+| `Viper.Graphics3D.PhysicsWorld3D.ProbeLedge` | `obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `rt_world3d_probe_ledge` |
+| `Viper.Graphics3D.PhysicsWorld3D.ProbeVault` | `obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)` | `rt_world3d_probe_vault` |
 | `Viper.Graphics3D.DistanceJoint3D.New` | `obj(obj,obj,f64)` | `rt_distance_joint3d_new` |
 | <a id="viper-graphics3d-distancejoint3d-get-distance"></a>`Viper.Graphics3D.DistanceJoint3D.get_Distance` | `f64(obj)` | `rt_distance_joint3d_get_distance` |
 | <a id="viper-graphics3d-distancejoint3d-set-distance"></a>`Viper.Graphics3D.DistanceJoint3D.set_Distance` | `void(obj,f64)` | `rt_distance_joint3d_set_distance` |
@@ -3061,10 +3011,10 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.SixDofJoint3D.SetLinearLimits` | `void(obj,obj,obj)` | `rt_sixdof_joint3d_set_linear_limits` |
 | `Viper.Graphics3D.SixDofJoint3D.SetAngularLimits` | `void(obj,obj,obj)` | `rt_sixdof_joint3d_set_angular_limits` |
 | `Viper.Graphics3D.SixDofJoint3D.SetLinearMotor` | `void(obj,i1,obj,f64)` | `rt_sixdof_joint3d_set_linear_motor` |
-| `Viper.Graphics3D.Physics3DWorld.AddJoint` | `void(obj,obj,i64)` | `rt_world3d_add_joint` |
-| `Viper.Graphics3D.Physics3DWorld.RemoveJoint` | `void(obj,obj)` | `rt_world3d_remove_joint` |
-| <a id="viper-graphics3d-physics3dworld-get-jointcount"></a>`Viper.Graphics3D.Physics3DWorld.get_JointCount` | `i64(obj)` | `rt_world3d_joint_count` |
-| <a id="viper-graphics3d-physicshit3d-get-body"></a>`Viper.Graphics3D.PhysicsHit3D.get_Body` | `obj<Viper.Graphics3D.Physics3DBody>(obj)` | `rt_physics_hit3d_get_body` |
+| `Viper.Graphics3D.PhysicsWorld3D.AddJoint` | `void(obj,obj,i64)` | `rt_world3d_add_joint` |
+| `Viper.Graphics3D.PhysicsWorld3D.RemoveJoint` | `void(obj,obj)` | `rt_world3d_remove_joint` |
+| <a id="viper-graphics3d-physicsworld3d-get-jointcount"></a>`Viper.Graphics3D.PhysicsWorld3D.get_JointCount` | `i64(obj)` | `rt_world3d_joint_count` |
+| <a id="viper-graphics3d-physicshit3d-get-body"></a>`Viper.Graphics3D.PhysicsHit3D.get_Body` | `obj<Viper.Graphics3D.PhysicsBody3D>(obj)` | `rt_physics_hit3d_get_body` |
 | <a id="viper-graphics3d-physicshit3d-get-collider"></a>`Viper.Graphics3D.PhysicsHit3D.get_Collider` | `obj<Viper.Graphics3D.Collider3D>(obj)` | `rt_physics_hit3d_get_collider` |
 | <a id="viper-graphics3d-physicshit3d-get-surfacetype"></a>`Viper.Graphics3D.PhysicsHit3D.get_SurfaceType` | `i64(obj)` | `rt_physics_hit3d_get_surface_type` |
 | <a id="viper-graphics3d-physicshit3d-get-point"></a>`Viper.Graphics3D.PhysicsHit3D.get_Point` | `obj<Viper.Math.Vec3>(obj)` | `rt_physics_hit3d_get_point` |
@@ -3088,13 +3038,13 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-ragdoll3d-get-minbonelength"></a>`Viper.Graphics3D.Ragdoll3D.get_MinBoneLength` | `f64(obj)` | `rt_ragdoll3d_get_min_bone_length` |
 | <a id="viper-graphics3d-ragdoll3d-set-minbonelength"></a>`Viper.Graphics3D.Ragdoll3D.set_MinBoneLength` | `void(obj,f64)` | `rt_ragdoll3d_set_min_bone_length` |
 | <a id="viper-graphics3d-ragdoll3d-get-bodycount"></a>`Viper.Graphics3D.Ragdoll3D.get_BodyCount` | `i64(obj)` | `rt_ragdoll3d_get_body_count` |
-| <a id="viper-graphics3d-ragdoll3d-get-active"></a>`Viper.Graphics3D.Ragdoll3D.get_Active` | `i1(obj)` | `rt_ragdoll3d_get_active` |
+| <a id="viper-graphics3d-ragdoll3d-get-isactive"></a>`Viper.Graphics3D.Ragdoll3D.get_IsActive` | `i1(obj)` | `rt_ragdoll3d_get_active` |
 | `Viper.Graphics3D.Ragdoll3D.SetJointLimits` | `void(obj,str,f64,f64)` | `rt_ragdoll3d_set_joint_limits` |
 | `Viper.Graphics3D.Ragdoll3D.Activate` | `void(obj,obj,obj,obj)` | `rt_ragdoll3d_activate` |
 | `Viper.Graphics3D.Ragdoll3D.Deactivate` | `void(obj,f64)` | `rt_ragdoll3d_deactivate` |
 | `Viper.Graphics3D.Ragdoll3D.SetPowered` | `void(obj,i64,f64)` | `rt_ragdoll3d_set_powered` |
 | `Viper.Graphics3D.Ragdoll3D.Step` | `void(obj,f64)` | `rt_ragdoll3d_step` |
-| `Viper.Graphics3D.Ragdoll3D.GetBody` | `obj<Viper.Graphics3D.Physics3DBody>(obj,str)` | `rt_ragdoll3d_get_body` |
+| `Viper.Graphics3D.Ragdoll3D.GetBody` | `obj<Viper.Graphics3D.PhysicsBody3D>(obj,str)` | `rt_ragdoll3d_get_body` |
 | <a id="viper-graphics3d-physicshitlist3d-get-count"></a>`Viper.Graphics3D.PhysicsHitList3D.get_Count` | `i64(obj)` | `rt_physics_hit_list3d_get_count` |
 | <a id="viper-graphics3d-physicshitlist3d-get-totalcount"></a>`Viper.Graphics3D.PhysicsHitList3D.get_TotalCount` | `i64(obj)` | `rt_physics_hit_list3d_get_total_count` |
 | <a id="viper-graphics3d-physicshitlist3d-get-truncated"></a>`Viper.Graphics3D.PhysicsHitList3D.get_Truncated` | `i1(obj)` | `rt_physics_hit_list3d_get_truncated` |
@@ -3116,15 +3066,12 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-contactpoint3d-get-point"></a>`Viper.Graphics3D.ContactPoint3D.get_Point` | `obj(obj)` | `rt_contact_point3d_get_point` |
 | <a id="viper-graphics3d-contactpoint3d-get-normal"></a>`Viper.Graphics3D.ContactPoint3D.get_Normal` | `obj(obj)` | `rt_contact_point3d_get_normal` |
 | <a id="viper-graphics3d-contactpoint3d-get-separation"></a>`Viper.Graphics3D.ContactPoint3D.get_Separation` | `f64(obj)` | `rt_contact_point3d_get_separation` |
-| `Viper.Graphics3D.Collider3D.NewBox` | `obj(f64,f64,f64)` | `rt_collider3d_new_box` |
-| `Viper.Graphics3D.Collider3D.NewSphere` | `obj(f64)` | `rt_collider3d_new_sphere` |
 | <a id="viper-graphics3d-collider3d-set-friction"></a>`Viper.Graphics3D.Collider3D.set_Friction` | `void(obj,f64)` | `rt_collider3d_set_friction` |
 | <a id="viper-graphics3d-collider3d-get-friction"></a>`Viper.Graphics3D.Collider3D.get_Friction` | `f64(obj)` | `rt_collider3d_get_friction` |
 | <a id="viper-graphics3d-collider3d-set-restitution"></a>`Viper.Graphics3D.Collider3D.set_Restitution` | `void(obj,f64)` | `rt_collider3d_set_restitution` |
 | <a id="viper-graphics3d-collider3d-get-restitution"></a>`Viper.Graphics3D.Collider3D.get_Restitution` | `f64(obj)` | `rt_collider3d_get_restitution` |
 | <a id="viper-graphics3d-collider3d-set-surfacetype"></a>`Viper.Graphics3D.Collider3D.set_SurfaceType` | `void(obj,i64)` | `rt_collider3d_set_surface_type` |
 | <a id="viper-graphics3d-collider3d-get-surfacetype"></a>`Viper.Graphics3D.Collider3D.get_SurfaceType` | `i64(obj)` | `rt_collider3d_get_surface_type` |
-| `Viper.Graphics3D.Collider3D.NewCapsule` | `obj(f64,f64)` | `rt_collider3d_new_capsule` |
 | `Viper.Graphics3D.Collider3D.Box` | `obj(f64,f64,f64)` | `rt_collider3d_new_box` |
 | `Viper.Graphics3D.Collider3D.Sphere` | `obj(f64)` | `rt_collider3d_new_sphere` |
 | `Viper.Graphics3D.Collider3D.Capsule` | `obj(f64,f64)` | `rt_collider3d_new_capsule` |
@@ -3137,58 +3084,58 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-collider3d-get-type"></a>`Viper.Graphics3D.Collider3D.get_Type` | `i64(obj)` | `rt_collider3d_get_type` |
 | `Viper.Graphics3D.Collider3D.GetLocalBoundsMin` | `obj(obj)` | `rt_collider3d_get_local_bounds_min` |
 | `Viper.Graphics3D.Collider3D.GetLocalBoundsMax` | `obj(obj)` | `rt_collider3d_get_local_bounds_max` |
-| `Viper.Graphics3D.Physics3DBody.New` | `obj(f64)` | `rt_body3d_new` |
-| `Viper.Graphics3D.Physics3DBody.NewAABB` | `obj(f64,f64,f64,f64)` | `rt_body3d_new_aabb` |
-| `Viper.Graphics3D.Physics3DBody.NewSphere` | `obj(f64,f64)` | `rt_body3d_new_sphere` |
-| `Viper.Graphics3D.Physics3DBody.NewCapsule` | `obj(f64,f64,f64)` | `rt_body3d_new_capsule` |
-| <a id="viper-graphics3d-physics3dbody-set-collider"></a>`Viper.Graphics3D.Physics3DBody.set_Collider` | `void(obj,obj<Viper.Graphics3D.Collider3D>)` | `rt_body3d_set_collider` |
-| <a id="viper-graphics3d-physics3dbody-get-collider"></a>`Viper.Graphics3D.Physics3DBody.get_Collider` | `obj<Viper.Graphics3D.Collider3D>(obj)` | `rt_body3d_get_collider` |
-| `Viper.Graphics3D.Physics3DBody.SetPosition` | `void(obj,f64,f64,f64)` | `rt_body3d_set_position` |
-| <a id="viper-graphics3d-physics3dbody-get-position"></a>`Viper.Graphics3D.Physics3DBody.get_Position` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_position` |
-| `Viper.Graphics3D.Physics3DBody.SetScale` | `void(obj,f64,f64,f64)` | `rt_body3d_set_scale` |
-| <a id="viper-graphics3d-physics3dbody-get-scale"></a>`Viper.Graphics3D.Physics3DBody.get_Scale` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_scale` |
-| `Viper.Graphics3D.Physics3DBody.SetOrientation` | `void(obj,obj)` | `rt_body3d_set_orientation` |
-| <a id="viper-graphics3d-physics3dbody-get-orientation"></a>`Viper.Graphics3D.Physics3DBody.get_Orientation` | `obj<Viper.Math.Quat>(obj)` | `rt_body3d_get_orientation` |
-| `Viper.Graphics3D.Physics3DBody.SetVelocity` | `void(obj,f64,f64,f64)` | `rt_body3d_set_velocity` |
-| <a id="viper-graphics3d-physics3dbody-get-velocity"></a>`Viper.Graphics3D.Physics3DBody.get_Velocity` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_velocity` |
-| `Viper.Graphics3D.Physics3DBody.SetAngularVelocity` | `void(obj,f64,f64,f64)` | `rt_body3d_set_angular_velocity` |
-| <a id="viper-graphics3d-physics3dbody-get-angularvelocity"></a>`Viper.Graphics3D.Physics3DBody.get_AngularVelocity` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_angular_velocity` |
-| `Viper.Graphics3D.Physics3DBody.ApplyForce` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_force` |
-| `Viper.Graphics3D.Physics3DBody.ApplyForceAtPoint` | `void(obj,f64,f64,f64,f64,f64,f64)` | `rt_body3d_apply_force_at_point` |
-| `Viper.Graphics3D.Physics3DBody.ApplyImpulse` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_impulse` |
-| `Viper.Graphics3D.Physics3DBody.ApplyImpulseAtPoint` | `void(obj,f64,f64,f64,f64,f64,f64)` | `rt_body3d_apply_impulse_at_point` |
-| `Viper.Graphics3D.Physics3DBody.ApplyTorque` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_torque` |
-| `Viper.Graphics3D.Physics3DBody.ApplyAngularImpulse` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_angular_impulse` |
-| <a id="viper-graphics3d-physics3dbody-set-restitution"></a>`Viper.Graphics3D.Physics3DBody.set_Restitution` | `void(obj,f64)` | `rt_body3d_set_restitution` |
-| <a id="viper-graphics3d-physics3dbody-get-restitution"></a>`Viper.Graphics3D.Physics3DBody.get_Restitution` | `f64(obj)` | `rt_body3d_get_restitution` |
-| <a id="viper-graphics3d-physics3dbody-set-friction"></a>`Viper.Graphics3D.Physics3DBody.set_Friction` | `void(obj,f64)` | `rt_body3d_set_friction` |
-| <a id="viper-graphics3d-physics3dbody-set-userdata"></a>`Viper.Graphics3D.Physics3DBody.set_UserData` | `void(obj,i64)` | `rt_body3d_set_user_data` |
-| <a id="viper-graphics3d-physics3dbody-get-userdata"></a>`Viper.Graphics3D.Physics3DBody.get_UserData` | `i64(obj)` | `rt_body3d_get_user_data` |
-| <a id="viper-graphics3d-physics3dbody-get-friction"></a>`Viper.Graphics3D.Physics3DBody.get_Friction` | `f64(obj)` | `rt_body3d_get_friction` |
-| <a id="viper-graphics3d-physics3dbody-set-lineardamping"></a>`Viper.Graphics3D.Physics3DBody.set_LinearDamping` | `void(obj,f64)` | `rt_body3d_set_linear_damping` |
-| <a id="viper-graphics3d-physics3dbody-get-lineardamping"></a>`Viper.Graphics3D.Physics3DBody.get_LinearDamping` | `f64(obj)` | `rt_body3d_get_linear_damping` |
-| <a id="viper-graphics3d-physics3dbody-set-angulardamping"></a>`Viper.Graphics3D.Physics3DBody.set_AngularDamping` | `void(obj,f64)` | `rt_body3d_set_angular_damping` |
-| <a id="viper-graphics3d-physics3dbody-get-angulardamping"></a>`Viper.Graphics3D.Physics3DBody.get_AngularDamping` | `f64(obj)` | `rt_body3d_get_angular_damping` |
-| <a id="viper-graphics3d-physics3dbody-set-collisionlayer"></a>`Viper.Graphics3D.Physics3DBody.set_CollisionLayer` | `void(obj,i64)` | `rt_body3d_set_collision_layer` |
-| <a id="viper-graphics3d-physics3dbody-get-collisionlayer"></a>`Viper.Graphics3D.Physics3DBody.get_CollisionLayer` | `i64(obj)` | `rt_body3d_get_collision_layer` |
-| <a id="viper-graphics3d-physics3dbody-set-collisionmask"></a>`Viper.Graphics3D.Physics3DBody.set_CollisionMask` | `void(obj,i64)` | `rt_body3d_set_collision_mask` |
-| <a id="viper-graphics3d-physics3dbody-get-collisionmask"></a>`Viper.Graphics3D.Physics3DBody.get_CollisionMask` | `i64(obj)` | `rt_body3d_get_collision_mask` |
-| <a id="viper-graphics3d-physics3dbody-set-static"></a>`Viper.Graphics3D.Physics3DBody.set_Static` | `void(obj,i1)` | `rt_body3d_set_static` |
-| <a id="viper-graphics3d-physics3dbody-get-static"></a>`Viper.Graphics3D.Physics3DBody.get_Static` | `i1(obj)` | `rt_body3d_is_static` |
-| <a id="viper-graphics3d-physics3dbody-set-kinematic"></a>`Viper.Graphics3D.Physics3DBody.set_Kinematic` | `void(obj,i1)` | `rt_body3d_set_kinematic` |
-| <a id="viper-graphics3d-physics3dbody-get-kinematic"></a>`Viper.Graphics3D.Physics3DBody.get_Kinematic` | `i1(obj)` | `rt_body3d_is_kinematic` |
-| <a id="viper-graphics3d-physics3dbody-set-trigger"></a>`Viper.Graphics3D.Physics3DBody.set_Trigger` | `void(obj,i1)` | `rt_body3d_set_trigger` |
-| <a id="viper-graphics3d-physics3dbody-get-trigger"></a>`Viper.Graphics3D.Physics3DBody.get_Trigger` | `i1(obj)` | `rt_body3d_is_trigger` |
-| <a id="viper-graphics3d-physics3dbody-set-cansleep"></a>`Viper.Graphics3D.Physics3DBody.set_CanSleep` | `void(obj,i1)` | `rt_body3d_set_can_sleep` |
-| <a id="viper-graphics3d-physics3dbody-get-cansleep"></a>`Viper.Graphics3D.Physics3DBody.get_CanSleep` | `i1(obj)` | `rt_body3d_can_sleep` |
-| <a id="viper-graphics3d-physics3dbody-get-sleeping"></a>`Viper.Graphics3D.Physics3DBody.get_Sleeping` | `i1(obj)` | `rt_body3d_is_sleeping` |
-| `Viper.Graphics3D.Physics3DBody.Wake` | `void(obj)` | `rt_body3d_wake` |
-| `Viper.Graphics3D.Physics3DBody.Sleep` | `void(obj)` | `rt_body3d_sleep` |
-| <a id="viper-graphics3d-physics3dbody-set-useccd"></a>`Viper.Graphics3D.Physics3DBody.set_UseCcd` | `void(obj,i1)` | `rt_body3d_set_use_ccd` |
-| <a id="viper-graphics3d-physics3dbody-get-useccd"></a>`Viper.Graphics3D.Physics3DBody.get_UseCcd` | `i1(obj)` | `rt_body3d_get_use_ccd` |
-| <a id="viper-graphics3d-physics3dbody-get-grounded"></a>`Viper.Graphics3D.Physics3DBody.get_Grounded` | `i1(obj)` | `rt_body3d_is_grounded` |
-| <a id="viper-graphics3d-physics3dbody-get-groundnormal"></a>`Viper.Graphics3D.Physics3DBody.get_GroundNormal` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_ground_normal` |
-| <a id="viper-graphics3d-physics3dbody-get-mass"></a>`Viper.Graphics3D.Physics3DBody.get_Mass` | `f64(obj)` | `rt_body3d_get_mass` |
+| `Viper.Graphics3D.PhysicsBody3D.New` | `obj(f64)` | `rt_body3d_new` |
+| `Viper.Graphics3D.PhysicsBody3D.NewAABB` | `obj(f64,f64,f64,f64)` | `rt_body3d_new_aabb` |
+| `Viper.Graphics3D.PhysicsBody3D.Sphere` | `obj(f64,f64)` | `rt_body3d_new_sphere` |
+| `Viper.Graphics3D.PhysicsBody3D.NewCapsule` | `obj(f64,f64,f64)` | `rt_body3d_new_capsule` |
+| <a id="viper-graphics3d-physicsbody3d-set-collider"></a>`Viper.Graphics3D.PhysicsBody3D.set_Collider` | `void(obj,obj<Viper.Graphics3D.Collider3D>)` | `rt_body3d_set_collider` |
+| <a id="viper-graphics3d-physicsbody3d-get-collider"></a>`Viper.Graphics3D.PhysicsBody3D.get_Collider` | `obj<Viper.Graphics3D.Collider3D>(obj)` | `rt_body3d_get_collider` |
+| `Viper.Graphics3D.PhysicsBody3D.SetPosition` | `void(obj,f64,f64,f64)` | `rt_body3d_set_position` |
+| <a id="viper-graphics3d-physicsbody3d-get-position"></a>`Viper.Graphics3D.PhysicsBody3D.get_Position` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_position` |
+| `Viper.Graphics3D.PhysicsBody3D.SetScale` | `void(obj,f64,f64,f64)` | `rt_body3d_set_scale` |
+| <a id="viper-graphics3d-physicsbody3d-get-scale"></a>`Viper.Graphics3D.PhysicsBody3D.get_Scale` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_scale` |
+| `Viper.Graphics3D.PhysicsBody3D.SetOrientation` | `void(obj,obj)` | `rt_body3d_set_orientation` |
+| <a id="viper-graphics3d-physicsbody3d-get-orientation"></a>`Viper.Graphics3D.PhysicsBody3D.get_Orientation` | `obj<Viper.Math.Quat>(obj)` | `rt_body3d_get_orientation` |
+| `Viper.Graphics3D.PhysicsBody3D.SetVelocity` | `void(obj,f64,f64,f64)` | `rt_body3d_set_velocity` |
+| <a id="viper-graphics3d-physicsbody3d-get-velocity"></a>`Viper.Graphics3D.PhysicsBody3D.get_Velocity` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_velocity` |
+| `Viper.Graphics3D.PhysicsBody3D.SetAngularVelocity` | `void(obj,f64,f64,f64)` | `rt_body3d_set_angular_velocity` |
+| <a id="viper-graphics3d-physicsbody3d-get-angularvelocity"></a>`Viper.Graphics3D.PhysicsBody3D.get_AngularVelocity` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_angular_velocity` |
+| `Viper.Graphics3D.PhysicsBody3D.ApplyForce` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_force` |
+| `Viper.Graphics3D.PhysicsBody3D.ApplyForceAtPoint` | `void(obj,f64,f64,f64,f64,f64,f64)` | `rt_body3d_apply_force_at_point` |
+| `Viper.Graphics3D.PhysicsBody3D.ApplyImpulse` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_impulse` |
+| `Viper.Graphics3D.PhysicsBody3D.ApplyImpulseAtPoint` | `void(obj,f64,f64,f64,f64,f64,f64)` | `rt_body3d_apply_impulse_at_point` |
+| `Viper.Graphics3D.PhysicsBody3D.ApplyTorque` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_torque` |
+| `Viper.Graphics3D.PhysicsBody3D.ApplyAngularImpulse` | `void(obj,f64,f64,f64)` | `rt_body3d_apply_angular_impulse` |
+| <a id="viper-graphics3d-physicsbody3d-set-restitution"></a>`Viper.Graphics3D.PhysicsBody3D.set_Restitution` | `void(obj,f64)` | `rt_body3d_set_restitution` |
+| <a id="viper-graphics3d-physicsbody3d-get-restitution"></a>`Viper.Graphics3D.PhysicsBody3D.get_Restitution` | `f64(obj)` | `rt_body3d_get_restitution` |
+| <a id="viper-graphics3d-physicsbody3d-set-friction"></a>`Viper.Graphics3D.PhysicsBody3D.set_Friction` | `void(obj,f64)` | `rt_body3d_set_friction` |
+| <a id="viper-graphics3d-physicsbody3d-set-userdata"></a>`Viper.Graphics3D.PhysicsBody3D.set_UserData` | `void(obj,i64)` | `rt_body3d_set_user_data` |
+| <a id="viper-graphics3d-physicsbody3d-get-userdata"></a>`Viper.Graphics3D.PhysicsBody3D.get_UserData` | `i64(obj)` | `rt_body3d_get_user_data` |
+| <a id="viper-graphics3d-physicsbody3d-get-friction"></a>`Viper.Graphics3D.PhysicsBody3D.get_Friction` | `f64(obj)` | `rt_body3d_get_friction` |
+| <a id="viper-graphics3d-physicsbody3d-set-lineardamping"></a>`Viper.Graphics3D.PhysicsBody3D.set_LinearDamping` | `void(obj,f64)` | `rt_body3d_set_linear_damping` |
+| <a id="viper-graphics3d-physicsbody3d-get-lineardamping"></a>`Viper.Graphics3D.PhysicsBody3D.get_LinearDamping` | `f64(obj)` | `rt_body3d_get_linear_damping` |
+| <a id="viper-graphics3d-physicsbody3d-set-angulardamping"></a>`Viper.Graphics3D.PhysicsBody3D.set_AngularDamping` | `void(obj,f64)` | `rt_body3d_set_angular_damping` |
+| <a id="viper-graphics3d-physicsbody3d-get-angulardamping"></a>`Viper.Graphics3D.PhysicsBody3D.get_AngularDamping` | `f64(obj)` | `rt_body3d_get_angular_damping` |
+| <a id="viper-graphics3d-physicsbody3d-set-collisionlayer"></a>`Viper.Graphics3D.PhysicsBody3D.set_CollisionLayer` | `void(obj,i64)` | `rt_body3d_set_collision_layer` |
+| <a id="viper-graphics3d-physicsbody3d-get-collisionlayer"></a>`Viper.Graphics3D.PhysicsBody3D.get_CollisionLayer` | `i64(obj)` | `rt_body3d_get_collision_layer` |
+| <a id="viper-graphics3d-physicsbody3d-set-collisionmask"></a>`Viper.Graphics3D.PhysicsBody3D.set_CollisionMask` | `void(obj,i64)` | `rt_body3d_set_collision_mask` |
+| <a id="viper-graphics3d-physicsbody3d-get-collisionmask"></a>`Viper.Graphics3D.PhysicsBody3D.get_CollisionMask` | `i64(obj)` | `rt_body3d_get_collision_mask` |
+| <a id="viper-graphics3d-physicsbody3d-set-isstatic"></a>`Viper.Graphics3D.PhysicsBody3D.set_IsStatic` | `void(obj,i1)` | `rt_body3d_set_static` |
+| <a id="viper-graphics3d-physicsbody3d-get-isstatic"></a>`Viper.Graphics3D.PhysicsBody3D.get_IsStatic` | `i1(obj)` | `rt_body3d_is_static` |
+| <a id="viper-graphics3d-physicsbody3d-set-iskinematic"></a>`Viper.Graphics3D.PhysicsBody3D.set_IsKinematic` | `void(obj,i1)` | `rt_body3d_set_kinematic` |
+| <a id="viper-graphics3d-physicsbody3d-get-iskinematic"></a>`Viper.Graphics3D.PhysicsBody3D.get_IsKinematic` | `i1(obj)` | `rt_body3d_is_kinematic` |
+| <a id="viper-graphics3d-physicsbody3d-set-istrigger"></a>`Viper.Graphics3D.PhysicsBody3D.set_IsTrigger` | `void(obj,i1)` | `rt_body3d_set_trigger` |
+| <a id="viper-graphics3d-physicsbody3d-get-istrigger"></a>`Viper.Graphics3D.PhysicsBody3D.get_IsTrigger` | `i1(obj)` | `rt_body3d_is_trigger` |
+| <a id="viper-graphics3d-physicsbody3d-set-cansleep"></a>`Viper.Graphics3D.PhysicsBody3D.set_CanSleep` | `void(obj,i1)` | `rt_body3d_set_can_sleep` |
+| <a id="viper-graphics3d-physicsbody3d-get-cansleep"></a>`Viper.Graphics3D.PhysicsBody3D.get_CanSleep` | `i1(obj)` | `rt_body3d_can_sleep` |
+| <a id="viper-graphics3d-physicsbody3d-get-issleeping"></a>`Viper.Graphics3D.PhysicsBody3D.get_IsSleeping` | `i1(obj)` | `rt_body3d_is_sleeping` |
+| `Viper.Graphics3D.PhysicsBody3D.Wake` | `void(obj)` | `rt_body3d_wake` |
+| `Viper.Graphics3D.PhysicsBody3D.Sleep` | `void(obj)` | `rt_body3d_sleep` |
+| <a id="viper-graphics3d-physicsbody3d-set-useccd"></a>`Viper.Graphics3D.PhysicsBody3D.set_UseCcd` | `void(obj,i1)` | `rt_body3d_set_use_ccd` |
+| <a id="viper-graphics3d-physicsbody3d-get-useccd"></a>`Viper.Graphics3D.PhysicsBody3D.get_UseCcd` | `i1(obj)` | `rt_body3d_get_use_ccd` |
+| <a id="viper-graphics3d-physicsbody3d-get-isgrounded"></a>`Viper.Graphics3D.PhysicsBody3D.get_IsGrounded` | `i1(obj)` | `rt_body3d_is_grounded` |
+| <a id="viper-graphics3d-physicsbody3d-get-groundnormal"></a>`Viper.Graphics3D.PhysicsBody3D.get_GroundNormal` | `obj<Viper.Math.Vec3>(obj)` | `rt_body3d_get_ground_normal` |
+| <a id="viper-graphics3d-physicsbody3d-get-mass"></a>`Viper.Graphics3D.PhysicsBody3D.get_Mass` | `f64(obj)` | `rt_body3d_get_mass` |
 | `Viper.Graphics3D.Character3D.New` | `obj(f64,f64,f64)` | `rt_character3d_new` |
 | `Viper.Graphics3D.Character3D.Move` | `void(obj,obj,f64)` | `rt_character3d_move` |
 | <a id="viper-graphics3d-character3d-set-stepheight"></a>`Viper.Graphics3D.Character3D.set_StepHeight` | `void(obj,f64)` | `rt_character3d_set_step_height` |
@@ -3196,7 +3143,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Character3D.SetSlopeLimit` | `void(obj,f64)` | `rt_character3d_set_slope_limit` |
 | <a id="viper-graphics3d-character3d-set-world"></a>`Viper.Graphics3D.Character3D.set_World` | `void(obj,obj)` | `rt_character3d_set_world` |
 | <a id="viper-graphics3d-character3d-get-world"></a>`Viper.Graphics3D.Character3D.get_World` | `obj(obj)` | `rt_character3d_get_world` |
-| <a id="viper-graphics3d-character3d-get-grounded"></a>`Viper.Graphics3D.Character3D.get_Grounded` | `i1(obj)` | `rt_character3d_is_grounded` |
+| <a id="viper-graphics3d-character3d-get-isgrounded"></a>`Viper.Graphics3D.Character3D.get_IsGrounded` | `i1(obj)` | `rt_character3d_is_grounded` |
 | <a id="viper-graphics3d-character3d-get-justlanded"></a>`Viper.Graphics3D.Character3D.get_JustLanded` | `i1(obj)` | `rt_character3d_just_landed` |
 | <a id="viper-graphics3d-character3d-get-position"></a>`Viper.Graphics3D.Character3D.get_Position` | `obj<Viper.Math.Vec3>(obj)` | `rt_character3d_get_position` |
 | `Viper.Graphics3D.Character3D.SetPosition` | `void(obj,f64,f64,f64)` | `rt_character3d_set_position` |
@@ -3210,7 +3157,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-character3d-set-rideplatforms"></a>`Viper.Graphics3D.Character3D.set_RidePlatforms` | `void(obj,i1)` | `rt_character3d_set_ride_platforms` |
 | <a id="viper-graphics3d-character3d-get-rideplatforms"></a>`Viper.Graphics3D.Character3D.get_RidePlatforms` | `i1(obj)` | `rt_character3d_get_ride_platforms` |
 | `Viper.Graphics3D.Character3D.IsSliding` | `i1(obj)` | `rt_character3d_is_sliding` |
-| `Viper.Graphics3D.Character3D.GetGroundBody` | `obj<Viper.Graphics3D.Physics3DBody>(obj)` | `rt_character3d_get_ground_body` |
+| `Viper.Graphics3D.Character3D.GetGroundBody` | `obj<Viper.Graphics3D.PhysicsBody3D>(obj)` | `rt_character3d_get_ground_body` |
 | `Viper.Graphics3D.Trigger3D.New` | `obj(f64,f64,f64,f64,f64,f64)` | `rt_trigger3d_new` |
 | `Viper.Graphics3D.Trigger3D.Contains` | `i1(obj,obj)` | `rt_trigger3d_contains` |
 | `Viper.Graphics3D.Trigger3D.Update` | `void(obj,obj)` | `rt_trigger3d_update` |
@@ -3352,8 +3299,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.ReflectionProbe3D.Capture` | `i1(obj,obj,obj)` | `rt_reflectionprobe3d_capture` |
 | `Viper.Graphics3D.Terrain3D.SetLayerTexture` | `void(obj,i64,obj)` | `rt_terrain3d_set_layer_texture` |
 | `Viper.Graphics3D.Terrain3D.SetLayerScale` | `void(obj,i64,f64)` | `rt_terrain3d_set_layer_scale` |
-| `Viper.Graphics3D.Terrain3D.SetLODDistances` | `void(obj,f64,f64)` | `rt_terrain3d_set_lod_distances` |
-| `Viper.Graphics3D.Terrain3D.SetLODHysteresis` | `void(obj,f64)` | `rt_terrain3d_set_lod_hysteresis` |
+| `Viper.Graphics3D.Terrain3D.SetLodDistances` | `void(obj,f64,f64)` | `rt_terrain3d_set_lod_distances` |
+| `Viper.Graphics3D.Terrain3D.SetLodHysteresis` | `void(obj,f64)` | `rt_terrain3d_set_lod_hysteresis` |
 | `Viper.Graphics3D.Terrain3D.SetSkirtDepth` | `void(obj,f64)` | `rt_terrain3d_set_skirt_depth` |
 | <a id="viper-graphics3d-terrain3d-set-cpuocclusion"></a>`Viper.Graphics3D.Terrain3D.set_CpuOcclusion` | `void(obj,i1)` | `rt_terrain3d_set_cpu_occlusion` |
 | <a id="viper-graphics3d-terrain3d-get-cpuocclusion"></a>`Viper.Graphics3D.Terrain3D.get_CpuOcclusion` | `i1(obj)` | `rt_terrain3d_get_cpu_occlusion` |
@@ -3370,7 +3317,6 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.NavMesh3D.BakeTiled` | `obj(obj,f64,f64,f64,f64,f64)` | `rt_navmesh3d_bake_tiled` |
 | `Viper.Graphics3D.NavMesh3D.Export` | `i1(obj,str)` | `rt_navmesh3d_export` |
 | `Viper.Graphics3D.NavMesh3D.Import` | `obj(str)` | `rt_navmesh3d_import` |
-| `Viper.Graphics3D.NavMesh3D.FindPath` | `obj(obj,obj,obj)` | `rt_navmesh3d_find_path` |
 | `Viper.Graphics3D.NavMesh3D.FindPathOption` | `obj<Viper.Option>(obj,obj,obj)` | `rt_navmesh3d_find_path_option` |
 | `Viper.Graphics3D.NavMesh3D.SamplePosition` | `obj(obj,obj)` | `rt_navmesh3d_sample_position` |
 | `Viper.Graphics3D.NavMesh3D.IsWalkable` | `i1(obj,obj)` | `rt_navmesh3d_is_walkable` |
@@ -3460,8 +3406,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.AnimController3D.IsStatePlaying` | `i1(obj,str)` | `rt_anim_controller3d_is_state_playing` |
 | `Viper.Graphics3D.AnimController3D.SetStateSpeed` | `void(obj,str,f64)` | `rt_anim_controller3d_set_state_speed` |
 | `Viper.Graphics3D.AnimController3D.SetStateLooping` | `void(obj,str,i1)` | `rt_anim_controller3d_set_state_looping` |
-| `Viper.Graphics3D.AnimController3D.SetAnimationLOD` | `void(obj,f64,f64)` | `rt_anim_controller3d_set_animation_lod` |
-| `Viper.Graphics3D.AnimController3D.SetBoneLOD` | `void(obj,i64)` | `rt_anim_controller3d_set_bone_lod` |
+| `Viper.Graphics3D.AnimController3D.SetAnimationLod` | `void(obj,f64,f64)` | `rt_anim_controller3d_set_animation_lod` |
+| `Viper.Graphics3D.AnimController3D.SetBoneLod` | `void(obj,i64)` | `rt_anim_controller3d_set_bone_lod` |
 | `Viper.Graphics3D.AnimController3D.SetBlendTree` | `i1(obj,obj)` | `rt_anim_controller3d_set_blend_tree` |
 | `Viper.Graphics3D.AnimController3D.SetIKSolver` | `i1(obj,obj)` | `rt_anim_controller3d_set_ik_solver` |
 | `Viper.Graphics3D.AnimController3D.AddEvent` | `void(obj,str,f64,str)` | `rt_anim_controller3d_add_event` |
@@ -3481,7 +3427,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Decal3D.SetLifetime` | `void(obj,f64)` | `rt_decal3d_set_lifetime` |
 | `Viper.Graphics3D.Decal3D.SetDepthBias` | `void(obj,f64)` | `rt_decal3d_set_depth_bias` |
 | `Viper.Graphics3D.Decal3D.Update` | `void(obj,f64)` | `rt_decal3d_update` |
-| <a id="viper-graphics3d-decal3d-get-expired"></a>`Viper.Graphics3D.Decal3D.get_Expired` | `i1(obj)` | `rt_decal3d_is_expired` |
+| <a id="viper-graphics3d-decal3d-get-isexpired"></a>`Viper.Graphics3D.Decal3D.get_IsExpired` | `i1(obj)` | `rt_decal3d_is_expired` |
 | `Viper.Graphics3D.Canvas3D.DrawDecal` | `void(obj,obj)` | `rt_canvas3d_draw_decal` |
 | `Viper.Graphics3D.LensFlare3D.New` | `obj(obj)` | `rt_lensflare3d_new` |
 | `Viper.Graphics3D.LensFlare3D.AddElement` | `void(obj,f64,f64,i64,f64)` | `rt_lensflare3d_add_element` |
@@ -3512,21 +3458,21 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-water3d-set-simdistance"></a>`Viper.Graphics3D.Water3D.set_SimDistance` | `void(obj,f64)` | `rt_water3d_set_sim_distance` |
 | <a id="viper-graphics3d-water3d-get-simdistance"></a>`Viper.Graphics3D.Water3D.get_SimDistance` | `f64(obj)` | `rt_water3d_get_sim_distance` |
 | `Viper.Graphics3D.Canvas3D.DrawWater` | `void(obj,obj,obj)` | `rt_canvas3d_draw_water` |
-| `Viper.Graphics3D.PostFX3D.AddSSAO` | `void(obj,f64,f64,i64)` | `rt_postfx3d_add_ssao` |
-| `Viper.Graphics3D.PostFX3D.AddDOF` | `void(obj,f64,f64,f64)` | `rt_postfx3d_add_dof` |
+| `Viper.Graphics3D.PostFX3D.AddSsao` | `void(obj,f64,f64,i64)` | `rt_postfx3d_add_ssao` |
+| `Viper.Graphics3D.PostFX3D.AddDof` | `void(obj,f64,f64,f64)` | `rt_postfx3d_add_dof` |
 | `Viper.Graphics3D.PostFX3D.SetDofFocus` | `i1(obj,f64)` | `rt_postfx3d_set_dof_focus` |
 | `Viper.Graphics3D.PostFX3D.AddMotionBlur` | `void(obj,f64,i64)` | `rt_postfx3d_add_motion_blur` |
-| `Viper.Graphics3D.PostFX3D.AddTAA` | `void(obj,f64)` | `rt_postfx3d_add_taa` |
-| `Viper.Graphics3D.PostFX3D.AddSSR` | `void(obj,f64,f64)` | `rt_postfx3d_add_ssr` |
+| `Viper.Graphics3D.PostFX3D.AddTaa` | `void(obj,f64)` | `rt_postfx3d_add_taa` |
+| `Viper.Graphics3D.PostFX3D.AddSsr` | `void(obj,f64,f64)` | `rt_postfx3d_add_ssr` |
 | `Viper.Graphics3D.PostFX3D.AddAutoExposure` | `void(obj,f64,f64,f64)` | `rt_postfx3d_add_auto_exposure` |
-| `Viper.Graphics3D.PostFX3D.AddColorLUT` | `void(obj,obj,f64)` | `rt_postfx3d_add_color_lut` |
-| `Viper.Graphics3D.PostFX3D.MakeIdentityLUT` | `obj()` | `rt_postfx3d_make_identity_lut` |
+| `Viper.Graphics3D.PostFX3D.AddColorLut` | `void(obj,obj,f64)` | `rt_postfx3d_add_color_lut` |
+| `Viper.Graphics3D.PostFX3D.MakeIdentityLut` | `obj()` | `rt_postfx3d_make_identity_lut` |
 | `Viper.Graphics3D.PostFX3D.AddSunShafts` | `void(obj,f64,f64,i64)` | `rt_postfx3d_add_sun_shafts` |
 | <a id="viper-graphics3d-postfx3d-get-lasterror"></a>`Viper.Graphics3D.PostFX3D.get_LastError` | `str(obj)` | `rt_postfx3d_get_last_error` |
 | `Viper.Graphics3D.Vegetation3D.New` | `obj(obj)` | `rt_vegetation3d_new` |
 | `Viper.Graphics3D.Vegetation3D.SetDensityMap` | `void(obj,obj)` | `rt_vegetation3d_set_density_map` |
 | `Viper.Graphics3D.Vegetation3D.SetWindParams` | `void(obj,f64,f64,f64)` | `rt_vegetation3d_set_wind_params` |
-| `Viper.Graphics3D.Vegetation3D.SetLODDistances` | `void(obj,f64,f64)` | `rt_vegetation3d_set_lod_distances` |
+| `Viper.Graphics3D.Vegetation3D.SetLodDistances` | `void(obj,f64,f64)` | `rt_vegetation3d_set_lod_distances` |
 | `Viper.Graphics3D.Vegetation3D.SetBladeSize` | `void(obj,f64,f64,f64)` | `rt_vegetation3d_set_blade_size` |
 | `Viper.Graphics3D.Vegetation3D.SetSeed` | `void(obj,i64)` | `rt_vegetation3d_set_seed` |
 | `Viper.Graphics3D.Vegetation3D.Populate` | `void(obj,obj,i64)` | `rt_vegetation3d_populate` |

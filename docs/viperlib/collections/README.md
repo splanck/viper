@@ -16,10 +16,10 @@ last-verified: 2026-07-14
 | File | Contents |
 |------|----------|
 | [Sequential Collections](sequential.md) | List, Queue, Stack, Deque, Ring, Heap |
-| [Maps & Sets](maps-sets.md) | Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, TreeMap |
+| [Maps & Sets](maps-sets.md) | Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, SortedMap |
 | [Specialized Maps](multi-maps.md) | BiMap, MultiMap, CountMap, IntMap, DefaultMap, LruCache, WeakMap, SparseArray |
 | [Functional & Lazy](functional.md) | `Viper.Collections.Seq`, `Viper.Collections.Iterator`, and `Viper.Functional.LazySeq` |
-| [Specialized Structures](specialized.md) | F64Buffer, I64Buffer, Bag, BloomFilter, Trie, UnionFind, BitSet, Bytes |
+| [Specialized Structures](specialized.md) | F64Buffer, I64Buffer, StringSet, BloomFilter, Trie, UnionFind, BitSet, Bytes |
 
 ## Runtime Correctness Notes
 

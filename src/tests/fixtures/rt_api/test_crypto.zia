@@ -1,19 +1,20 @@
 module TestCrypto;
 bind Viper.Crypto.Hash;
-bind Viper.Crypto.Rand;
+bind Viper.Crypto.Legacy.Hash as LegacyHash;
+bind Viper.Crypto.SecureRandom;
 bind Viper.Crypto.Password;
 bind Viper.Terminal;
 
 func start() {
-    Say(MD5("hello"));
-    Say(SHA1("hello"));
-    Say(SHA256("hello"));
-    SayInt(CRC32("hello"));
-    Say(HmacMD5("hello", "key"));
-    Say(HmacSHA1("hello", "key"));
-    Say(HmacSHA256("hello", "key"));
+    Say(LegacyHash.Md5("hello"));
+    Say(LegacyHash.Sha1("hello"));
+    Say(Sha256("hello"));
+    SayInt(LegacyHash.Crc32("hello"));
+    Say(LegacyHash.HmacMd5("hello", "key"));
+    Say(LegacyHash.HmacSha1("hello", "key"));
+    Say(HmacSha256("hello", "key"));
 
-    var r1 = Viper.Crypto.Rand.Int(1, 100);
+    var r1 = Viper.Crypto.SecureRandom.Int(1, 100);
     SayBool(r1 > 0);
     SayBool(r1 < 101);
 
@@ -21,7 +22,7 @@ func start() {
     SayInt(rb.Length);
 
     var pw = Hash("secret");
-    SayBool(Viper.String.Has(pw, "$"));
+    SayBool(Viper.String.Contains(pw, "$"));
     SayBool(Verify("secret", pw));
     SayBool(Verify("wrong", pw));
 

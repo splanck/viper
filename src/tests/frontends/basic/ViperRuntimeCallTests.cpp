@@ -30,7 +30,7 @@ int main() {
                             "    Viper.Terminal.SetColor(7, 0)\n"
                             "    Viper.Terminal.Clear()\n"
                             "    DIM t AS INTEGER\n"
-                            "    t = Viper.Time.Clock.Ticks()\n"
+                            "    t = Viper.Time.Clock.NowMs()\n"
                             "    Viper.Time.Clock.Sleep(10)\n"
                             "END SUB\n";
 
@@ -59,7 +59,7 @@ int main() {
                 haveClear = true;
             if (name == "Viper.Time.Clock.Sleep")
                 haveSleep = true;
-            if (name == "Viper.Time.Clock.Ticks")
+            if (name == "Viper.Time.Clock.NowMs")
                 haveTick = true;
         }
         if (!(haveSetPos && haveSetColor && haveClear && haveSleep && haveTick)) {

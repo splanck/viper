@@ -4,20 +4,21 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_animtimeline.h
-// Purpose: Runtime bridge for Viper.Game.AnimTimeline — a frame-based timeline
-//   that sequences animation-state and tween tracks plus discrete markers,
-//   with play/pause/stop, looping, and per-frame event reporting.
+// Purpose: Runtime bridge for Viper.Game.AnimTimeline — a passive frame-based
+//   scheduler that stores animation-state/tween payload spans plus discrete
+//   markers, with play/pause/stop, looping, and event reporting.
 //
 // Key invariants:
 //   - Timelines are heap-allocated opaque `void *` handles.
 //   - All time is measured in integer frames; track indices are 0-based and
 //     returned by the add_* functions in insertion order.
-//   - advance() drives playback; events_fired_count/event_fired_id report
-//     markers crossed during the most recent advance().
+//   - advance() drives only the playhead and marker reporting. It does not
+//     update an AnimStateMachine or calculate tween payload C.
 //
 // Ownership/Lifetime:
 //   - rt_animtimeline_new returns an owned handle reclaimed by the GC.
-//   - Track name strings are retained by the timeline.
+//   - Track names are copied into fixed 32-byte inline buffers and truncated
+//     to 31 bytes. Input strings are not retained.
 //
 // Links: src/runtime/game/rt_animtimeline.c (implementation)
 //
@@ -36,11 +37,13 @@ extern "C" {
 
 /// @brief Create a timeline spanning @p total_duration_frames frames.
 void *rt_animtimeline_new(int64_t total_duration_frames);
-/// @brief Add a track that activates an animation state for a frame span.
+/// @brief Add a passive track carrying an animation state ID for a frame span.
 /// @return The new track's 0-based index.
 int64_t rt_animtimeline_add_anim_track(
     void *tl, rt_string name, int64_t start_frame, int64_t duration_frames, int64_t anim_state_id);
-/// @brief Add a track that tweens an integer value @p from -> @p to over a span.
+/// @brief Add a passive track carrying integer endpoints @p from and @p to.
+/// @details The current implementation does not calculate an interpolated
+///          payload; callers combine payload A/B with track_progress().
 /// @return The new track's 0-based index.
 int64_t rt_animtimeline_add_tween_track(void *tl,
                                         rt_string name,
@@ -87,7 +90,7 @@ double rt_animtimeline_track_progress(void *tl, int64_t track_index);
 int64_t rt_animtimeline_track_payload_a(void *tl, int64_t track_index);
 /// @brief Track payload slot B (tween track: to value).
 int64_t rt_animtimeline_track_payload_b(void *tl, int64_t track_index);
-/// @brief Track payload slot C (tween track: current interpolated value).
+/// @brief Track payload slot C. Currently initialized to and always returns 0.
 int64_t rt_animtimeline_track_payload_c(void *tl, int64_t track_index);
 
 #ifdef __cplusplus

@@ -18,7 +18,7 @@ func serverThread(args: List[Integer]) {
 
     Threads.Monitor.Enter(lock);
     serverReady = true;
-    Threads.Monitor.PauseAll(lock);
+    Threads.Monitor.NotifyAll(lock);
     Threads.Monitor.Exit(lock);
 
     var client = Network.TcpServer.AcceptFor(server, 5000);

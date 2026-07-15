@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTCsvTests.cpp
-// Purpose: Tests for Viper.Text.Csv parsing and formatting.
+// Purpose: Tests for Viper.Data.Csv parsing and formatting.
 //
 //===----------------------------------------------------------------------===//
 
@@ -451,7 +451,7 @@ static void test_is_valid_reports_malformed_without_trapping() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Text.Csv Tests ===\n\n");
+    printf("=== Viper.Data.Csv Tests ===\n\n");
 
     // ParseLine tests
     test_parse_line_simple();

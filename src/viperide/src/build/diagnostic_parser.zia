@@ -3,7 +3,7 @@ module diagnostic_parser;
 bind "diagnostic";
 
 bind Convert = Viper.Core.Convert;
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind Map = Viper.Collections.Map;
 bind Obj = Viper.Core.Object;
 bind Seq = Viper.Collections.Seq;

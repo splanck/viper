@@ -12,8 +12,8 @@
 ' COVER: Viper.Threads.Gate.TryEnterFor
 ' COVER: Viper.Threads.Monitor.Enter
 ' COVER: Viper.Threads.Monitor.Exit
-' COVER: Viper.Threads.Monitor.Pause
-' COVER: Viper.Threads.Monitor.PauseAll
+' COVER: Viper.Threads.Monitor.Notify
+' COVER: Viper.Threads.Monitor.NotifyAll
 ' COVER: Viper.Threads.Monitor.TryEnter
 ' COVER: Viper.Threads.Monitor.TryEnterFor
 ' COVER: Viper.Threads.Monitor.WaitFor
@@ -46,7 +46,7 @@ Viper.Core.Diagnostics.AssertEq(gate.Permits, 0, "gate.permits.after")
 gate.Leave()
 Viper.Core.Diagnostics.AssertEq(gate.Permits, 1, "gate.leave")
 
-Viper.Core.Diagnostics.Assert(gate.TryEnterFor(1) <> 0, "gate.tryenterfor")
+Viper.Core.Diagnostics.Assert(gate.TryEnterFor(1), "gate.tryenterfor")
 gate.Leave()
 
 gate.Enter()
@@ -76,8 +76,8 @@ Viper.Core.Diagnostics.Assert(ok <> 0, "monitor.tryenterfor")
 Viper.Threads.Monitor.Exit(lockObj)
 
 Viper.Threads.Monitor.Enter(lockObj)
-Viper.Threads.Monitor.Pause(lockObj)
-Viper.Threads.Monitor.PauseAll(lockObj)
+Viper.Threads.Monitor.Notify(lockObj)
+Viper.Threads.Monitor.NotifyAll(lockObj)
 DIM waitOk AS INTEGER
 waitOk = Viper.Threads.Monitor.WaitFor(lockObj, 1)
 Viper.Core.Diagnostics.Assert(waitOk = 0 OR waitOk = 1 OR waitOk = -1, "monitor.waitfor")
@@ -92,10 +92,10 @@ rw.ReadEnter()
 Viper.Core.Diagnostics.AssertEq(rw.Readers, 1, "rw.readenter")
 rw.ReadExit()
 
-Viper.Core.Diagnostics.Assert(rw.TryReadEnter() <> 0, "rw.tryread")
+Viper.Core.Diagnostics.Assert(rw.TryReadEnter(), "rw.tryread")
 rw.ReadExit()
 
-Viper.Core.Diagnostics.Assert(rw.TryWriteEnter() <> 0, "rw.trywrite")
+Viper.Core.Diagnostics.Assert(rw.TryWriteEnter(), "rw.trywrite")
 rw.WriteExit()
 
 rw.WriteEnter()

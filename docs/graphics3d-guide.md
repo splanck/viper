@@ -1940,7 +1940,7 @@ func start() {
 
 ## Spatial Audio
 
-Spatial-audio math and low-level `Viper.Sound.SpatialAudio3D` playback live in
+Spatial-audio math and low-level `Viper.Audio.SpatialAudio3D` playback live in
 the audio runtime. Graphics3D keeps only the `SoundListener3D` and
 `SoundSource3D` wrappers that bind listeners/sources to `SceneNode` and
 `Camera3D`.
@@ -1962,7 +1962,7 @@ module Sound3DObjectsDemo;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
-bind Viper.Sound;
+bind Viper.Audio;
 
 func start() {
     var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);

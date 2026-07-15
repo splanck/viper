@@ -121,7 +121,7 @@ TEST(ZiaRuntimeMemory, ExplicitReleaseUsesPublicRuntimeSurface) {
 module Test;
 
 func start() {
-    var remaining = Viper.Memory.Release(Viper.Core.Box.I64(42));
+    var remaining = Viper.Runtime.Unsafe.Release(Viper.Core.Box.I64(42));
 }
 )";
     CompilerInput input{.source = source, .path = "memory_release_surface.zia"};
@@ -140,7 +140,7 @@ TEST(ZiaRuntimeMemory, ExplicitStringReleaseReturnsRuntimeCount) {
 module Test;
 
 func start() {
-    var remaining = Viper.Memory.ReleaseStr("owned");
+    var remaining = Viper.Runtime.Unsafe.ReleaseStr("owned");
 }
 )";
     CompilerInput input{.source = source, .path = "memory_release_str_surface.zia"};
@@ -1173,7 +1173,7 @@ TEST(ZiaBugFixes, BugFE008_RuntimeObjectGetterKeepsConcreteClass) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Sound;
+bind Viper.Audio;
 
 func start() {    var bank = SoundBank.New();
     var voice = bank.Get("music_menu").PlayLoop(45, 0);
@@ -1189,8 +1189,8 @@ func start() {    var bank = SoundBank.New();
 
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Sound.SoundBank.Get"), 1u);
-    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Sound.Sound.PlayLoop"), 1u);
+    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Audio.SoundBank.Get"), 1u);
+    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Audio.Sound.PlayLoop"), 1u);
     EXPECT_FALSE(hasOpcode(*mainFn, il::core::Opcode::CallIndirect));
 }
 
@@ -1933,7 +1933,7 @@ bind Viper.Functional.LazySeq;
 
 func start() {
     var seq = Range(1, 5, 1);
-    var out = ToSeqN(seq, 3);
+    var out = ToSeqLimited(seq, 3);
     var count = out.Count;
     Viper.Terminal.SayInt(count);
 }
@@ -3280,10 +3280,10 @@ func start() {
     var bg = Color.RGBA(255, 255, 255, 255);
     var g = Gradient2D.New(fg, bg, 4);
     var c = g.Sample(0.5);
-    var raw = g.SampleRGBA(0.5);
-    var pct = g.SamplePct(50);
-    var rawPct = g.SampleRGBAPct(50);
-    Viper.Terminal.SayInt(Color.GetR(c) + Color.GetR(pct) + raw + rawPct);
+    var raw = g.SampleRgba(0.5);
+    var pct = g.SamplePercent(50);
+    var rawPct = g.SampleRgbaPercent(50);
+    Viper.Terminal.SayInt(Color.GetRed(c) + Color.GetRed(pct) + raw + rawPct);
 }
 )";
     CompilerInput input{.source = source, .path = "gradient_normalized_sample.zia"};
@@ -3439,7 +3439,7 @@ TEST(ZiaRuntimeMemberAccess, AnonymousObjectMemberIsSemaErrorNotInternal) {
 module Test;
 bind Viper.Graphics3D;
 func start() {
-    var a = SceneAsset.Load("x.vscn");
+    var a = SceneAsset.LoadWithOptions("x.vscn", false);
     var node = a.Instantiate();
     var v = node.Missing;
 }
@@ -3460,7 +3460,7 @@ TEST(ZiaRuntimeMemberAccess, TypedExtractorReturnsResolveMembers) {
 module Test;
 bind Viper.Graphics3D;
 func start() {
-    var a = FBX.Load("x.fbx");
+    var a = Fbx.Load("x.fbx");
     var n = a.MeshCount;
     var m = a.GetMesh(0);
     var t = m.TriangleCount;

@@ -1,7 +1,7 @@
 // ============================================================================
 // MODULE: music_tracks
 // PURPOSE: Procedurally synthesizes the menu and in-game background
-//          music via Viper.Sound.MusicGen. Four or five channels each
+//          music via Viper.Mixer.MusicGen. Four or five channels each
 //          with their own envelope, volume, pan, and note schedule.
 //
 // KEY-DESIGN-CHOICES:
@@ -21,7 +21,7 @@
 
 module music_tracks;
 
-bind Viper.Sound;
+bind Viper.Audio;
 
 /// @brief Build the menu-screen pad+arp+bass+bell loop.
 hide func buildMenuSong() -> Sound {
@@ -34,20 +34,20 @@ hide func buildMenuSong() -> Sound {
     song.SetSwing(10);
 
     song.SetEnvelope(pad, 220, 180, 62, 260);
-    song.SetChannelVol(pad, 42);
+    song.SetChannelVolume(pad, 42);
     song.SetPan(pad, -24);
     song.SetDetune(pad, 6);
 
     song.SetEnvelope(sparkle, 8, 60, 40, 110);
-    song.SetChannelVol(sparkle, 34);
+    song.SetChannelVolume(sparkle, 34);
     song.SetPan(sparkle, 18);
 
     song.SetEnvelope(bass, 6, 70, 68, 120);
-    song.SetChannelVol(bass, 46);
+    song.SetChannelVolume(bass, 46);
     song.SetPan(bass, -10);
 
     song.SetEnvelope(bell, 6, 90, 24, 170);
-    song.SetChannelVol(bell, 40);
+    song.SetChannelVolume(bell, 40);
     song.SetDuty(bell, 18);
     song.SetVibrato(bell, 7, 420);
     song.SetPan(bell, 28);
@@ -134,26 +134,26 @@ hide func buildGameSong() -> Sound {
     song.SetSwing(8);
 
     song.SetEnvelope(lead, 5, 45, 54, 70);
-    song.SetChannelVol(lead, 54);
+    song.SetChannelVolume(lead, 54);
     song.SetDuty(lead, 28);
     song.SetVibrato(lead, 8, 620);
     song.SetPortamento(lead, 24);
     song.SetPan(lead, -10);
 
     song.SetEnvelope(counter, 6, 55, 42, 90);
-    song.SetChannelVol(counter, 30);
+    song.SetChannelVolume(counter, 30);
     song.SetPan(counter, 18);
 
     song.SetEnvelope(bass, 4, 38, 86, 50);
-    song.SetChannelVol(bass, 48);
+    song.SetChannelVolume(bass, 48);
     song.SetPan(bass, 8);
 
     song.SetEnvelope(pad, 80, 110, 30, 120);
-    song.SetChannelVol(pad, 20);
+    song.SetChannelVolume(pad, 20);
     song.SetPan(pad, -20);
 
     song.SetEnvelope(drums, 1, 18, 0, 24);
-    song.SetChannelVol(drums, 34);
+    song.SetChannelVolume(drums, 34);
 
     song.AddNote(pad, 0, 60, 400);
     song.AddNote(pad, 400, 57, 400);

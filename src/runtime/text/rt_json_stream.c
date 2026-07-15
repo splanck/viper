@@ -11,7 +11,8 @@
 //          ObjectEnd, ArrayStart, ArrayEnd, Key, String, Number, Bool, Null.
 //
 // Key invariants:
-//   - Maximum nesting depth is MAX_DEPTH (256); exceeding it returns an error token.
+//   - The fixed state arrays have MAX_DEPTH (256) slots; the current pre-increment
+//     guard admits at most 255 simultaneously open containers.
 //   - The parser advances by one token per call to Next; state is maintained in
 //     the stream object between calls.
 //   - String token values are unescaped (\\, \", \n etc. processed).

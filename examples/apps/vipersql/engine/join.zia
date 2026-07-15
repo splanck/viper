@@ -553,7 +553,7 @@ class JoinEngine {
             // ILIKE pattern matching (case-insensitive)
             if op == OP_ILIKE {
                 if left.kind == SQL_NULL { return sqlInteger(0); }
-                if String.LikeCI(left.toString(), right.toString()) { return sqlInteger(1); }
+                if String.LikeIgnoreCase(left.toString(), right.toString()) { return sqlInteger(1); }
                 return sqlInteger(0);
             }
 

@@ -1,4 +1,4 @@
-' bag_demo.bas - Comprehensive API audit for Viper.Collections.Bag
+' bag_demo.bas - Comprehensive API audit for Viper.Collections.StringSet
 ' Tests: New, Put, Has, Drop, Len, IsEmpty, Items, Clear, Common, Diff, Merge
 
 PRINT "=== Bag API Audit ==="
@@ -6,7 +6,7 @@ PRINT "=== Bag API Audit ==="
 ' --- New ---
 PRINT "--- New ---"
 DIM bag AS OBJECT
-bag = Viper.Collections.Bag.New()
+bag = Viper.Collections.StringSet.New()
 PRINT bag.Count       ' 0
 PRINT bag.IsEmpty   ' 1
 
@@ -40,12 +40,12 @@ PRINT items.Count            ' 2
 
 ' --- Merge (union) ---
 PRINT "--- Merge ---"
-DIM b1 AS OBJECT = Viper.Collections.Bag.New()
+DIM b1 AS OBJECT = Viper.Collections.StringSet.New()
 b1.Put("a")
 b1.Put("b")
 b1.Put("c")
 
-DIM b2 AS OBJECT = Viper.Collections.Bag.New()
+DIM b2 AS OBJECT = Viper.Collections.StringSet.New()
 b2.Put("b")
 b2.Put("c")
 b2.Put("d")

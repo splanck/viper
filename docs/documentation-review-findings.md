@@ -227,7 +227,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Classification:** documentation/API inconsistency
 - **Area:** UUID runtime implementation comments
 - **Evidence:** `rt_guid.c` says Unix uses `/dev/urandom` and Windows uses `CryptGenRandom`, but
-  `Uuid.New()` delegates to the shared crypto RNG (approved-mode DRBG, Windows `BCryptGenRandom`,
+  `Uuid.Generate()` delegates to the shared crypto RNG (approved-mode DRBG, Windows `BCryptGenRandom`,
   Linux `getrandom()` with fallback, and macOS `arc4random_buf()`). The same comments say two
   generated UUIDs are “guaranteed” different, although UUIDv4 uniqueness is probabilistic. They
   also present RFC 4122 as current even though RFC 9562 superseded it in 2024.
@@ -1696,7 +1696,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-117 — Audio-disabled mix-group initialization and registration are unsynchronized
 
 - **Classification:** confirmed data-race bug
-- **Area:** `Viper.Sound.Audio` mix-group settings in audio-disabled builds
+- **Area:** `Viper.Audio.Mixer` mix-group settings in audio-disabled builds
 - **Evidence:** the real-audio group methods hold `audio_state_lock()` around lazy initialization,
   name lookup, registration, and volume state. Their audio-disabled counterparts call the same
   `_unlocked` helpers with no lock. Atomic loads/stores protect an already-initialized group's
@@ -1714,7 +1714,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-118 — Distinct public mix-group names silently alias after 31 bytes
 
 - **Classification:** API inconsistency / needs triage
-- **Area:** named `Viper.Sound.Audio` mix groups
+- **Area:** named `Viper.Audio.Mixer` mix groups
 - **Evidence:** every name is trimmed at its space/tab edges, embedded NUL bytes are replaced with
   `_`, and the result is copied into a 32-byte C buffer with at most 31 payload bytes. Registration
   and lookup compare only that canonical buffer. Consequently two distinct runtime Strings with
@@ -1729,7 +1729,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-119 — Playlist playback stalls permanently on an unloadable selected entry
 
 - **Classification:** needs triage
-- **Area:** `Viper.Sound.Playlist` auto-advance and failure reporting
+- **Area:** `Viper.Audio.Playlist` auto-advance and failure reporting
 - **Evidence:** paths are accepted without validation. If `playlist_load_current_music()` returns
   null, selection clears `playing`; `rt_playlist_update()` immediately returns whenever
   `!pl->playing || !pl->music`. It therefore cannot advance past the failed entry. `Play()` also
@@ -1759,7 +1759,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-121 — SoundBank accepts detached Sound wrappers as successful registrations
 
 - **Classification:** confirmed API-state validation bug
-- **Area:** `Viper.Sound.SoundBank.RegisterSound`
+- **Area:** `Viper.Audio.SoundBank.RegisterSound`
 - **Evidence:** `Audio.Shutdown()` deliberately leaves Sound wrappers in the registry while
   detaching their ViperAUD handles. `rt_sound_is_handle()` validates only wrapper membership and
   magic, so `rt_soundbank_register_sound()` retains such a detached wrapper and returns 1.
@@ -1775,7 +1775,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-122 — Peaking EQ accepts values that poison its filter coefficients
 
 - **Classification:** confirmed numeric-safety bug / needs triage
-- **Area:** `Viper.Sound.Audio.GroupAddPeaking`
+- **Area:** `Viper.Audio.Mixer.GroupAddPeaking`
 - **Evidence:** the shared biquad setup sanitizes frequency and Q but passes `gainDb` directly to
   `pow(10, gainDb / 40)`. NaN, infinity, or sufficiently extreme finite values produce non-finite
   coefficients and state. The per-sample sanitizer then converts each non-finite output to zero,
@@ -1789,7 +1789,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-123 — Sound loaders disagree on whether a missing asset is recoverable
 
 - **Classification:** API failure-mode inconsistency
-- **Area:** `Viper.Sound.Sound.Load` and `LoadAsset`
+- **Area:** `Viper.Audio.Sound.Load` and `LoadAsset`
 - **Evidence:** `Sound.Load(path)` returns null for a missing/unreadable file, invalid path, decode
   error, backend failure, or exhausted Sound slots. `Sound.LoadAsset(path)` traps with
   `Sound.LoadAsset: asset not found` when asset resolution returns no bytes (including a zero-byte
@@ -1804,12 +1804,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 ### VDOC-124 — SpatialAudio3D signatures erase Sound and Vec3 argument types
 
 - **Classification:** runtime-registry typing inconsistency
-- **Area:** `Viper.Sound.SpatialAudio3D`
+- **Area:** `Viper.Audio.SpatialAudio3D`
 - **Evidence:** the registry declares `SetListener` as `void(obj,obj)`, `PlayAt` as
   `i64(obj,obj,f64,i64)`, and `UpdateVoice` as `void(i64,obj,f64)`, even though their
   implementations require Vec3 handles and `PlayAt` requires a Sound handle. Nearby
   SoundListener3D/SoundSource3D properties already use `obj<Viper.Math.Vec3>`, and ordinary Sound
-  APIs use `obj<Viper.Sound.Sound>`.
+  APIs use `obj<Viper.Audio.Sound>`.
 - **Impact:** Zia and other registry consumers cannot reject wrong object classes at the call
   site. A bad vector reaches the checked Vec3 accessor and traps at runtime; the generated runtime
   reference likewise advertises only generic Object arguments.
@@ -2650,6 +2650,1425 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `IoStatementLowerer::lowerPrint`, or carry ownership in `RVal` so the consumer can suppress or
   consume the already-deferred release without AST-shape guesses.
 
+### VDOC-181 — Asset decode failure silently changes the documented return type
+
+- **Classification:** confirmed runtime API/type inconsistency
+- **Area:** `Viper.IO.Assets.Load`
+- **Evidence:** `rt_asset_load()` first asks `rt_asset_decode_typed()` to decode a recognized image
+  or audio extension. If decoding returns `NULL` for malformed or empty PNG, JPEG, BMP, GIF, WAV,
+  OGG, or MP3 data, `Load` falls through and returns the raw `Bytes` object. Adjacent source
+  comments instead say the Bytes fallback is only for unknown extensions and even name a JSON-to-
+  Map decoder that does not exist.
+- **Impact:** the same asset name can return `Pixels`, `Sound`, or `Bytes` depending on content
+  validity, even though the public extension table presents one stable type per recognized suffix.
+  Frontends cannot safely type the result, and corrupt media is indistinguishable from an
+  intentionally raw asset without inspecting the object dynamically.
+- **Likely repair point:** distinguish “unrecognized extension” from “recognized decoder failed,”
+  return a failure/diagnostic for the latter, and align the runtime comments and public contract.
+
+### VDOC-182 — `File.AppendLine` does not provide line-level atomicity
+
+- **Classification:** confirmed source-contract / concurrency inconsistency
+- **Area:** `Viper.IO.File.AppendLine`
+- **Evidence:** `rt_io_file_append_line()` opens with append semantics, but writes the text in a
+  retry loop and then writes the newline in a separate operation. Its source comment claims that
+  writes below `PIPE_BUF` cannot interleave because of POSIX atomic-write guarantees; `PIPE_BUF`
+  applies to pipes/FIFOs, not ordinary files, and the line is not one write in any case.
+- **Impact:** concurrent appenders can interleave text and newline fragments. Code treating the
+  helper as an atomic log-record append can produce split or merged records.
+- **Likely repair point:** remove the atomicity claim, document the concurrency limitation, and use
+  an explicit locking/record protocol if line-level atomicity is required.
+
+### VDOC-183 — `File.Touch` also updates directories
+
+- **Classification:** confirmed API/domain inconsistency
+- **Area:** `Viper.IO.File.Touch`
+- **Evidence:** `rt_file_touch()` calls `utime(path, NULL)` (or the Windows equivalent) before any
+  regular-file check. On existing directories that operation succeeds and updates timestamps,
+  while other `File` metadata/content helpers reject directory operands.
+- **Impact:** a method exposed as a file operation mutates directories successfully on supported
+  hosts, so callers cannot rely on the class boundary or the surrounding File semantics.
+- **Likely repair point:** require a regular file before timestamp mutation, or deliberately move
+  and document the operation as a path-level API.
+
+### VDOC-184 — Windows `Path.Abs` corrupts drive-relative paths
+
+- **Classification:** confirmed Windows path-semantics bug
+- **Area:** `Viper.IO.Path.Abs`
+- **Evidence:** `Path.IsAbs("C:foo")` correctly treats a drive-relative path as non-absolute, but
+  `rt_path_abs()` then joins that text directly to the process current directory. If the current
+  drive/path differs, the result can contain a colon in the middle of a component (for example,
+  `D:\\work\\C:foo`) rather than resolving against drive C's current directory as Windows does.
+- **Impact:** valid Windows drive-relative input can become an invalid or semantically unrelated
+  path. File operations based on the result can fail or address the wrong location.
+- **Likely repair point:** use the platform path-resolution adapter (`GetFullPathNameW` semantics)
+  for Windows drive-relative input and add focused path tests that vary the current drive.
+
+### VDOC-185 — `Path.ExeDir` has fixed-buffer encoding and truncation fallbacks
+
+- **Classification:** confirmed cross-platform path limitation / API inconsistency
+- **Area:** `Viper.IO.Path.ExeDir`
+- **Evidence:** Windows uses fixed-size `MAX_PATH` `GetModuleFileNameA`, so long paths and paths not
+  representable in the active ANSI code page fall back to `"."`. macOS uses a fixed `PATH_MAX`
+  `_NSGetExecutablePath` buffer and also falls back to `"."` when it is too small. Linux reads
+  `/proc/self/exe` into a fixed `PATH_MAX` buffer without reliably distinguishing an exact-fit
+  truncation from a complete path.
+- **Impact:** the asset-resolution fallback can silently switch from the executable directory to
+  the current working directory, or use a truncated location, precisely on long/non-ASCII paths.
+- **Likely repair point:** use dynamically sized wide/native platform APIs, detect truncation, and
+  expose failure explicitly rather than returning an unrelated directory.
+
+### VDOC-186 — A leading glob `**` lets later wildcards cross separators
+
+- **Classification:** confirmed glob matcher bug
+- **Area:** `Viper.IO.Glob.Match`
+- **Evidence:** the backtracking state created for `**` sets a persistent `allow_slash` flag. Later
+  `*`, `?`, and character-class tokens inherit it instead of restoring ordinary component rules.
+  The existing evaluator returns true for `Match("a/b", "**/a?b")`, while it correctly returns
+  false for `Match("a/b", "a?b")`.
+- **Impact:** patterns documented so that only `**` crosses separators match paths that the later
+  component pattern cannot actually describe. Ignore rules and workspace file selection can
+  include unintended paths.
+- **Likely repair point:** scope separator crossing to consumption by the double-star token, not
+  the remainder continuation state, and add mixed `**`/`?`/class regression cases.
+
+### VDOC-187 — `Stream.As*` returns an unsafe borrowed backing object
+
+- **Classification:** confirmed ownership/lifetime bug
+- **Area:** `Viper.IO.Stream.AsBinFile` and `AsMemStream`, BASIC and Zia lowering
+- **Evidence:** `rt_stream_as_binfile()` and `rt_stream_as_memstream()` return `s->wrapped` without
+  retaining it. The registry declares only untyped `obj()` results with unknown ownership. BASIC
+  treats the result as an owned temporary (retaining for assignment and then releasing the
+  temporary), while Zia stores it without adding a backing-owner reference. Minimal programs in
+  both frontends can assign `AsMemStream()`, close the Stream, and then trap with
+  `MemStream.Len: invalid stream` when using the still-in-scope typed local.
+- **Impact:** an apparently ordinary returned object becomes dangling when its Stream is closed or
+  finalized; BASIC's temporary ownership bookkeeping can also undercount it before that point.
+- **Likely repair point:** return a retained/owned typed backing object (or model borrowed returns
+  explicitly throughout the registry and frontends) and give both methods concrete return types.
+
+### VDOC-188 — `Stream.Eof` has incompatible file and memory semantics
+
+- **Classification:** confirmed runtime API inconsistency
+- **Area:** `Viper.IO.Stream.Eof` and `Viper.IO.BinFile.Eof`
+- **Evidence:** memory streams compute EOF as `position >= length`. File streams delegate to the C
+  stream's sticky EOF flag, which is set only after a read attempts to pass the end. Reading
+  exactly the remaining bytes—including `Stream.ReadAll()`—therefore leaves file `Eof` false but
+  memory `Eof` true. The BinFile example in `files.md` reads exactly eight bytes from an eight-byte
+  file and currently claims the flag is already 1.
+- **Impact:** polymorphic Stream code observes different state for the same logical position, and
+  the documented example teaches an assertion that is false for file-backed streams.
+- **Likely repair point:** define one end-position contract for Stream and implement it for both
+  backings; until then, document sticky file EOF and use `Pos >= Size/Length` when position is the
+  intended question.
+
+### VDOC-189 — BinaryBuffer continues unsafely after recoverable traps
+
+- **Classification:** confirmed systemic runtime trap-discipline bug
+- **Area:** `Viper.IO.BinaryBuffer`
+- **Evidence:** `binbuf_require()` traps and returns `NULL`, but `get_Position`, `get_Length`,
+  `ToBytes`, and `Reset` dereference its result without checking it. Range-check helpers for
+  fixed-width writes return `void`; if a test/embedder trap hook returns, the caller continues and
+  writes the truncated value anyway.
+- **Impact:** the runtime's recoverable-trap contract can turn an invalid receiver into a null
+  dereference and an out-of-range write into silent data corruption. This is the BinaryBuffer
+  counterpart to the Bytes failure recorded in VDOC-177.
+- **Likely repair point:** make receiver/range validators return success, stop every operation after
+  a trap, and audit all BinaryBuffer allocation results under returning trap hooks.
+
+### VDOC-190 — Watcher overflow reporting misses native queue loss
+
+- **Classification:** confirmed watcher correctness/observability bug
+- **Area:** `Viper.IO.Watcher.EventOverflow` and `EventOverflowCount`
+- **Evidence:** the Linux inotify decoder has no `IN_Q_OVERFLOW` branch, so a kernel-queue overflow
+  is consumed without queuing `EventOverflow`. Windows queues an overflow marker when an overlapped
+  read fails or reports zero bytes, but the normal queue insertion path assigns that marker a
+  dropped count of zero. Only overflow of Viper's own 64-entry ring computes a positive count.
+- **Impact:** a client can continue applying incomplete incremental updates without receiving the
+  documented rescan signal; even when Windows emits the signal, `EventOverflowCount()` cannot tell
+  it how many events the marker represents.
+- **Likely repair point:** translate native overflow notifications on every backend, represent an
+  unknown loss count explicitly (rather than as “none”), and cover native and internal overflow
+  paths separately.
+
+### VDOC-191 — Linux `Watcher.PollFor` can exceed its timeout after interruption
+
+- **Classification:** confirmed timeout-contract bug
+- **Area:** `Viper.IO.Watcher.PollFor`
+- **Evidence:** the Linux implementation retries `poll()` on `EINTR` with the original timeout each
+  time. It does not compute elapsed monotonic time or a deadline. A signal near the end of each
+  attempt can therefore restart the full wait repeatedly.
+- **Impact:** a call documented to wait “up to” a duration can block substantially longer, which
+  can stall per-frame editor loops and shutdown paths.
+- **Likely repair point:** convert positive timeouts to one monotonic deadline and recompute the
+  remaining wait after every interrupt.
+
+### VDOC-192 — FileIndex's `**` matcher ignores component boundaries
+
+- **Classification:** confirmed workspace ignore-pattern bug
+- **Area:** `Viper.Workspace.FileIndex` `.gitignore` and explicit exclude matching
+- **Evidence:** `pathGlobMatch()` removes an optional slash after `**` and then tries the remainder
+  at every byte offset, including the middle of a path component. Existing-binary probes show
+  `ShouldIgnore(".", "foobar", "**/bar")` and
+  `ShouldIgnore(".", "foo/xbar", "foo/**/bar")` both return true.
+- **Impact:** workspace entries whose component merely ends with the requested literal are hidden,
+  so indexing, search, and IDE inventory can omit unrelated files.
+- **Likely repair point:** let `**/` consume zero or more complete path components and add boundary
+  cases for zero components, nested components, and suffix-only nonmatches.
+
+### VDOC-193 — FileIndex can cache stale `.gitignore` contents indefinitely
+
+- **Classification:** confirmed cache invalidation bug
+- **Area:** `Viper.Workspace.FileIndex` nested and root `.gitignore` handling
+- **Evidence:** cache identity consists only of the normalized directory key and the ignore file's
+  modification time rounded to whole seconds. File size, inode/file ID, higher-resolution time,
+  and content are not considered. Rewriting a `.gitignore` within the same timestamp tick leaves
+  the old patterns cached until some later operation changes that second-valued mtime.
+- **Impact:** editor enumeration can keep ignoring newly included files—or include newly ignored
+  files—after a normal quick save, with no public cache-reset operation.
+- **Likely repair point:** cache a high-resolution file identity tuple (or content hash), and expose
+  deterministic invalidation for watcher-driven IDE workflows.
+
+### VDOC-194 — Unknown manifest sections leak their directives into the top level
+
+- **Classification:** confirmed tooling manifest parser bug
+- **Area:** `Viper.Project.Manifest.ParseText` / `ParseFile`
+- **Evidence:** on an unknown `[section]`, the parser emits a diagnostic and sets `sectionMap` to
+  null. Subsequent lines are then processed by the top-level directive branch until another
+  recognized section appears. An existing-binary probe of `[unknown]` followed by `entry hijack`
+  returns a manifest whose top-level `entry` is `hijack`, despite `valid` being false.
+- **Impact:** unsupported configuration can mutate supposedly safe defaults and be consumed by a
+  caller that inspects fields before or despite the validity flag.
+- **Likely repair point:** retain an explicit “unknown section” state and diagnose/ignore all of its
+  body directives until the next section header.
+
+### VDOC-195 — Workspace edits can overwrite a target changed after validation
+
+- **Classification:** confirmed transactional/concurrency bug
+- **Area:** `Viper.Workspace.Edit.Apply*`
+- **Evidence:** Apply validates metadata and reads each target, then constructs replacement text,
+  stages every temporary file, and only afterward begins target renames. There is no identity,
+  content, size, or mtime recheck immediately before moving each live target to its backup. The
+  rooted variant likewise resolves path components before staging but commits later by pathname.
+- **Impact:** an editor, formatter, or external process that changes a file during staging can have
+  its newer content silently replaced. A swapped path component can also invalidate the rooted
+  boundary established during validation.
+- **Likely repair point:** bind validation to open file identities/handles, recheck the expected
+  version at commit, and use descriptor/handle-relative operations for rooted transactions.
+
+### VDOC-196 — Workspace edit backup paths are predictable and not reserved
+
+- **Classification:** confirmed staging/rollback race
+- **Area:** `Viper.Workspace.Edit.Apply*`
+- **Evidence:** temporary and backup names use only a process-local incrementing counter. Content
+  temps are safely opened with exclusive-create semantics, but backup paths are never reserved;
+  the code calls `rename(target, backup)` directly. On POSIX that rename can replace an existing
+  path, contradicting the adjacent claim that both staging paths use exclusive existence checks.
+- **Impact:** another process—or a stale artifact from a prior process—can cause unrelated backup
+  data to be overwritten or can make behavior differ by platform. Rollback then trusts that path
+  as the original target contents.
+- **Likely repair point:** reserve unpredictable backup names exclusively in the target directory
+  and commit through platform primitives with explicit no-replace semantics.
+
+### VDOC-197 — Asset Resolver accepts empty assets and misbases relative scene paths
+
+- **Classification:** confirmed editor resolver API inconsistency
+- **Area:** `Viper.Assets.Resolver.Resolve`
+- **Evidence:** an empty `assetPath` makes the `projectRoot / asset` candidate equal the project
+  directory; an existing-binary probe reports `found=true` with source `project`. Separately, a
+  relative `scenePath` is combined with the asset relative to the process working directory,
+  rather than first being based under the separately supplied `projectRoot`.
+- **Impact:** “resolve an asset” can succeed with a directory for no asset name, and the same
+  project-relative scene resolves differently when the editor's current directory changes.
+- **Likely repair point:** reject empty asset names and resolve relative scene paths consistently
+  against the project root before applying scene-directory precedence.
+
+### VDOC-198 — IO runtime metadata labels trapping owned APIs as infallible or unknown
+
+- **Classification:** confirmed machine-readable registry metadata inconsistency
+- **Area:** `viper --dump-runtime-api` for IO, workspace, and project classes
+- **Evidence:** representative current output labels `LineWriter.Append` as infallible with unknown
+  ownership even though it traps on open failure and returns a new owned writer. `Stream.As*` is
+  infallible/unknown despite wrong-backing traps and its borrowed result; `Archive.Create`, almost
+  every compression/archive operation, Watcher construction/start/event access, File writes, and
+  Manifest parsing have similarly inaccurate inferred contracts. Many fresh typed Seq/Map/Bytes
+  results remain `ownership=unknown`.
+- **Impact:** agents and tools using the documented JSON inventory cannot reliably plan cleanup,
+  error paths, or safe calls—the exact purposes of the ownership/fallibility fields.
+- **Likely repair point:** annotate this surface explicitly in the runtime manifest, type object
+  returns where concrete, and add contract-audit checks against known trapping/allocating entry
+  points.
+
+### VDOC-199 — `Path.DataDir` validates only the prefix before an embedded NUL
+
+- **Classification:** confirmed path-validation inconsistency
+- **Area:** `Viper.IO.Path.DataDir`
+- **Evidence:** the public entry point obtains `rt_string_cstr(app_name)` and calls the legacy
+  `is_safe_game_name()`, which measures with `strlen`. Unlike `SaveData.New`, it never passes the
+  runtime String's stored byte length to `is_safe_game_name_bytes()`. Bytes after a NUL therefore
+  bypass the character and 64-byte length checks and are silently discarded when composing the
+  directory name.
+- **Impact:** the advertised full-string app-name policy is not enforced, and distinct runtime
+  Strings can alias the same per-user directory.
+- **Likely repair point:** validate `rt_str_len(app_name)` bytes with the existing length-aware
+  helper and reject embedded NULs before any C-string path operation.
+
+### VDOC-200 — Random instance methods dereference an invalid receiver after a recoverable trap
+
+- **Classification:** confirmed systemic runtime trap-discipline bug
+- **Area:** `Viper.Math.Random` instance methods
+- **Evidence:** `as_random()` checks `rt_obj_is_instance()` and calls `rt_trap()` on failure, but
+  unconditionally returns the original pointer cast as `rt_random_impl *`. `Next`, `NextDouble`,
+  `NextInt`, `Range`, and `Seed` immediately read or write `rng->state`. Under the runtime's
+  returning trap hooks used by tests and embedders, a null or wrong-class receiver therefore
+  continues into an invalid dereference.
+- **Impact:** a recoverable type error becomes a null dereference, out-of-bounds read, or memory
+  corruption instead of returning control to the embedder. This is the same trap-discipline class
+  as VDOC-177 and VDOC-189.
+- **Likely repair point:** make `as_random()` return `NULL` after trapping and require every caller
+  to stop before accessing state; add wrong-class and null-receiver recovery tests.
+
+### VDOC-201 — Spline parameter handling is type-dependent and unsafe for NaN
+
+- **Classification:** confirmed runtime undefined-behavior / API inconsistency
+- **Area:** `Viper.Math.Spline.Eval`, `Tangent`, and `ArcLength`
+- **Evidence:** linear and Catmull-Rom evaluators clamp finite values outside `[0,1]`, then convert
+  `t * (count - 1)` to `int64_t`; a NaN reaches that floating-to-integer conversion, which is
+  undefined in C. The cubic Bezier evaluator does no clamping or integer conversion and instead
+  extrapolates for out-of-range values or propagates NaN. `Tangent` and `ArcLength` inherit the
+  same split behavior. The source header and public function comment previously claimed every
+  spline clamps `t`.
+- **Impact:** the same API contract changes with the curve factory, and a non-finite parameter can
+  merely return NaN for one spline but invoke undefined behavior for another.
+- **Likely repair point:** validate finiteness once in each public entry point and choose one
+  documented clamping or extrapolation rule for all spline kinds.
+
+### VDOC-202 — PerlinNoise accepts any object and reads it as a permutation table
+
+- **Classification:** confirmed runtime type-safety bug
+- **Area:** `Viper.Math.PerlinNoise.Noise*` and `Octave*`
+- **Evidence:** the registry exposes each receiver as untyped `obj`. `rt_perlin_noise2d()` and
+  `rt_perlin_noise3d()` check only for null and then cast the payload directly to
+  `rt_perlin_impl`, reading its 512-byte `perm` array. The constructor itself allocates with class
+  id zero, and no size/class validation helper exists. The octave methods delegate to the same
+  unchecked readers.
+- **Impact:** source code can pass a Seq, Bytes, or any other object accepted by the generic
+  signature and trigger out-of-bounds reads or interpret unrelated object memory as noise state.
+- **Likely repair point:** assign a stable PerlinNoise class id, validate heap kind/class/size at
+  the boundary, and give the registry a typed receiver signature.
+
+### VDOC-203 — BigInt's negative byte encoder can change the integer value
+
+- **Classification:** confirmed serialization correctness bug
+- **Area:** `Viper.Math.BigInt.ToBytes`
+- **Evidence:** the big-endian two's-complement encoder decides whether a negative value needs a
+  leading `0xff` from the magnitude's high bit rather than the encoded result's sign bit. With the
+  existing installed binary, `ToBytes(FromInt(-129)).ToHex()` returns `7f`, and feeding those bytes
+  to `FromBytes` returns `127`. Other negative ranges have the same boundary error; some correctly
+  valued negative encodings also contain a redundant sign byte.
+- **Impact:** serialization followed by deserialization can silently reverse the sign and change
+  the value. Stored keys, protocol integers, signatures, and cross-language data are corrupted.
+- **Likely repair point:** compute the minimal two's-complement bytes first, then prefix `0xff`
+  exactly when the resulting top bit would otherwise be clear; add round-trip tests around every
+  `0x80` magnitude boundary in both signs.
+
+### VDOC-204 — BigInt operations do not validate their generic object operands
+
+- **Classification:** confirmed runtime type-safety bug
+- **Area:** all `Viper.Math.BigInt` operations taking `Object`
+- **Evidence:** BigInts carry the private class id `0x424967496E74`, but no public operation checks
+  it. Functions such as `ToInt`, arithmetic, comparison, bitwise operations, and `Sqrt` cast the
+  registry's generic `obj` argument directly to `bigint_t` and dereference its `digits`, `len`,
+  `cap`, or `sign` fields. No heap-kind, payload-size, or class-id validation precedes those reads.
+- **Impact:** any ordinary runtime object type-checks at the public signature and can cause
+  arbitrary pointer reads/writes, invalid frees, or a process crash when interpreted as a BigInt.
+- **Likely repair point:** centralize a checked BigInt cast, apply it at every public boundary, and
+  expose typed BigInt operands/results in the registry so frontends reject mistakes earlier.
+
+### VDOC-205 — BigInt `PowMod` returns negative residues for negative bases
+
+- **Classification:** arithmetic API inconsistency / needs triage
+- **Area:** `Viper.Math.BigInt.PowMod`
+- **Evidence:** BigInt `Mod` uses truncating-division semantics and gives the remainder the
+  dividend's sign. `PowMod` repeatedly uses that operation without normalizing residues into
+  `[0, |modulus|)`. The existing binary reports `PowMod(-2, 3, 5) == -3`, while the conventional
+  least-nonnegative modular result is `2`.
+- **Impact:** callers using the method for number theory or cryptographic arithmetic receive a
+  noncanonical value and can fail equality/interoperability checks even though it represents the
+  same congruence class.
+- **Likely repair point:** decide and document the residue convention; for the conventional API,
+  require a positive modulus or normalize every final/intermediate remainder to `[0,m)`.
+
+### VDOC-206 — Quaternion inverse overflows or underflows its squared length
+
+- **Classification:** confirmed floating-point correctness bug
+- **Area:** `Viper.Math.Quat.Inverse`
+- **Evidence:** the implementation computes an overflow-resistant norm with chained `hypot`, but
+  then squares that norm and reciprocates it without scaling. For `Quat.New(1e308,0,0,0)`, the
+  square becomes infinity and the installed runtime returns a zero X component. For
+  `Quat.New(1e-308,0,0,0)`, the square underflows to zero and inverse X becomes `-Infinity`. Neither
+  path takes the advertised invalid-length trap.
+- **Impact:** finite, nonzero quaternions can yield zero or infinite inverses; downstream matrix
+  and vector transforms silently become invalid.
+- **Likely repair point:** compute the inverse with scaled components (or divide a normalized
+  conjugate by the original norm) so neither the square nor reciprocal overflows/underflows.
+
+### VDOC-207 — Matrix equality treats NaN as equal to arbitrary values
+
+- **Classification:** confirmed floating-point comparison bug
+- **Area:** `Viper.Math.Mat3.Eq` and `Viper.Math.Mat4.Eq`
+- **Evidence:** both implementations reject a component only when
+  `fabs(a[i] - b[i]) > epsilon`. A NaN difference makes that comparison false, as does every
+  finite difference when `epsilon` itself is NaN. Existing-binary probes return true both for a
+  NaN-containing Mat3 compared with zero and for `Mat4.Eq(Zero(), Identity(), NaN)`.
+- **Impact:** validation, cache invalidation, and transform-change detection can accept invalid or
+  completely different matrices as equal.
+- **Likely repair point:** reject non-finite epsilon and explicitly define component NaN semantics
+  before the tolerance comparison; add signed-zero, infinity, and NaN tests.
+
+### VDOC-208 — Mat3 and Mat4 inverse failures have incompatible contracts
+
+- **Classification:** confirmed math API inconsistency
+- **Area:** `Viper.Math.Mat3.Inverse` and `Viper.Math.Mat4.Inverse`
+- **Evidence:** Mat3 traps when its determinant is non-finite or has magnitude below `1e-15`.
+  Mat4 uses the same threshold but silently returns identity for the same condition (and for an
+  invalid receiver). The Mat4 source header additionally claimed that a runtime warning was
+  emitted, but no warning or trap occurs. The existing binary returns element `[0,0] == 1` for
+  `Mat4.Inverse(Mat4.Zero())`.
+- **Impact:** generic matrix code cannot handle inversion failure consistently, and a singular
+  transform silently becomes a valid-looking identity matrix that can move geometry to an
+  unrelated location.
+- **Likely repair point:** give both inverse APIs one explicit failure model—preferably a trap or
+  Result/TryInverse form—and never use identity as an ambiguous error sentinel.
+
+### VDOC-209 — Math runtime metadata marks trapping owned APIs as infallible or unknown
+
+- **Classification:** confirmed machine-readable registry metadata inconsistency
+- **Area:** `viper --dump-runtime-api` for `Viper.Math.*`
+- **Evidence:** current JSON marks `BigInt.Div`, `Mod`, negative `Pow`/`Sqrt`, `ToStrBase`, and
+  `Mat3.Inverse` as `fallibility=infallible` even though each has documented trap paths. Fresh
+  BigInt, vector, quaternion, spline, and matrix results are commonly
+  `ownership=unknown`, while only selected constructors are identified as owned. Similar metadata
+  hides `Quat.Inverse`/`Slerp`, vector divisor, spline index, and allocation failures.
+- **Impact:** the agent-facing inventory cannot safely plan error paths or object lifetimes for the
+  exact math APIs it is intended to describe.
+- **Likely repair point:** annotate the math manifest's ownership/fallibility explicitly, use
+  concrete object result types, and add contract assertions for known trapping/allocating entry
+  points.
+
+### VDOC-210 — Native programs do not install the documented graceful-shutdown signal bridge
+
+- **Classification:** confirmed VM/native behavior gap
+- **Area:** `Viper.System.Shutdown` in native/AOT execution
+- **Evidence:** the process-global shutdown bitmask is implemented in `rt_shutdown.c`, but the only
+  registrations for `SIGINT`, `SIGTERM`, or `SetConsoleCtrlHandler` are in `src/vm/VM.cpp`.
+  No native runtime startup path publishes OS events through `rt_shutdown_request`. Cooperative
+  `Shutdown.Request` works in either backend, while automatic Ctrl-C/termination publication is
+  VM-only.
+- **Impact:** a native server following the public poll-loop guidance can be terminated by the OS
+  without ever observing `Interrupt` or `Terminate`, even though the same program works in the VM.
+- **Likely repair point:** install equivalent signal/console handlers in native runtime startup,
+  retaining the current signal-safe flag-to-atomic handoff, or explicitly make OS integration a
+  VM-only capability query.
+
+### VDOC-211 — Legacy argument initialization uses a non-atomic flag as a cross-thread lock
+
+- **Classification:** confirmed C data race / initialization defect
+- **Area:** `Viper.System.Environment.GetArgument*` legacy-context fallback
+- **Evidence:** `g_legacy_args_host_init_state` is a plain process-global `int`. Reads and writes in
+  `rt_args_ensure_legacy_host_initialized`, `rt_args_push`, and `rt_args_clear` are unsynchronized,
+  although the comments describe a `0 -> 1 -> 2` first-thread protocol. A second POSIX thread can
+  race the import or spin on a value whose concurrent mutation is undefined in C; only the Windows
+  loop even calls a yield primitive.
+- **Impact:** concurrent first access can observe partially populated arguments, duplicate or lose
+  entries, or spin indefinitely under compiler optimization.
+- **Likely repair point:** use a real once primitive/atomic state with acquire-release ordering and
+  a portable wait/yield path, or move initialization into context construction before publication.
+
+### VDOC-212 — Windows Process passes a UTF-16 environment block as ANSI
+
+- **Classification:** confirmed Windows process-launch correctness bug
+- **Area:** `Viper.System.Process.StartWithEnv`
+- **Evidence:** `build_env_block_wide` creates a double-NUL-terminated `wchar_t` block, but the
+  corresponding `CreateProcessW` flags are only `CREATE_NO_WINDOW |
+  EXTENDED_STARTUPINFO_PRESENT`. Windows requires `CREATE_UNICODE_ENVIRONMENT` for a Unicode block.
+  The PTY backend correctly supplies that flag, highlighting the divergence.
+- **Impact:** explicit environments can be truncated or parsed as alternating one-byte strings;
+  non-ASCII values are unusable and even ASCII `KEY=value` entries are not reliably delivered.
+- **Likely repair point:** add `CREATE_UNICODE_ENVIRONMENT`, sort/validate the Windows block as
+  required, and add a Windows round-trip test containing multiple variables and non-ASCII text.
+
+### VDOC-213 — Executable lookup changes across Process and PTY environment modes
+
+- **Classification:** confirmed cross-API process-launch inconsistency
+- **Area:** POSIX `Viper.System.Process.Start*` and `Viper.System.Pty.Open*`
+- **Evidence:** Process always calls `posix_spawn`, so bare program names are not searched through
+  `PATH`. PTY calls `execvp` when inheriting the environment but switches to `execve` when an
+  explicit environment Seq is supplied, so adding an environment changes a previously searchable
+  bare name into exit code 127. An existing-binary probe also shows
+  `Process.StartWithEnv("sh", ...).IsValid() == false` while absolute paths work.
+- **Impact:** otherwise equivalent launch APIs and overloads disagree about program resolution;
+  adding one environment variable can make a valid PTY command fail after the handle was already
+  reported as successfully opened.
+- **Likely repair point:** choose one policy, preferably explicit `PATH` search for bare names in
+  every mode (using the supplied environment's PATH when present), and expose startup exec failure
+  before returning an apparently valid PTY session.
+
+### VDOC-214 — PTY Resize reports success without observing backend success
+
+- **Classification:** confirmed status-reporting bug
+- **Area:** `Viper.System.Pty.PtySession.Resize`
+- **Evidence:** the public function returns true for every valid handle. The POSIX helper discards
+  the result of `ioctl(TIOCSWINSZ)`, and the Windows helper discards the ConPTY HRESULT; neither
+  communicates success to the caller.
+- **Impact:** terminal UIs can believe the child received new dimensions when it did not, producing
+  incorrect wrapping/layout with no recoverable diagnostic.
+- **Likely repair point:** make backend helpers return Boolean success, preserve OS diagnostics in
+  the Result/LastError path, and propagate the value from `Resize`.
+
+### VDOC-215 — PTY LastError is an unsynchronized process-global buffer
+
+- **Classification:** confirmed data race / diagnostic corruption
+- **Area:** `Viper.System.Pty.LastError`, `Open`, `OpenResult`, and `IsSupported`
+- **Evidence:** every path reads or writes the static `char pty_last_error[256]` with
+  `snprintf`/plain byte access. A source comment calls PTY main-thread-only, but the public methods
+  contain no main-thread assertion and the registry exposes no such constraint.
+- **Impact:** concurrent opens or support checks invoke undefined behavior and can return a torn or
+  unrelated error message. A successful operation in one thread can erase another thread's error.
+- **Likely repair point:** make the side channel thread-local (as Exec does), or put the diagnostic
+  exclusively in `OpenResult` and deprecate LastError; enforce any genuine main-thread rule.
+
+### VDOC-216 — Windows Machine.OSVer can return a compatibility version
+
+- **Classification:** confirmed obsolete-platform-API defect
+- **Area:** `Viper.System.Machine.OsVer` / `Environment.PlatformVersion`
+- **Evidence:** Windows calls deprecated `GetVersionExA`, whose result is conditioned on the
+  embedding executable's supported-OS compatibility manifest. Viper's packaging code can generate
+  such a manifest when configured, but the runtime API itself is also used by unmanifested native
+  outputs/custom embedders and has no direct version-query fallback. Other platform paths query the
+  kernel/product release directly.
+- **Impact:** feature gates and diagnostics can identify Windows 10/11 as an older release.
+- **Likely repair point:** use a supported version source such as `RtlGetVersion` with an explicit
+  compatibility policy, ship an appropriate manifest, and test the packaged executable rather
+  than only the runtime object.
+
+### VDOC-217 — Windows Machine text queries bypass Viper's UTF-8 conversion path
+
+- **Classification:** confirmed cross-platform Unicode inconsistency
+- **Area:** `Viper.System.Machine.Host`, `User`, `Home`, and `Temp`
+- **Evidence:** these functions use `GetComputerNameA`, `GetUserNameA`, `GetTempPathA`, and narrow
+  CRT environment strings, then copy the bytes directly into runtime Strings. In the same module,
+  `Viper.System.Environment` deliberately uses wide Win32 APIs and strict UTF-16/UTF-8 conversion.
+- **Impact:** non-ASCII user names, host names, and paths can become invalid UTF-8 or mojibake and
+  then fail downstream path/string APIs.
+- **Likely repair point:** switch Machine queries to their wide forms and reuse the validated
+  conversion helpers; obtain home paths through wide environment or known-folder APIs.
+
+### VDOC-218 — Machine.MemFree measures different memory categories by platform
+
+- **Classification:** confirmed cross-platform semantic inconsistency
+- **Area:** `Viper.System.Machine.MemFree`
+- **Evidence:** Linux returns only `sysinfo.freeram`, macOS returns
+  `(free_count + inactive_count) * page_size`, and Windows returns `ullAvailPhys`. These represent
+  strict free pages, free-plus-reclaimable pages, and available physical memory respectively.
+- **Impact:** the same threshold can reject work on Linux while accepting it on macOS/Windows even
+  when the hosts have comparable usable memory; the name cannot support portable admission logic.
+- **Likely repair point:** define one portable “available” estimate and implement it per platform
+  (for Linux, include the appropriate reclaimable/cache data), or expose distinctly named metrics.
+
+### VDOC-219 — macOS Machine.Cores can return a non-positive count
+
+- **Classification:** confirmed fallback-contract bug
+- **Area:** `Viper.System.Machine.Cores`
+- **Evidence:** Linux/generic POSIX check `sysconf(_SC_NPROCESSORS_ONLN) > 0` and fall back to 1.
+  The macOS branch returns a successful `hw.logicalcpu` value without checking it and returns the
+  raw `sysconf` result on failure, including `-1`.
+- **Impact:** callers sizing worker pools can receive zero or a negative count despite the intended
+  safe-minimum contract.
+- **Likely repair point:** validate both macOS probes and return 1 for every non-positive/failing
+  result.
+
+### VDOC-220 — SetAltScreen is not an idempotent toggle and cleanup does not exit it
+
+- **Classification:** confirmed terminal-state lifecycle bug
+- **Area:** `Viper.Terminal.SetAltScreen`
+- **Evidence:** every true call emits the enter sequence and increments output batch depth; every
+  false call decrements it. No alternate-screen state guards repeated calls. The registered exit
+  handler only restores POSIX termios—it does not balance batching or emit the alternate-screen
+  exit sequence, despite the source header previously claiming both were restored.
+- **Impact:** repeated enable calls followed by one disable can strand output in batch mode, while
+  normal process exit can leave a terminal on its alternate screen until the terminal emulator
+  repairs the state.
+- **Likely repair point:** track one alt-screen Boolean, transition/batch only on state changes,
+  and make the exit handler perform a best-effort balanced screen/batch cleanup.
+
+### VDOC-221 — Terminal's public Integer parameters narrow silently to 32 bits
+
+- **Classification:** confirmed registry/runtime width inconsistency
+- **Area:** `GetKeyTimeout`, `SetPosition`, and `SetColor`
+- **Evidence:** the runtime registry advertises `i64` parameters but maps directly to
+  `rt_getkey_timeout_i32`, `rt_term_locate_i32`, and `rt_term_color_i32`; the runtime signature
+  catalog declares those C symbols as `i32`. Separate i64 wrapper functions exist but are not the
+  registered targets. Values are therefore narrowed modulo 32 bits before use.
+- **Impact:** a large positive timeout can become negative and block indefinitely; large cursor or
+  color values can change sign and take unrelated branches.
+- **Likely repair point:** register the i64 wrappers and validate/clamp before narrowing, or change
+  the public signature with the required compatibility/ADR treatment.
+
+### VDOC-222 — System runtime metadata hides nulls, traps, and owned results
+
+- **Classification:** confirmed machine-readable registry metadata inconsistency
+- **Area:** `viper --dump-runtime-api` for Environment, Exec, Process, PTY, Machine, Unsafe, GC,
+  and Terminal
+- **Evidence:** current JSON calls `Environment.Cwd`, Process reads, PTY reads/resize, Unsafe
+  release/value-type operations, and `GC.Collect` infallible despite documented trap paths. Process
+  Start and legacy Terminal reads are marked non-null even though startup/EOF returns null. Fresh
+  strings, maps, Result objects, handles, and CommandResult values frequently retain unknown
+  ownership; `ReadStdout`/`Read` do not expose truncation fallibility.
+- **Impact:** tools using the agent-facing catalog cannot distinguish startup absence from a valid
+  handle, plan cleanup for owned results, or install necessary error paths.
+- **Likely repair point:** annotate this surface explicitly for nullability, ownership, Result/
+  Option use, side channels, and traps, and add audit assertions for known nullable/trapping APIs.
+
+### VDOC-223 — Time's POSIX failure fallback is not monotonic
+
+- **Classification:** confirmed fallback-contract inconsistency
+- **Area:** `Viper.Time.Clock`, `Countdown`, and `Stopwatch` on POSIX
+- **Evidence:** all three implementations prefer `CLOCK_MONOTONIC` but call `CLOCK_REALTIME` if
+  that query fails. `Clock` then returns `0` if realtime also fails; Stopwatch does the same,
+  while Countdown traps. The public page and implementation headers previously called the values
+  unconditionally monotonic and non-decreasing.
+- **Impact:** a clock adjustment on the fallback path can make elapsed values decrease, inflate a
+  countdown wait, or produce negative accumulated intervals. A zero failure result is also
+  indistinguishable from a legitimate clock reading.
+- **Likely repair point:** treat monotonic-clock failure as a surfaced error, or maintain a
+  process-local non-decreasing fallback and expose clock availability/quality explicitly.
+
+### VDOC-224 — Windows time objects race while caching QPC frequency
+
+- **Classification:** confirmed C data race
+- **Area:** first concurrent use of `Viper.Time.Countdown` and `Viper.Time.Stopwatch` on Windows
+- **Evidence:** each `get_timestamp_*` helper has a function-static mutable `LARGE_INTEGER freq`.
+  Threads read and write `freq.QuadPart` without atomics or a once primitive. The source comments
+  called the duplicate initialization benign because QPC frequency is constant, but identical
+  results do not make concurrent non-atomic C accesses defined.
+- **Impact:** concurrent first use invokes undefined behavior; compiler optimization can expose a
+  torn, stale, or otherwise invalid frequency and corrupt elapsed-time calculations.
+- **Likely repair point:** initialize frequency through a platform once primitive or immutable
+  process startup state, and add a concurrent first-use regression test.
+
+### VDOC-225 — DateTime.Create cannot distinguish failure from a valid instant
+
+- **Classification:** confirmed sentinel collision
+- **Area:** `Viper.Time.DateTime.Create`
+- **Evidence:** invalid, normalized, skipped-DST, or unrepresentable civil input returns `-1`.
+  However the implementation accepts pre-epoch dates, and under `TZ=UTC` an existing-binary probe
+  confirms `Create(1969, 12, 31, 23, 59, 59) == -1` for the valid instant one second before the
+  Unix epoch.
+- **Impact:** callers cannot determine whether `-1` is a valid result or failed creation and can
+  silently discard or process the wrong instant.
+- **Likely repair point:** add an Option/Result creation API and retain the numeric sentinel only as
+  an explicitly named compatibility method.
+
+### VDOC-226 — Local DateTime construction leaves repeated DST hours host-defined
+
+- **Classification:** confirmed cross-platform civil-time ambiguity
+- **Area:** `DateTime.Create`, local `ParseISO`, and local `ParseDate`
+- **Evidence:** local conversion calls `mktime` with `tm_isdst = -1` and only verifies that the
+  resulting fields round-trip. This rejects a skipped hour, but both occurrences of a repeated
+  hour have identical fields, so the selected instant is whatever the host C library chooses. On
+  the reviewed macOS host, `2025-11-02 01:30` in New York resolves to the EDT occurrence.
+- **Impact:** the same local input can identify different Unix instants on different hosts, with no
+  API for selecting the earlier/later or standard/DST occurrence.
+- **Likely repair point:** expose an explicit ambiguity policy or parse Result carrying both
+  candidates; use the embedded zone engine for deterministic named-zone civil conversion.
+
+### VDOC-227 — RelativeTime.FormatDuration emits negative zero
+
+- **Classification:** confirmed formatting defect
+- **Area:** `Viper.Time.RelativeTime.FormatDuration`
+- **Evidence:** the function records the sign before dividing the magnitude into whole seconds.
+  It emits a sign whenever the input is negative even when every whole-unit component is zero. An
+  existing-binary probe confirms `FormatDuration(-1) == "-0s"` while `FormatDuration(999) ==
+  "0s"`.
+- **Impact:** UI text displays a nonsensical negative-zero duration and equivalent sub-second
+  magnitudes format asymmetrically.
+- **Likely repair point:** apply the sign only when the displayed whole-second magnitude is
+  nonzero, or include a millisecond component instead of discarding it.
+
+### VDOC-228 — TimeZone.Find loses its class type in Zia
+
+- **Classification:** confirmed registry/type-system integration defect
+- **Area:** `Viper.Time.TimeZone.Find` and instance members
+- **Evidence:** the registry declares `Find` as `obj(str)`, not
+  `obj<Viper.Time.TimeZone>(str)`. Existing-compiler checks reject both instance chaining on the
+  inferred `Any` and assignment to a `Viper.Time.TimeZone` local. The explicit-receiver forms
+  `TimeZone.get_Name(zone)`, `OffsetAt(zone, ts)`, and `IsDstAt(zone, ts)` compile and run.
+- **Impact:** the documented instance API is not directly usable from the natural Zia lookup
+  expression; completion/type checking loses the class immediately after a successful find.
+- **Likely repair point:** give `Find` its concrete object return type in the registry and add Zia
+  chaining/typed-assignment coverage, with the required compatibility review for signature
+  metadata changes.
+
+### VDOC-229 — Time instance APIs accept and reinterpret wrong-class objects
+
+- **Classification:** confirmed runtime type-safety defect
+- **Area:** Countdown, Stopwatch, DateOnly, and DateRange explicit-receiver calls
+- **Evidence:** these objects are allocated with class ID `0`, and their public methods either only
+  null-check or directly cast any pointer to the expected payload structure. A check-only Zia
+  probe is accepted with a `Seq` passed to `Countdown.Start`, `Stopwatch.Start`,
+  `DateOnly.ToDays`, and `DateRange.Duration` through the static compatibility forms.
+- **Impact:** a wrong explicit receiver can read unrelated fields, write over another object's
+  payload, or access beyond its allocation, leading to heap corruption rather than a type error.
+- **Likely repair point:** assign stable runtime class IDs, validate kind/class/size in shared
+  receiver guards, and make the front end reject explicit receivers incompatible with the owning
+  class.
+
+### VDOC-230 — Wall-clock failure aliases the Unix timestamp -1
+
+- **Classification:** confirmed error-sentinel ambiguity
+- **Area:** `DateTime.Now`, `DateOnly.Today`, and RelativeTime's implicit current-time helpers
+- **Evidence:** these paths call `time(NULL)` and treat its return as an ordinary timestamp without
+  checking `(time_t)-1`, the C API's failure sentinel. `DateTime.Now` exposes it directly;
+  `DateOnly.Today` can convert it into a plausible local date; RelativeTime compares against it.
+- **Impact:** a wall-clock query failure can masquerade as a valid 1969 timestamp and produce
+  plausible but incorrect dates or enormous relative-time strings.
+- **Likely repair point:** centralize a checked wall-clock query with an Option/Result error path;
+  avoid sentinel-returning APIs for instants whose valid domain includes negative values.
+
+### VDOC-231 — DateOnly accepts years its serializer cannot round-trip
+
+- **Classification:** confirmed representation/parser mismatch
+- **Area:** `DateOnly.Create`, `ToString`, `Format`, and `Parse`
+- **Evidence:** `Create` accepts any signed 64-bit year, while `Parse` requires exactly four ASCII
+  digits and ten total bytes. `ToString` uses minimum rather than exact year width. Existing-binary
+  probes produce `-001-01-01` for year `-1` and `10000-01-01` for year `10000`; parsing the latter
+  returns null.
+- **Impact:** the nominal canonical date string is not a serialization format for the full
+  constructible domain, and persisted dates can fail to load without warning.
+- **Likely repair point:** define and enforce a year domain shared by construction/parsing, or
+  implement signed/expanded ISO 8601 years in both parser and formatter.
+
+### VDOC-232 — Time runtime metadata hides nullability, traps, and ownership
+
+- **Classification:** confirmed machine-readable registry metadata inconsistency
+- **Area:** `viper --dump-runtime-api` for `Viper.Time.*`
+- **Evidence:** checked DateTime/Duration arithmetic, Stopwatch/Countdown receivers, and range
+  subtraction are marked `fallibility=infallible`; `DateTime.ParseISO`/`ParseDate` are marked as
+  trapping although they return numeric sentinels. `DateOnly.Create`, `Today`, and `Parse`, plus
+  `DateRange.Intersection`/`Union`, are marked non-null despite ordinary null returns. Newly
+  allocated DateOnly/range/Stopwatch results often have `ownership=unknown`, while TimeZone's
+  process-lifetime static handle is also unknown.
+- **Impact:** tools using the live agent-facing catalog will omit necessary null/error branches,
+  invent trap handling for sentinel parsers, and cannot plan correct ownership.
+- **Likely repair point:** annotate Time contracts explicitly, use concrete nullable object types,
+  distinguish static/borrowed zone handles from owned objects, and assert these known cases in the
+  metadata audit.
+
+### VDOC-233 — The public-surface cleanup removed Parse.TryNum without updating its consumers
+
+- **Classification:** confirmed cross-layer registry inconsistency
+- **Area:** runtime registry, surface policy, front ends, tooling, and tests
+- **Evidence:** the current registry no longer declares `Viper.Core.Parse.TryNum`, but
+  `RuntimeSurfacePolicy.inc` still requires both the function and the class method. A direct
+  source-registry audit therefore fails with two errors. Zia and BASIC compatibility rewrites,
+  diagnostic/explanation code, ownership/signature lookups, method-index tests, runtime tests,
+  fixtures, and golden expectations also still name the removed target.
+- **Impact:** the repository's runtime-surface audit is red, and a regenerated compiler can retain
+  compatibility logic and test expectations for a symbol absent from its authoritative catalog.
+- **Likely repair point:** either restore `TryNum` as a reviewed compatibility alias or remove it
+  coherently from policy, front ends, tooling, tests, fixtures, goldens, and migration material.
+
+### VDOC-234 — Removed public runtime helpers remain unclassified at the C boundary
+
+- **Classification:** confirmed runtime-audit classification gap
+- **Area:** C runtime declarations left behind by the concurrent public-registry cleanup
+- **Evidence:** direct `rtgen --audit` reports 193 unclassified findings against 8,176 header
+  declarations after the registry fell to 7,132 public functions. The warnings include helpers
+  whose public rows were removed, such as `rt_datetime_try_parse`, Exec compatibility accessors,
+  and PTY error accessors, without corresponding internal/compatibility classifications.
+- **Impact:** the audit cannot distinguish deliberate internal ABI retention from forgotten public
+  exposure or dead declarations, so future drift is hidden in a large warning baseline.
+- **Likely repair point:** classify every retained C helper explicitly as internal/compatibility,
+  or remove its declaration and implementation when ABI retention is not intended; keep the audit
+  warning baseline at zero.
+
+### VDOC-235 — Generated runtime documentation is stale after the public-surface cleanup
+
+- **Classification:** confirmed generated-documentation inconsistency
+- **Area:** `docs/generated/runtime/`
+- **Evidence:** direct `rtgen --docs --check` currently reports 25 component pages plus the
+  generated README as stale, including every reviewed runtime component affected by removed rows.
+  The source registry itself parses and validates, so this is generated-output drift rather than
+  a parser failure.
+- **Impact:** readers and tooling see APIs that the authoritative source registry no longer
+  exposes; previously reviewed pages can become stale again while the cleanup is in flight.
+- **Likely repair point:** finish the coordinated registry cleanup, regenerate the complete runtime
+  reference in one reviewed change, and keep `rtgen --docs --check` as a required zero-drift gate.
+
+### VDOC-236 — Config queries leak retained JSON values
+
+- **Classification:** confirmed runtime ownership bug
+- **Area:** `Viper.Game.Config.GetInt`, `GetStr`, `GetBool`, and `Has`
+- **Evidence:** each method calls `rt_jsonpath_get` as an existence check. That helper explicitly
+  retains the resolved value, but none of the four Config paths releases the retained result.
+  Three of them then perform a second lookup for conversion, so every successful query leaks at
+  least one reference into the parsed JSON tree.
+- **Impact:** repeatedly reading ordinary configuration keys grows retained object/string state for
+  the lifetime of the process even after the Config itself becomes unreachable.
+- **Likely repair point:** use one owned lookup and release it after conversion, or use the existing
+  non-leaking `rt_jsonpath_has`/typed helper paths with an explicit ownership contract and tests.
+
+### VDOC-237 — Legacy Game registry signatures erase concrete return types
+
+- **Classification:** confirmed registry/type-system integration defect
+- **Area:** function-only `Viper.Game.Entity`, `Behavior`, `Config`, `SceneManager`, Raycast, and
+  `Viper.Game2D.LevelDocument` surfaces
+- **Evidence:** constructors/loaders return unqualified `obj`; `Config.GetStr` and
+  `SceneManager.get_Current`/`get_Previous` also use `obj` even though the C functions return
+  runtime strings. Constructor-provenance lets current Zia accept many chained calls, but an
+  existing-compiler probe rejects passing `get_Current` to a String parameter because its type is
+  `Any`. These namespaces also have no generated `RT_CLASS` entries.
+- **Impact:** class identity, string typing, completion, nullability, and ownership disappear at
+  API boundaries; otherwise valid results cannot be consumed by typed Zia code naturally.
+- **Likely repair point:** add reviewed class definitions and concrete return descriptors
+  (`str`, nullable `obj<Viper.Game...>`, and typed Tilemap results), then cover direct assignment,
+  chaining, and completion in both front ends.
+
+### VDOC-238 — LevelDocument's nullable loader traps on ordinary file errors
+
+- **Classification:** confirmed failure-contract inconsistency
+- **Area:** `Viper.Game2D.LevelDocument.Load`
+- **Evidence:** the loader is documented and registered as a nullable object factory, but it calls
+  `rt_io_file_read_all_text` without an existence/error preflight. Missing paths, permission
+  failures, non-regular files, short reads, and close failures trap before `Load` can return null.
+  `Viper.Game.Config.Load`, by contrast, explicitly converts a missing file into null.
+- **Impact:** callers cannot implement the documented null fallback for the most common load
+  failure, and closely related game JSON loaders have incompatible error behavior.
+- **Likely repair point:** provide a Result-based load API and make the nullable compatibility path
+  consistently soft-fail, or document/register it as trapping and expose the I/O error.
+
+### VDOC-239 — LevelDocument silently collapses layers and truncates metadata
+
+- **Classification:** confirmed data-model inconsistency / needs triage
+- **Area:** `Viper.Game2D.LevelDocument` JSON import
+- **Evidence:** every `type == "tiles"` layer writes into the same base Tilemap; layer names are
+  ignored and later data, including zero tiles, overwrites earlier data. Object `type`/`id` and the
+  theme are silently truncated to 31 bytes, potentially at a UTF-8 continuation byte, and only the
+  first 512 object entries are retained. The implementation comment still says 256 objects.
+- **Impact:** a nominally layered level can lose earlier visual/collision data, long identifiers can
+  alias or become invalid UTF-8, and large levels are accepted with silent object loss.
+- **Likely repair point:** either preserve named layers in the returned model or explicitly accept
+  one layer; reject/report overlong metadata and object overflow rather than silently truncating.
+
+### VDOC-240 — Behavior.AddSineFloat documents units the implementation does not use
+
+- **Classification:** confirmed API/implementation contract inconsistency
+- **Area:** `Viper.Game.Behavior.AddSineFloat`
+- **Evidence:** the header calls `amplitude` pixels and `speed` degrees per second. Update actually
+  assigns `sin(phase) * amplitude` directly to Entity vertical velocity (centipixels per 16 ms base
+  frame), while phase advances by `speed * dt / 16` centidegrees. It does not offset position by a
+  pixel amplitude and the speed is not degrees/second.
+- **Impact:** values chosen from the public contract produce motion roughly two orders of magnitude
+  off and make hover behavior frame-unit dependent in a non-obvious way.
+- **Likely repair point:** define physical units and either integrate a positional sine offset or
+  rename the parameters as velocity/centidegree increments; align headers, registry docs, and
+  regression tests.
+
+### VDOC-241 — Entity.OnGround is cleared on the first stationary frame after landing
+
+- **Classification:** confirmed game-physics state bug
+- **Area:** `Viper.Game.Entity.MoveAndCollide`
+- **Evidence:** every call clears all collision flags, but vertical collision is checked only when
+  the computed Y displacement is nonzero. An existing-binary probe lands an Entity on a solid tile
+  (`OnGround == true`), calls `MoveAndCollide` again after vertical velocity was zeroed, and gets
+  `OnGround == false` although the entity has not moved.
+- **Impact:** grounded movement, jumping, edge reversal, and animations can alternate or fail when
+  gravity is zero/small or displacement truncates to zero.
+- **Likely repair point:** perform a stable contact probe after movement (including zero
+  displacement), or distinguish one-frame collision events from persistent contact properties.
+
+### VDOC-242 — A ray on the maximum map boundary samples the last in-bounds tile
+
+- **Classification:** confirmed raycast boundary bug
+- **Area:** `Viper.Game.Raycast.HasLineOfSight` / internal tilemap DDA
+- **Evidence:** clipping treats `x == mapWidth` and `y == mapHeight` as inside, then clamps those
+  coordinates to `mapWidth - 1`/`mapHeight - 1`. With a solid one-tile map, an existing-binary
+  probe reports a vertical segment at `x == mapWidth` blocked, while the same segment one pixel
+  farther outside is clear.
+- **Impact:** rays immediately outside the right or bottom edge collide with boundary tiles and can
+  break visibility or projectile logic asymmetrically; left/top use different half-open behavior.
+- **Likely repair point:** clip against the map's half-open extent and reject segments that only
+  touch the excluded maximum boundary; add tests for all four edges and corner tangencies.
+
+### VDOC-243 — SceneManager silently aliases long names and drops excess scenes
+
+- **Classification:** confirmed bounded-registry API inconsistency
+- **Area:** `Viper.Game.SceneManager.Add` and name-based switching
+- **Evidence:** the manager stores at most 64 names in fixed 128-byte buffers. `Add` silently
+  ignores entries after the cap and truncates every name to 127 bytes before duplicate detection,
+  so distinct long names with the same prefix alias. No result reports either condition.
+- **Impact:** legitimate scenes can be absent or switch to an unintended prefix-colliding scene,
+  with no diagnostic available to the caller.
+- **Likely repair point:** return a Result/boolean status, reject overlong names, and expose or
+  remove the fixed cap; keep names as owned runtime strings if practical.
+
+### VDOC-244 — BASIC can assert while recovering from NEXT used as an identifier
+
+- **Classification:** confirmed compiler crash
+- **Area:** BASIC parser/control-flow checking
+- **Evidence:** the Game of Life documentation example declared an object named `next`, then used
+  `next.Set(...)` inside nested `FOR` loops. BASIC is case-insensitive and parses `next` at statement
+  start as the `NEXT` keyword. Rather than only diagnosing the reserved-name/mismatched-loop input,
+  the existing compiler aborts in `ControlCheckContext` with `FOR stack unbalanced by control-flow
+  check`. A reduced one-loop form diagnoses the syntax, while the nested example exits via
+  assertion.
+- **Impact:** ordinary invalid source can terminate the compiler process instead of returning
+  structured diagnostics; editor/server callers can be taken down by one document buffer.
+- **Likely repair point:** reject keywords as identifiers at declaration, make control-stack
+  recovery exception-safe, and add the reduced/nested cases as non-crashing parser tests.
+
+### VDOC-245 — Config defaults are ignored when an existing value has the wrong type
+
+- **Classification:** confirmed typed-getter contract inconsistency
+- **Area:** `Viper.Game.Config.GetInt`, `GetBool`, and `GetStr`
+- **Evidence:** the methods use the caller's default only when the path is absent. Once a value
+  exists, conversion helpers return `0`, false, or an empty string for unsupported/unparseable
+  input, and that conversion result replaces the supplied default. `GetStr` additionally has the
+  erased `obj` return described in VDOC-237.
+- **Impact:** malformed configuration silently changes behavior to zero/false/empty instead of the
+  safe defaults callers requested.
+- **Likely repair point:** make typed conversion report success and return the supplied default on
+  both absence and type/parse failure, or rename/document the current coercing semantics.
+
+### VDOC-246 — `SaveData.Save` traps on some failures despite its Boolean contract
+
+- **Classification:** confirmed failure-contract inconsistency
+- **Area:** `Viper.IO.SaveData.Save`
+- **Evidence:** the method and adjacent source comment promise `false` on failure, but parent
+  creation delegates to trapping `Dir.MakeAll`, and failure to obtain secure randomness for the
+  temporary filename calls `rt_trap` before returning zero. Permission, disk, path-component, and
+  entropy failures therefore do not all reach the advertised Boolean boundary.
+- **Impact:** game code that branches on `if save.Save()` can still terminate on ordinary
+  operational failures and cannot present its own recovery UI consistently.
+- **Likely repair point:** use non-trapping directory/entropy helpers internally and return false
+  with an inspectable error, or change the surface to a Result and reserve traps for invalid
+  programming inputs.
+
+### VDOC-247 — Quest IDs accept and alias embedded-NUL suffixes
+
+- **Classification:** confirmed string-validation / persistence bug
+- **Area:** `Viper.Game.Quests` registration and lookup
+- **Evidence:** `quests_valid_id()` validates `strlen(rt_string_cstr(id))`, so a valid prefix before
+  an embedded NUL is accepted while all bytes after it escape the `[A-Za-z0-9._-]` and 64-byte
+  checks. Lookups use `strcmp` and the save formatter uses `%s`, making distinct runtime strings
+  with the same pre-NUL prefix alias and serialize identically.
+- **Impact:** dynamically supplied IDs can overwrite or address the wrong quest/stage/objective,
+  and persistence cannot round-trip the registered identity.
+- **Likely repair point:** validate the runtime string's explicit byte length, reject every NUL,
+  and compare/serialize length-aware IDs.
+
+### VDOC-248 — Quest mutation methods do not enforce objective kind
+
+- **Classification:** confirmed state-machine API bug
+- **Area:** `Viper.Game.Quests.SetFlag` and `Progress`
+- **Evidence:** objectives store `is_counter`, but neither mutation checks it. `SetFlag` assigns the
+  target to a counter and completes it; `Progress` increments a flag and can complete it. Both then
+  emit normal completion/advancement events.
+- **Impact:** a caller mistake silently changes canonical quest state instead of returning false,
+  making content wiring errors hard to diagnose and potentially skipping gameplay requirements.
+- **Likely repair point:** reject the wrong mutation for each objective kind and add flag/counter
+  cross-call tests.
+
+### VDOC-249 — Quest progress can overflow before it is clamped
+
+- **Classification:** confirmed signed-overflow bug
+- **Area:** `Viper.Game.Quests.Progress`
+- **Evidence:** the implementation performs `objective->progress += amount` on signed `int64_t`
+  before comparing with and clamping to the target. A sufficiently large positive increment can
+  overflow, which is undefined behavior in C and may become negative rather than completing.
+- **Impact:** untrusted or accumulated progress values can corrupt state, suppress completion, or
+  be miscompiled under optimization.
+- **Likely repair point:** saturate by comparing `amount` with `target - progress` before addition,
+  without evaluating an overflowing sum.
+
+### VDOC-250 — Legal maximum-size quests cannot always be serialized
+
+- **Classification:** confirmed persistence-budget inconsistency
+- **Area:** `Viper.Game.Quests.Save`
+- **Evidence:** the public registration budgets allow 16 stages with 8 objectives each and IDs up
+  to 64 characters, but serialization builds each entire quest record in one fixed `char[512]`.
+  Progress for only a small fraction of a legal maximum quest exhausts that buffer, at which point
+  `Save` returns false.
+- **Impact:** content accepted by registration can become unsaveable only after objectives gain
+  progress, risking lost campaigns with no diagnostic explaining the limit.
+- **Likely repair point:** append directly to the dynamically grown output, check arithmetic, and
+  test the full documented budget with maximum-length IDs and progress values.
+
+### VDOC-251 — Quest persistence leaks temporary runtime strings
+
+- **Classification:** confirmed runtime ownership bug
+- **Area:** `Viper.Game.Quests.Save` and `Load`
+- **Evidence:** `Save` constructs owned runtime strings for the fixed key and serialized value,
+  passes them to a setter that retains them, and never releases the temporaries. `Load` likewise
+  constructs a key/default and receives the freshly retained result of `SaveData.GetString`, but
+  never unreferences those handles on success or any early return.
+- **Impact:** every save/load cycle permanently grows string allocations; autosave or repeated
+  profile loading amplifies the leak over a long game session.
+- **Likely repair point:** bind every temporary handle to a local with balanced cleanup on all
+  exits, or add scoped ownership helpers for runtime C code.
+
+### VDOC-252 — Quest loading weakly parses and partially applies malformed state
+
+- **Classification:** confirmed persistence-validation bug
+- **Area:** `Viper.Game.Quests.Load`
+- **Evidence:** the loader splits and mutates registered quests in place, parses numeric fields
+  with `atoll` without end-pointer or overflow validation, ignores malformed/unknown fields, and
+  returns true for almost any nonempty blob. It has no transaction or rollback, so later bad fields
+  do not undo earlier state changes.
+- **Impact:** corrupt or externally edited saves can be reported as loaded while leaving a hybrid
+  of old, default, and partially decoded state.
+- **Likely repair point:** use a versioned grammar with strict integer parsing, validate into a
+  temporary state, and commit only after the complete blob succeeds.
+
+### VDOC-253 — Quest hot re-registration can leave a completed stage stuck active
+
+- **Classification:** confirmed state-migration inconsistency
+- **Area:** `Viper.Game.Quests.AddFlag` / `AddCounter` on existing objectives
+- **Evidence:** re-registration changes objective kind and target but retains progress and does not
+  run advancement. If the new target is at or below retained progress, later `SetFlag`/`Progress`
+  returns false because the objective is already done and also skips `quests_check_advance`.
+- **Impact:** the documented idempotent data-refresh pattern can strand an active quest on a stage
+  whose every objective is already complete.
+- **Likely repair point:** define an explicit migration policy, normalize retained progress, and
+  recompute stage/quest state after registration changes (or prohibit structural re-registration).
+
+### VDOC-254 — Clearing scene diagnostics also erases schema invalidity
+
+- **Classification:** confirmed editor-document state bug
+- **Area:** `Viper.Game2D.SceneDocument.ClearDiagnostics`
+- **Evidence:** `ClearDiagnostics` clears messages and unconditionally sets `SceneState.valid =
+  true`. Compatibility loads normalize bad dimensions, missing fields, tile-count errors, and
+  other invalid input into a document; clearing their diagnostics consequently makes
+  `HasErrors()` false without repairing or revalidating that data.
+- **Impact:** an editor can acknowledge messages and then mistake an invalid/normalized scene for
+  a successfully validated source document.
+- **Likely repair point:** separate immutable/current validation state from the diagnostic queue,
+  or revalidate before validity can become true.
+
+### VDOC-255 — Scene Result loaders can return warning text as the error
+
+- **Classification:** confirmed diagnostic-selection bug
+- **Area:** `SceneDocument.LoadJsonResult` and `LoadResult`
+- **Evidence:** each Result adapter checks for any error but obtains its message from the internal
+  `lastError`, which is simply the newest diagnostic of any severity. Parsing continues after many
+  schema errors, and a later unknown-field warning therefore replaces the message selected for
+  `Err`.
+- **Impact:** callers receive an error Result whose text describes a non-fatal dropped field while
+  the actual unsupported version, dimensions, or schema error is hidden with the discarded
+  document.
+- **Likely repair point:** select the first or most relevant error-severity record, or return the
+  full diagnostic collection in a typed error payload.
+
+### VDOC-256 — SceneDocument construction dereferences a failed handle allocation
+
+- **Classification:** confirmed allocation / recoverable-trap bug
+- **Area:** `Viper.Game2D.SceneDocument` construction and load paths
+- **Evidence:** `handleFromState()` calls `rt_obj_new_i64` and immediately writes `h->state`
+  without checking `h`. If the runtime allocation trap hook returns null, this becomes a null
+  dereference. If the subsequent C++ `new SceneState` throws, the exception barrier returns null
+  but the already allocated runtime handle is not finalized or released.
+- **Impact:** allocation pressure can turn a recoverable runtime trap into a native crash or leak
+  an incomplete GC object.
+- **Likely repair point:** check the handle, allocate state under RAII before publishing ownership,
+  and release the handle on every exception path.
+
+### VDOC-257 — GameBase permits zero and negative delta times through `setDTMax`
+
+- **Classification:** confirmed example-framework timing bug
+- **Area:** `examples/games/lib/gamebase.zia`
+- **Evidence:** the loop first raises `dt` to 1 and then applies `if dt > dtMax { dt = dtMax; }`.
+  `setDTMax` accepts any integer, so zero or a negative value replaces the lower-clamped delta on
+  every frame.
+- **Impact:** physics, timers, animation, and ScreenFX can freeze or run backward even though the
+  framework advertises clamped positive millisecond deltas.
+- **Likely repair point:** clamp/reject nonpositive maxima in the setter and order the bounds as
+  one validated interval.
+
+### VDOC-258 — GameBase renders one more frame after a window-close request
+
+- **Classification:** confirmed example-framework lifecycle inconsistency
+- **Area:** `examples/games/lib/gamebase.zia`
+- **Evidence:** after `Canvas.Poll`, a true `ShouldClose` only assigns `running = false`; execution
+  continues through delta/effect updates, scene lifecycle callbacks, drawing, `onFrame`, and
+  `Canvas.Flip` before the loop condition is checked again.
+- **Impact:** game code performs callbacks and presentation after close was observed, which can
+  trigger unwanted state mutation or touch a window/backend already entering teardown.
+- **Likely repair point:** break immediately after close detection, or explicitly define and test
+  a close-request finalization callback that does not present another frame.
+
+### VDOC-259 — Long DebugOverlay watch names duplicate and cannot be removed normally
+
+- **Classification:** confirmed bounded-name / lookup bug
+- **Area:** `Viper.Game.DebugOverlay.Watch` and `Unwatch`
+- **Evidence:** a new watch name is copied into a 32-byte C buffer and silently truncated to 31
+  bytes, but lookup before insertion compares the caller's full NUL-terminated text with stored
+  names. Repeating the same long name therefore misses the truncated entry and consumes another
+  slot; `Unwatch` with the original name also misses. Byte truncation can split UTF-8, and only 28
+  stored bytes are rendered.
+- **Impact:** updating one long metric can exhaust all 16 watch slots, after which new watches are
+  silently ignored, while the original entry cannot be addressed with its source name.
+- **Likely repair point:** reject or UTF-8-safely normalize names before both lookup and storage,
+  use the same canonical representation for `Watch`/`Unwatch`, and return insertion status.
+
+### VDOC-260 — Pathfinder's registry cleanup contradicts its ADRs and remaining consumers
+
+- **Classification:** confirmed cross-layer runtime-surface inconsistency
+- **Area:** `Viper.Game.Pathfinder`, `PathResult`, ADRs, tests, generated docs, and built tools
+- **Evidence:** the current source registry exposes result-returning operations under `FindPath`
+  and `FindNearest` and removes `FindPathResult`, `FindNearestResult`, `FindPathLength`, mutable
+  last-search properties, and `PathResult.Length`. ADR 0050 defines the `*Result` names, while ADR
+  0062 explicitly requires keeping `Length` as a compatibility alias. Generated Game docs and
+  runtime/class tests still name the removed rows, and the existing compiler binary still reflects
+  the older method catalog. No superseding ADR documents this breaking surface change.
+- **Impact:** source, architectural decisions, tests, documentation, and available binaries expose
+  incompatible APIs; a rebuild would break callers and redline contract tests.
+- **Likely repair point:** pause the deletion, decide the canonical migration through a superseding
+  ADR, retain reviewed aliases for compatibility, and update all layers atomically.
+
+### VDOC-261 — `Pathfinder.FromTilemap` ignores the designated collision layer
+
+- **Classification:** confirmed game-navigation snapshot bug
+- **Area:** `Viper.Game.Pathfinder.FromTilemap`
+- **Evidence:** Tilemap collision queries and body resolution read
+  `tilemap->layers[collision_layer]`, but the Pathfinder importer calls the base-only
+  `rt_tilemap_get_tile(x, y)` for every cell. It never reads `get_CollisionLayer` or
+  `GetTileLayer`.
+- **Impact:** maps that correctly put collision geometry on a separate layer produce navigation
+  grids from their visual base layer instead, allowing paths through walls or blocking decorative
+  tiles.
+- **Likely repair point:** snapshot the designated collision layer, while separately defining which
+  layer supplies nearest-search values, and add a multilayer import test.
+
+### VDOC-262 — Pathfinder factories and path payloads erase their concrete collection types
+
+- **Classification:** confirmed registry/type-system integration defect
+- **Area:** `Pathfinder.FromTilemap`, `FromGrid2D`, and `PathResult.Path`
+- **Evidence:** both import factories are registered as returning bare `obj`, and the `Path`
+  property is also `obj` even though runtime code returns a retained
+  `Viper.Collections.List` whose entries are `Viper.Collections.Seq` objects. This differs from the
+  typed `PathResult` operation returns in the current class registry. Current Zia recovers the
+  factory result from its qualified owner, but the declared inventory type remains erased.
+- **Impact:** tooling and frontends without owner provenance lose factory identity. For `Path`, the
+  current Zia compiler rejects both assignment and an `as` cast from `Any` to
+  `Viper.Collections.List`; callers must invoke low-level static List/Seq functions and explicitly
+  unbox coordinates.
+- **Likely repair point:** register `obj<Viper.Game.Pathfinder>` and
+  `obj<Viper.Collections.List>` returns (and, when supported, a typed point representation rather
+  than nested untyped objects).
+
+### VDOC-263 — Pathfinder allocation failures masquerade as valid misses or partial successes
+
+- **Classification:** confirmed failure-contract / result-integrity bug
+- **Area:** A* and PathResult construction
+- **Evidence:** node/heap allocation failure returns an empty list with `Found == false`,
+  indistinguishable from an unreachable goal. More seriously, once A* reaches the goal it sets
+  `last_found` before `pf_build_path`; coordinate, point, or box allocation failures can return an
+  empty or shortened list, after which PathResult still reports `Found == true` and derives a
+  misleading `StepCount` from that partial list.
+- **Impact:** memory pressure can be interpreted as gameplay topology, or deliver a success whose
+  path omits required waypoints and no longer matches its cost.
+- **Likely repair point:** build the complete path transactionally, return a typed allocation error
+  on failure, and set `Found` only after payload construction succeeds.
+
+### VDOC-264 — Timer mode is recorded but never enforced
+
+- **Classification:** confirmed timing API/state inconsistency
+- **Area:** `Viper.Game.Timer` frame and millisecond modes
+- **Evidence:** `Start`/`StartMs` set an `ms_mode` field, but no update or query reads it.
+  `Update()` therefore adds one to a millisecond timer, while `UpdateMs(dt)` adds `dt` to a
+  frame-started timer. `Elapsed` and `ElapsedMs` (likewise Remaining) are aliases over the same
+  counter and provide no mode diagnostic.
+- **Impact:** one wrong method call silently reinterprets units and can make a cooldown expire much
+  too early or late; callers cannot inspect which update contract is active.
+- **Likely repair point:** reject mismatched update/query calls or replace the dual surface with an
+  explicit unit/mode property and one validated update path.
+
+### VDOC-265 — ScreenFX removes effects before their terminal frame is observable
+
+- **Classification:** confirmed transition/fade lifecycle bug
+- **Area:** `Viper.Game.ScreenFX.Update`, `Draw`, and `TransitionProgress`
+- **Evidence:** `Update(dt)` marks a slot `NONE` as soon as `elapsed >= duration`, before the type
+  switch computes output and before a subsequent `Draw()` can render it. A headless existing-binary
+  probe advanced a 100 ms wipe by 99 ms and then 1 ms; `TransitionProgress` printed `990` followed
+  by `0`, never 1000. FadeOut and the covering transitions follow the same removal path.
+- **Impact:** fade-out, wipe, circle-in, and dissolve cannot render a fully covered final frame.
+  Code that waits for `IsFinished` before swapping a scene finds that the covering effect has
+  already disappeared, exposing the old or new scene for a frame.
+- **Likely repair point:** retain a terminal/done state through one draw (or until explicitly
+  consumed), make progress 1000 observable, and separate “finished advancing” from “removed.”
+
+### VDOC-266 — ScreenFX `CancelType` leaves canceled output cached and drawable
+
+- **Classification:** confirmed state-consistency bug
+- **Area:** selective ScreenFX cancellation
+- **Evidence:** `CancelType` clears only matching slot types. It does not clear `shake_x`,
+  `shake_y`, `overlay_color`, or `overlay_alpha`; those caches are reset only by the next positive
+  `Update`. `Draw` renders cached overlay state regardless of whether its originating slot still
+  exists. A headless probe canceled the only active flash and printed `IsActive=false`, alpha 252,
+  then alpha 0 after another positive update.
+- **Impact:** a supposedly canceled flash/fade can still draw, and a canceled shake can leave one
+  stale camera offset, while activity queries already say the effect is gone.
+- **Likely repair point:** recompute or invalidate affected caches inside `CancelType`, including
+  the no-effects fast path.
+
+### VDOC-267 — ScreenFX colors are incompatible with Viper's normal Color representation
+
+- **Classification:** public API representation inconsistency
+- **Area:** ScreenFX flash/fade colors, transition colors, and `OverlayColor`
+- **Evidence:** flash/fade inputs interpret untagged `0xRRGGBBAA` with alpha in the low byte;
+  transitions interpret Canvas `0x00RRGGBB`; `OverlayColor` returns `0xRRGGBB00`. In contrast,
+  `Viper.Graphics.Color.RGBA` returns a tagged `0xAARRGGBB` value. A headless probe passed tagged
+  opaque red to `Flash` and observed alpha 0, while raw `0xFF0000FF` produced alpha 252 after the
+  same update.
+- **Impact:** the canonical Color constructor produces invisible or channel-shifted ScreenFX
+  overlays, and even methods on the same class require incompatible encodings. Callers must know
+  which raw packing each method expects.
+- **Likely repair point:** accept tagged Color values throughout and normalize internally, or add
+  typed color constructors/converters that make the split impossible to miss.
+
+### VDOC-268 — ScreenFX type constants are private while shipped audits use the wrong IDs
+
+- **Classification:** API/tooling inconsistency
+- **Area:** effect selection through `CancelType` and `IsTypeActive`
+- **Evidence:** the numeric effect and wipe-direction values exist only in `rt_screenfx.h`; the
+  runtime class exposes no named constants. Both shipped `examples/apiaudit/game/screenfx_demo.zia`
+  and `.bas` call `IsTypeActive(0)` and `CancelType(0)` while comments claim 0 means shake. The live
+  enum defines 0 as none and 1 as shake.
+- **Impact:** the audit examples report misleading results, callers must copy private C enum
+  values, and a future enum change can silently break source programs.
+- **Likely repair point:** register stable named constants (or a typed enum), then correct the API
+  audit examples to use them.
+
+### VDOC-269 — ScreenFX “circle” and “pixelate” transitions do not implement their named effects
+
+- **Classification:** implementation/contract mismatch; needs visual-design triage
+- **Area:** `CircleIn`, `CircleOut`, and `Pixelate` rendering
+- **Evidence:** both circle methods draw four rectangles around an axis-aligned square opening; no
+  circular mask or disc boundary is rendered. Pixelate cannot sample the Canvas and instead draws
+  increasingly spaced one-pixel black grid lines at up to alpha 128; it never creates or averages
+  image blocks.
+- **Impact:** callers selecting a circular iris or pixelation receive visibly different effects,
+  and transition timing/coverage assumptions based on the names are unreliable.
+- **Likely repair point:** implement masks/readback through a Pixels or render-target path, or
+  rename the methods to describe the deliberately approximate effects.
+
+### VDOC-270 — Lighting2D glows do not reveal the scene beneath the darkness overlay
+
+- **Classification:** confirmed rendering-contract bug
+- **Area:** `Viper.Game.Lighting2D.Draw`
+- **Evidence:** Draw first calls `Canvas.BoxAlpha` for full-screen darkness, then calls
+  `Canvas.DiscAlpha` for player, dynamic, and tile lights. Both primitives are source-over blends;
+  there is no subtraction, destination-alpha reduction, mask, or redraw of the underlying scene.
+  Source and example prose nevertheless described the discs as holes cut from darkness.
+- **Impact:** scene detail remains dark inside every “light.” Colored discs add glow tint but also
+  cover the already-darkened destination, so the class cannot provide the visibility lighting its
+  public description promised.
+- **Likely repair point:** render darkness through a mask/render target whose alpha is reduced by
+  lights, or redraw the scene through light masks before compositing the darkness layer.
+
+### VDOC-271 — A zero-radius Lighting2D player light still draws a 40-pixel glow
+
+- **Classification:** confirmed enable/disable defect
+- **Area:** `Lighting2D.SetPlayerLight` and player-light rendering
+- **Evidence:** `SetPlayerLight` maps non-positive radius to zero, but Draw unconditionally renders
+  an outer disc at `radius + 40` with alpha 30. The pulse also adds 0–10 pixels rather than the
+  previously documented ±10 range. Dynamic and tile lights, unlike the player light, really do
+  ignore non-positive radii.
+- **Impact:** there is no way to disable the always-present player glow while retaining darkness
+  and other lights; setting the natural sentinel radius zero still changes a 40-pixel region.
+- **Likely repair point:** skip all player-light passes when base radius is zero, and expose an
+  explicit enabled property if zero radius has another intended meaning.
+
+### VDOC-272 — Effects classes expose inconsistent constructor and cleanup metadata
+
+- **Classification:** registry/type-tooling inconsistency
+- **Area:** ParticleEmitter, ScreenFX, and Lighting2D class descriptors
+- **Evidence:** `ParticleEmitter.New` is typed as `obj<Viper.Game.ParticleEmitter>` and Destroy is
+  an instance method. `Lighting2D.New` returns bare `obj` but Destroy is an instance method.
+  `ScreenFX.New` also returns bare `obj`, while Destroy appears only as a static `void(obj)` target
+  in the class inventory. Current Zia recovers owner identity and accepts both
+  `fx.Destroy()` and `Viper.Game.ScreenFX.Destroy(fx)`, masking the metadata split for source code.
+- **Impact:** generated references and generic tooling see three different lifecycle shapes for
+  closely related instance handles, and frontends without Zia's owner-based recovery lose the two
+  untyped constructor results.
+- **Likely repair point:** use typed constructor returns and one consistent instance cleanup member
+  convention across the three classes.
+
+### VDOC-273 — Tween integer entry points silently lose values above binary64 precision
+
+- **Classification:** confirmed numeric-correctness bug
+- **Area:** `Viper.Game.Tween.StartI64`, `LerpI64`, and `ValueI64`
+- **Evidence:** both integer entry points cast their `int64_t` endpoints to `double` before
+  interpolation. An existing-binary probe started a one-frame constant tween at
+  `9007199254740993` (2^53 + 1); `ValueI64` returned `9007199254740992`. The later saturating
+  integer conversion cannot recover bits lost at the first cast.
+- **Impact:** supposedly integer-preserving animation changes large IDs, counters, timestamps, or
+  fixed-point coordinates even when `from == to`. Documentation alone cannot make `I64` callers
+  expect this result.
+- **Likely repair point:** interpolate integers with checked wide/integer arithmetic and a defined
+  rounding rule, or restrict/rename the API to make its exact ±2^53 domain explicit.
+
+### VDOC-274 — `AnimStateMachine.AddNamed` can overwrite a numeric state and strand its name
+
+- **Classification:** confirmed registration/data-structure bug
+- **Area:** mixed numeric and named animation-state registration
+- **Evidence:** `AddNamed` chooses `id = clip_count`, calls `AddState`, then writes the name into
+  `clips[id]`. If a numeric state already owns that ID at a different clip index, `AddState`
+  overwrites it without increasing `clip_count`, while the name is written to a slot outside the
+  searched prefix. A live probe registered numeric state 1 as the only clip, then named `walk`;
+  `Play("walk")` left `CurrentState=-1`, while `SetInitial(1)` used the named clip's replacement
+  frame 10.
+- **Impact:** mixing the two advertised registration styles silently replaces clips and produces
+  names that cannot be played. The failure depends on prior ID layout and is difficult to diagnose.
+- **Likely repair point:** allocate a genuinely unused state ID, capture the actual clip index
+  returned by insertion, and store the name at that index transactionally.
+
+### VDOC-275 — Re-registering the active animation state does not reapply its clip
+
+- **Classification:** confirmed live-state consistency bug
+- **Area:** `AnimStateMachine.AddState` overwrite behavior
+- **Evidence:** overwriting a state mutates the active clip structure but does not reset
+  `current_frame`, timing, direction, or events through `apply_clip`. A probe advanced state 0 to
+  frame 1, overwrote it with range 100–101, then updated: `CurrentFrame` became 2 and `Progress`
+  remained 0, outside the newly registered clip.
+- **Impact:** hot-reloading or otherwise redefining an active state can run through a long range of
+  invalid frame indices and report incoherent progress before reaching the new clip.
+- **Likely repair point:** either reject replacement of the active state or immediately reapply the
+  replacement clip while defining the intended transition/flag semantics.
+
+### VDOC-276 — `SetEventFrame` has no public observer
+
+- **Classification:** public-surface orphan/incomplete deletion
+- **Area:** legacy single-event support on `AnimStateMachine`
+- **Evidence:** `SetEventFrame` remains registered and updates `event_frame`/`event_triggered`, but
+  the only consumer, `rt_animstate_event_fired`, is absent from the current runtime registry. The
+  old mutable multi-event accessors were removed too, while `AddEvent` correctly has `PollEvents`.
+- **Impact:** a stable-looking public method accepts configuration that source-language callers
+  can never observe. Programs can compile successfully while their event action is permanently
+  unreachable.
+- **Likely repair point:** remove `SetEventFrame` in the same compatibility cleanup, or restore a
+  typed observer and document its consuming semantics. Prefer the batch-based event path.
+
+### VDOC-277 — AnimTimeline tween and animation tracks are inert payload records
+
+- **Classification:** confirmed implementation/API contract mismatch
+- **Area:** `AnimTimeline.AddTweenTrack`, `AddAnimTrack`, and `TrackPayloadC`
+- **Evidence:** adding a tween stores `from` in payload A, `to` in B, and literal zero in C. No
+  subsequent code writes C; `Advance` only moves the playhead and fires markers. A probe advanced
+  a 10→20 tween halfway and read A=10, B=20, C=0. Animation tracks likewise store only a state ID
+  and never receive a state-machine handle to transition.
+- **Impact:** names such as “tween track,” “animation track,” and “current interpolated value”
+  imply work that never occurs. Callers who trust payload C animate everything at zero and callers
+  expecting state transitions get none.
+- **Likely repair point:** either make the timeline own/bind and drive concrete targets, or recast
+  the API explicitly as a passive span/payload scheduler and remove payload C.
+
+### VDOC-278 — AnimTimeline accepts markers that initial playback can never fire
+
+- **Classification:** confirmed marker-boundary/validation defect
+- **Area:** `AnimTimeline.AddMarker` and initial `Advance`
+- **Evidence:** marker frames are only clamped to non-negative values; values beyond total duration
+  are retained. Crossing uses the half-open interval `(before, after]`, so a marker at frame 0 is
+  excluded when playback starts at frame 0. A probe added markers at 0 and 8 to a duration-5
+  non-looping timeline, advanced to completion, and received an empty batch. Frame 0 may fire only
+  as a side effect of a later loop wrap.
+- **Impact:** apparently successful marker registrations can be permanently silent, and frame-zero
+  behavior changes between the first cycle and later cycles.
+- **Likely repair point:** reject markers outside the playable range and define entry semantics;
+  either fire frame-zero markers on `Play`/the first positive advance or consistently exclude them
+  from every cycle.
+
+### VDOC-279 — Animation event snapshot allocation failure masquerades as no events
+
+- **Classification:** error-signaling/allocation ambiguity
+- **Area:** `Viper.Game.AnimationEventBatch` creation and `PollEvents`
+- **Evidence:** the batch object is allocated first with `count=0`; integer-array overflow or
+  `malloc` failure returns that valid empty object without a trap or Result. Both animation
+  producers therefore satisfy their non-null batch contract while silently discarding every fired
+  ID. `Ids()` has its own untyped Seq return.
+- **Impact:** under memory pressure, gameplay actions keyed to animation markers disappear and are
+  indistinguishable from a legitimate frame with no events.
+- **Likely repair point:** allocate/copy transactionally and surface failure through Result/trap, or
+  provide an explicit error state that cannot be confused with `Count == 0`.
+
+### VDOC-280 — PathFollower discards movement remainders and can stall forever
+
+- **Classification:** confirmed fixed-point integration bug
+- **Area:** `PathFollower.Update`
+- **Evidence:** each call truncates `speed * dt / 1000` to an integer with no cross-call remainder,
+  then truncates `move_dist * 1000 / segment_length` to per-mille segment progress and again keeps
+  no remainder. If either quotient is zero, the call consumes its movement without changing
+  position. An existing-binary probe used speed 1, a 100000-unit segment, and `Update(100)`;
+  repeated semantics leave `X=0` rather than accumulating motion.
+- **Impact:** low speeds, small timesteps, or long segments can make an active follower permanently
+  motionless. Other combinations move systematically slower because every frame's fraction is
+  discarded.
+- **Likely repair point:** retain distance/progress remainders at sufficient precision, or store
+  traveled distance directly and derive segment position without reducing it to 1001 states.
+
+### VDOC-281 — Degenerate or unallocated PathFollower lengths leave an active non-finishing path
+
+- **Classification:** confirmed lifecycle/error-state bug
+- **Area:** zero-length paths and segment-cache allocation failure
+- **Evidence:** `Start` checks only for two points and sets `active=1`. `Update` returns immediately
+  whenever the lazily computed total length is zero or the length array is null, without clearing
+  active or setting finished. A probe with two identical points remained `IsActive=true` and
+  `IsFinished=false` after update. Cache `malloc` failure creates the same state, clears the dirty
+  flag, and is not retried until another point is added.
+- **Impact:** once-mode loops waiting for completion can hang forever, and an allocation failure is
+  indistinguishable from an intentional active path that simply has not moved yet.
+- **Likely repair point:** reject/start-fail zero-total paths, expose a start/update error, and keep
+  failed cache construction retryable or preserve the previous valid cache.
+
+### VDOC-282 — A full ButtonGroup traps before checking whether an ID is already present
+
+- **Classification:** confirmed capacity/duplicate-order bug
+- **Area:** `ButtonGroup.Add`
+- **Evidence:** the implementation checks `count >= 256` and traps before calling its duplicate
+  lookup. An existing-binary probe filled the group, then called `Add(0)` for an existing ID; it
+  trapped with “button limit exceeded” rather than returning false as duplicate additions do at
+  lower counts.
+- **Impact:** idempotent registration becomes unsafe only at exact capacity, violating the method's
+  otherwise Boolean duplicate contract and making defensive re-add logic crash.
+- **Likely repair point:** test for the existing ID before enforcing capacity, then reserve the trap
+  or false result for a genuinely new 257th ID.
+
+### VDOC-283 — ButtonGroup's public previous-selection name disagrees with its diagnostic
+
+- **Classification:** low-severity naming/diagnostic inconsistency
+- **Area:** `Viper.Game.ButtonGroup.SelectPrevious`
+- **Evidence:** the registry exposes `SelectPrevious`, backed by the C function
+  `rt_buttongroup_select_prev`, but its wrong-class trap text says `ButtonGroup.SelectPrev`.
+  Generated references and callers therefore have no public member matching the diagnostic.
+- **Impact:** a type error directs users and tooling to search for a method that does not exist.
+- **Likely repair point:** rename the C helper if desired, but make the emitted diagnostic use the
+  registered `SelectPrevious` spelling.
+
+### VDOC-284 — SpriteSheet erases concrete and nullable results from its public metadata
+
+- **Classification:** registry/type-contract inconsistency
+- **Area:** `Viper.Graphics.SpriteSheet.New`, `GetRegion`, and `RegionNames`
+- **Evidence:** the runtime returns a `Pixels` copy from `GetRegion` and a `Seq` from `RegionNames`,
+  but both are registered as bare `obj`. `New` is declared non-null and typed as SpriteSheet in the
+  registry even though wrong-class/null atlas input returns NULL; `GetRegion` is likewise declared
+  non-null while a missing name returns NULL. Zia examples must use static class accessors to work
+  around the erased result identity.
+- **Impact:** generated documentation and generic tools promise values that may be null and cannot
+  expose the methods of values that are present without language-specific recovery tricks.
+- **Likely repair point:** register nullable concrete return types for SpriteSheet/Pixels and a
+  concrete owned Seq return for names, then align constructor fallibility metadata.
+
 ## Corrected Documentation Mismatches
 
 ### VDOC-D001 — Runtime registry and generated-artifact architecture
@@ -2886,6 +4305,92 @@ the checked-in generators, documentation audits, and already-existing binaries o
   tuple implementation does not provide. Adjacent runtime comments repeated obsolete algorithms,
   payload layouts, entropy providers, state ownership, and API names.
 
+### VDOC-D022 — IO reference drifted from file, path, stream, archive, watcher, and workspace behavior
+
+- **Status:** corrected across `docs/viperlib/io/` and implementation-adjacent source comments
+- **Mismatch:** the IO guides used nonexistent `Bytes.FromString`, treated Seq results as having
+  `Length`, showed file EOF becoming true after an exact read, called `AppendLine` atomic, and
+  omitted directory-touch and protected-directory behavior. Path documentation hid Windows
+  drive-relative corruption, fixed executable-path buffers/ANSI conversion, and DataDir's NUL
+  validation gap. Glob's separator promise did not disclose its post-`**` defect. Stream docs hid
+  unsafe borrowed `As*` results, backing-dependent EOF timing, lazy MemStream allocation, and the
+  BinaryBuffer default capacity. Archive examples called four-byte signature probes validation,
+  `ReadStr`/compression helpers were described as UTF-8-validating, and `ExtractAll` was presented
+  as one atomic operation. Watcher timing, path, overflow-count, queue-clear, and platform claims
+  were too strong. FileIndex ignore matching/cache behavior, unknown manifest-section leakage,
+  asset resolver basing, and Workspace Edit staging/backup races were also absent. Adjacent source
+  comments repeated obsolete decoders, entropy APIs, ownership, capacity, Unicode, atomicity,
+  watcher callbacks/handles/queue behavior, and archive/compressor capabilities.
+
+### VDOC-D023 — Math reference drifted from live overloads, encodings, transforms, and edge behavior
+
+- **Status:** corrected in `docs/viperlib/math.md` and implementation-adjacent source comments
+- **Mismatch:** the page advertised nonexistent static `Random.NextDouble` and two-argument
+  `NextInt` calls, omitted most of Vec3's live method surface, and hid non-finite vector/quaternion
+  fallbacks. Easing duplicated a method row and implied uniform clamping. Spline source prose
+  called a uniform fixed-cubic implementation centripetal and De Casteljau-based. Perlin omitted
+  repetition, coordinate, and octave bounds. BigInt reversed byte order, said narrowing trapped,
+  omitted supported radices/two's-complement semantics, and hid confirmed serialization and
+  residue defects. Matrix prose mixed row-major storage with a column-major projection claim,
+  called post-divide NDC clip space, gave the wrong singular-inverse/axis behavior, and omitted
+  tolerance/NaN rules. Adjacent headers also misstated shift counts, PRNG constants, signed zero,
+  vector operations, spline algorithms, matrix fallbacks, and source paths.
+
+### VDOC-D024 — System reference omitted APIs and overstated cross-platform behavior
+
+- **Status:** corrected in `docs/viperlib/system.md`, generated System/Memory documentation, and
+  implementation-adjacent source comments
+- **Mismatch:** the page omitted six live Environment aliases, Machine architecture/page/pointer
+  properties, the entire `Viper.Memory.WeakRef` surface, and Terminal boolean/low-level methods.
+  It presented runner-only argument indexing
+  as universal, hid lossy command-line joining and invalid-name traps, and did not state the GUI
+  clipboard's main-thread requirement. Shutdown OS-event wiring was described as backend-universal
+  despite being VM-only. Exec's LastExitCode mutation rules, capture cap, stdout-only behavior,
+  launch failure ambiguity, and signal normalization were incomplete. Process/PTy documentation
+  hid replacement-environment semantics, executable-lookup divergence, nullable startup,
+  partial writes, negative-signal ambiguity, platform availability, dimension clamps, and
+  termination behavior. Machine omitted ViperDOS and several properties while calling unlike
+  memory metrics equivalent. Terminal hid null EOF results, byte-oriented input, 32-bit narrowing,
+  TTY/color rules, batching exceptions, and alternate-screen state defects. Adjacent headers
+  additionally called synchronous Exec fire-and-forget, assigned its TLS state to RtContext,
+  promised thread-safe argument initialization, named a nonexistent Machine process-id query, and
+  promised terminal cleanup that is not implemented.
+
+### VDOC-D025 — Time reference drifted from clocks, parsers, ranges, and formatting behavior
+
+- **Status:** corrected in `docs/viperlib/time.md`, generated Time documentation, and
+  implementation-adjacent registry/header comments
+- **Mismatch:** Clock, Countdown, and Stopwatch were described as unconditionally monotonic and
+  omitted sleep clamping/failure fallbacks; Stopwatch called non-thread-safe `Restart` atomic.
+  DateTime hid wall-clock/sentinel ambiguity, exact 86,400-second day arithmetic, host-dependent
+  formatting, offset/parser grammar, and DST ambiguity. Its BASIC example and host `strftime`
+  table were incorrectly nested under TimeZone, while the page retained `TryParse` after the
+  concurrent public-registry cleanup removed that legacy target. TimeZone omitted the untyped Zia
+  handle workaround, finite transition behavior, static lifetime, and invalid-format rules.
+  DateOnly hid nullable creation/parsing, its non-round-tripping year domain, English format
+  grammar, and null behavior. Duration overstated normalized components and precision; DateRange
+  signatures hid nullable set operations and lossy display output; RelativeTime hid truncation and
+  negative zero. Adjacent headers also promised nonexistent UTC-suffix functions, manual frees for
+  GC objects, always-ten-byte DateOnly serialization, restricted Duration components, a one-day
+  rather than one-second range gap, and a RelativeTime format the implementation never emitted.
+
+### VDOC-D026 — Animation reference drifted from the live surface and timing contracts
+
+- **Status:** corrected in `docs/viperlib/game/animation.md` and implementation-adjacent source
+  comments
+- **Mismatch:** the page exposed removed `EventFired`, `EventsFiredCount`, and `EventFiredId`
+  members; treated AnimTimeline tracks as active animation/tween drivers; and claimed SpriteSheet
+  extractions shared atlas storage. It omitted concrete capacity, clamp, transition-latch,
+  one-shot terminal-frame, ping-pong progress, marker-crossing, event, copy, selection, and
+  fixed-point quantization behavior. PathFollower's angle was presented as a real direction angle
+  rather than an eight-way approximation, ButtonGroup's change flag sounded frame-local rather
+  than explicitly latched, and several cleanup/return types were absent or misleading. Three BASIC
+  examples failed the documentation checker through wrong Canvas calls, unsupported operators,
+  nonexistent drawing methods, and obsolete Keyboard key access. Adjacent headers additionally
+  promised Tween Stop completion and lerp extrapolation, a delta-taking/FPS SpriteAnimation API,
+  retained timeline names/current tween payloads, exact/no-op PathFollower ownership and motion,
+  auto-clearing ButtonGroup state, and possibly shared SpriteSheet views.
+
 ## Validation Notes
 
 - `docs/viperlib/core.md`: all 15 Zia and BASIC examples pass the documentation audit.
@@ -2925,11 +4430,45 @@ the checked-in generators, documentation audits, and already-existing binaries o
   audit; 10 contextual or network-side-effectful examples are intentionally skipped from
   execution. The TLS example uses a typed local for its string property as the documented
   workaround for VDOC-180.
-- Runtime registry validation at this review point reports 7,384 functions, 514 classes, and
-  8,176 matching header declarations.
-- `rtgen --docs --check` reports only concurrent drift in generated Graphics3D documentation and
-  its generated README index; it does not report stale output for the core/runtime pages reviewed
-  in this batch. The prior network-review checkpoint passed with all generated output current.
-- Direct `rtgen --audit --summary-only` and `scripts/lint_zia_runtime_names.sh` checks pass. The
-  advisory platform-policy findings are recorded as VDOC-064.
-- No build or CTest invocation is used for this review.
+- `docs/viperlib/io/`: all 40 compile-checked Zia/BASIC examples pass the documentation audit; 6
+  non-runnable or contextual fences are intentionally skipped. IO examples are not executed by
+  the auditor because they can mutate files, open watchers, or perform other external side effects.
+- `docs/viperlib/math.md`: all 22 executable Zia and BASIC examples pass the documentation audit;
+  2 contextual snippets are intentionally skipped. Existing-binary probes additionally confirmed
+  the Random overload errors, BigInt byte/PowMod defects, quaternion inverse extremes, matrix NaN
+  equality, and Mat4 singular-inverse fallback recorded above.
+- `docs/viperlib/system.md`: 14 executable examples pass the documentation audit; 4 contextual
+  snippets are intentionally skipped. The live API inventory was checked with the existing
+  installed compiler/runtime. Separate existing-binary probes confirmed WeakRef creation,
+  promotion, reset, and post-free invalidation; runner
+  argument indexing and lossy joining; all six Environment aliases; Machine architecture, page,
+  and pointer values; Shutdown bit masking; ShellResult status; ShellCapture (but not Shell)
+  updating LastExitCode; Process stdout/stderr/exit capture, replacement environments, and lack of
+  bare-name lookup; and POSIX PTY open/wait/read behavior. No build or CTest invocation was used.
+- `docs/viperlib/time.md`: 17 executable Zia and BASIC examples pass the documentation audit; one
+  surrounding-application Countdown snippet is intentionally skipped. Existing-binary probes in
+  a fixed `TZ=UTC` environment confirmed parser case/separator/offset behavior, the `Create(-1)`
+  collision, nullable DateOnly factories, non-round-tripping years, negative-zero relative
+  duration text, nullable range set operations, and TimeZone explicit-receiver forms. A separate
+  New York probe confirmed skipped-hour rejection and the host-selected repeated-hour occurrence.
+- `docs/viperlib/game/animation.md`: all 7 Zia and BASIC examples pass the documentation audit.
+  Existing-binary probes additionally confirmed Tween integer precision loss and Stop semantics,
+  inert timeline payload C, unobservable initial/out-of-range markers, mixed named-state collision,
+  active-clip overwrite drift, PathFollower sub-unit and zero-length stalls, and the full-group
+  duplicate trap. No build or CTest invocation was used.
+- Runtime registry validation at this review point reports 7,132 functions and 513 classes. A
+  direct surface audit compares those rows with 8,176 header declarations. These counts moved
+  during the Time review because a concurrent public-API deletion sweep is still in progress.
+- `rtgen --docs --check` currently reports 25 component pages and the generated README as stale
+  after that sweep. This supersedes the earlier checkpoint at which only concurrent Graphics3D
+  output drifted; VDOC-235 records the new repository-wide generated-reference mismatch.
+- Direct `rtgen --audit --summary-only` currently fails with two missing-`Parse.TryNum` policy
+  errors and reports 193 unclassified C declarations (VDOC-233 and VDOC-234). The earlier clean
+  audit checkpoint predated the concurrent deletion sweep. `scripts/lint_zia_runtime_names.sh`
+  passed at its last invocation; the advisory platform-policy findings are recorded as VDOC-064.
+- Review validation is intentionally limited to source inspection, documentation scripts, and
+  existing binaries: Viper must not be built and CTest must not be run while concurrent work is in
+  progress. One earlier invocation of `scripts/audit_runtime_surface.sh --summary-only` was made in
+  error; despite its read-only-looking mode, that wrapper built its audit bundle and ran eight
+  focused CTest cases. The mistake was disclosed immediately, the wrapper has not been used again,
+  and no subsequent review step has built Viper or invoked CTest.

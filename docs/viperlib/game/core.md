@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-07-15
 ---
 
 # Core Utilities
@@ -28,11 +28,11 @@ counts discrete frames (deterministic). Ms mode counts delta time (frame-rate in
 
 | Property      | Type                   | Description                                      |
 |---------------|------------------------|--------------------------------------------------|
-| `Duration`    | `Integer` (read/write) | Total frames or ms for the countdown             |
-| `Elapsed`     | `Integer` (read-only)  | Frames elapsed since start (frame mode)          |
-| `Remaining`   | `Integer` (read-only)  | Frames remaining (frame mode)                    |
-| `ElapsedMs`   | `Integer` (read-only)  | Milliseconds elapsed (ms mode)                   |
-| `RemainingMs` | `Integer` (read-only)  | Milliseconds remaining (ms mode)                 |
+| `Duration`    | `Integer` (read/write) | Total timer units: frames after `Start`, ms after `StartMs` |
+| `Elapsed`     | `Integer` (read-only)  | Elapsed timer units from the shared counter      |
+| `Remaining`   | `Integer` (read-only)  | Remaining timer units from the shared counter    |
+| `ElapsedMs`   | `Integer` (read-only)  | Alias of the same elapsed counter; the runtime does not verify ms mode |
+| `RemainingMs` | `Integer` (read-only)  | Alias of the same remaining calculation; the runtime does not verify ms mode |
 | `Progress`    | `Integer` (read-only)  | Completion percentage 0-100 (both modes)         |
 | `IsRunning`   | `Boolean` (read-only)  | True if the timer is currently running           |
 | `IsExpired`   | `Boolean` (read-only)  | True if the timer has finished                   |
@@ -64,9 +64,19 @@ counts discrete frames (deterministic). Ms mode counts delta time (frame-rate in
 ### Notes
 
 - Frame mode: call `Update()` once per frame. Ms mode: call `UpdateMs(dt)` with delta time.
-- Do not mix modes — a timer started with `StartMs` must be updated with `UpdateMs`.
-- `Update()` / `UpdateMs()` returns true exactly once when the timer expires.
-- One-shot timers stop when expired; repeating timers reset and continue.
+- Keep mode use consistent. The runtime records a mode bit but currently does
+  not enforce it: `Update()` adds one to an ms timer and `UpdateMs(dt)` adds
+  `dt` to a frame timer, silently mixing units.
+- `Update()` and `UpdateMs()` return true on an update that reaches an expiry.
+  One-shot timers then stop. Repeating frame timers reset to zero; repeating ms
+  timers preserve `dt` overshoot with modulo. If one `dt` spans several
+  intervals, those expiries coalesce into one `true` result.
+- Nonpositive start durations are ignored without changing existing state;
+  nonpositive `UpdateMs` deltas are ignored. The `Duration` setter likewise
+  ignores nonpositive values and does not start or reset the timer.
+- `Stop()` preserves elapsed time and clears `IsExpired`; `Reset()` zeroes
+  elapsed time but preserves running/repeating/mode state. `IsExpired` is true
+  only for a completed one-shot, never a manually stopped or repeating timer.
 - `Progress` works for both modes (0-100 based on elapsed/duration ratio).
 - Ms mode is preferred for cooldowns, buffs, and effects that should be frame-rate independent.
 
@@ -178,12 +188,12 @@ END IF
 
 | Feature             | Timer                          | Countdown                       |
 |---------------------|--------------------------------|---------------------------------|
-| Time unit           | Frames                         | Milliseconds                    |
-| Determinism         | Fully deterministic            | Subject to system clock jitter  |
+| Time unit           | Frames or caller-supplied ms    | Host-clock milliseconds         |
+| Determinism         | Frame mode is deterministic; ms mode follows supplied `dt` | Subject to host clock/fallback behavior |
 | Use case            | Game logic, animations         | Real-world timeouts             |
 | Update model        | Manual `Update()` per frame    | Automatic based on clock        |
 | Progress tracking   | 0-100 integer percentage       | Elapsed/remaining in ms         |
-| Repeating mode      | Yes (`StartRepeating`)         | No (must manually restart)      |
+| Repeating mode      | Yes (`StartRepeating` / `StartRepeatingMs`) | No (must manually restart) |
 
 ### Use Cases
 
@@ -214,8 +224,8 @@ A finite state machine for managing game/application states like menus, gameplay
 |----------------|-----------------------|-------------------------------------------------|
 | `Current`      | `Integer` (read-only) | Current state ID (-1 if none set)               |
 | `Previous`     | `Integer` (read-only) | Previous state ID (-1 if none)                  |
-| `JustEntered`  | `Boolean` (read-only) | True if a transition just occurred this frame   |
-| `JustExited`   | `Boolean` (read-only) | True if we just exited the previous state       |
+| `JustEntered`  | `Boolean` (read-only) | True after an initial state/transition until `ClearFlags` |
+| `JustExited`   | `Boolean` (read-only) | True after leaving a previous state until `ClearFlags` |
 | `FramesInState`| `Integer` (read-only) | Frames spent in current state                   |
 | `StateCount`   | `Integer` (read-only) | Number of registered states                     |
 
@@ -227,14 +237,22 @@ A finite state machine for managing game/application states like menus, gameplay
 | `ClearFlags()`   | `Void()`           | Clear JustEntered/JustExited flags             |
 | `HasState(id)`   | `Boolean(Integer)` | Check if state ID is registered                |
 | `IsState(id)`    | `Boolean(Integer)` | Check if currently in specified state          |
-| `SetInitial(id)` | `Boolean(Integer)` | Set starting state before first update         |
-| `Transition(id)` | `Boolean(Integer)` | Transition to a new state                      |
+| `SetInitial(id)` | `Boolean(Integer)` | Select a registered state, reset previous/counter/flags |
+| `Transition(id)` | `Boolean(Integer)` | Transition to a registered state               |
 | `Update()`       | `Void()`           | Increment frame counter (call once per frame)  |
 
 ### Notes
 
-- State IDs are integers in `[0, 255]`; use constants for readability
-- `JustEntered` and `JustExited` are true for one frame after transition
+- State IDs are integers in `[0, 255]`; use constants for readability.
+  `AddState` traps on an out-of-range ID, while `SetInitial`, `Transition`, and
+  `HasState` return false for one.
+- Edge flags do not clear automatically in `Update`; they remain true until
+  `ClearFlags()` is called. `SetInitial` sets only `JustEntered`. A transition
+  from an initialized state sets both flags.
+- `SetInitial` is not restricted to initial setup: a later call replaces the
+  current state, resets `Previous` to `-1`, and sets the frame counter to zero.
+  Transitioning to the already-current state returns true but changes no flags
+  or counters.
 - Call `Update()` once per frame to track `FramesInState`; it saturates at the maximum
   integer value instead of overflowing
 - Call `ClearFlags()` at end of frame if checking flags multiple times
@@ -294,7 +312,7 @@ DO WHILE running
         IF sm.JustEntered THEN
             PRINT "Welcome! Press ENTER to start"
         END IF
-        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEnter) THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Enter) THEN
             sm.Transition(STATE_PLAYING)
         END IF
 
@@ -303,13 +321,13 @@ DO WHILE running
             InitGame()
         END IF
         UpdateGame()
-        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Escape) THEN
             sm.Transition(STATE_PAUSED)
         END IF
 
     CASE STATE_PAUSED
         DrawPauseOverlay()
-        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyEscape) THEN
+        IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Escape) THEN
             sm.Transition(STATE_PLAYING)
         END IF
 
@@ -346,9 +364,9 @@ Smooth value interpolation for camera follow, UI animations, and other cases whe
 | `Value`     | `Double` (read-only)   | Current smoothed value                           |
 | `ValueI64`  | `Integer` (read-only)  | Current value as rounded integer                 |
 | `Target`    | `Double` (read/write)  | Target value to approach                         |
-| `Smoothing` | `Double` (read/write)  | Smoothing factor (0.0=instant, 0.95=slow)        |
-| `AtTarget`  | `Boolean` (read-only)  | True if value has reached target                 |
-| `Velocity`  | `Double` (read-only)   | Current rate of change per frame                 |
+| `Smoothing` | `Double` (read/write)  | Per-update retention factor clamped to 0.0–0.999 |
+| `AtTarget`  | `Boolean` (read-only)  | True when absolute error is below 0.001          |
+| `Velocity`  | `Double` (read-only)   | Change produced by the most recent `Update`      |
 
 ### Methods
 
@@ -360,9 +378,18 @@ Smooth value interpolation for camera follow, UI animations, and other cases whe
 
 ### Notes
 
-- Smoothing factor of 0.9 gives smooth but responsive movement
-- Higher values (0.95-0.99) give slower, more gradual movement
-- Call `Update()` once per frame to advance the interpolation
+- Each update computes `current = current * smoothing + target * (1 - smoothing)`.
+  This is update-count dependent, not delta-time compensated.
+- Smoothing clamps to `[0.0, 0.999]`; a non-finite factor becomes `0.0`.
+  `0.0` reaches the target on the next update, while higher values converge
+  more slowly.
+- Initial non-finite values and non-finite `SetImmediate` values become zero.
+  A non-finite Target assignment or Impulse is ignored.
+- `Impulse` offsets only the current value, leaving Target and the last
+  reported Velocity unchanged. The next update eases back toward Target.
+- `ValueI64` rounds halves away from zero and saturates to the signed 64-bit
+  range. Update snaps to Target and zeroes Velocity once the error is below
+  `0.001`.
 
 ### Zia Example
 
@@ -419,7 +446,7 @@ Efficient object pool for reusing slot indices, avoiding allocation churn for fr
 
 | Method           | Signature          | Description                              |
 |------------------|--------------------|------------------------------------------|
-| `New(capacity)`  | `ObjectPool(Int)`  | Create pool with max slots (up to 4096)  |
+| `New(capacity)`  | `ObjectPool(Int)`  | Create a fixed pool; capacity clamps to 1–4096 |
 
 ### Properties
 
@@ -446,6 +473,15 @@ Efficient object pool for reusing slot indices, avoiding allocation churn for fr
 
 Releasing or clearing a slot clears its user data. `GetData` returns `0` for inactive,
 released, or invalid slots.
+
+`Acquire` takes the head of a free list, zeroes its data, and prepends it to the
+active list. `FirstActive`/`NextActive` therefore visit newest acquisitions
+first, not ascending indexes. Acquisition and iteration steps are O(1), but
+releasing a non-head active slot scans for its predecessor and is O(active
+count). A released slot is normally the next one reused.
+
+When removing during iteration, read `NextActive(slot)` **before** calling
+`Release(slot)`: release clears that slot's next-active link.
 
 ### Zia Example
 
@@ -486,38 +522,36 @@ func start() {
 
 ```basic
 ' Create bullet pool
-DIM bullets AS OBJECT = Viper.Game.ObjectPool.New(100)
+DIM bullets AS Viper.Game.ObjectPool = Viper.Game.ObjectPool.New(100)
 DIM bulletX(99) AS DOUBLE
 DIM bulletY(99) AS DOUBLE
 DIM bulletVX(99) AS DOUBLE
 DIM bulletVY(99) AS DOUBLE
 
-' Fire a bullet
-SUB FireBullet(x, y, vx, vy)
-    DIM slot AS INTEGER = bullets.Acquire()
-    IF slot >= 0 THEN
-        bulletX(slot) = x
-        bulletY(slot) = y
-        bulletVX(slot) = vx
-        bulletVY(slot) = vy
+' Fire one bullet into an acquired slot
+DIM fired AS INTEGER = bullets.Acquire()
+IF fired >= 0 THEN
+    bulletX(fired) = 790
+    bulletY(fired) = 200
+    bulletVX(fired) = 16
+    bulletVY(fired) = 0
+END IF
+
+' Update all active bullets. Capture the link before a possible release.
+DIM slot AS INTEGER = bullets.FirstActive()
+DO WHILE slot >= 0
+    DIM nextSlot AS INTEGER = bullets.NextActive(slot)
+    bulletX(slot) = bulletX(slot) + bulletVX(slot)
+    bulletY(slot) = bulletY(slot) + bulletVY(slot)
+
+    IF bulletX(slot) < 0 OR bulletX(slot) > 800 THEN
+        bullets.Release(slot)
     END IF
-END SUB
 
-' Update all bullets
-SUB UpdateBullets()
-    DIM slot AS INTEGER = bullets.FirstActive()
-    DO WHILE slot >= 0
-        bulletX(slot) = bulletX(slot) + bulletVX(slot)
-        bulletY(slot) = bulletY(slot) + bulletVY(slot)
+    slot = nextSlot
+LOOP
 
-        ' Remove if off-screen
-        IF bulletX(slot) < 0 OR bulletX(slot) > 800 THEN
-            bullets.Release(slot)
-        END IF
-
-        slot = bullets.NextActive(slot)
-    LOOP
-END SUB
+PRINT "Active bullets: "; bullets.ActiveCount
 ```
 
 ---

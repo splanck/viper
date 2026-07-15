@@ -1,15 +1,15 @@
 // =============================================================================
-// API Audit: Viper.Memory.GC - Garbage Collector
+// API Audit: Viper.Runtime.GC - Garbage Collector
 // =============================================================================
 // Tests: Collect, TrackedCount, TotalCollected, PassCount
 // =============================================================================
 
 module GCDemo;
 bind Viper.Terminal;
-bind Viper.Memory.GC as GC;
+bind Viper.Runtime.GC as GC;
 bind Viper.Core.Box as Box;
 func start() {
-    Say("=== API Audit: Viper.Memory.GC ===");
+    Say("=== API Audit: Viper.Runtime.GC ===");
 
     // --- TrackedCount (initial) ---
     Say("--- TrackedCount (initial) ---");

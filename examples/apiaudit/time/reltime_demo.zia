@@ -37,12 +37,12 @@ func start() {
 
     // --- FormatFrom ---
     Say("--- FormatFrom ---");
-    var ts1 = DT.Create(2024, 1, 1, 0, 0, 0);
-    var ts2 = DT.Create(2024, 1, 2, 0, 0, 0);
+    var ts1 = DT.FromParts(2024, 1, 1, 0, 0, 0);
+    var ts2 = DT.FromParts(2024, 1, 2, 0, 0, 0);
     Say("FormatFrom(Jan 1, Jan 2) - 1 day diff:");
     Say(RT.FormatFrom(ts1, ts2));
 
-    var ts3 = DT.Create(2024, 6, 15, 0, 0, 0);
+    var ts3 = DT.FromParts(2024, 6, 15, 0, 0, 0);
     Say("FormatFrom(Jan 1, Jun 15) - months diff:");
     Say(RT.FormatFrom(ts1, ts3));
 

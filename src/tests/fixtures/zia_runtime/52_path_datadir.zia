@@ -16,7 +16,7 @@ func start() {
     // the directory on demand.
     var dir = Path.DataDir("viper_test_datadir");
     assertTrue(dir.Length() > 0, "datadir_nonempty");
-    assertTrue(Path.IsAbs(dir), "datadir_absolute");
+    assertTrue(Path.IsAbsolute(dir), "datadir_absolute");
     assertTrue(dir.Contains("viper_test_datadir"), "datadir_contains_app");
     assertTrue(Dir.Exists(dir), "datadir_created");
 
@@ -27,8 +27,8 @@ func start() {
     // Relative mouse mode defaults: off, no native raw deltas, zero deltas.
     assertTrue(!Mouse.RelativeMode, "relmode_default_off");
     assertTrue(!Mouse.RelativeModeNative, "relmode_native_default_off");
-    var dx = Mouse.DeltaXF();
-    var dy = Mouse.DeltaYF();
+    var dx = Mouse.DeltaXFloat();
+    var dy = Mouse.DeltaYFloat();
     assertTrue(dx == 0.0, "deltaxf_default_zero");
     assertTrue(dy == 0.0, "deltayf_default_zero");
 

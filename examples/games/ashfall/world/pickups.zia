@@ -47,11 +47,11 @@ class Pickups {
     expose func setup(w: Game3D.World3D, bus0: events.EventBus, ph: health.PlayerHealth) {
         world = w; bus = bus0; playerHealth = ph;
         // Per-kind materials.
-        mats.Add(G3D.Material3D.NewColor(0.2, 0.9, 0.3));   // health
-        mats.Add(G3D.Material3D.NewColor(0.3, 0.6, 1.0));   // armor
-        mats.Add(G3D.Material3D.NewColor(0.9, 0.8, 0.2));   // ammo
-        mats.Add(G3D.Material3D.NewColor(0.7, 0.7, 0.75));  // salvage
-        mats.Add(G3D.Material3D.NewColor(0.5, 0.9, 1.0));   // data core
+        mats.Add(G3D.Material3D.FromColor(0.2, 0.9, 0.3));   // health
+        mats.Add(G3D.Material3D.FromColor(0.3, 0.6, 1.0));   // armor
+        mats.Add(G3D.Material3D.FromColor(0.9, 0.8, 0.2));   // ammo
+        mats.Add(G3D.Material3D.FromColor(0.7, 0.7, 0.75));  // salvage
+        mats.Add(G3D.Material3D.FromColor(0.5, 0.9, 1.0));   // data core
         var mi = 0;
         while mi < mats.Count {
             var mr = 0.2; var mg = 0.9; var mb = 0.3;

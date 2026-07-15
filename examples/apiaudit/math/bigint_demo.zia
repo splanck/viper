@@ -93,10 +93,10 @@ func start() {
 
     // --- Neg ---
     Say("--- Neg ---");
-    var neg1 = BigInt.Neg(a);
+    var neg1 = BigInt.Negate(a);
     Say("Neg(42) ToString:");
     Say(BigInt.ToString(neg1));
-    var neg2 = BigInt.Neg(b);
+    var neg2 = BigInt.Negate(b);
     Say("Neg(-100) ToString:");
     Say(BigInt.ToString(neg2));
 
@@ -112,18 +112,18 @@ func start() {
     // --- Cmp ---
     Say("--- Cmp ---");
     Say("Cmp(42, -100):");
-    SayInt(BigInt.Cmp(a, b));
+    SayInt(BigInt.Compare(a, b));
     Say("Cmp(-100, 42):");
-    SayInt(BigInt.Cmp(b, a));
+    SayInt(BigInt.Compare(b, a));
     Say("Cmp(42, 42):");
-    SayInt(BigInt.Cmp(a, a));
+    SayInt(BigInt.Compare(a, a));
 
     // --- Eq ---
     Say("--- Eq ---");
     Say("Eq(42, 42):");
-    SayBool(BigInt.Eq(a, a));
+    SayBool(BigInt.Equals(a, a));
     Say("Eq(42, -100):");
-    SayBool(BigInt.Eq(a, b));
+    SayBool(BigInt.Equals(a, b));
 
     // --- IsZero ---
     Say("--- IsZero ---");
@@ -269,11 +269,11 @@ func start() {
     // --- ToStrBase ---
     Say("--- ToStrBase ---");
     Say("ToStrBase(255, 16):");
-    Say(BigInt.ToStrBase(x255, 16));
+    Say(BigInt.ToStringBase(x255, 16));
     Say("ToStrBase(255, 2):");
-    Say(BigInt.ToStrBase(x255, 2));
+    Say(BigInt.ToStringBase(x255, 2));
     Say("ToStrBase(42, 8):");
-    Say(BigInt.ToStrBase(a, 8));
+    Say(BigInt.ToStringBase(a, 8));
 
     // --- FitsInt ---
     Say("--- FitsInt ---");

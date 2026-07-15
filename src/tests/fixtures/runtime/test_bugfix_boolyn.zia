@@ -4,8 +4,8 @@ module TestBugfixBoolYN;
 bind Viper.Terminal;
 
 func start() {
-    var yes = Viper.Text.Fmt.BoolYN(true);
-    var no = Viper.Text.Fmt.BoolYN(false);
+    var yes = Viper.Text.Fmt.YesNo(true);
+    var no = Viper.Text.Fmt.YesNo(false);
     if (yes == "yes" && no == "no") {
         Say("RESULT: ok");
     } else {

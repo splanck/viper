@@ -7,7 +7,7 @@ bind Viper.Terminal;
 func start() {
     Say("NavAgent3D demo");
 
-    var mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var mesh = Mesh3D.Plane(20.0, 20.0);
     var nav = NavMesh3D.Build(mesh, 0.4, 1.8);
     var agent = NavAgent3D.New(nav, 0.4, 1.8);
     var node = SceneNode.New();
@@ -28,7 +28,7 @@ func start() {
     Say("Node path Z = " + toString(Vec3.get_Z(pos)));
     Say("RemainingDistance = " + toString(NavAgent3D.get_RemainingDistance(agent)));
 
-    var world = Physics3DWorld.New(0.0, -9.8, 0.0);
+    var world = PhysicsWorld3D.New(0.0, -9.8, 0.0);
     var character = Character3D.New(0.4, 1.8, 80.0);
     Character3D.set_World(character, world);
     NavAgent3D.BindCharacter(agent, character);

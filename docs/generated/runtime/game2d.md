@@ -37,7 +37,6 @@ Constructor: `Viper.Game2D.SceneDocument.New`
 | <a id="viper-game2d-scenedocument-loadresult"></a>`LoadResult` | `obj<Viper.Result>(str)` | `Viper.Game2D.SceneDocument.LoadResult` |
 | <a id="viper-game2d-scenedocument-tojson"></a>`ToJson` | `str()` | `Viper.Game2D.SceneDocument.ToJson` |
 | <a id="viper-game2d-scenedocument-save"></a>`Save` | `i1(str)` | `Viper.Game2D.SceneDocument.Save` |
-| <a id="viper-game2d-scenedocument-lasterror"></a>`LastError` | `str()` | `Viper.Game2D.SceneDocument.LastError` |
 | <a id="viper-game2d-scenedocument-diagnostics"></a>`Diagnostics` | `obj<Viper.Collections.Seq>()` | `Viper.Game2D.SceneDocument.Diagnostics` |
 | <a id="viper-game2d-scenedocument-diagnosticrecords"></a>`DiagnosticRecords` | `obj<Viper.Collections.Seq>()` | `Viper.Game2D.SceneDocument.DiagnosticRecords` |
 | <a id="viper-game2d-scenedocument-haserrors"></a>`HasErrors` | `i1()` | `Viper.Game2D.SceneDocument.HasErrors` |
@@ -79,7 +78,6 @@ Constructor: `Viper.Game2D.SceneDocument.New`
 | <a id="viper-game2d-scenedocument-objectremove"></a>`ObjectRemove` | `void(i64,str)` | `Viper.Game2D.SceneDocument.ObjectRemove` |
 | <a id="viper-game2d-scenedocument-countoftype"></a>`CountOfType` | `i64(str)` | `Viper.Game2D.SceneDocument.CountOfType` |
 | <a id="viper-game2d-scenedocument-objectoftype"></a>`ObjectOfType` | `i64(str,i64)` | `Viper.Game2D.SceneDocument.ObjectOfType` |
-| <a id="viper-game2d-scenedocument-findobject"></a>`FindObject` | `i64(str)` | `Viper.Game2D.SceneDocument.FindObject` |
 | <a id="viper-game2d-scenedocument-findobjectoption"></a>`FindObjectOption` | `obj<Viper.Option>(str)` | `Viper.Game2D.SceneDocument.FindObjectOption` |
 | <a id="viper-game2d-scenedocument-moveobject"></a>`MoveObject` | `void(i64,i64)` | `Viper.Game2D.SceneDocument.MoveObject` |
 | <a id="viper-game2d-scenedocument-setproperty"></a>`SetProperty` | `void(str,str)` | `Viper.Game2D.SceneDocument.SetProperty` |
@@ -121,7 +119,6 @@ Constructor: `Viper.Game2D.SceneDocument.New`
 | `Viper.Game2D.SceneDocument.LoadResult` | `obj<Viper.Result>(str)` | `rt_game_scene_load_file_result` |
 | `Viper.Game2D.SceneDocument.ToJson` | `str(obj)` | `rt_game_scene_to_json` |
 | `Viper.Game2D.SceneDocument.Save` | `i1(obj,str)` | `rt_game_scene_save_file` |
-| `Viper.Game2D.SceneDocument.LastError` | `str(obj)` | `rt_game_scene_last_error` |
 | `Viper.Game2D.SceneDocument.Diagnostics` | `obj<Viper.Collections.Seq>(obj)` | `rt_game_scene_diagnostics` |
 | `Viper.Game2D.SceneDocument.DiagnosticRecords` | `obj<Viper.Collections.Seq>(obj)` | `rt_game_scene_diagnostic_records` |
 | `Viper.Game2D.SceneDocument.HasErrors` | `i1(obj)` | `rt_game_scene_has_errors` |
@@ -167,7 +164,6 @@ Constructor: `Viper.Game2D.SceneDocument.New`
 | `Viper.Game2D.SceneDocument.ObjectRemove` | `void(obj,i64,str)` | `rt_game_scene_object_remove` |
 | `Viper.Game2D.SceneDocument.CountOfType` | `i64(obj,str)` | `rt_game_scene_count_of_type` |
 | `Viper.Game2D.SceneDocument.ObjectOfType` | `i64(obj,str,i64)` | `rt_game_scene_object_of_type` |
-| `Viper.Game2D.SceneDocument.FindObject` | `i64(obj,str)` | `rt_game_scene_find_object` |
 | `Viper.Game2D.SceneDocument.FindObjectOption` | `obj<Viper.Option>(obj,str)` | `rt_game_scene_find_object_option` |
 | `Viper.Game2D.SceneDocument.MoveObject` | `void(obj,i64,i64)` | `rt_game_scene_move_object` |
 | `Viper.Game2D.SceneDocument.SetProperty` | `void(obj,str,str)` | `rt_game_scene_set_property` |

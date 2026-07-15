@@ -1,19 +1,19 @@
 ' test_crypto.bas — Viper.Crypto.Hash + Rand + Password
-PRINT Viper.Crypto.Hash.MD5("hello")
-PRINT Viper.Crypto.Hash.SHA1("hello")
-PRINT Viper.Crypto.Hash.SHA256("hello")
-PRINT Viper.Crypto.Hash.CRC32("hello")
-PRINT Viper.Crypto.Hash.HmacMD5("hello", "key")
-PRINT Viper.Crypto.Hash.HmacSHA1("hello", "key")
-PRINT Viper.Crypto.Hash.HmacSHA256("hello", "key")
+PRINT Viper.Crypto.Hash.Md5("hello")
+PRINT Viper.Crypto.Hash.Sha1("hello")
+PRINT Viper.Crypto.Hash.Sha256("hello")
+PRINT Viper.Crypto.Hash.Crc32("hello")
+PRINT Viper.Crypto.Hash.HmacMd5("hello", "key")
+PRINT Viper.Crypto.Hash.HmacSha1("hello", "key")
+PRINT Viper.Crypto.Hash.HmacSha256("hello", "key")
 
 DIM r1 AS INTEGER
-LET r1 = Viper.Crypto.Rand.Int(1, 100)
+LET r1 = Viper.Crypto.SecureRandom.Int(1, 100)
 PRINT r1 > 0
 PRINT r1 < 101
 
 DIM rb AS OBJECT
-LET rb = Viper.Crypto.Rand.Bytes(16)
+LET rb = Viper.Crypto.SecureRandom.Bytes(16)
 PRINT rb.Length
 
 DIM pw AS STRING

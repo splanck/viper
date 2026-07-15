@@ -467,7 +467,7 @@ start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and 
 | `PascalCase()`      | `String()`  | Convert byte words to PascalCase                               |
 | `SnakeCase()`       | `String()`  | Convert byte words to snake_case                               |
 | `KebabCase()`       | `String()`  | Convert byte words to kebab-case                               |
-| `ScreamingSnake()`  | `String()`  | Convert byte words to SCREAMING_SNAKE_CASE                     |
+| `ScreamingSnakeCase()`  | `String()`  | Convert byte words to SCREAMING_SNAKE_CASE                     |
 
 **Additional Search:**
 
@@ -493,14 +493,14 @@ start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and 
 | Method           | Signature         | Description                                              |
 |------------------|-------------------|----------------------------------------------------------|
 | `Like(pattern)`   | `Boolean(String)` | Whole-string SQL LIKE match (`%` = any sequence, `_` = one UTF-8-shaped unit) |
-| `LikeCI(pattern)` | `Boolean(String)` | C-locale byte-folded SQL LIKE match                    |
+| `LikeIgnoreCase(pattern)` | `Boolean(String)` | C-locale byte-folded SQL LIKE match                    |
 
 **Comparison:**
 
 | Method             | Signature         | Description                                      |
 |--------------------|-------------------|--------------------------------------------------|
 | `Cmp(other)`       | `Integer(String)` | Bytewise comparison, returning -1, 0, or 1                 |
-| `CmpNoCase(other)` | `Integer(String)` | C-locale byte-folded comparison, returning -1, 0, or 1     |
+| `CompareIgnoreCase(other)` | `Integer(String)` | C-locale byte-folded comparison, returning -1, 0, or 1     |
 
 Empty needles are deliberately special but not uniform: `StartsWith`, `EndsWith`, and `Has` return
 true; `Count` returns 0; `Replace` returns the original; `IndexOf` returns 1; and `LastIndexOf`
@@ -518,7 +518,7 @@ Passing a multibyte padding character can also create malformed UTF-8 because pa
 its first byte; see
 [VDOC-167](../documentation-review-findings.md#vdoc-167--string-padding-can-create-malformed-utf-8).
 
-`Like` and `LikeCI` match the whole string. A backslash quotes the next pattern byte; a final
+`Like` and `LikeIgnoreCase` match the whole string. A backslash quotes the next pattern byte; a final
 backslash is literal. See [Pattern Matching](text/patterns.md#stringlike--stringlikeci) for the full
 contract and malformed-UTF-8 limitations.
 
@@ -529,7 +529,6 @@ contract and malformed-UTF-8 limitations.
 | `Viper.String.Equals(a, b)`                    | `Boolean(String, String)`  | Compare two strings for equality                                 |
 | `Viper.String.FromI16(value)`                  | `String(i16)`              | Format a signed 16-bit integer                                  |
 | `Viper.String.FromI32(value)`                  | `String(i32)`              | Format a signed 32-bit integer                                  |
-| `Viper.String.FromSingle(value)`               | `String(Double)`           | Intended to narrow to f32 and format that value                 |
 | `Viper.String.FromStr(text)`                   | `String(String)`           | Return the same immutable string handle with an owned reference |
 | `Viper.String.Join(separator, items)`          | `String(String, Seq<String>)` | Join string elements; null elements are empty and other types trap |
 | `Viper.String.SplitFields(text)`               | `Seq<String>(String)`      | Parse trimmed comma-separated fields, double quotes, and doubled quotes |
@@ -538,7 +537,6 @@ contract and malformed-UTF-8 limitations.
 argument without narrowing and fails IL verification; BASIC also does not resolve the public
 `FromI16` name. See
 [VDOC-163](../documentation-review-findings.md#vdoc-163--stringfromi16-and-fromi32-reach-invalid-il-from-zia).
-`FromSingle`'s public f64 signature and float C implementation currently disagree, corrupting direct
 runtime calls; see
 [VDOC-162](../documentation-review-findings.md#vdoc-162--stringfromsingle-has-a-mismatched-c-abi).
 
@@ -638,7 +636,7 @@ PRINT Viper.String.Join("-", parts)   ' Output: "a-b-c"
 
 ' Comparison
 PRINT "abc".Cmp("abd")                 ' Output: -1
-PRINT "ABC".CmpNoCase("abc")           ' Output: 0
+PRINT "ABC".CompareIgnoreCase("abc")           ' Output: 0
 ```
 
 ---
@@ -653,7 +651,7 @@ directly into a byte-by-byte scan; an empty string or a non-ASCII leading byte r
 |----------------------------|-----------------|---------------------------------------------------------|
 | `IsIdentifierStart(ch)`    | `Boolean(String)` | First character can start an identifier (ASCII letter or `_`) |
 | `IsIdentifierPart(ch)`     | `Boolean(String)` | First character can continue an identifier (ASCII letter, digit, or `_`) |
-| `IsAlnum(ch)`              | `Boolean(String)` | First character is ASCII alphanumeric (letter or digit) |
+| `IsAlphanumeric(ch)`              | `Boolean(String)` | First character is ASCII alphanumeric (letter or digit) |
 
 ```rust
 module CharDemo;

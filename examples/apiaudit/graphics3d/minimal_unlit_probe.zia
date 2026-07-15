@@ -15,8 +15,8 @@ func start() {
     var up = new Vec3(0.0, 1.0, 0.0);
     Camera3D.LookAt(camera, eye, target, up);
 
-    var box = Mesh3D.NewBox(2.0, 2.0, 2.0);
-    var mat = Material3D.NewColor(0.2, 0.6, 0.3);
+    var box = Mesh3D.Box(2.0, 2.0, 2.0);
+    var mat = Material3D.FromColor(0.2, 0.6, 0.3);
     Material3D.SetShadingModel(mat, 3);
     var xform = Mat4.Identity();
 

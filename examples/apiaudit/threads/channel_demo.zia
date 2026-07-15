@@ -73,7 +73,7 @@ func start() {
 
     // --- TryRecvOption ---
     Say("--- TryRecvOption ---");
-    var item2 = ch.TryRecvOption();
+    var item2 = ch.TryRecv();
     Say("TryRecvOption: " + Box.ToStr(item2.Unwrap()));
 
     // --- Drain remaining ---
@@ -97,7 +97,7 @@ func start() {
     Say("--- TryRecvOption test ---");
     var ch2 = Channel.New(5);
     ch2.Send(Box.I64(42));
-    var recv1 = ch2.TryRecvOption();
+    var recv1 = ch2.TryRecv();
     Say("TryRecvOption I64: " + Fmt.Int(Box.ToI64(recv1.Unwrap())));
 
     // --- Channel with capacity 1 ---

@@ -185,7 +185,7 @@ class RidgeboundPlayer {
         if (regenScale < 0.0) { regenScale = 0.0; }
     }
 
-    expose func isGrounded() -> Boolean { return controller.Grounded(); }
+    expose func isGrounded() -> Boolean { return controller.IsGrounded(); }
     expose func getStamina() -> Float { return stamina; }
     expose func isSprinting() -> Boolean { return sprintingNow; }
     expose func isSwimming() -> Boolean { return swimmingNow; }

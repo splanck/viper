@@ -819,7 +819,7 @@ func BasicWorkspaceFiles(docMgr: document_manager.DocumentManager,
     var root = "";
     if indexer != null { root = indexer.rootPath; }
     if root == "" and activeDoc != null and activeDoc.filePath != "" {
-        root = Path.Dir(activeDoc.filePath);
+        root = Path.Directory(activeDoc.filePath);
     }
     if root != "" {
         workspace_file_index.AddEnumeratedFiles(files, root, ".bas,.vb", "");

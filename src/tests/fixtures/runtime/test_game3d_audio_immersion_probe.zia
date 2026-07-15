@@ -2,7 +2,7 @@ module test_game3d_audio_immersion_probe;
 bind Viper.Game3D as Game3D;
 bind Viper.Graphics3D;
 bind Viper.Math as Math;
-bind Viper.Sound as Sound;
+bind Viper.Audio as Sound;
 bind Viper.Terminal as Terminal;
 
 func start() {
@@ -76,9 +76,9 @@ func start() {
     var wallEnt = Game3D.Entity3D.New();
     wallEnt.SetPosition(0.0, 1.0, -4.0);
     world.Spawn(wallEnt);
-    var wallShape = Collider3D.NewBox(6.0, 6.0, 0.5);
-    var wallBody = Physics3DBody.New(0.0);
-    wallBody.Static = true;
+    var wallShape = Collider3D.Box(6.0, 6.0, 0.5);
+    var wallBody = PhysicsBody3D.New(0.0);
+    wallBody.IsStatic = true;
     wallBody.Collider = wallShape;
     wallEnt.AttachBody(wallBody);
 
@@ -131,7 +131,7 @@ func start() {
         Terminal.Say("FAIL: PlayDialogue should return a live voice id");
         return;
     }
-    Sound.Audio.SetGroupDucking("g3d_dialogue", "music", 0.6, 50.0, 200.0);
+    Sound.Mixer.SetGroupDucking("g3d_dialogue", "music", 0.6, 50.0, 200.0);
 
     world.Destroy();
     Terminal.Say("PASS");

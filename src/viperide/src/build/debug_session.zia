@@ -5,7 +5,7 @@ bind "breakpoints";
 bind "var_model";
 
 bind Process = Viper.System.Process;
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind Map = Viper.Collections.Map;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
@@ -139,7 +139,7 @@ class DebugSession {
         Seq.Push(args, "run");
         Seq.Push(args, "--debug-adapter");
         Seq.Push(args, path);
-        processHandle = Process.StartWithEnv(viperBin, args, Path.Dir(path), null);
+        processHandle = Process.StartWithEnv(viperBin, args, Path.Directory(path), null);
         if processHandle == null or processHandle.IsValid() == false {
             processHandle = null;
             return false;
@@ -557,7 +557,7 @@ class DebugSession {
 
         drainProcessOutput();
         if terminateRequested and terminated == false and processHandle.IsRunning()
-           and terminateCountdown.get_Expired() {
+           and terminateCountdown.get_IsExpired() {
             processHandle.Kill();
             dirty = true;
         }

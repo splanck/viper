@@ -20,11 +20,11 @@ func start() {
     // --- Next ---
     Say("--- Next ---");
     Say("Random.Next() [0.0..1.0]:");
-    SayNum(Random.Next());
+    SayNum(Random.NextDouble());
     Say("Random.Next() [0.0..1.0]:");
-    SayNum(Random.Next());
+    SayNum(Random.NextDouble());
     Say("Random.Next() [0.0..1.0]:");
-    SayNum(Random.Next());
+    SayNum(Random.NextDouble());
 
     // --- NextInt ---
     Say("--- NextInt ---");

@@ -21,8 +21,8 @@
 //     ANSI sequences work in cmd.exe and PowerShell consoles.
 //   - INKEY$ uses select() with a zero timeout for non-blocking key reads on
 //     POSIX; on Windows it uses _kbhit().
-//   - Terminal cleanup (raw mode restore, alt buffer exit) is registered via
-//     atexit so the terminal is always restored on normal program exit.
+//   - Normal-exit cleanup restores cached POSIX raw mode. It does not emit an
+//     alternate-screen exit sequence or balance output batch depth (VDOC-220).
 //
 // Ownership/Lifetime:
 //   - Returned rt_string values from GETKEY$/INKEY$ are newly allocated;
@@ -778,7 +778,7 @@ int64_t rt_keypressed_i64(void) {
     return (int64_t)rt_keypressed();
 }
 
-/// @brief Get key with timeout (i64 wrapper for ViperLang).
+/// @brief Get key with timeout (i64 wrapper that narrows to signed 32 bits).
 rt_string rt_getkey_timeout(int64_t timeout_ms) {
     return rt_getkey_timeout_i32((int32_t)timeout_ms);
 }

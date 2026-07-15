@@ -95,7 +95,8 @@ void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter,
 /// @param min_speed Minimum launch speed in world units per frame.
 /// @param max_speed Maximum launch speed in world units per frame.
 /// @param min_angle Minimum launch angle in degrees (0 = rightward,
-///   90 = upward). Values wrap modulo 360.
+///   90 = upward). Values outside one revolution are accepted and passed
+///   directly to the trigonometric conversion; they are not normalized first.
 /// @param max_angle Maximum launch angle in degrees. Each particle's angle
 ///   is chosen randomly within [min_angle, max_angle].
 void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,

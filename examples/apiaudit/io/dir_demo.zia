@@ -55,17 +55,17 @@ func start() {
 
     // --- FilesSeq ---
     Say("--- FilesSeq ---");
-    var files = Dir.FilesSeq(testDir);
+    var files = Dir.Files(testDir);
     Say("FilesSeq returned");
 
     // --- DirsSeq ---
     Say("--- DirsSeq ---");
-    var dirs = Dir.DirsSeq(testDir);
+    var dirs = Dir.Dirs(testDir);
     Say("DirsSeq returned");
 
     // --- ListSeq ---
     Say("--- ListSeq ---");
-    var list = Dir.ListSeq(testDir);
+    var list = Dir.List(testDir);
     Say("ListSeq returned");
 
     // --- Entries ---

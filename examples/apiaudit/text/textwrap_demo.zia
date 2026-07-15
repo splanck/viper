@@ -67,8 +67,8 @@ func start() {
 
     // --- MaxLineLen ---
     Say("--- MaxLineLen ---");
-    SayInt(TW.MaxLineLen("short\na much longer line\nmed"));
-    SayInt(TW.MaxLineLen("single"));
+    SayInt(TW.MaxLineLength("short\na much longer line\nmed"));
+    SayInt(TW.MaxLineLength("single"));
 
     Say("=== TextWrapper Demo Complete ===");
 }

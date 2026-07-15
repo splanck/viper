@@ -12,110 +12,8 @@
 Provides keyboard input handling.
 
 `Viper.Input.Keyboard` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes properties such as `KeyUnknown`,
-`KeyA`, `KeyB` and operations including `IsDown`, `IsUp`, `AnyDown`, `GetDown`.
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-input-keyboard-keyunknown"></a>`KeyUnknown` | `i64` | read-only |
-| <a id="viper-input-keyboard-keya"></a>`KeyA` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyb"></a>`KeyB` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyc"></a>`KeyC` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyd"></a>`KeyD` | `i64` | read-only |
-| <a id="viper-input-keyboard-keye"></a>`KeyE` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf"></a>`KeyF` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyg"></a>`KeyG` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyh"></a>`KeyH` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyi"></a>`KeyI` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyj"></a>`KeyJ` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyk"></a>`KeyK` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyl"></a>`KeyL` | `i64` | read-only |
-| <a id="viper-input-keyboard-keym"></a>`KeyM` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyn"></a>`KeyN` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyo"></a>`KeyO` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyp"></a>`KeyP` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyq"></a>`KeyQ` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyr"></a>`KeyR` | `i64` | read-only |
-| <a id="viper-input-keyboard-keys"></a>`KeyS` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyt"></a>`KeyT` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyu"></a>`KeyU` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyv"></a>`KeyV` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyw"></a>`KeyW` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyx"></a>`KeyX` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyy"></a>`KeyY` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyz"></a>`KeyZ` | `i64` | read-only |
-| <a id="viper-input-keyboard-key0"></a>`Key0` | `i64` | read-only |
-| <a id="viper-input-keyboard-key1"></a>`Key1` | `i64` | read-only |
-| <a id="viper-input-keyboard-key2"></a>`Key2` | `i64` | read-only |
-| <a id="viper-input-keyboard-key3"></a>`Key3` | `i64` | read-only |
-| <a id="viper-input-keyboard-key4"></a>`Key4` | `i64` | read-only |
-| <a id="viper-input-keyboard-key5"></a>`Key5` | `i64` | read-only |
-| <a id="viper-input-keyboard-key6"></a>`Key6` | `i64` | read-only |
-| <a id="viper-input-keyboard-key7"></a>`Key7` | `i64` | read-only |
-| <a id="viper-input-keyboard-key8"></a>`Key8` | `i64` | read-only |
-| <a id="viper-input-keyboard-key9"></a>`Key9` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf1"></a>`KeyF1` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf2"></a>`KeyF2` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf3"></a>`KeyF3` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf4"></a>`KeyF4` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf5"></a>`KeyF5` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf6"></a>`KeyF6` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf7"></a>`KeyF7` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf8"></a>`KeyF8` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf9"></a>`KeyF9` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf10"></a>`KeyF10` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf11"></a>`KeyF11` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyf12"></a>`KeyF12` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyup"></a>`KeyUp` | `i64` | read-only |
-| <a id="viper-input-keyboard-keydown"></a>`KeyDown` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyleft"></a>`KeyLeft` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyright"></a>`KeyRight` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyhome"></a>`KeyHome` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyend"></a>`KeyEnd` | `i64` | read-only |
-| <a id="viper-input-keyboard-keypageup"></a>`KeyPageUp` | `i64` | read-only |
-| <a id="viper-input-keyboard-keypagedown"></a>`KeyPageDown` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyinsert"></a>`KeyInsert` | `i64` | read-only |
-| <a id="viper-input-keyboard-keydelete"></a>`KeyDelete` | `i64` | read-only |
-| <a id="viper-input-keyboard-keybackspace"></a>`KeyBackspace` | `i64` | read-only |
-| <a id="viper-input-keyboard-keytab"></a>`KeyTab` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyenter"></a>`KeyEnter` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyspace"></a>`KeySpace` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyescape"></a>`KeyEscape` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyleftshift"></a>`KeyLeftShift` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyrightshift"></a>`KeyRightShift` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyleftcontrol"></a>`KeyLeftControl` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyrightcontrol"></a>`KeyRightControl` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyleftalt"></a>`KeyLeftAlt` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyrightalt"></a>`KeyRightAlt` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyminus"></a>`KeyMinus` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyequals"></a>`KeyEquals` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyleftbracket"></a>`KeyLeftBracket` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyrightbracket"></a>`KeyRightBracket` | `i64` | read-only |
-| <a id="viper-input-keyboard-keybackslash"></a>`KeyBackslash` | `i64` | read-only |
-| <a id="viper-input-keyboard-keysemicolon"></a>`KeySemicolon` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyquote"></a>`KeyQuote` | `i64` | read-only |
-| <a id="viper-input-keyboard-keygrave"></a>`KeyGrave` | `i64` | read-only |
-| <a id="viper-input-keyboard-keycomma"></a>`KeyComma` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyperiod"></a>`KeyPeriod` | `i64` | read-only |
-| <a id="viper-input-keyboard-keyslash"></a>`KeySlash` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum0"></a>`KeyNum0` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum1"></a>`KeyNum1` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum2"></a>`KeyNum2` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum3"></a>`KeyNum3` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum4"></a>`KeyNum4` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum5"></a>`KeyNum5` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum6"></a>`KeyNum6` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum7"></a>`KeyNum7` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum8"></a>`KeyNum8` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynum9"></a>`KeyNum9` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynumadd"></a>`KeyNumAdd` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynumsub"></a>`KeyNumSub` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynummul"></a>`KeyNumMul` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynumdiv"></a>`KeyNumDiv` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynumenter"></a>`KeyNumEnter` | `i64` | read-only |
-| <a id="viper-input-keyboard-keynumdot"></a>`KeyNumDot` | `i64` | read-only |
+construct the class directly. Its public surface exposes operations including `IsDown`,
+`IsUp`, `AnyDown`, `GetDown`.
 
 #### Methods
 
@@ -132,10 +30,6 @@ construct the class directly. Its public surface exposes properties such as `Key
 | <a id="viper-input-keyboard-gettext"></a>`GetText` | `str()` | `Viper.Input.Keyboard.GetText` |
 | <a id="viper-input-keyboard-enabletextinput"></a>`EnableTextInput` | `void()` | `Viper.Input.Keyboard.EnableTextInput` |
 | <a id="viper-input-keyboard-disabletextinput"></a>`DisableTextInput` | `void()` | `Viper.Input.Keyboard.DisableTextInput` |
-| <a id="viper-input-keyboard-shift"></a>`Shift` | `i1()` | `Viper.Input.Keyboard.Shift` |
-| <a id="viper-input-keyboard-ctrl"></a>`Ctrl` | `i1()` | `Viper.Input.Keyboard.Ctrl` |
-| <a id="viper-input-keyboard-alt"></a>`Alt` | `i1()` | `Viper.Input.Keyboard.Alt` |
-| <a id="viper-input-keyboard-capslock"></a>`CapsLock` | `i1()` | `Viper.Input.Keyboard.CapsLock` |
 | <a id="viper-input-keyboard-keyname"></a>`KeyName` | `str(i64)` | `Viper.Input.Keyboard.KeyName` |
 
 <a id="viper-input-key"></a>
@@ -144,7 +38,7 @@ construct the class directly. Its public surface exposes properties such as `Key
 Defines canonical keyboard key-code constants.
 
 `Viper.Input.Key` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `Unknown`, `A`, `B`.
+Its public surface exposes properties such as `Unknown`, `A`, `B`.
 
 #### Properties
 
@@ -254,8 +148,8 @@ surface exposes properties such as `Unknown`, `A`, `B`.
 Provides mouse input handling.
 
 `Viper.Input.Mouse` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `RelativeMode`, `RelativeModeNative`, `ButtonLeft` and
-operations including `X`, `Y`, `DeltaX`, `DeltaY`.
+Its public surface exposes properties such as `RelativeMode`, `RelativeModeNative`,
+`ButtonLeft` and operations including `X`, `Y`, `DeltaX`, `DeltaY`.
 
 #### Properties
 
@@ -279,27 +173,24 @@ operations including `X`, `Y`, `DeltaX`, `DeltaY`.
 | <a id="viper-input-mouse-deltay"></a>`DeltaY` | `i64()` | `Viper.Input.Mouse.DeltaY` |
 | <a id="viper-input-mouse-isdown"></a>`IsDown` | `i1(i64)` | `Viper.Input.Mouse.IsDown` |
 | <a id="viper-input-mouse-isup"></a>`IsUp` | `i1(i64)` | `Viper.Input.Mouse.IsUp` |
-| <a id="viper-input-mouse-left"></a>`Left` | `i1()` | `Viper.Input.Mouse.Left` |
-| <a id="viper-input-mouse-right"></a>`Right` | `i1()` | `Viper.Input.Mouse.Right` |
-| <a id="viper-input-mouse-middle"></a>`Middle` | `i1()` | `Viper.Input.Mouse.Middle` |
 | <a id="viper-input-mouse-waspressed"></a>`WasPressed` | `i1(i64)` | `Viper.Input.Mouse.WasPressed` |
 | <a id="viper-input-mouse-wasreleased"></a>`WasReleased` | `i1(i64)` | `Viper.Input.Mouse.WasReleased` |
 | <a id="viper-input-mouse-wasclicked"></a>`WasClicked` | `i1(i64)` | `Viper.Input.Mouse.WasClicked` |
 | <a id="viper-input-mouse-wasdoubleclicked"></a>`WasDoubleClicked` | `i1(i64)` | `Viper.Input.Mouse.WasDoubleClicked` |
 | <a id="viper-input-mouse-wheelx"></a>`WheelX` | `i64()` | `Viper.Input.Mouse.WheelX` |
 | <a id="viper-input-mouse-wheely"></a>`WheelY` | `i64()` | `Viper.Input.Mouse.WheelY` |
-| <a id="viper-input-mouse-wheelxf"></a>`WheelXF` | `f64()` | `Viper.Input.Mouse.WheelXF` |
-| <a id="viper-input-mouse-wheelyf"></a>`WheelYF` | `f64()` | `Viper.Input.Mouse.WheelYF` |
+| <a id="viper-input-mouse-wheelxfloat"></a>`WheelXFloat` | `f64()` | `Viper.Input.Mouse.WheelXFloat` |
+| <a id="viper-input-mouse-wheelyfloat"></a>`WheelYFloat` | `f64()` | `Viper.Input.Mouse.WheelYFloat` |
 | <a id="viper-input-mouse-show"></a>`Show` | `void()` | `Viper.Input.Mouse.Show` |
 | <a id="viper-input-mouse-hide"></a>`Hide` | `void()` | `Viper.Input.Mouse.Hide` |
 | <a id="viper-input-mouse-ishidden"></a>`IsHidden` | `i1()` | `Viper.Input.Mouse.IsHidden` |
 | <a id="viper-input-mouse-capture"></a>`Capture` | `void()` | `Viper.Input.Mouse.Capture` |
 | <a id="viper-input-mouse-release"></a>`Release` | `void()` | `Viper.Input.Mouse.Release` |
 | <a id="viper-input-mouse-iscaptured"></a>`IsCaptured` | `i1()` | `Viper.Input.Mouse.IsCaptured` |
-| <a id="viper-input-mouse-setpos"></a>`SetPos` | `void(i64,i64)` | `Viper.Input.Mouse.SetPos` |
+| <a id="viper-input-mouse-setposition"></a>`SetPosition` | `void(i64,i64)` | `Viper.Input.Mouse.SetPosition` |
 | <a id="viper-input-mouse-setrelativemode"></a>`SetRelativeMode` | `void(i1)` | `Viper.Input.Mouse.SetRelativeMode` |
-| <a id="viper-input-mouse-deltaxf"></a>`DeltaXF` | `f64()` | `Viper.Input.Mouse.DeltaXF` |
-| <a id="viper-input-mouse-deltayf"></a>`DeltaYF` | `f64()` | `Viper.Input.Mouse.DeltaYF` |
+| <a id="viper-input-mouse-deltaxfloat"></a>`DeltaXFloat` | `f64()` | `Viper.Input.Mouse.DeltaXFloat` |
+| <a id="viper-input-mouse-deltayfloat"></a>`DeltaYFloat` | `f64()` | `Viper.Input.Mouse.DeltaYFloat` |
 
 <a id="viper-input-pad"></a>
 ### `Viper.Input.Pad`
@@ -307,8 +198,8 @@ operations including `X`, `Y`, `DeltaX`, `DeltaY`.
 Provides gamepad/controller input handling.
 
 `Viper.Input.Pad` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `ButtonA`, `ButtonB`, `ButtonX` and operations including
-`Count`, `IsConnected`, `Name`, `IsDown`.
+Its public surface exposes properties such as `ButtonA`, `ButtonB`, `ButtonX` and operations
+including `Count`, `IsConnected`, `Name`, `IsDown`.
 
 #### Properties
 
@@ -358,8 +249,8 @@ surface exposes properties such as `ButtonA`, `ButtonB`, `ButtonX` and operation
 Provides action mapping system.
 
 `Viper.Input.Action` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `AxisLeftX`, `AxisLeftY`, `AxisRightX` and operations
-including `Clear`, `Define`, `DefineAxis`, `Exists`.
+Its public surface exposes properties such as `AxisLeftX`, `AxisLeftY`, `AxisRightX` and
+operations including `Clear`, `Define`, `DefineAxis`, `Exists`.
 
 #### Properties
 
@@ -479,7 +370,7 @@ Constructor: `Viper.Input.Manager.New`
 Provides key chord and combo detection.
 
 Create `Viper.Input.KeyChord` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Count`
+object with the instance members below. Its public surface exposes properties such as `Count`
 and operations including `Active`, `Clear`, `Define`, `DefineCombo`.
 
 Constructor: `Viper.Input.KeyChord.New`
@@ -519,108 +410,7 @@ Constructor: `Viper.Input.KeyChord.New`
 | `Viper.Input.Keyboard.GetText` | `str()` | `rt_keyboard_get_text` |
 | `Viper.Input.Keyboard.EnableTextInput` | `void()` | `rt_keyboard_enable_text_input` |
 | `Viper.Input.Keyboard.DisableTextInput` | `void()` | `rt_keyboard_disable_text_input` |
-| `Viper.Input.Keyboard.Shift` | `i1()` | `rt_keyboard_shift` |
-| `Viper.Input.Keyboard.Ctrl` | `i1()` | `rt_keyboard_ctrl` |
-| `Viper.Input.Keyboard.Alt` | `i1()` | `rt_keyboard_alt` |
-| `Viper.Input.Keyboard.CapsLock` | `i1()` | `rt_keyboard_caps_lock` |
 | `Viper.Input.Keyboard.KeyName` | `str(i64)` | `rt_keyboard_key_name` |
-| <a id="viper-input-keyboard-get-keyunknown"></a>`Viper.Input.Keyboard.get_KeyUnknown` | `i64()` | `rt_keyboard_key_unknown` |
-| <a id="viper-input-keyboard-get-keya"></a>`Viper.Input.Keyboard.get_KeyA` | `i64()` | `rt_keyboard_key_a` |
-| <a id="viper-input-keyboard-get-keyb"></a>`Viper.Input.Keyboard.get_KeyB` | `i64()` | `rt_keyboard_key_b` |
-| <a id="viper-input-keyboard-get-keyc"></a>`Viper.Input.Keyboard.get_KeyC` | `i64()` | `rt_keyboard_key_c` |
-| <a id="viper-input-keyboard-get-keyd"></a>`Viper.Input.Keyboard.get_KeyD` | `i64()` | `rt_keyboard_key_d` |
-| <a id="viper-input-keyboard-get-keye"></a>`Viper.Input.Keyboard.get_KeyE` | `i64()` | `rt_keyboard_key_e` |
-| <a id="viper-input-keyboard-get-keyf"></a>`Viper.Input.Keyboard.get_KeyF` | `i64()` | `rt_keyboard_key_f` |
-| <a id="viper-input-keyboard-get-keyg"></a>`Viper.Input.Keyboard.get_KeyG` | `i64()` | `rt_keyboard_key_g` |
-| <a id="viper-input-keyboard-get-keyh"></a>`Viper.Input.Keyboard.get_KeyH` | `i64()` | `rt_keyboard_key_h` |
-| <a id="viper-input-keyboard-get-keyi"></a>`Viper.Input.Keyboard.get_KeyI` | `i64()` | `rt_keyboard_key_i` |
-| <a id="viper-input-keyboard-get-keyj"></a>`Viper.Input.Keyboard.get_KeyJ` | `i64()` | `rt_keyboard_key_j` |
-| <a id="viper-input-keyboard-get-keyk"></a>`Viper.Input.Keyboard.get_KeyK` | `i64()` | `rt_keyboard_key_k` |
-| <a id="viper-input-keyboard-get-keyl"></a>`Viper.Input.Keyboard.get_KeyL` | `i64()` | `rt_keyboard_key_l` |
-| <a id="viper-input-keyboard-get-keym"></a>`Viper.Input.Keyboard.get_KeyM` | `i64()` | `rt_keyboard_key_m` |
-| <a id="viper-input-keyboard-get-keyn"></a>`Viper.Input.Keyboard.get_KeyN` | `i64()` | `rt_keyboard_key_n` |
-| <a id="viper-input-keyboard-get-keyo"></a>`Viper.Input.Keyboard.get_KeyO` | `i64()` | `rt_keyboard_key_o` |
-| <a id="viper-input-keyboard-get-keyp"></a>`Viper.Input.Keyboard.get_KeyP` | `i64()` | `rt_keyboard_key_p` |
-| <a id="viper-input-keyboard-get-keyq"></a>`Viper.Input.Keyboard.get_KeyQ` | `i64()` | `rt_keyboard_key_q` |
-| <a id="viper-input-keyboard-get-keyr"></a>`Viper.Input.Keyboard.get_KeyR` | `i64()` | `rt_keyboard_key_r` |
-| <a id="viper-input-keyboard-get-keys"></a>`Viper.Input.Keyboard.get_KeyS` | `i64()` | `rt_keyboard_key_s` |
-| <a id="viper-input-keyboard-get-keyt"></a>`Viper.Input.Keyboard.get_KeyT` | `i64()` | `rt_keyboard_key_t` |
-| <a id="viper-input-keyboard-get-keyu"></a>`Viper.Input.Keyboard.get_KeyU` | `i64()` | `rt_keyboard_key_u` |
-| <a id="viper-input-keyboard-get-keyv"></a>`Viper.Input.Keyboard.get_KeyV` | `i64()` | `rt_keyboard_key_v` |
-| <a id="viper-input-keyboard-get-keyw"></a>`Viper.Input.Keyboard.get_KeyW` | `i64()` | `rt_keyboard_key_w` |
-| <a id="viper-input-keyboard-get-keyx"></a>`Viper.Input.Keyboard.get_KeyX` | `i64()` | `rt_keyboard_key_x` |
-| <a id="viper-input-keyboard-get-keyy"></a>`Viper.Input.Keyboard.get_KeyY` | `i64()` | `rt_keyboard_key_y` |
-| <a id="viper-input-keyboard-get-keyz"></a>`Viper.Input.Keyboard.get_KeyZ` | `i64()` | `rt_keyboard_key_z` |
-| <a id="viper-input-keyboard-get-key0"></a>`Viper.Input.Keyboard.get_Key0` | `i64()` | `rt_keyboard_key_0` |
-| <a id="viper-input-keyboard-get-key1"></a>`Viper.Input.Keyboard.get_Key1` | `i64()` | `rt_keyboard_key_1` |
-| <a id="viper-input-keyboard-get-key2"></a>`Viper.Input.Keyboard.get_Key2` | `i64()` | `rt_keyboard_key_2` |
-| <a id="viper-input-keyboard-get-key3"></a>`Viper.Input.Keyboard.get_Key3` | `i64()` | `rt_keyboard_key_3` |
-| <a id="viper-input-keyboard-get-key4"></a>`Viper.Input.Keyboard.get_Key4` | `i64()` | `rt_keyboard_key_4` |
-| <a id="viper-input-keyboard-get-key5"></a>`Viper.Input.Keyboard.get_Key5` | `i64()` | `rt_keyboard_key_5` |
-| <a id="viper-input-keyboard-get-key6"></a>`Viper.Input.Keyboard.get_Key6` | `i64()` | `rt_keyboard_key_6` |
-| <a id="viper-input-keyboard-get-key7"></a>`Viper.Input.Keyboard.get_Key7` | `i64()` | `rt_keyboard_key_7` |
-| <a id="viper-input-keyboard-get-key8"></a>`Viper.Input.Keyboard.get_Key8` | `i64()` | `rt_keyboard_key_8` |
-| <a id="viper-input-keyboard-get-key9"></a>`Viper.Input.Keyboard.get_Key9` | `i64()` | `rt_keyboard_key_9` |
-| <a id="viper-input-keyboard-get-keyup"></a>`Viper.Input.Keyboard.get_KeyUp` | `i64()` | `rt_keyboard_key_up` |
-| <a id="viper-input-keyboard-get-keydown"></a>`Viper.Input.Keyboard.get_KeyDown` | `i64()` | `rt_keyboard_key_down` |
-| <a id="viper-input-keyboard-get-keyleft"></a>`Viper.Input.Keyboard.get_KeyLeft` | `i64()` | `rt_keyboard_key_left` |
-| <a id="viper-input-keyboard-get-keyright"></a>`Viper.Input.Keyboard.get_KeyRight` | `i64()` | `rt_keyboard_key_right` |
-| <a id="viper-input-keyboard-get-keyhome"></a>`Viper.Input.Keyboard.get_KeyHome` | `i64()` | `rt_keyboard_key_home` |
-| <a id="viper-input-keyboard-get-keyend"></a>`Viper.Input.Keyboard.get_KeyEnd` | `i64()` | `rt_keyboard_key_end` |
-| <a id="viper-input-keyboard-get-keyinsert"></a>`Viper.Input.Keyboard.get_KeyInsert` | `i64()` | `rt_keyboard_key_insert` |
-| <a id="viper-input-keyboard-get-keydelete"></a>`Viper.Input.Keyboard.get_KeyDelete` | `i64()` | `rt_keyboard_key_delete` |
-| <a id="viper-input-keyboard-get-keybackspace"></a>`Viper.Input.Keyboard.get_KeyBackspace` | `i64()` | `rt_keyboard_key_backspace` |
-| <a id="viper-input-keyboard-get-keytab"></a>`Viper.Input.Keyboard.get_KeyTab` | `i64()` | `rt_keyboard_key_tab` |
-| <a id="viper-input-keyboard-get-keyenter"></a>`Viper.Input.Keyboard.get_KeyEnter` | `i64()` | `rt_keyboard_key_enter` |
-| <a id="viper-input-keyboard-get-keyspace"></a>`Viper.Input.Keyboard.get_KeySpace` | `i64()` | `rt_keyboard_key_space` |
-| <a id="viper-input-keyboard-get-keyescape"></a>`Viper.Input.Keyboard.get_KeyEscape` | `i64()` | `rt_keyboard_key_escape` |
-| <a id="viper-input-keyboard-get-keyleftshift"></a>`Viper.Input.Keyboard.get_KeyLeftShift` | `i64()` | `rt_keyboard_key_lshift` |
-| <a id="viper-input-keyboard-get-keyrightshift"></a>`Viper.Input.Keyboard.get_KeyRightShift` | `i64()` | `rt_keyboard_key_rshift` |
-| <a id="viper-input-keyboard-get-keyleftcontrol"></a>`Viper.Input.Keyboard.get_KeyLeftControl` | `i64()` | `rt_keyboard_key_lctrl` |
-| <a id="viper-input-keyboard-get-keyrightcontrol"></a>`Viper.Input.Keyboard.get_KeyRightControl` | `i64()` | `rt_keyboard_key_rctrl` |
-| <a id="viper-input-keyboard-get-keyleftalt"></a>`Viper.Input.Keyboard.get_KeyLeftAlt` | `i64()` | `rt_keyboard_key_lalt` |
-| <a id="viper-input-keyboard-get-keyrightalt"></a>`Viper.Input.Keyboard.get_KeyRightAlt` | `i64()` | `rt_keyboard_key_ralt` |
-| <a id="viper-input-keyboard-get-keyminus"></a>`Viper.Input.Keyboard.get_KeyMinus` | `i64()` | `rt_keyboard_key_minus` |
-| <a id="viper-input-keyboard-get-keyequals"></a>`Viper.Input.Keyboard.get_KeyEquals` | `i64()` | `rt_keyboard_key_equals` |
-| <a id="viper-input-keyboard-get-keyleftbracket"></a>`Viper.Input.Keyboard.get_KeyLeftBracket` | `i64()` | `rt_keyboard_key_lbracket` |
-| <a id="viper-input-keyboard-get-keyrightbracket"></a>`Viper.Input.Keyboard.get_KeyRightBracket` | `i64()` | `rt_keyboard_key_rbracket` |
-| <a id="viper-input-keyboard-get-keybackslash"></a>`Viper.Input.Keyboard.get_KeyBackslash` | `i64()` | `rt_keyboard_key_backslash` |
-| <a id="viper-input-keyboard-get-keysemicolon"></a>`Viper.Input.Keyboard.get_KeySemicolon` | `i64()` | `rt_keyboard_key_semicolon` |
-| <a id="viper-input-keyboard-get-keyquote"></a>`Viper.Input.Keyboard.get_KeyQuote` | `i64()` | `rt_keyboard_key_quote` |
-| <a id="viper-input-keyboard-get-keygrave"></a>`Viper.Input.Keyboard.get_KeyGrave` | `i64()` | `rt_keyboard_key_grave` |
-| <a id="viper-input-keyboard-get-keycomma"></a>`Viper.Input.Keyboard.get_KeyComma` | `i64()` | `rt_keyboard_key_comma` |
-| <a id="viper-input-keyboard-get-keyperiod"></a>`Viper.Input.Keyboard.get_KeyPeriod` | `i64()` | `rt_keyboard_key_period` |
-| <a id="viper-input-keyboard-get-keyslash"></a>`Viper.Input.Keyboard.get_KeySlash` | `i64()` | `rt_keyboard_key_slash` |
-| <a id="viper-input-keyboard-get-keyf1"></a>`Viper.Input.Keyboard.get_KeyF1` | `i64()` | `rt_keyboard_key_f1` |
-| <a id="viper-input-keyboard-get-keyf2"></a>`Viper.Input.Keyboard.get_KeyF2` | `i64()` | `rt_keyboard_key_f2` |
-| <a id="viper-input-keyboard-get-keyf3"></a>`Viper.Input.Keyboard.get_KeyF3` | `i64()` | `rt_keyboard_key_f3` |
-| <a id="viper-input-keyboard-get-keyf4"></a>`Viper.Input.Keyboard.get_KeyF4` | `i64()` | `rt_keyboard_key_f4` |
-| <a id="viper-input-keyboard-get-keyf5"></a>`Viper.Input.Keyboard.get_KeyF5` | `i64()` | `rt_keyboard_key_f5` |
-| <a id="viper-input-keyboard-get-keyf6"></a>`Viper.Input.Keyboard.get_KeyF6` | `i64()` | `rt_keyboard_key_f6` |
-| <a id="viper-input-keyboard-get-keyf7"></a>`Viper.Input.Keyboard.get_KeyF7` | `i64()` | `rt_keyboard_key_f7` |
-| <a id="viper-input-keyboard-get-keyf8"></a>`Viper.Input.Keyboard.get_KeyF8` | `i64()` | `rt_keyboard_key_f8` |
-| <a id="viper-input-keyboard-get-keyf9"></a>`Viper.Input.Keyboard.get_KeyF9` | `i64()` | `rt_keyboard_key_f9` |
-| <a id="viper-input-keyboard-get-keyf10"></a>`Viper.Input.Keyboard.get_KeyF10` | `i64()` | `rt_keyboard_key_f10` |
-| <a id="viper-input-keyboard-get-keyf11"></a>`Viper.Input.Keyboard.get_KeyF11` | `i64()` | `rt_keyboard_key_f11` |
-| <a id="viper-input-keyboard-get-keyf12"></a>`Viper.Input.Keyboard.get_KeyF12` | `i64()` | `rt_keyboard_key_f12` |
-| <a id="viper-input-keyboard-get-keypageup"></a>`Viper.Input.Keyboard.get_KeyPageUp` | `i64()` | `rt_keyboard_key_pageup` |
-| <a id="viper-input-keyboard-get-keypagedown"></a>`Viper.Input.Keyboard.get_KeyPageDown` | `i64()` | `rt_keyboard_key_pagedown` |
-| <a id="viper-input-keyboard-get-keynum0"></a>`Viper.Input.Keyboard.get_KeyNum0` | `i64()` | `rt_keyboard_key_num0` |
-| <a id="viper-input-keyboard-get-keynum1"></a>`Viper.Input.Keyboard.get_KeyNum1` | `i64()` | `rt_keyboard_key_num1` |
-| <a id="viper-input-keyboard-get-keynum2"></a>`Viper.Input.Keyboard.get_KeyNum2` | `i64()` | `rt_keyboard_key_num2` |
-| <a id="viper-input-keyboard-get-keynum3"></a>`Viper.Input.Keyboard.get_KeyNum3` | `i64()` | `rt_keyboard_key_num3` |
-| <a id="viper-input-keyboard-get-keynum4"></a>`Viper.Input.Keyboard.get_KeyNum4` | `i64()` | `rt_keyboard_key_num4` |
-| <a id="viper-input-keyboard-get-keynum5"></a>`Viper.Input.Keyboard.get_KeyNum5` | `i64()` | `rt_keyboard_key_num5` |
-| <a id="viper-input-keyboard-get-keynum6"></a>`Viper.Input.Keyboard.get_KeyNum6` | `i64()` | `rt_keyboard_key_num6` |
-| <a id="viper-input-keyboard-get-keynum7"></a>`Viper.Input.Keyboard.get_KeyNum7` | `i64()` | `rt_keyboard_key_num7` |
-| <a id="viper-input-keyboard-get-keynum8"></a>`Viper.Input.Keyboard.get_KeyNum8` | `i64()` | `rt_keyboard_key_num8` |
-| <a id="viper-input-keyboard-get-keynum9"></a>`Viper.Input.Keyboard.get_KeyNum9` | `i64()` | `rt_keyboard_key_num9` |
-| <a id="viper-input-keyboard-get-keynumadd"></a>`Viper.Input.Keyboard.get_KeyNumAdd` | `i64()` | `rt_keyboard_key_numadd` |
-| <a id="viper-input-keyboard-get-keynumsub"></a>`Viper.Input.Keyboard.get_KeyNumSub` | `i64()` | `rt_keyboard_key_numsub` |
-| <a id="viper-input-keyboard-get-keynummul"></a>`Viper.Input.Keyboard.get_KeyNumMul` | `i64()` | `rt_keyboard_key_nummul` |
-| <a id="viper-input-keyboard-get-keynumdiv"></a>`Viper.Input.Keyboard.get_KeyNumDiv` | `i64()` | `rt_keyboard_key_numdiv` |
-| <a id="viper-input-keyboard-get-keynumenter"></a>`Viper.Input.Keyboard.get_KeyNumEnter` | `i64()` | `rt_keyboard_key_numenter` |
-| <a id="viper-input-keyboard-get-keynumdot"></a>`Viper.Input.Keyboard.get_KeyNumDot` | `i64()` | `rt_keyboard_key_numdot` |
 | <a id="viper-input-key-get-unknown"></a>`Viper.Input.Key.get_Unknown` | `i64()` | `rt_keyboard_key_unknown` |
 | <a id="viper-input-key-get-a"></a>`Viper.Input.Key.get_A` | `i64()` | `rt_keyboard_key_a` |
 | <a id="viper-input-key-get-b"></a>`Viper.Input.Key.get_B` | `i64()` | `rt_keyboard_key_b` |
@@ -724,26 +514,23 @@ Constructor: `Viper.Input.KeyChord.New`
 | `Viper.Input.Mouse.DeltaY` | `i64()` | `rt_mouse_delta_y` |
 | `Viper.Input.Mouse.IsDown` | `i1(i64)` | `rt_mouse_is_down` |
 | `Viper.Input.Mouse.IsUp` | `i1(i64)` | `rt_mouse_is_up` |
-| `Viper.Input.Mouse.Left` | `i1()` | `rt_mouse_left` |
-| `Viper.Input.Mouse.Right` | `i1()` | `rt_mouse_right` |
-| `Viper.Input.Mouse.Middle` | `i1()` | `rt_mouse_middle` |
 | `Viper.Input.Mouse.WasPressed` | `i1(i64)` | `rt_mouse_was_pressed` |
 | `Viper.Input.Mouse.WasReleased` | `i1(i64)` | `rt_mouse_was_released` |
 | `Viper.Input.Mouse.WasClicked` | `i1(i64)` | `rt_mouse_was_clicked` |
 | `Viper.Input.Mouse.WasDoubleClicked` | `i1(i64)` | `rt_mouse_was_double_clicked` |
 | `Viper.Input.Mouse.WheelX` | `i64()` | `rt_mouse_wheel_x` |
 | `Viper.Input.Mouse.WheelY` | `i64()` | `rt_mouse_wheel_y` |
-| `Viper.Input.Mouse.WheelXF` | `f64()` | `rt_mouse_wheel_xf` |
-| `Viper.Input.Mouse.WheelYF` | `f64()` | `rt_mouse_wheel_yf` |
+| `Viper.Input.Mouse.WheelXFloat` | `f64()` | `rt_mouse_wheel_xf` |
+| `Viper.Input.Mouse.WheelYFloat` | `f64()` | `rt_mouse_wheel_yf` |
 | `Viper.Input.Mouse.Show` | `void()` | `rt_mouse_show` |
 | `Viper.Input.Mouse.Hide` | `void()` | `rt_mouse_hide` |
 | `Viper.Input.Mouse.IsHidden` | `i1()` | `rt_mouse_is_hidden` |
 | `Viper.Input.Mouse.Capture` | `void()` | `rt_mouse_capture` |
 | `Viper.Input.Mouse.Release` | `void()` | `rt_mouse_release` |
 | `Viper.Input.Mouse.IsCaptured` | `i1()` | `rt_mouse_is_captured` |
-| `Viper.Input.Mouse.SetPos` | `void(i64,i64)` | `rt_mouse_set_pos` |
-| `Viper.Input.Mouse.DeltaXF` | `f64()` | `rt_mouse_delta_xf` |
-| `Viper.Input.Mouse.DeltaYF` | `f64()` | `rt_mouse_delta_yf` |
+| `Viper.Input.Mouse.SetPosition` | `void(i64,i64)` | `rt_mouse_set_pos` |
+| `Viper.Input.Mouse.DeltaXFloat` | `f64()` | `rt_mouse_delta_xf` |
+| `Viper.Input.Mouse.DeltaYFloat` | `f64()` | `rt_mouse_delta_yf` |
 | `Viper.Input.Mouse.SetRelativeMode` | `void(i1)` | `rt_mouse_set_relative_mode` |
 | <a id="viper-input-mouse-get-relativemode"></a>`Viper.Input.Mouse.get_RelativeMode` | `i1()` | `rt_mouse_get_relative_mode` |
 | <a id="viper-input-mouse-get-relativemodenative"></a>`Viper.Input.Mouse.get_RelativeModeNative` | `i1()` | `rt_mouse_get_relative_native` |

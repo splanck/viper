@@ -3,7 +3,7 @@ module audio;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
-bind Viper.Sound;
+bind Viper.Audio;
 bind "./config";
 bind "./terrain";
 

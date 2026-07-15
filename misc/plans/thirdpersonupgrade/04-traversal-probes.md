@@ -55,10 +55,10 @@ Steps 1–2 as above, then a **far-side** down-sweep at `wallPoint + forward × 
 ## 5. Public API changes (runtime.def)
 
 ```
-RT_FUNC(G3dWorldProbeLedge,  rt_world3d_probe_ledge,  "Viper.Graphics3D.Physics3DWorld.ProbeLedge",
+RT_FUNC(G3dWorldProbeLedge,  rt_world3d_probe_ledge,  "Viper.Graphics3D.PhysicsWorld3D.ProbeLedge",
         "obj(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)")
-RT_FUNC(G3dWorldProbeVault,  rt_world3d_probe_vault,  "Viper.Graphics3D.Physics3DWorld.ProbeVault",  "obj(...)" )
-RT_FUNC(G3dWorldProbeClear,  rt_world3d_probe_clearance, "Viper.Graphics3D.Physics3DWorld.ProbeClearance", "i1(obj,obj<Viper.Math.Vec3>,f64,f64,i64)")
+RT_FUNC(G3dWorldProbeVault,  rt_world3d_probe_vault,  "Viper.Graphics3D.PhysicsWorld3D.ProbeVault",  "obj(...)" )
+RT_FUNC(G3dWorldProbeClear,  rt_world3d_probe_clearance, "Viper.Graphics3D.PhysicsWorld3D.ProbeClearance", "i1(obj,obj<Viper.Math.Vec3>,f64,f64,i64)")
 RT_CLASS_BEGIN("Viper.Graphics3D.LedgeHit3D", G3dLedgeHit3D, "obj", none)
     RT_PROP("GrabPoint","obj<Viper.Math.Vec3>", get) RT_PROP("SurfaceNormal","obj<Viper.Math.Vec3>", get)
     RT_PROP("WallNormal","obj<Viper.Math.Vec3>", get) RT_PROP("Height","f64", get)

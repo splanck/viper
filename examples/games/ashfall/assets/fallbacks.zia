@@ -25,7 +25,7 @@ class Fallbacks {
     // Prototype-grid floor/wall look (matte PBR).
     expose func structural(r: Float, g: Float, b: Float) -> G3D.Material3D {
         if texLib != null { return texLib.mat(textures.SURF_DEFAULT, r, g, b); }
-        var m = G3D.Material3D.NewPBR(r, g, b);
+        var m = G3D.Material3D.PBR(r, g, b);
         m.Roughness = 0.85;
         m.Metallic = 0.05;
         return m;
@@ -34,7 +34,7 @@ class Fallbacks {
     // Machine chassis (semi-metallic, per-archetype tint).
     expose func chassis(r: Float, g: Float, b: Float) -> G3D.Material3D {
         if texLib != null { return texLib.mat(textures.SURF_METAL, r, g, b); }
-        var m = G3D.Material3D.NewPBR(r, g, b);
+        var m = G3D.Material3D.PBR(r, g, b);
         m.Roughness = 0.5;
         m.Metallic = 0.6;
         return m;
@@ -42,7 +42,7 @@ class Fallbacks {
 
     // Emissive accent (eye strips, glows, pickups).
     expose func emissive(r: Float, g: Float, b: Float) -> G3D.Material3D {
-        var m = G3D.Material3D.NewColor(r, g, b);
+        var m = G3D.Material3D.FromColor(r, g, b);
         m.EmissiveIntensity = 1.5;
         return m;
     }

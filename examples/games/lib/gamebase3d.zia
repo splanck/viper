@@ -88,12 +88,12 @@ class GameBase3D {
     // Main game loop — call after initGame to start the game.
     expose func run() {
         while running {
-            if world.Tick() == false {
+            if world.Update() == false {
                 running = false;
             }
 
             // Delta-time clamping (seconds).
-            dt = world.Dt;
+            dt = world.DeltaTime;
             if dt <= 0.0 { dt = 0.016; }
             if dt > dtMax { dt = dtMax; }
 

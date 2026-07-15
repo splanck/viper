@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Streams & Buffers
@@ -32,7 +32,7 @@ Unified stream abstraction providing a common interface over file and memory str
 | `Type`   | Integer | Stream backing type: 0 = file, 1 = memory (read-only)    |
 | `Pos`    | Integer | Current stream position (read/write)                      |
 | `Length`    | Integer | Current data length in bytes (read-only)                  |
-| `Eof`    | Boolean | True if at end of stream (read-only)                      |
+| `Eof`    | Boolean | Memory: `Pos >= Length`; file: sticky EOF after a read passes the end |
 
 ### Methods
 
@@ -73,6 +73,16 @@ All operations except `Close()` trap on a null or already-closed stream. `FromBi
 
 `AsBinFile()` is valid only on file-backed streams. `AsMemStream()` and `ToBytes()` are valid only on memory-backed streams. Calling one of these conversion methods on the wrong backing type traps instead of returning null.
 
+The two `As*()` methods currently return a borrowed backing reference even though the registry
+does not encode that ownership. BASIC and Zia cannot safely keep the result after the Stream is
+closed and can undercount it while lowering an assignment. Avoid these methods until VDOC-187 is
+repaired; keep the original `BinFile`/`MemStream` when wrapping one, or use the Stream operations.
+
+`Eof` is not fully polymorphic. A memory stream compares its cursor with its length, while a file
+stream exposes the C library's sticky EOF flag, which remains false after an exact read to the end
+until another read is attempted. Use a zero-length short read to terminate generic loops rather
+than assuming the flag has identical timing (VDOC-188).
+
 ### Zia Example
 
 `Stream` is available from both Zia and BASIC. Use `Close()` when you own the stream and are done with it so wrapped file or memory resources are released promptly.
@@ -84,12 +94,12 @@ All operations except `Close()` trap on a null or already-closed stream. `FromBi
 DIM fs AS OBJECT = Viper.IO.Stream.OpenFile("data.bin", "rw")
 
 ' Write some data
-DIM data AS OBJECT = Viper.Collections.Bytes.FromString("Hello, Stream!")
+DIM data AS Viper.Collections.Bytes = Viper.Collections.Bytes.FromStr("Hello, Stream!")
 fs.Write(data)
 
 ' Seek back and read (set Pos property to seek)
 fs.Pos = 0
-DIM readData AS OBJECT = fs.Read(14)
+DIM readData AS Viper.Collections.Bytes = fs.Read(14)
 PRINT readData.ToStr()  ' Output: Hello, Stream!
 
 fs.Close()
@@ -98,10 +108,10 @@ fs.Close()
 DIM ms AS OBJECT = Viper.IO.Stream.OpenMemory()
 
 ' Write to memory
-ms.Write(Viper.Collections.Bytes.FromString("In-memory data"))
+ms.Write(Viper.Collections.Bytes.FromStr("In-memory data"))
 
 ' Get all data
-DIM allData AS OBJECT = ms.ToBytes()
+DIM allData AS Viper.Collections.Bytes = ms.ToBytes()
 PRINT "Length:"; allData.Length
 
 ms.Close()
@@ -117,8 +127,9 @@ SUB ProcessStream(stream AS OBJECT)
     PRINT "Header:"; header.ToHex()
 
     ' Read remaining data
-    DO WHILE NOT stream.Eof
+    DO
         DIM chunk AS OBJECT = stream.Read(1024)
+        IF chunk.Length = 0 THEN EXIT DO
         ProcessChunk(chunk)
     LOOP
 END SUB
@@ -198,7 +209,7 @@ In-memory binary stream for reading and writing raw bytes with auto-expanding bu
 
 **Constructors:**
 
-- `Viper.IO.MemStream.New()` - Creates an empty stream with default capacity
+- `Viper.IO.MemStream.New()` - Creates an empty stream with capacity 0; storage is allocated on the first write
 - `Viper.IO.MemStream.NewCapacity(capacity)` - Creates an empty stream with specified initial capacity
 - `Viper.IO.MemStream.FromBytes(bytes)` - Creates a stream initialized with data from a Bytes object
 
@@ -248,6 +259,8 @@ All multi-byte integers and floats use **little-endian** byte order, independent
 ### Buffer Behavior
 
 - **Auto-expansion:** Writing beyond current capacity automatically grows the buffer
+- **Lazy default allocation:** `New()` reports `Capacity = 0`; its first non-empty write allocates
+  at least 64 bytes. `NewCapacity(n)` preallocates exactly `n` bytes for positive `n`.
 - **Gap filling:** Writing past the current length fills the gap with zeros
 - **Sparse cursor:** `Pos`, `Seek`, and positive `Skip` may move beyond `Length`; the next write zero-fills the gap. Reads there trap.
 - **Read traps:** Reading past the end of data traps with an error
@@ -552,7 +565,7 @@ Buffered text file writer with configurable line endings.
 |-----------------|---------|--------------------------------------|
 | `Close()`       | void    | Close the file and release resources |
 | `Write(text)`   | void    | Write string without newline; traps if text is invalid |
-| `WriteLn(text)` | void    | Write string followed by newline; traps if text or `NewLine` is invalid |
+| `WriteLine(text)` | void    | Write string followed by newline; traps if text or `NewLine` is invalid |
 | `WriteChar(ch)` | void    | Write single character (0-255); traps outside that range |
 | `Flush()`       | void    | Flush buffered output to disk        |
 
@@ -577,8 +590,8 @@ bind Viper.IO.File as File;
 func start() {
     // Write lines to a file
     var writer = LW.Open("/tmp/lw_test.txt");
-    writer.WriteLn("First line");
-    writer.WriteLn("Second line");
+    writer.WriteLine("First line");
+    writer.WriteLine("Second line");
     writer.Write("No newline here");
     writer.Close();
 
@@ -598,32 +611,32 @@ func start() {
 DIM writer AS OBJECT = Viper.IO.LineWriter.Open("output.txt")
 
 ' Write lines with automatic newline
-writer.WriteLn("First line")
-writer.WriteLn("Second line")
+writer.WriteLine("First line")
+writer.WriteLine("Second line")
 
 ' Write without newline
 writer.Write("No ")
 writer.Write("newline ")
 writer.Write("here")
-writer.WriteLn("")  ' Add newline at end
+writer.WriteLine("")  ' Add newline at end
 
 writer.Close()
 
 ' Append to existing file
 writer = Viper.IO.LineWriter.Append("output.txt")
-writer.WriteLn("Appended line")
+writer.WriteLine("Appended line")
 writer.Close()
 
 ' Custom line endings (Windows-style)
 writer = Viper.IO.LineWriter.Open("windows.txt")
 writer.NewLine = CHR(13) + CHR(10)  ' CRLF
-writer.WriteLn("Windows line ending")
+writer.WriteLine("Windows line ending")
 writer.Close()
 
 ' Unix-style line endings
 writer = Viper.IO.LineWriter.Open("unix.txt")
 writer.NewLine = CHR(10)  ' LF only
-writer.WriteLn("Unix line ending")
+writer.WriteLine("Unix line ending")
 writer.Close()
 
 ' Write individual characters
@@ -653,7 +666,7 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 
 **Constructors:**
 
-- `Viper.IO.BinaryBuffer.New()` - Creates an empty buffer with default capacity
+- `Viper.IO.BinaryBuffer.New()` - Creates an empty buffer with a 256-byte initial capacity
 - `Viper.IO.BinaryBuffer.NewCapacity(capacity)` - Creates an empty buffer with specified initial capacity
 - `Viper.IO.BinaryBuffer.FromBytes(data)` - Creates a buffer initialized with data from a Bytes object
 
@@ -735,8 +748,8 @@ func start() {
 
     // Write various data types
     buf.WriteByte(0xFF);
-    buf.WriteI32LE(12345);
-    buf.WriteI32BE(67890);
+    buf.WriteI32LittleEndian(12345);
+    buf.WriteI32BigEndian(67890);
     buf.WriteStr("Hello");
 
     Say("Length: " + Fmt.Int(buf.get_Length()));
@@ -744,8 +757,8 @@ func start() {
     // Seek back to start and read
     buf.set_Pos(0);
     Say("Byte: " + Fmt.Int(buf.ReadByte()));        // 255
-    Say("I32LE: " + Fmt.Int(buf.ReadI32LE()));       // 12345
-    Say("I32BE: " + Fmt.Int(buf.ReadI32BE()));       // 67890
+    Say("I32LE: " + Fmt.Int(buf.ReadI32LittleEndian()));       // 12345
+    Say("I32BE: " + Fmt.Int(buf.ReadI32BigEndian()));       // 67890
 
     // Export to Bytes
     var data = buf.ToBytes();
@@ -763,9 +776,9 @@ DIM buf AS OBJECT = Viper.IO.BinaryBuffer.New()
 
 ' Write various data types
 buf.WriteByte(202)
-buf.WriteI16LE(1000)
-buf.WriteI32BE(123456)
-buf.WriteI64LE(9876543210)
+buf.WriteI16LittleEndian(1000)
+buf.WriteI32BigEndian(123456)
+buf.WriteI64LittleEndian(9876543210)
 buf.WriteStr("Hello")
 buf.WriteBytes(Viper.Collections.Bytes.FromHex("deadbeef"))
 
@@ -774,9 +787,9 @@ PRINT "Length:"; buf.Length
 ' Seek back and read
 buf.Pos = 0
 PRINT "Byte:"; buf.ReadByte()       ' Output: 202
-PRINT "I16LE:"; buf.ReadI16LE()     ' Output: 1000
-PRINT "I32BE:"; buf.ReadI32BE()     ' Output: 123456
-PRINT "I64LE:"; buf.ReadI64LE()     ' Output: 9876543210
+PRINT "I16LE:"; buf.ReadI16LittleEndian()     ' Output: 1000
+PRINT "I32BE:"; buf.ReadI32BigEndian()     ' Output: 123456
+PRINT "I64LE:"; buf.ReadI64LittleEndian()     ' Output: 9876543210
 
 ' Export to Bytes
 DIM data AS OBJECT = buf.ToBytes()
@@ -794,8 +807,8 @@ PRINT "After reset:"; buf.Length       ' Output: 0
 DIM buf AS OBJECT = Viper.IO.BinaryBuffer.NewCapacity(256)
 
 ' Build a binary protocol packet
-buf.WriteU16BE(51966)         ' Magic number
-buf.WriteI32BE(1)              ' Version
+buf.WriteU16BigEndian(51966)         ' Magic number
+buf.WriteI32BigEndian(1)              ' Version
 buf.WriteStr("payload data")
 
 DIM packet AS OBJECT = buf.ToBytes()
@@ -809,8 +822,8 @@ DIM rawData AS OBJECT = Viper.IO.File.ReadAllBytes("packet.bin")
 DIM buf AS OBJECT = Viper.IO.BinaryBuffer.FromBytes(rawData)
 
 ' Parse the binary format
-DIM magic AS INTEGER = buf.ReadU16BE()
-DIM version AS INTEGER = buf.ReadI32BE()
+DIM magic AS INTEGER = buf.ReadU16BigEndian()
+DIM version AS INTEGER = buf.ReadI32BigEndian()
 DIM payload AS STRING = buf.ReadStr()
 ```
 

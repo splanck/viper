@@ -272,7 +272,7 @@ func buildRowKeySet(result: QueryResult) -> List[List[String]] {
         if row != null {
             var r = row;
             var key = rowKey(r);
-            var h = CryptoHash.Fast(key);
+            var h = CryptoHash.NonCryptoFast(key);
             if h < 0 { h = 0 - h; }
             buckets.get(h % 128).add(key);
         }
@@ -283,7 +283,7 @@ func buildRowKeySet(result: QueryResult) -> List[List[String]] {
 
 /// @brief Hash-set membership test.  O(N/128) average.
 func rowKeyInSet(buckets: List[List[String]], key: String) -> Boolean {
-    var h = CryptoHash.Fast(key);
+    var h = CryptoHash.NonCryptoFast(key);
     if h < 0 { h = 0 - h; }
     var bucket = buckets.get(h % 128);
     var i = 0;
@@ -299,7 +299,7 @@ func rowKeyInSet(buckets: List[List[String]], key: String) -> Boolean {
 ///        test-and-insert into two calls lets the dedup loop in the
 ///        entry-point functions decide whether to also emit the row.
 func addRowKeyToSet(buckets: List[List[String]], key: String) {
-    var h = CryptoHash.Fast(key);
+    var h = CryptoHash.NonCryptoFast(key);
     if h < 0 { h = 0 - h; }
     buckets.get(h % 128).add(key);
 }

@@ -1,321 +1,496 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-07-15
 ---
 
 # Visual Effects
-> ParticleEmitter, ScreenFX
+
+> `ParticleEmitter`, `ScreenFX`, and `Lighting2D`
 
 **Part of [Viper Runtime Library](../README.md) › [Game Utilities](README.md)**
+
+These three APIs use different packed-color conventions. Mixing them is a common source of
+invisible or incorrectly colored effects.
+
+| API | Color convention | Example: opaque red |
+|---|---|---|
+| `ParticleEmitter.Color` | `0xAARRGGBB`; plain `0x00RRGGBB` is treated as opaque | `0xFFFF0000` |
+| `ScreenFX.Flash` / `FadeIn` / `FadeOut` | raw `0xRRGGBBAA`; alpha is the low byte | `0xFF0000FF` |
+| `ScreenFX` transitions | Canvas RGB, `0x00RRGGBB` | `0xFF0000` |
+| `Lighting2D` | Canvas RGB, `0x00RRGGBB`; higher bits are discarded | `0xFF0000` |
+
+`Viper.Graphics.Color.RGBA()` produces a tagged ARGB value for the Canvas/Pixels pipeline. It is
+safe for `ParticleEmitter`, but it is **not** the raw-RGBA representation expected by ScreenFX
+flash and fade methods. Use an explicit raw-RGBA literal or pack the bytes yourself for those
+methods.
 
 ---
 
 ## Viper.Game.ParticleEmitter
 
-Simple particle system for visual effects like explosions, sparks, smoke, and other game effects.
+`ParticleEmitter` owns a fixed-capacity pool of disc-shaped particles. Simulation is measured in
+update ticks, not elapsed time: call `Update()` once for each particle frame you want to advance.
 
-**Type:** Instance class (requires `New(maxParticles)`)
+- **Type:** instance class
+- **Constructor:** `ParticleEmitter.New(maxParticles)`
+- **Capacity:** `maxParticles` is clamped to 1–1024
 
-### Constructor
+### Defaults
 
-| Method              | Signature                | Description                        |
-|---------------------|--------------------------|------------------------------------|
-| `New(maxParticles)` | `ParticleEmitter(Int)`   | Create emitter (max 1024 particles)|
+| Setting | Default |
+|---|---|
+| Position | `(0.0, 0.0)` |
+| Continuous rate | `1.0` particle per update |
+| Emission state | stopped |
+| Lifetime | 30–60 updates |
+| Speed | 1.0–3.0 pixels per update |
+| Angle | 0–360 degrees |
+| Gravity | `(0.0, 0.0)` per update² |
+| Size | 2.0–4.0 pixels in diameter |
+| Color | opaque white (`0xFFFFFFFF`) |
+| Fade / shrink | fade enabled; shrink disabled |
 
 ### Properties
 
-| Property     | Type                   | Description                              |
-|--------------|------------------------|------------------------------------------|
-| `X`          | `Double` (read-only)   | Emitter X position                       |
-| `Y`          | `Double` (read-only)   | Emitter Y position                       |
-| `Rate`       | `Double` (read/write)  | Particles emitted per frame              |
-| `IsEmitting` | `Boolean` (read-only)  | True if currently emitting               |
-| `Count`      | `Integer` (read-only)  | Number of active particles               |
-| `Color`      | `Integer` (read/write) | Particle color (0xAARRGGBB)              |
-| `FadeOut`    | `Boolean` (read/write) | Enable alpha fade over lifetime          |
-| `Shrink`     | `Boolean` (read/write) | Enable size reduction over lifetime      |
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `X`, `Y` | `Double` | read | Origin used by newly emitted particles |
+| `Rate` | `Double` | read/write | Particles emitted per `Update()`; fractional rates accumulate |
+| `IsEmitting` | `Boolean` | read | Whether continuous emission is enabled |
+| `Count` | `Integer` | read | Number of live particles |
+| `Color` | `Integer` | read/write | Color assigned to newly emitted particles |
+| `FadeOut` | `Boolean` | read/write | Scale alpha by remaining lifetime |
+| `Shrink` | `Boolean` | read/write | Scale size by remaining lifetime |
 
 ### Methods
 
-| Method                                      | Signature                      | Description                          |
-|---------------------------------------------|--------------------------------|--------------------------------------|
-| `Burst(count)`                              | `Void(Integer)`                | Emit burst of particles instantly    |
-| `Clear()`                                   | `Void()`                       | Remove all particles                 |
-| `ParticleAt(index)`                         | `Option(ParticleSnapshot)`      | Get particle data by index           |
-| `SetGravity(gx, gy)`                        | `Void(Double,Double)`          | Set gravity (per frame²)             |
-| `SetLifetime(min, max)`                     | `Void(Int,Int)`                | Set particle lifetime range (frames) |
-| `SetPosition(x, y)`                         | `Void(Double,Double)`          | Set emitter position                 |
-| `SetSize(min, max)`                         | `Void(Double,Double)`          | Set particle size range              |
-| `SetVelocity(minSpd,maxSpd,minAng,maxAng)`  | `Void(Dbl,Dbl,Dbl,Dbl)`        | Set speed and angle ranges           |
-| `Start()`                                   | `Void()`                       | Begin continuous emission            |
-| `Stop()`                                    | `Void()`                       | Stop emission (particles continue)   |
-| `Draw(canvas)`                              | `Integer(Canvas)`              | Draw all particles to a Canvas       |
-| `DrawAt(canvas, offsetX, offsetY)`          | `Integer(Canvas,Int,Int)`      | Draw all particles with position offset |
-| `DrawToPixels(pixels, offsetX, offsetY)`    | `Integer(Pixels,Int,Int)`      | Alpha-blend all particles into a Pixels buffer |
-| `Destroy()`                                 | `Void()`                       | Release the emitter handle when finished |
-| `Update()`                                  | `Void()`                       | Age particles and emit new particles (call per frame)|
+| Method | Return | Behavior |
+|---|---|---|
+| `SetPosition(x, y)` | `Void` | Set the origin for future particles |
+| `SetLifetime(min, max)` | `Void` | Configure a random inclusive lifetime range in updates |
+| `SetVelocity(minSpeed, maxSpeed, minAngle, maxAngle)` | `Void` | Configure random launch speed and angle ranges |
+| `SetGravity(gx, gy)` | `Void` | Set acceleration applied after each position update |
+| `SetSize(min, max)` | `Void` | Configure random initial diameters |
+| `Start()` | `Void` | Enable continuous emission |
+| `Stop()` | `Void` | Disable continuous emission without removing live particles |
+| `Burst(count)` | `Void` | Emit immediately, up to the remaining capacity |
+| `Update()` | `Void` | Move, age, remove, and then continuously emit particles |
+| `Clear()` | `Void` | Remove all particles and clear the fractional rate accumulator |
+| `ParticleAt(index)` | `Viper.Option` | Snapshot the indexed live particle; invalid indices return `None` |
+| `Draw(canvas)` | `Integer` | Draw at absolute positions and return the number submitted |
+| `DrawAt(canvas, offsetX, offsetY)` | `Integer` | Draw with an integer offset and return the number submitted |
+| `DrawToPixels(pixels, offsetX, offsetY)` | `Integer` | Straight-alpha source-over draw into a Pixels buffer |
+| `Destroy()` | `Void` | Release this handle's reference |
 
-### Zia Example
+Angles are degrees counter-clockwise from positive X; 90 degrees launches upward because screen Y
+normally increases downward. Angles outside one revolution are accepted but are not explicitly
+normalized before the trigonometric conversion.
+
+Configuration is normalized as follows:
+
+- `Rate` is clamped to 0–1024; negative and non-finite values become zero.
+- Non-finite position components leave that component unchanged. Non-finite gravity components
+  become zero.
+- Lifetime minimum is raised to 1; maximum is raised to the resulting minimum.
+- Negative/non-finite minimum speed becomes zero. An invalid maximum becomes the minimum.
+- Size is clamped to 0.1–2,000,000 pixels and the maximum is never below the minimum.
+- Non-positive burst counts do nothing.
+
+`Update()` first advances existing particles, then emits new ones. A newly emitted particle is
+therefore available for a full render interval before its first age decrement. If the pool was
+full at the start of an update, continuous emission skips that update even if particles expire
+during it; accumulated backlog is discarded rather than released later as a burst. `Stop()` keeps
+the current fractional accumulator, while `Clear()` resets it.
+
+### Particle snapshots
+
+`ParticleAt()` returns a non-generic `Viper.Option` whose `Some` payload is a
+`Viper.Game.ParticleSnapshot` with read-only `X`, `Y`, `Size`, and `Color` properties. The snapshot
+color is effective `0xAARRGGBB` after fade has been applied. Because the Option signature does not
+encode its payload type, low-level callers can use the qualified accessors
+`Viper.Game.ParticleSnapshot.get_X(option.Value)` and so on.
+
+An out-of-range index returns `None`. If snapshot construction returns null under a recovering
+runtime trap handler, that null is also collapsed to `None`; ordinary allocation failure first
+raises the runtime allocation trap. Failure to allocate the enclosing `Some` follows the Option
+allocator's trap/null contract rather than becoming `None`.
+
+`ParticleAt(i)` scans the fixed pool to find the *i*th live particle. Repeatedly querying every
+particle can therefore be quadratic in the configured capacity. Prefer `Draw`, `DrawAt`, or
+`DrawToPixels` for normal rendering.
+
+### Color and drawing details
+
+Particle colors use `0xAARRGGBB`. For compatibility, an untagged `0x00RRGGBB` value is drawn as
+fully opaque. A tagged `Color.RGBA(r, g, b, 0)` remains explicitly transparent. `DrawToPixels`
+converts to the Pixels `0xRRGGBBAA` storage convention and performs straight-alpha source-over
+compositing, preserving destination alpha.
+
+The three draw methods return the number of particles submitted, not the number of visible pixels.
+Off-screen particles still count; particles whose positions cannot be converted to integers do
+not. Rendered radius is half the configured size, truncated to an integer and clamped to
+1–1,000,000 pixels.
+
+### Zia example
 
 ```rust
 module ParticleDemo;
 
-bind Viper.Terminal;
 bind Viper.Game.ParticleEmitter as PE;
-bind Viper.Text.Fmt as Fmt;
+bind Viper.Graphics.Color as Color;
+bind Viper.Terminal;
 
 func start() {
-    var pe = PE.New(200);
-    pe.SetPosition(400.0, 300.0);
-    pe.SetLifetime(20, 40);
-    pe.SetVelocity(2.0, 8.0, 0.0, 360.0);
-    pe.SetGravity(0.0, 0.1);
-    pe.SetSize(3.0, 6.0);
+    var emitter = PE.New(200);
+    emitter.SetPosition(400.0, 300.0);
+    emitter.SetLifetime(20, 40);
+    emitter.SetVelocity(2.0, 8.0, 0.0, 360.0);
+    emitter.SetGravity(0.0, 0.1);
+    emitter.SetSize(3.0, 6.0);
+    emitter.Color = Color.RGBA(255, 160, 0, 255);
+    emitter.FadeOut = true;
+    emitter.Shrink = true;
 
-    // One-shot burst for explosion
-    pe.Burst(50);
-    pe.Update();
-    Say("After burst: " + Fmt.Int(pe.get_Count()));
+    emitter.Burst(50);
+    emitter.Update();
+    SayInt(emitter.Count);
 
-    // Continuous emission
-    pe.set_Rate(5.0);
-    pe.Start();
-    var i = 0;
-    while i < 10 {
-        pe.Update();
-        i = i + 1;
-    }
-    Say("After emitting: " + Fmt.Int(pe.get_Count()));
+    emitter.Rate = 0.5;
+    emitter.Start();
+    emitter.Update();
+    emitter.Update(); // one continuously emitted particle across these two updates
+    emitter.Stop();
+    SayInt(emitter.Count);
 
-    pe.Stop();
-    pe.Clear();
-    Say("After clear: " + Fmt.Int(pe.get_Count()));
+    emitter.Clear();
+    emitter.Destroy();
 }
 ```
 
-### Example: Explosion Effect
+### BASIC rendering sketch
 
 ```basic
+DIM canvas AS OBJECT = Viper.Graphics.Canvas.New("Particles", 800, 600)
+DIM cameraX AS INTEGER = 0
+DIM cameraY AS INTEGER = 0
 DIM explosion AS OBJECT = Viper.Game.ParticleEmitter.New(200)
 explosion.SetPosition(400.0, 300.0)
 explosion.SetLifetime(20, 40)
-explosion.SetVelocity(2.0, 8.0, 0.0, 360.0)  ' All directions
+explosion.SetVelocity(2.0, 8.0, 0.0, 360.0)
 explosion.SetGravity(0.0, 0.1)
-explosion.Color = 4294927872  ' Orange
 explosion.SetSize(3.0, 6.0)
+explosion.Color = 4294927872  ' 0xFFFF6600: opaque orange in particle ARGB
 explosion.FadeOut = 1
 explosion.Shrink = 1
-explosion.Burst(100)  ' One-shot burst
+explosion.Burst(100)
 
-' In game loop
+' Each game frame:
 explosion.Update()
-
-' Draw directly to canvas (recommended — uses alpha-blended discs)
-explosion.Draw(canvas)
-
-' Or draw with camera offset for scrolling games
 explosion.DrawAt(canvas, -cameraX, -cameraY)
-
-' Or render to a Pixels buffer for compositing
-explosion.DrawToPixels(pixelsBuffer, 0, 0)
+END
 ```
-
-`ParticleAt()` returns an `Option<ParticleSnapshot>` whose `Color` property uses
-`0xAARRGGBB` after fade-out has been applied. Legacy `0x00RRGGBB` particle colors are
-treated as fully opaque when read back or drawn, while tagged `Color.RGBA(..., 0)` remains
-fully transparent. `DrawToPixels` uses straight-alpha source-over compositing and preserves
-the resulting destination alpha channel. Continuous emitters also discard emission backlog
-while saturated, so they resume at the configured rate instead of bursting after a full pool
-drains.
-
-Call `Destroy()` when the emitter is no longer needed. The runtime releases the emitter handle and reclaims its particle pool when the last reference goes away.
 
 ---
 
 ## Viper.Game.ScreenFX
 
-Screen effects manager for camera shake, color flash, fade effects, and scene transitions (wipe, circle, dissolve, pixelate).
+`ScreenFX` manages camera shake, flash/fade overlays, and Canvas-rendered transitions. Durations
+and `Update(dt)` use integer milliseconds. Shake intensity and offsets use fixed-point pixels where
+1000 units equal one pixel.
 
-**Type:** Instance class (requires `New()`)
-
-### Constructor
-
-| Method  | Signature    | Description                    |
-|---------|--------------|--------------------------------|
-| `New()` | `ScreenFX()` | Create a new effects manager   |
+- **Type:** instance handle
+- **Constructor:** `ScreenFX.New()`
+- **Cleanup:** the registry inventories `Viper.Game.ScreenFX.Destroy(fx)` as a static
+`void(obj)` target, although current Zia also accepts receiver syntax `fx.Destroy()`
 
 ### Properties
 
-| Property       | Type                  | Description                              |
-|----------------|-----------------------|------------------------------------------|
-| `IsActive`     | `Boolean` (read-only) | True if any effect is active             |
-| `IsFinished`   | `Boolean` (read-only) | True if no effects are active (opposite of IsActive) |
-| `TransitionProgress` | `Integer` (read-only) | Progress of active transition (0-1000 fixed-point) |
-| `ShakeX`       | `Integer` (read-only) | Current X shake offset (fixed-point)     |
-| `ShakeY`       | `Integer` (read-only) | Current Y shake offset (fixed-point)     |
-| `OverlayColor` | `Integer` (read-only) | Current overlay color (RGB)              |
-| `OverlayAlpha` | `Integer` (read-only) | Current overlay alpha (0-255)            |
+| Property | Type | Meaning |
+|---|---|---|
+| `IsActive` | `Boolean` | At least one effect slot is active |
+| `IsFinished` | `Boolean` | No effect of any kind is active |
+| `ShakeX`, `ShakeY` | `Integer` | Latest fixed-point shake offsets |
+| `OverlayColor` | `Integer` | Winning overlay RGB in the upper 24 bits (`0xRRGGBB00`) |
+| `OverlayAlpha` | `Integer` | Winning overlay alpha, 0–255 |
+| `TransitionProgress` | `Integer` | Progress of the first active transition slot |
 
 ### Methods
 
-| Method                         | Signature               | Description                              |
-|--------------------------------|-------------------------|------------------------------------------|
-| `CancelAll()`                  | `Void()`                | Cancel all effects                       |
-| `CancelType(type)`             | `Void(Integer)`         | Cancel effects of specific type          |
-| `FadeIn(color, duration)`      | `Void(Integer,Integer)` | Fade from color to clear                 |
-| `FadeOut(color, duration)`     | `Void(Integer,Integer)` | Fade from clear to color                 |
-| `Flash(color, duration)`       | `Void(Integer,Integer)` | Start color flash effect                 |
-| `IsTypeActive(type)`           | `Boolean(Integer)`      | Check if effect type is active           |
-| `Shake(intensity, dur, decay)` | `Void(Int,Int,Int)`     | Start camera shake effect                |
-| `Update(dt)`                   | `Void(Integer)`         | Update effects (dt in milliseconds)      |
-| `Wipe(dir, color, duration)`   | `Void(Int,Int,Int)`     | Directional wipe transition              |
-| `CircleIn(cx, cy, color, dur)` | `Void(Int,Int,Int,Int)` | Iris-in: circle closes to center point   |
-| `CircleOut(cx, cy, color, dur)`| `Void(Int,Int,Int,Int)` | Iris-out: circle opens from center point |
-| `Dissolve(color, duration)`    | `Void(Integer,Integer)` | Bayer-dithered pixel dissolve            |
-| `Pixelate(maxBlock, duration)` | `Void(Integer,Integer)` | Increasing block size pixelation         |
-| `Draw(canvas, w, h)`           | `Void(Canvas,Int,Int)`  | Render transition overlays to canvas     |
+| Method | Return | Behavior |
+|---|---|---|
+| `Update(dt)` | `Void` | Advance all active effects by positive milliseconds |
+| `Shake(intensity, duration, decay)` | `Void` | Start or replace the one active shake |
+| `Flash(color, duration)` | `Void` | Add a raw-RGBA flash that fades to clear |
+| `FadeIn(color, duration)` | `Void` | Fade from the raw-RGBA color to clear |
+| `FadeOut(color, duration)` | `Void` | Fade from clear to the raw-RGBA color |
+| `CancelAll()` | `Void` | Remove all effects and clear cached shake/overlay output |
+| `CancelType(type)` | `Void` | Remove every slot with the numeric effect type |
+| `IsTypeActive(type)` | `Boolean` | Query a numeric effect type |
+| `Wipe(direction, color, duration)` | `Void` | Add an edge wipe using a Canvas RGB color |
+| `CircleIn(cx, cy, color, duration)` | `Void` | Add the closing-iris approximation |
+| `CircleOut(cx, cy, color, duration)` | `Void` | Add the opening-iris approximation |
+| `Dissolve(color, duration)` | `Void` | Add a 4×4 ordered-dither dissolve |
+| `Pixelate(maxBlock, duration)` | `Void` | Add the current dark-grid pixelation approximation |
+| `Draw(canvas, width, height)` | `Void` | Draw cached flash/fade output and every active transition |
+| `Destroy()` | `Void` | Release the handle; receiver form is frontend sugar for the static target |
 
-`Update(dt)` ignores non-positive `dt` values. Long-running effects use saturating progress
-math, so elapsed time clamps to completion instead of overflowing.
+Non-positive durations are ignored. `Update()` ignores non-positive `dt` without recomputing the
+cached shake or overlay. Elapsed addition saturates at the integer maximum.
 
-### Effect Types
+The manager initially reserves eight effect slots and grows its array when necessary. There is no
+normal eight-effect ceiling. If growth allocation fails, the newly requested effect is silently
+dropped.
 
-| Constant            | Value | Description              |
-|---------------------|-------|--------------------------|
-| `SCREENFX_NONE`     | 0     | No effect                |
-| `SCREENFX_SHAKE`    | 1     | Camera shake             |
-| `SCREENFX_FLASH`    | 2     | Color flash              |
-| `SCREENFX_FADE_IN`  | 3     | Fade from color to clear |
-| `SCREENFX_FADE_OUT` | 4     | Fade from clear to color |
-| `SCREENFX_WIPE`     | 5     | Directional wipe         |
-| `SCREENFX_CIRCLE_IN`| 6     | Iris/circle closing      |
-| `SCREENFX_CIRCLE_OUT`| 7    | Iris/circle opening      |
-| `SCREENFX_DISSOLVE` | 8     | Bayer dither dissolve    |
-| `SCREENFX_PIXELATE` | 9     | Block pixelation         |
+### Numeric effect and direction codes
 
-### Direction Constants (for Wipe)
+The runtime registry does not currently export named constants for these values; the names below
+come from the C header. Zia and BASIC callers pass the integer values.
 
-| Constant     | Value | Description |
-|--------------|-------|-------------|
-| `DIR_LEFT`   | 0     | Wipe from left to right |
-| `DIR_RIGHT`  | 1     | Wipe from right to left |
-| `DIR_UP`     | 2     | Wipe from top to bottom |
-| `DIR_DOWN`   | 3     | Wipe from bottom to top |
+| Effect type | Value | Effect type | Value |
+|---|---:|---|---:|
+| none | 0 | wipe | 5 |
+| shake | 1 | circle in | 6 |
+| flash | 2 | circle out | 7 |
+| fade in | 3 | dissolve | 8 |
+| fade out | 4 | pixelate | 9 |
 
-### Zia Example
+| Wipe direction | Value | Visual growth |
+|---|---:|---|
+| left | 0 | left edge toward right |
+| right | 1 | right edge toward left |
+| up | 2 | top edge toward bottom |
+| down | 3 | bottom edge toward top |
+
+An invalid direction is treated as 0 (left).
+
+### Shake behavior
+
+Negative intensity is clamped to zero. Retriggering shake replaces the existing shake slot; other
+effect types continue running. Each positive update computes new random X/Y offsets in the range
+allowed by the current intensity.
+
+| `decay` | Falloff |
+|---:|---|
+| `<= 0` | constant intensity |
+| `1` through `1499` | linear remaining-time factor |
+| `>= 1500` | quadratic remaining-time factor |
+
+For example, `Shake(5000, 300, 2000)` is a shake of at most about five pixels for 300 ms with
+quadratic falloff. The random generator is seeded from Viper's active runtime RNG, so
+`RANDOMIZE`/runtime seeding controls reproducibility.
+
+### Flash and fades
+
+Flash, FadeIn, and FadeOut take raw `0xRRGGBBAA`; their low byte is the peak alpha. Supplying a
+Canvas RGB such as `0xFF0000` makes alpha zero and produces no visible red overlay. A new FadeIn or
+FadeOut cancels both existing fade types. Flashes do not replace one another. If several overlays
+are active, the slot with the greatest current alpha supplies both `OverlayColor` and
+`OverlayAlpha`; the earlier slot wins ties.
+
+Starting one of these effects changes `IsActive` immediately, but its cached overlay is not
+computed until the next positive `Update()`. `Draw()` already renders the cached overlay, so do not
+also draw `OverlayColor` manually unless you intentionally want a second blend.
+
+`CancelType()` marks matching slots inactive but does not clear cached shake/overlay values. Those
+values—and `Draw()`'s cached overlay—can remain for one frame until the next positive `Update()`.
+`CancelAll()` clears them immediately.
+
+### Transitions and completion
+
+Transition colors use Canvas `0x00RRGGBB`, not flash/fade raw RGBA. Multiple transitions can run
+and draw concurrently. `TransitionProgress` reports the first active transition in slot order, not
+the newest or the longest-running one.
+
+Current rendering is intentionally approximate:
+
+- `CircleIn`/`CircleOut` draw four rectangles around an axis-aligned clear region. The boundary is
+  rectangular rather than circular.
+- `Dissolve` tests every screen pixel against a repeated 4×4 Bayer matrix, so its cost is
+  proportional to `width × height` each draw.
+- `Pixelate` cannot read Canvas pixels back. It draws an increasingly spaced, increasingly dark
+  one-pixel grid; it does not average the image into larger pixel blocks.
+
+There is also a terminal-frame defect in the current lifecycle. `Update()` removes an effect as
+soon as `elapsed >= duration`, before `Draw()` can render progress 1000. Consequently a FadeOut,
+closing wipe, circle-in, or dissolve never exposes its fully covered terminal frame;
+`TransitionProgress` advances only through 0–999 and then returns 0 once the slot is removed. If a
+scene swap must happen while covered, track the duration separately or trigger before completion
+rather than waiting for `IsFinished` to become true.
+
+### Zia example
 
 ```rust
 module ScreenFXDemo;
 
-bind Viper.Terminal;
 bind Viper.Game.ScreenFX as FX;
-bind Viper.Text.Fmt as Fmt;
+bind Viper.Terminal;
 
 func start() {
     var fx = FX.New();
 
-    // Camera shake
-    fx.Shake(5000, 300, 500);
+    fx.Shake(5000, 300, 2000);
+    fx.Flash(0xFF0000FF, 200); // raw RGBA: opaque red
     fx.Update(16);
-    Say("Active after shake: " + Fmt.Bool(fx.get_IsActive()));
-    Say("ShakeX: " + Fmt.Int(fx.get_ShakeX()));
-    Say("ShakeY: " + Fmt.Int(fx.get_ShakeY()));
 
-    // Flash effect
-    fx.Flash(0xFF0000FF, 200);   // Red flash (0xRRGGBBAA: opaque red)
-    fx.Update(16);
-    Say("Overlay alpha: " + Fmt.Int(fx.get_OverlayAlpha()));
+    SayBool(fx.IsTypeActive(1)); // shake
+    SayInt(fx.ShakeX);           // fixed-point: divide by 1000 for pixels
+    SayInt(fx.OverlayAlpha);
 
-    // Cancel all
+    fx.CancelType(1);
+    fx.Update(16);               // recompute cached shake values after CancelType
+    SayInt(fx.ShakeX);
+
     fx.CancelAll();
-    Say("After cancel: " + Fmt.Bool(fx.get_IsActive()));
 }
 ```
 
-### Example: Damage Effects
+### BASIC drawing example
 
 ```basic
+DIM canvas AS OBJECT = Viper.Graphics.Canvas.New("ScreenFX", 800, 600)
 DIM fx AS OBJECT = Viper.Game.ScreenFX.New()
 
-' On player damage
-SUB OnDamage()
-    fx.Shake(5000, 300, 500)        ' Shake for 300ms
-    fx.Flash(4278190335, 200)       ' Red flash for 200ms (0xRRGGBBAA: opaque red)
-END SUB
+' On player damage: raw 0xRRGGBBAA colors.
+fx.Shake(5000, 300, 2000)
+fx.Flash(4278190335, 200)  ' 0xFF0000FF: opaque red
 
-' On level transition
-SUB TransitionToLevel()
-    fx.FadeOut(255, 500)     ' Fade to black over 500ms (0xRRGGBBAA: opaque black)
-END SUB
-
-' In game loop
-fx.Update(16)  ' 16ms per frame at 60fps
-
-' Apply to camera
-DIM camOffsetX AS INTEGER = fx.ShakeX / 1000
-DIM camOffsetY AS INTEGER = fx.ShakeY / 1000
-
-' Draw overlay
-IF fx.OverlayAlpha > 0 THEN
-    canvas.BoxFilled(0, 0, 800, 600, fx.OverlayColor OR (fx.OverlayAlpha << 24))
-END IF
+' In the frame loop:
+fx.Update(16)
+DIM cameraOffsetX AS INTEGER = fx.ShakeX / 1000
+DIM cameraOffsetY AS INTEGER = fx.ShakeY / 1000
+fx.Draw(canvas, 800, 600)  ' Draws flash/fade overlays and transitions
+END
 ```
 
-### Example: Scene Transitions
+### Transition sketch
 
 ```rust
-module TransitionDemo;
+module TransitionSketch;
 
 bind Viper.Game.ScreenFX as FX;
 bind Viper.Graphics.Canvas as Canvas;
-bind Viper.Terminal;
-bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var screenW = 800;
-    var screenH = 600;
-    var playerX = screenW / 2;
-    var playerY = screenH / 2;
-    var dt = 16;
-
-    var canvas = Canvas.New("Transition Demo", screenW, screenH);
+    var screenWidth = 800;
+    var screenHeight = 600;
+    var playerX = 400;
+    var playerY = 300;
+    var canvas = Canvas.New("Transitions", screenWidth, screenHeight);
     var fx = FX.New();
 
-    // RPG-style iris transition
-    fx.CircleIn(playerX, playerY, 0x000000FF, 800);
+    // Flash/fades use raw RGBA, but transition colors use Canvas RGB.
+    fx.FadeOut(0x000000FF, 500);
+    fx.Wipe(1, 0x000000, 500); // grow black from the right edge
+    fx.CircleIn(playerX, playerY, 0x000000, 800);
+    fx.Dissolve(0x000000, 1200);
+    fx.Pixelate(16, 600);
 
-    // Platformer wipe
-    fx.Wipe(1, 0x000000FF, 500); // Right-to-left wipe
-
-    // Horror dissolve
-    fx.Dissolve(0x000000FF, 1200);
-
-    // Retro pixelate
-    fx.Pixelate(16, 600); // Block size up to 16px
-
-    // One frame from the game loop
-    canvas.Poll();
-    fx.Update(dt);
-    fx.Draw(canvas, screenW, screenH);
-    canvas.Flip();
-
-    if fx.IsFinished {
-        Say("Ready for next scene");
-    }
-
-    var progress = fx.TransitionProgress; // 0-1000
-    Say("Transition progress: " + Fmt.Int(progress));
+    // One representative frame, after drawing the scene.
+    fx.Update(16);
+    fx.Draw(canvas, screenWidth, screenHeight);
 }
 ```
 
 ---
 
+## Viper.Game.Lighting2D
+
+`Lighting2D` draws a full-canvas tinted darkness overlay followed by a pulsing player glow,
+world-space dynamic glows, and one-frame screen-space tile glows.
+
+- **Type:** instance class
+- **Constructor:** `Lighting2D.New(maxDynamicLights)`
+- **Dynamic capacity:** constructor value clamped to 0–128
+- **Tile-light capacity:** 128 per draw, independent of dynamic capacity
+
+### Properties
+
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `Darkness` | `Integer` | read/write | Full-screen overlay alpha, clamped to 0–255 |
+| `TintColor` | `Integer` | read/write | Overlay RGB; only the low 24 bits are retained |
+| `LightCount` | `Integer` | read | Active dynamic lights; excludes player and tile lights |
+
+### Methods
+
+| Method | Return | Behavior |
+|---|---|---|
+| `SetPlayerLight(radius, color)` | `Void` | Set the always-present player glow's base radius and RGB |
+| `AddLight(x, y, radius, color, lifetime)` | `Void` | Add a world-space dynamic glow |
+| `AddTileLight(screenX, screenY, radius, color)` | `Void` | Queue a screen-space glow for the next `Draw()` |
+| `ClearLights()` | `Void` | Clear both dynamic and queued tile lights |
+| `Update()` | `Void` | Advance the player pulse and dynamic lifetimes by one tick |
+| `Draw(canvas, camX, camY, playerScreenX, playerScreenY)` | `Void` | Draw overlay and glows, then consume tile lights |
+| `Destroy()` | `Void` | Release this handle's reference |
+
+Defaults are darkness 0, tint `0x00000A`, player radius 180, and player color `0x303240`.
+`SetPlayerLight` clamps a non-positive radius to zero and masks color to RGB. Dynamic/tile calls
+ignore non-positive radii; `AddLight` also ignores negative lifetimes.
+
+Dynamic lifetime is measured in `Update()` calls. Zero means permanent. Positive lifetimes are
+decremented immediately on each update and expire when they reach zero; their glow alpha scales
+with remaining lifetime. A lifetime-1 light added before `Update()` is therefore removed before it
+can be drawn. A predictable frame order is:
+
+1. Call `lighting.Update()`.
+2. Add dynamic and visible tile lights for this frame.
+3. Draw the scene.
+4. Call `lighting.Draw(...)` last.
+
+When the dynamic pool is full, `AddLight` silently drops the new light; it does not evict an older
+one. Tile lights are also silently dropped after 128 have been queued. `Draw()` consumes all queued
+tile lights even when `Darkness` is zero or the Canvas is null. World-space dynamic positions are
+converted with `screen = world - camera`; tile and player positions are already screen-space.
+
+### Current rendering limitation
+
+Despite the “light” terminology, the current implementation does **not** subtract the darkness
+overlay or reveal the already-drawn scene. Canvas alpha primitives perform source-over blending,
+so Lighting2D first darkens the scene and then blends colored discs on top. These can look like
+glows, but they are not light holes.
+
+The player glow uses a 120-update triangle pulse that adds 0–10 pixels to its base radius. Setting
+the player radius to zero does not fully disable it: the renderer still draws a 40-pixel outer glow
+at alpha 30. There is currently no separate player-light enable switch.
+
+### Zia example
+
+```rust
+module LightingDemo;
+
+bind Viper.Game.Lighting2D as Lighting2D;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+
+func start() {
+    var canvas = Canvas.New("Lighting", 800, 600);
+    var lighting = Lighting2D.New(32);
+    lighting.Darkness = 160;
+    lighting.TintColor = Color.RGB(0, 0, 10);
+    lighting.SetPlayerLight(120, Color.RGB(255, 230, 160));
+
+    // Recommended frame order.
+    lighting.Update();
+    lighting.AddLight(500, 300, 90, Color.RGB(255, 120, 40), 8); // world space
+    lighting.AddTileLight(200, 150, 50, Color.RGB(80, 180, 255)); // screen space
+
+    canvas.Clear(Color.RGB(30, 30, 40));
+    // Draw world and entities here.
+    lighting.Draw(canvas, 100, 0, 400, 300);
+    canvas.Flip();
+
+    lighting.Destroy();
+}
+```
+
+---
 
 ## See Also
 
 - [Core Utilities](core.md)
 - [Physics & Collision](physics.md)
 - [Animation & Movement](animation.md)
+- [Canvas](../graphics/canvas.md)
 - [Game Utilities Overview](README.md)
-- [Viper Runtime Library](../README.md)
+- [Generated Game API](../../generated/runtime/game.md)

@@ -27,13 +27,13 @@ func start() {
     world.Spawn(victim);
 
     // Hit volume on the attacker reaching toward the victim; hurt volume on the victim.
-    var hitShape = G3D.Collider3D.NewSphere(0.4);
+    var hitShape = G3D.Collider3D.Sphere(0.4);
     var hit = Game3D.Hitbox3D.New(attacker, hitShape);
     hit.Kind = Game3D.HitboxKind.get_Hit();
     hit.Team = 1;
     hit.SetLocalOffset(0.0, 0.0, -0.7);
 
-    var hurtShape = G3D.Collider3D.NewSphere(0.5);
+    var hurtShape = G3D.Collider3D.Sphere(0.5);
     var hurt = Game3D.Hitbox3D.New(victim, hurtShape);
     hurt.Team = 2;
 
@@ -41,7 +41,7 @@ func start() {
     victim.AttachHealth(health);
 
     // Swing: one activation produces exactly one hit event.
-    hit.Active = true;
+    hit.IsActive = true;
     world.StepSimulation(0.016666666666666666);
     if (world.HitEventCount() != 1) {
         fail("expected exactly one hit event on the first swing step");
@@ -88,17 +88,17 @@ func start() {
     world.StepSimulation(0.016666666666666666);
     world.StepSimulation(0.016666666666666666);
 
-    world.Paused = true;
+    world.IsPaused = true;
     var frozen = world.Elapsed;
     world.StepSimulation(0.016666666666666666);
     if (near(world.Elapsed, frozen, 0.0000001) == false) {
         fail("paused step advanced Elapsed");
         return;
     }
-    world.Paused = false;
+    world.IsPaused = false;
     world.TimeScale = 0.5;
     world.StepSimulation(0.016666666666666666);
-    if (near(world.Dt, 0.008333333333333333, 0.0001) == false) {
+    if (near(world.DeltaTime, 0.008333333333333333, 0.0001) == false) {
         fail("TimeScale 0.5 did not halve the world dt");
         return;
     }

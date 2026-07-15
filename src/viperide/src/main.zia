@@ -608,7 +608,7 @@ func main() {
         // FindBar per-frame updates
         if shell.workbench.findBar.IsVisible() {
             shell.workbench.findBar.FindNext();
-            shell.workbench.findBar.FindPrev();
+            shell.workbench.findBar.FindPrevious();
             shell.workbench.findBar.Replace();
             shell.workbench.findBar.ReplaceAll();
             var matchCount = shell.workbench.findBar.GetMatchCount();

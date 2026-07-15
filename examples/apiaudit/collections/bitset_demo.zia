@@ -21,97 +21,97 @@ func start() {
 
     // --- Set / Get ---
     Say("--- Set / Get ---");
-    bs.Set(0);
-    bs.Set(2);
-    bs.Set(4);
-    bs.Set(7);
-    SayBool(bs.Get(0));    // 1
-    SayBool(bs.Get(1));    // 0
-    SayBool(bs.Get(2));    // 1
-    SayBool(bs.Get(4));    // 1
-    SayBool(bs.Get(7));    // 1
+    bs.SetBit(0);
+    bs.SetBit(2);
+    bs.SetBit(4);
+    bs.SetBit(7);
+    SayBool(bs.GetBit(0));    // 1
+    SayBool(bs.GetBit(1));    // 0
+    SayBool(bs.GetBit(2));    // 1
+    SayBool(bs.GetBit(4));    // 1
+    SayBool(bs.GetBit(7));    // 1
     SayInt(bs.Count);      // 4
     SayBool(bs.IsEmpty);   // 0
 
     // --- Clear (single bit) ---
     Say("--- Clear ---");
     bs.Clear(2);
-    SayBool(bs.Get(2));    // 0
+    SayBool(bs.GetBit(2));    // 0
     SayInt(bs.Count);      // 3
 
     // --- Toggle ---
     Say("--- Toggle ---");
-    bs.Toggle(1);          // was 0, now 1
-    SayBool(bs.Get(1));    // 1
-    bs.Toggle(1);          // was 1, now 0
-    SayBool(bs.Get(1));    // 0
+    bs.ToggleBit(1);          // was 0, now 1
+    SayBool(bs.GetBit(1));    // 1
+    bs.ToggleBit(1);          // was 1, now 0
+    SayBool(bs.GetBit(1));    // 0
 
     // --- SetAll ---
     Say("--- SetAll ---");
     bs.SetAll();
     SayInt(bs.Count);      // 8
-    SayBool(bs.Get(3));    // 1
+    SayBool(bs.GetBit(3));    // 1
 
     // --- ClearAll ---
     Say("--- ClearAll ---");
-    bs.ClearAll();
+    bs.Clear();
     SayInt(bs.Count);      // 0
     SayBool(bs.IsEmpty);   // 1
 
     // --- ToString ---
     Say("--- ToString ---");
-    bs.Set(0);
-    bs.Set(3);
-    bs.Set(7);
+    bs.SetBit(0);
+    bs.SetBit(3);
+    bs.SetBit(7);
     Say(bs.ToString());    // binary string representation
 
     // --- And ---
     Say("--- And ---");
     var a = BitSet.New(8);
-    a.Set(0);
-    a.Set(1);
-    a.Set(2);
+    a.SetBit(0);
+    a.SetBit(1);
+    a.SetBit(2);
 
     var b = BitSet.New(8);
-    b.Set(1);
-    b.Set(2);
-    b.Set(3);
+    b.SetBit(1);
+    b.SetBit(2);
+    b.SetBit(3);
 
     var andResult = a.And(b);
-    SayBool(andResult.Get(0)); // 0
-    SayBool(andResult.Get(1)); // 1
-    SayBool(andResult.Get(2)); // 1
-    SayBool(andResult.Get(3)); // 0
+    SayBool(andResult.GetBit(0)); // 0
+    SayBool(andResult.GetBit(1)); // 1
+    SayBool(andResult.GetBit(2)); // 1
+    SayBool(andResult.GetBit(3)); // 0
     SayInt(andResult.Count);   // 2
 
     // --- Or ---
     Say("--- Or ---");
     var orResult = a.Or(b);
-    SayBool(orResult.Get(0));  // 1
-    SayBool(orResult.Get(1));  // 1
-    SayBool(orResult.Get(2));  // 1
-    SayBool(orResult.Get(3));  // 1
+    SayBool(orResult.GetBit(0));  // 1
+    SayBool(orResult.GetBit(1));  // 1
+    SayBool(orResult.GetBit(2));  // 1
+    SayBool(orResult.GetBit(3));  // 1
     SayInt(orResult.Count);    // 4
 
     // --- Xor ---
     Say("--- Xor ---");
     var xorResult = a.Xor(b);
-    SayBool(xorResult.Get(0)); // 1
-    SayBool(xorResult.Get(1)); // 0
-    SayBool(xorResult.Get(2)); // 0
-    SayBool(xorResult.Get(3)); // 1
+    SayBool(xorResult.GetBit(0)); // 1
+    SayBool(xorResult.GetBit(1)); // 0
+    SayBool(xorResult.GetBit(2)); // 0
+    SayBool(xorResult.GetBit(3)); // 1
     SayInt(xorResult.Count);   // 2
 
     // --- Not ---
     Say("--- Not ---");
     var c = BitSet.New(4);
-    c.Set(0);
-    c.Set(2);
+    c.SetBit(0);
+    c.SetBit(2);
     var notResult = c.Not();
-    SayBool(notResult.Get(0)); // 0
-    SayBool(notResult.Get(1)); // 1
-    SayBool(notResult.Get(2)); // 0
-    SayBool(notResult.Get(3)); // 1
+    SayBool(notResult.GetBit(0)); // 0
+    SayBool(notResult.GetBit(1)); // 1
+    SayBool(notResult.GetBit(2)); // 0
+    SayBool(notResult.GetBit(3)); // 1
 
     Say("=== BitSet audit complete ===");
 }

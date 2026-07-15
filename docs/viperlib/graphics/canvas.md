@@ -440,7 +440,7 @@ func start() {
 - If the platform event pump fails, `Poll()` marks `ShouldClose`, tears down the backend window, updates input actions, and returns `0` without querying stale mouse or event state.
 - Without `SetMaxDeltaTime()`, `DeltaTime` is rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
 - `SetMaxDeltaTime(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first positive frame, rounded values clamp to `[1, max]`
-- `SetDTMax()` remains available as a compatibility alias for
+- `SetMaxDeltaTime()` remains available as a compatibility alias for
   `SetMaxDeltaTime()`.
 - Prefer `DeltaTimeSec` for velocity and animation math expressed in units per second
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation
@@ -462,7 +462,7 @@ Color utility functions for graphics operations.
 | `Darken(color, amount)`  | `Integer(Integer, Integer)`                   | Darkens a color by the given amount (0-100)                                     |
 | `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
 | `FromHex(hex)`           | `Integer(String)`                             | Parses `#RRGGBB` or `#RRGGBBAA`; invalid input returns `0`                      |
-| `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue, saturation (0-100), lightness (0-100); hue wraps modulo 360 |
+| `FromHsl(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue, saturation (0-100), lightness (0-100); hue wraps modulo 360 |
 | `GetA(color)`            | `Integer(Integer)`                            | Extracts the stored alpha byte (plain `Color.RGB` returns 0)                    |
 | `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
 | `GetG(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |
@@ -514,7 +514,7 @@ func start() {
     Say("Bright blue: " + Fmt.Int(bright));
 
     // HSL and hex
-    var hsl = Color.FromHSL(120, 100, 50);
+    var hsl = Color.FromHsl(120, 100, 50);
     var hex = Color.ToHex(red);
     Say("Hex: " + hex);
 }
@@ -544,7 +544,7 @@ DIM g AS INTEGER = Viper.Graphics.Color.GetG(purple)   ' 0
 
 ' Create from HSL
 DIM orange AS INTEGER
-orange = Viper.Graphics.Color.FromHSL(30, 100, 50)
+orange = Viper.Graphics.Color.FromHsl(30, 100, 50)
 
 ' Parse hex strings
 DIM fromHex AS INTEGER

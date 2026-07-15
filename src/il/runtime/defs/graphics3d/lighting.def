@@ -20,10 +20,6 @@
 // GRAPHICS 3D - LIGHT3D
 //=============================================================================
 
-RT_FUNC(Light3DNewDirectional,  rt_light3d_new_directional, "Viper.Graphics3D.Light3D.NewDirectional",  "obj(obj,f64,f64,f64)")
-RT_FUNC(Light3DNewPoint,        rt_light3d_new_point,       "Viper.Graphics3D.Light3D.NewPoint",        "obj(obj,f64,f64,f64,f64)")
-RT_FUNC(Light3DNewAmbient,      rt_light3d_new_ambient,     "Viper.Graphics3D.Light3D.NewAmbient",      "obj(f64,f64,f64)")
-RT_FUNC(Light3DNewSpot,         rt_light3d_new_spot,        "Viper.Graphics3D.Light3D.NewSpot",         "obj(obj,obj,f64,f64,f64,f64,f64,f64)")
 RT_FUNC(Light3DDirectional,     rt_light3d_new_directional, "Viper.Graphics3D.Light3D.Directional",     "obj(obj,f64,f64,f64)")
 RT_FUNC(Light3DPoint,           rt_light3d_new_point,       "Viper.Graphics3D.Light3D.Point",           "obj(obj,f64,f64,f64,f64)")
 RT_FUNC(Light3DAmbient,         rt_light3d_new_ambient,     "Viper.Graphics3D.Light3D.Ambient",         "obj(f64,f64,f64)")
@@ -35,8 +31,8 @@ RT_FUNC(Light3DSetColor,        rt_light3d_set_color,       "Viper.Graphics3D.Li
 RT_FUNC(Light3DGetType,         rt_light3d_get_type,        "Viper.Graphics3D.Light3D.get_Type",        "i64(obj)")
 RT_FUNC(Light3DGetColor,        rt_light3d_get_color,       "Viper.Graphics3D.Light3D.get_Color",       "obj<Viper.Math.Vec3>(obj)")
 RT_FUNC(Light3DGetIntensity,    rt_light3d_get_intensity,   "Viper.Graphics3D.Light3D.get_Intensity",   "f64(obj)")
-RT_FUNC(Light3DSetEnabled,      rt_light3d_set_enabled,     "Viper.Graphics3D.Light3D.set_Enabled",     "void(obj,i1)")
-RT_FUNC(Light3DGetEnabled,      rt_light3d_get_enabled,     "Viper.Graphics3D.Light3D.get_Enabled",     "i1(obj)")
+RT_FUNC(Light3DSetEnabled,      rt_light3d_set_enabled,     "Viper.Graphics3D.Light3D.set_IsEnabled",     "void(obj,i1)")
+RT_FUNC(Light3DGetEnabled,      rt_light3d_get_enabled,     "Viper.Graphics3D.Light3D.get_IsEnabled",     "i1(obj)")
 RT_FUNC(Light3DSetCastsShadows, rt_light3d_set_casts_shadows, "Viper.Graphics3D.Light3D.set_CastsShadows", "void(obj,i1)")
 RT_FUNC(Light3DGetCastsShadows, rt_light3d_get_casts_shadows, "Viper.Graphics3D.Light3D.get_CastsShadows", "i1(obj)")
 RT_FUNC(Light3DGetDirection,    rt_light3d_get_direction,   "Viper.Graphics3D.Light3D.get_Direction",   "obj<Viper.Math.Vec3>(obj)")
@@ -47,20 +43,16 @@ RT_FUNC(Light3DSetDirection,    rt_light3d_set_direction,   "Viper.Graphics3D.Li
 /// @summary Provides Light 3D functionality for 3D rendering and scene applications.
 /// @details
 /// `Viper.Graphics3D.Light3D` exposes a registry-backed runtime surface without requiring callers
-/// to construct the class directly. Its public surface exposes properties such as `Type`, `Color`,
-/// `Intensity` and operations including `NewDirectional`, `NewPoint`, `NewAmbient`, `NewSpot`.
+/// to construct the class directly. Its public surface exposes properties such as `Type`,
+/// `Color`, `Intensity` and operations including `Directional`, `Point`, `Ambient`, `Spot`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Light3D", Light3D, "obj", none)
     RT_PROP("Type", "i64", Light3DGetType, none)
     RT_PROP("Color", "obj<Viper.Math.Vec3>", Light3DGetColor, none)
     RT_PROP("Intensity", "f64", Light3DGetIntensity, none)
-    RT_PROP("Enabled", "i1", Light3DGetEnabled, Light3DSetEnabled)
+    RT_PROP("IsEnabled", "i1", Light3DGetEnabled, Light3DSetEnabled)
     RT_PROP("CastsShadows", "i1", Light3DGetCastsShadows, Light3DSetCastsShadows)
     RT_PROP("Direction", "obj<Viper.Math.Vec3>", Light3DGetDirection, Light3DSetDirection)
     RT_PROP("Position", "obj<Viper.Math.Vec3>", Light3DGetPosition, Light3DSetPosition)
-    RT_METHOD("NewDirectional", "obj(obj,f64,f64,f64)", Light3DNewDirectional)
-    RT_METHOD("NewPoint", "obj(obj,f64,f64,f64,f64)", Light3DNewPoint)
-    RT_METHOD("NewAmbient", "obj(f64,f64,f64)", Light3DNewAmbient)
-    RT_METHOD("NewSpot", "obj(obj,obj,f64,f64,f64,f64,f64,f64)", Light3DNewSpot)
     RT_METHOD("Directional", "obj(obj,f64,f64,f64)", Light3DDirectional)
     RT_METHOD("Point", "obj(obj,f64,f64,f64,f64)", Light3DPoint)
     RT_METHOD("Ambient", "obj(f64,f64,f64)", Light3DAmbient)
@@ -79,8 +71,7 @@ RT_FUNC(Scene3DGetRoot,      rt_scene3d_get_root,      "Viper.Graphics3D.SceneGr
 RT_FUNC(Scene3DAdd,          rt_scene3d_add,            "Viper.Graphics3D.SceneGraph.Add",           "void(obj,obj)")
 RT_FUNC(Scene3DTryAdd,       rt_scene3d_try_add,        "Viper.Graphics3D.SceneGraph.TryAdd",        "i1(obj,obj)")
 RT_FUNC(Scene3DRemove,       rt_scene3d_remove,         "Viper.Graphics3D.SceneGraph.Remove",        "void(obj,obj)")
-RT_FUNC(Scene3DFind,         rt_scene3d_find,           "Viper.Graphics3D.SceneGraph.Find",          "obj<Viper.Graphics3D.SceneNode>(obj,str)")
-RT_FUNC(Scene3DFindOption,   rt_scene3d_find_option,    "Viper.Graphics3D.SceneGraph.FindOption",    "obj<Viper.Option>(obj,str)")
+RT_FUNC(Scene3DFindOption,   rt_scene3d_find_option,    "Viper.Graphics3D.SceneGraph.Find",    "obj<Viper.Option>(obj,str)")
 RT_FUNC(Scene3DQueryAABB,    rt_scene3d_query_aabb,     "Viper.Graphics3D.SceneGraph.QueryAABB",     "obj<Viper.Collections.Seq>(obj,obj,obj)")
 RT_FUNC(Scene3DQuerySphere,  rt_scene3d_query_sphere,   "Viper.Graphics3D.SceneGraph.QuerySphere",   "obj<Viper.Collections.Seq>(obj,obj,f64)")
 RT_FUNC(Scene3DRaycastNodes, rt_scene3d_raycast_nodes,  "Viper.Graphics3D.SceneGraph.RaycastNodes",  "obj<Viper.Graphics3D.SceneNode>(obj,obj,obj,f64)")
@@ -122,8 +113,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.SceneGraph", Scene3D, "obj", Scene3DNew)
     RT_METHOD("Add", "void(obj)", Scene3DAdd)
     RT_METHOD("TryAdd", "i1(obj)", Scene3DTryAdd)
     RT_METHOD("Remove", "void(obj)", Scene3DRemove)
-    RT_METHOD("Find", "obj<Viper.Graphics3D.SceneNode>(str)", Scene3DFind)
-    RT_METHOD("FindOption", "obj<Viper.Option>(str)", Scene3DFindOption)
+    RT_METHOD("Find", "obj<Viper.Option>(str)", Scene3DFindOption)
     RT_METHOD("QueryAABB", "obj<Viper.Collections.Seq>(obj,obj)", Scene3DQueryAABB)
     RT_METHOD("QuerySphere", "obj<Viper.Collections.Seq>(obj,f64)", Scene3DQuerySphere)
     RT_METHOD("RaycastNodes", "obj<Viper.Graphics3D.SceneNode>(obj,obj,f64)", Scene3DRaycastNodes)
@@ -162,8 +152,7 @@ RT_FUNC(SceneNode3DRemoveChild,    rt_scene_node3d_remove_child,   "Viper.Graphi
 RT_FUNC(SceneNode3DChildCount,     rt_scene_node3d_child_count,    "Viper.Graphics3D.SceneNode.get_ChildCount", "i64(obj)")
 RT_FUNC(SceneNode3DGetChild,       rt_scene_node3d_get_child,      "Viper.Graphics3D.SceneNode.GetChild",       "obj<Viper.Graphics3D.SceneNode>(obj,i64)")
 RT_FUNC(SceneNode3DGetParent,      rt_scene_node3d_get_parent,     "Viper.Graphics3D.SceneNode.get_Parent",     "obj<Viper.Graphics3D.SceneNode>(obj)")
-RT_FUNC(SceneNode3DFind,           rt_scene_node3d_find,           "Viper.Graphics3D.SceneNode.Find",           "obj<Viper.Graphics3D.SceneNode>(obj,str)")
-RT_FUNC(SceneNode3DFindOption,     rt_scene_node3d_find_option,    "Viper.Graphics3D.SceneNode.FindOption",     "obj<Viper.Option>(obj,str)")
+RT_FUNC(SceneNode3DFindOption,     rt_scene_node3d_find_option,    "Viper.Graphics3D.SceneNode.Find",     "obj<Viper.Option>(obj,str)")
 RT_FUNC(SceneNode3DSetVisible,     rt_scene_node3d_set_visible,    "Viper.Graphics3D.SceneNode.set_Visible",    "void(obj,i1)")
 RT_FUNC(SceneNode3DGetVisible,     rt_scene_node3d_get_visible,    "Viper.Graphics3D.SceneNode.get_Visible",    "i1(obj)")
 RT_FUNC(SceneNode3DSetName,        rt_scene_node3d_set_name,       "Viper.Graphics3D.SceneNode.set_Name",       "void(obj,str)")
@@ -183,14 +172,14 @@ RT_FUNC(SceneNode3DDetachBoneSocket, rt_scene_node3d_detach_bone_socket, "Viper.
 RT_FUNC(SceneNode3DBindNodeAnimator, rt_scene_node3d_bind_node_animator, "Viper.Graphics3D.SceneNode.BindNodeAnimator", "void(obj,obj)")
 RT_FUNC(SceneNode3DClearNodeAnimatorBinding, rt_scene_node3d_clear_node_animator_binding, "Viper.Graphics3D.SceneNode.ClearNodeAnimatorBinding", "void(obj)")
 RT_FUNC(SceneNode3DGetNodeAnimator, rt_scene_node3d_get_node_animator, "Viper.Graphics3D.SceneNode.get_NodeAnimator", "obj<Viper.Graphics3D.NodeAnimator3D>(obj)")
-RT_FUNC(SceneNode3DAddLOD,        rt_scene_node3d_add_lod,        "Viper.Graphics3D.SceneNode.AddLOD",         "void(obj,f64,obj)")
-RT_FUNC(SceneNode3DSetAutoLOD,    rt_scene_node3d_set_auto_lod,   "Viper.Graphics3D.SceneNode.SetAutoLOD",     "void(obj,i1,f64)")
+RT_FUNC(SceneNode3DAddLOD,        rt_scene_node3d_add_lod,        "Viper.Graphics3D.SceneNode.AddLod",         "void(obj,f64,obj)")
+RT_FUNC(SceneNode3DSetAutoLOD,    rt_scene_node3d_set_auto_lod,   "Viper.Graphics3D.SceneNode.SetAutoLod",     "void(obj,i1,f64)")
 RT_FUNC(SceneNode3DSetImpostor,   rt_scene_node3d_set_impostor,  "Viper.Graphics3D.SceneNode.SetImpostor",    "void(obj,f64,obj)")
 RT_FUNC(SceneNode3DSetImpostorFrames, rt_scene_node3d_set_impostor_frames, "Viper.Graphics3D.SceneNode.SetImpostorFrames", "void(obj,f64,obj,i64)")
 RT_FUNC(SceneNode3DSetStatic, rt_scene_node3d_set_static, "Viper.Graphics3D.SceneNode.SetStatic", "void(obj,i1)")
 RT_FUNC(SceneNode3DGetStatic, rt_scene_node3d_get_static, "Viper.Graphics3D.SceneNode.GetStatic", "i1(obj)")
 RT_FUNC(SceneNode3DGetImpostorFrameIndex, rt_scene_node3d_get_impostor_frame_index, "Viper.Graphics3D.SceneNode.GetImpostorFrameIndex", "i64(obj)")
-RT_FUNC(SceneNode3DClearLOD,       rt_scene_node3d_clear_lod,      "Viper.Graphics3D.SceneNode.ClearLOD",       "void(obj)")
+RT_FUNC(SceneNode3DClearLOD,       rt_scene_node3d_clear_lod,      "Viper.Graphics3D.SceneNode.ClearLod",       "void(obj)")
 RT_FUNC(SceneNode3DLODCount,       rt_scene_node3d_get_lod_count,  "Viper.Graphics3D.SceneNode.get_LodCount",   "i64(obj)")
 RT_FUNC(SceneNode3DGetLODMesh,     rt_scene_node3d_get_lod_mesh,   "Viper.Graphics3D.SceneNode.GetLodMesh",     "obj(obj,i64)")
 RT_FUNC(SceneNode3DGetLODDistance, rt_scene_node3d_get_lod_distance,"Viper.Graphics3D.SceneNode.GetLodDistance","f64(obj,i64)")
@@ -232,8 +221,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.SceneNode", SceneNode3D, "obj", SceneNode3DNew)
     RT_METHOD("TryAddChild", "i1(obj)", SceneNode3DTryAddChild)
     RT_METHOD("RemoveChild", "void(obj)", SceneNode3DRemoveChild)
     RT_METHOD("GetChild", "obj<Viper.Graphics3D.SceneNode>(i64)", SceneNode3DGetChild)
-    RT_METHOD("Find", "obj(str)", SceneNode3DFind)
-    RT_METHOD("FindOption", "obj<Viper.Option>(str)", SceneNode3DFindOption)
+    RT_METHOD("Find", "obj<Viper.Option>(str)", SceneNode3DFindOption)
     RT_METHOD("BindBody", "void(obj)", SceneNode3DBindBody)
     RT_METHOD("ClearBodyBinding", "void()", SceneNode3DClearBodyBinding)
     RT_METHOD("BindAnimator", "void(obj)", SceneNode3DBindAnimator)
@@ -242,16 +230,16 @@ RT_CLASS_BEGIN("Viper.Graphics3D.SceneNode", SceneNode3D, "obj", SceneNode3DNew)
     RT_METHOD("AttachToBone", "void(obj,i64,f64,f64,f64)", SceneNode3DAttachToBone)
     RT_METHOD("DetachBoneSocket", "void()", SceneNode3DDetachBoneSocket)
     RT_METHOD("ClearNodeAnimatorBinding", "void()", SceneNode3DClearNodeAnimatorBinding)
-    RT_METHOD("AddLOD", "void(f64,obj)", SceneNode3DAddLOD)
+    RT_METHOD("AddLod", "void(f64,obj)", SceneNode3DAddLOD)
     // Build 1..4 simplified LOD levels and enable screen-error auto selection.
-    RT_METHOD("GenerateLODs", "void(i64,f64)", SceneNode3DGenerateLODs)
-    RT_METHOD("SetAutoLOD", "void(i1,f64)", SceneNode3DSetAutoLOD)
+    RT_METHOD("GenerateLods", "void(i64,f64)", SceneNode3DGenerateLODs)
+    RT_METHOD("SetAutoLod", "void(i1,f64)", SceneNode3DSetAutoLOD)
     RT_METHOD("SetImpostor", "void(f64,obj)", SceneNode3DSetImpostor)
     RT_METHOD("SetImpostorFrames", "void(f64,obj,i64)", SceneNode3DSetImpostorFrames)
     RT_METHOD("SetStatic", "void(i1)", SceneNode3DSetStatic)
     RT_METHOD("GetStatic", "i1()", SceneNode3DGetStatic)
     RT_METHOD("GetImpostorFrameIndex", "i64()", SceneNode3DGetImpostorFrameIndex)
-    RT_METHOD("ClearLOD", "void()", SceneNode3DClearLOD)
+    RT_METHOD("ClearLod", "void()", SceneNode3DClearLOD)
     RT_METHOD("GetLodMesh", "obj(i64)", SceneNode3DGetLODMesh)
     RT_METHOD("GetLodDistance", "f64(i64)", SceneNode3DGetLODDistance)
     RT_METHOD("SetLodResident", "void(i64,i1)", SceneNode3DSetLODResident)
@@ -269,7 +257,7 @@ RT_FUNC(NodeAnimator3DClipCount, rt_node_animator3d_get_clip_count, "Viper.Graph
 RT_FUNC(NodeAnimator3DGetClip, rt_node_animator3d_get_clip, "Viper.Graphics3D.NodeAnimator3D.GetClip", "obj<Viper.Graphics3D.NodeAnimation3D>(obj,i64)")
 RT_FUNC(NodeAnimator3DGetClipName, rt_node_animator3d_get_clip_name, "Viper.Graphics3D.NodeAnimator3D.GetClipName", "str(obj,i64)")
 RT_FUNC(NodeAnimator3DCurrentClip, rt_node_animator3d_get_current_clip, "Viper.Graphics3D.NodeAnimator3D.get_CurrentClip", "str(obj)")
-RT_FUNC(NodeAnimator3DPlaying, rt_node_animator3d_get_playing, "Viper.Graphics3D.NodeAnimator3D.get_Playing", "i1(obj)")
+RT_FUNC(NodeAnimator3DPlaying, rt_node_animator3d_get_playing, "Viper.Graphics3D.NodeAnimator3D.get_IsPlaying", "i1(obj)")
 RT_FUNC(NodeAnimator3DSpeed, rt_node_animator3d_get_speed, "Viper.Graphics3D.NodeAnimator3D.get_Speed", "f64(obj)")
 RT_FUNC(NodeAnimator3DTime, rt_node_animator3d_get_time, "Viper.Graphics3D.NodeAnimator3D.get_Time", "f64(obj)")
 RT_FUNC(NodeAnimator3DPlay, rt_node_animator3d_play, "Viper.Graphics3D.NodeAnimator3D.Play", "i1(obj,str)")
@@ -293,12 +281,12 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Graphics3D.NodeAnimator3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `ClipCount`, `CurrentClip`, `Playing` and operations including `GetClip`, `GetClipName`, `Play`,
-/// `Stop`.
+/// `ClipCount`, `CurrentClip`, `IsPlaying` and operations including `GetClip`, `GetClipName`,
+/// `Play`, `Stop`.
 RT_CLASS_BEGIN("Viper.Graphics3D.NodeAnimator3D", NodeAnimator3D, "obj", NodeAnimator3DNew)
     RT_PROP("ClipCount", "i64", NodeAnimator3DClipCount, none)
     RT_PROP("CurrentClip", "str", NodeAnimator3DCurrentClip, none)
-    RT_PROP("Playing", "i1", NodeAnimator3DPlaying, none)
+    RT_PROP("IsPlaying", "i1", NodeAnimator3DPlaying, none)
     RT_PROP("Speed", "f64", NodeAnimator3DSpeed, none)
     RT_PROP("Time", "f64", NodeAnimator3DTime, none)
     RT_METHOD("GetClip", "obj<Viper.Graphics3D.NodeAnimation3D>(i64)", NodeAnimator3DGetClip)
@@ -317,7 +305,6 @@ RT_FUNC(Skeleton3DSetBoneAlias, rt_skeleton3d_set_bone_alias, "Viper.Graphics3D.
 RT_FUNC(Skeleton3DAliasCount, rt_skeleton3d_get_alias_count, "Viper.Graphics3D.Skeleton3D.get_AliasCount", "i64(obj)")
 RT_FUNC(Skeleton3DComputeInverseBind,rt_skeleton3d_compute_inverse_bind,"Viper.Graphics3D.Skeleton3D.ComputeInverseBind","void(obj)")
 RT_FUNC(Skeleton3DBoneCount,         rt_skeleton3d_get_bone_count,     "Viper.Graphics3D.Skeleton3D.get_BoneCount",     "i64(obj)")
-RT_FUNC(Skeleton3DFindBone,          rt_skeleton3d_find_bone,          "Viper.Graphics3D.Skeleton3D.FindBone",          "i64(obj,str)")
 RT_FUNC(Skeleton3DFindBoneOption,    rt_skeleton3d_find_bone_option,   "Viper.Graphics3D.Skeleton3D.FindBoneOption",    "obj<Viper.Option>(obj,str)")
 RT_FUNC(Skeleton3DGetBoneName,       rt_skeleton3d_get_bone_name,      "Viper.Graphics3D.Skeleton3D.GetBoneName",       "str(obj,i64)")
 
@@ -325,13 +312,12 @@ RT_FUNC(Skeleton3DGetBoneName,       rt_skeleton3d_get_bone_name,      "Viper.Gr
 /// @details
 /// Create `Viper.Graphics3D.Skeleton3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `BoneCount`, `AliasCount` and operations including `AddBone`, `ComputeInverseBind`, `FindBone`,
-/// `FindBoneOption`.
+/// `BoneCount`, `AliasCount` and operations including `AddBone`, `ComputeInverseBind`,
+/// `FindBoneOption`, `GetBoneName`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Skeleton3D", Skeleton3D, "obj", Skeleton3DNew)
     RT_PROP("BoneCount", "i64", Skeleton3DBoneCount, none)
     RT_METHOD("AddBone", "i64(str,i64,obj)", Skeleton3DAddBone)
     RT_METHOD("ComputeInverseBind", "void()", Skeleton3DComputeInverseBind)
-    RT_METHOD("FindBone", "i64(str)", Skeleton3DFindBone)
     RT_METHOD("FindBoneOption", "obj<Viper.Option>(str)", Skeleton3DFindBoneOption)
     RT_METHOD("GetBoneName", "str(i64)", Skeleton3DGetBoneName)
     // Retarget alias: external rig bone name -> this skeleton's bone name.
@@ -398,37 +384,33 @@ RT_FUNC(Mesh3DSetBoneWeights,  rt_mesh3d_set_bone_weights, "Viper.Graphics3D.Mes
 RT_FUNC(Canvas3DDrawMeshSkinned,rt_canvas3d_draw_mesh_skinned,"Viper.Graphics3D.Canvas3D.DrawMeshSkinned","void(obj,obj,obj,obj,obj)")
 
 // FBX Loader
-RT_FUNC(FBXLoad,          rt_fbx_load,              "Viper.Graphics3D.FBX.Load",              "obj<Viper.Graphics3D.FBX>(str)")
-RT_FUNC(FBXMeshCount,     rt_fbx_mesh_count,        "Viper.Graphics3D.FBX.get_MeshCount",     "i64(obj)")
-RT_FUNC(FBXGetMesh,       rt_fbx_get_mesh,          "Viper.Graphics3D.FBX.GetMesh",           "obj<Viper.Graphics3D.Mesh3D>(obj,i64)")
-RT_FUNC(FBXGetSkeleton,   rt_fbx_get_skeleton,      "Viper.Graphics3D.FBX.GetSkeleton",       "obj<Viper.Graphics3D.Skeleton3D>(obj)")
-RT_FUNC(FBXAnimCount,     rt_fbx_animation_count,   "Viper.Graphics3D.FBX.get_AnimationCount","i64(obj)")
-RT_FUNC(FBXGetAnim,       rt_fbx_get_animation,     "Viper.Graphics3D.FBX.GetAnimation",      "obj<Viper.Graphics3D.Animation3D>(obj,i64)")
-RT_FUNC(FBXGetAnimName,   rt_fbx_get_animation_name,"Viper.Graphics3D.FBX.GetAnimationName",  "str(obj,i64)")
-RT_FUNC(FBXMaterialCount, rt_fbx_material_count,    "Viper.Graphics3D.FBX.get_MaterialCount", "i64(obj)")
-RT_FUNC(FBXGetMaterial,   rt_fbx_get_material,      "Viper.Graphics3D.FBX.GetMaterial",       "obj<Viper.Graphics3D.Material3D>(obj,i64)")
-RT_FUNC(FBXGetMorph,     rt_fbx_get_morph_target,  "Viper.Graphics3D.FBX.GetMorphTarget",   "obj<Viper.Graphics3D.MorphTarget3D>(obj,i64)")
+RT_FUNC(FBXLoad,          rt_fbx_load,              "Viper.Graphics3D.Fbx.Load",              "obj<Viper.Graphics3D.Fbx>(str)")
+RT_FUNC(FBXMeshCount,     rt_fbx_mesh_count,        "Viper.Graphics3D.Fbx.get_MeshCount",     "i64(obj)")
+RT_FUNC(FBXGetMesh,       rt_fbx_get_mesh,          "Viper.Graphics3D.Fbx.GetMesh",           "obj<Viper.Graphics3D.Mesh3D>(obj,i64)")
+RT_FUNC(FBXGetSkeleton,   rt_fbx_get_skeleton,      "Viper.Graphics3D.Fbx.GetSkeleton",       "obj<Viper.Graphics3D.Skeleton3D>(obj)")
+RT_FUNC(FBXAnimCount,     rt_fbx_animation_count,   "Viper.Graphics3D.Fbx.get_AnimationCount","i64(obj)")
+RT_FUNC(FBXGetAnim,       rt_fbx_get_animation,     "Viper.Graphics3D.Fbx.GetAnimation",      "obj<Viper.Graphics3D.Animation3D>(obj,i64)")
+RT_FUNC(FBXGetAnimName,   rt_fbx_get_animation_name,"Viper.Graphics3D.Fbx.GetAnimationName",  "str(obj,i64)")
+RT_FUNC(FBXMaterialCount, rt_fbx_material_count,    "Viper.Graphics3D.Fbx.get_MaterialCount", "i64(obj)")
+RT_FUNC(FBXGetMaterial,   rt_fbx_get_material,      "Viper.Graphics3D.Fbx.GetMaterial",       "obj<Viper.Graphics3D.Material3D>(obj,i64)")
+RT_FUNC(FBXGetMorph,     rt_fbx_get_morph_target,  "Viper.Graphics3D.Fbx.GetMorphTarget",   "obj<Viper.Graphics3D.MorphTarget3D>(obj,i64)")
 
-RT_FUNC(Assets3DLastLoadError, rt_assets3d_get_last_load_error, "Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadError", "str()")
-RT_FUNC(Assets3DLastLoadErrorCode, rt_assets3d_get_last_load_error_code, "Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadErrorCode", "i64()")
 RT_FUNC(Assets3DLoadWarningCount, rt_assets3d_get_load_warning_count, "Viper.Graphics3D.AssetDiagnostics3D.get_LoadWarningCount", "i64()")
 RT_FUNC(Assets3DGetLoadWarning, rt_assets3d_get_load_warning, "Viper.Graphics3D.AssetDiagnostics3D.GetLoadWarning", "str(i64)")
 RT_FUNC(Assets3DGetLoadWarnings, rt_assets3d_get_load_warnings, "Viper.Graphics3D.AssetDiagnostics3D.GetLoadWarnings", "str()")
 RT_FUNC(Assets3DGetImportReport, rt_assets3d_get_import_report, "Viper.Graphics3D.AssetDiagnostics3D.GetImportReport", "str()")
 
-RT_FUNC(GLTFLoad,        rt_gltf_load,             "Viper.Graphics3D.GLTF.Load",            "obj<Viper.Graphics3D.GLTF>(str)")
-RT_FUNC(GLTFLoadAsset,   rt_gltf_load_asset,       "Viper.Graphics3D.GLTF.LoadAsset",       "obj<Viper.Graphics3D.GLTF>(str)")
-RT_FUNC(GLTFMeshCount,   rt_gltf_mesh_count,       "Viper.Graphics3D.GLTF.get_MeshCount",   "i64(obj)")
-RT_FUNC(GLTFGetMesh,     rt_gltf_get_mesh,         "Viper.Graphics3D.GLTF.GetMesh",         "obj<Viper.Graphics3D.Mesh3D>(obj,i64)")
-RT_FUNC(GLTFMatCount,    rt_gltf_material_count,   "Viper.Graphics3D.GLTF.get_MaterialCount","i64(obj)")
-RT_FUNC(GLTFGetMaterial, rt_gltf_get_material,     "Viper.Graphics3D.GLTF.GetMaterial",     "obj<Viper.Graphics3D.Material3D>(obj,i64)")
+RT_FUNC(GLTFLoad,        rt_gltf_load,             "Viper.Graphics3D.Gltf.Load",            "obj<Viper.Graphics3D.Gltf>(str)")
+RT_FUNC(GLTFLoadAsset,   rt_gltf_load_asset,       "Viper.Graphics3D.Gltf.LoadAsset",       "obj<Viper.Graphics3D.Gltf>(str)")
+RT_FUNC(GLTFMeshCount,   rt_gltf_mesh_count,       "Viper.Graphics3D.Gltf.get_MeshCount",   "i64(obj)")
+RT_FUNC(GLTFGetMesh,     rt_gltf_get_mesh,         "Viper.Graphics3D.Gltf.GetMesh",         "obj<Viper.Graphics3D.Mesh3D>(obj,i64)")
+RT_FUNC(GLTFMatCount,    rt_gltf_material_count,   "Viper.Graphics3D.Gltf.get_MaterialCount","i64(obj)")
+RT_FUNC(GLTFGetMaterial, rt_gltf_get_material,     "Viper.Graphics3D.Gltf.GetMaterial",     "obj<Viper.Graphics3D.Material3D>(obj,i64)")
 
-RT_FUNC(Model3DLoad,           rt_model3d_load,               "Viper.Graphics3D.SceneAsset.Load",              "obj(str)")
 RT_FUNC(Model3DLoadResult,     rt_model3d_load_result,        "Viper.Graphics3D.SceneAsset.LoadResult",        "obj<Viper.Result>(str)")
 RT_FUNC(Model3DLoadWithOptions, rt_model3d_load_with_options, "Viper.Graphics3D.SceneAsset.LoadWithOptions",   "obj(str,i1)")
 RT_FUNC(Model3DLoadWithOptionsEx, rt_model3d_load_with_options_ex, "Viper.Graphics3D.SceneAsset.LoadWithOptionsEx", "obj(str,str)")
 RT_FUNC(Model3DLoadResultWithOptions, rt_model3d_load_result_with_options, "Viper.Graphics3D.SceneAsset.LoadResultWithOptions", "obj<Viper.Result>(str,i1)")
-RT_FUNC(Model3DLoadAsset,      rt_model3d_load_asset,         "Viper.Graphics3D.SceneAsset.LoadAsset",         "obj(str)")
 RT_FUNC(Model3DLoadAssetResult, rt_model3d_load_asset_result, "Viper.Graphics3D.SceneAsset.LoadAssetResult",   "obj<Viper.Result>(str)")
 RT_FUNC(Model3DMeshCount,      rt_model3d_get_mesh_count,     "Viper.Graphics3D.SceneAsset.get_MeshCount",     "i64(obj)")
 RT_FUNC(Model3DMaterialCount,  rt_model3d_get_material_count, "Viper.Graphics3D.SceneAsset.get_MaterialCount", "i64(obj)")
@@ -449,61 +431,53 @@ RT_FUNC(Model3DGetSceneName,   rt_model3d_get_scene_name,     "Viper.Graphics3D.
 RT_FUNC(Model3DVariantCount,   rt_model3d_get_variant_count,  "Viper.Graphics3D.SceneAsset.get_VariantCount",  "i64(obj)")
 RT_FUNC(Model3DGetVariantName, rt_model3d_get_variant_name,   "Viper.Graphics3D.SceneAsset.GetVariantName",    "str(obj,i64)")
 RT_FUNC(Model3DApplyVariant,   rt_model3d_apply_variant,      "Viper.Graphics3D.SceneAsset.ApplyVariant",      "i64(obj,obj,i64)")
-RT_FUNC(Model3DGenerateLODs,   rt_model3d_generate_lods,      "Viper.Graphics3D.SceneAsset.GenerateLODs",      "i64(obj,i64,f64)")
-RT_FUNC(Model3DFindNode,       rt_model3d_find_node,          "Viper.Graphics3D.SceneAsset.FindNode",          "obj(obj,str)")
-RT_FUNC(Model3DFindNodeOption, rt_model3d_find_node_option,   "Viper.Graphics3D.SceneAsset.FindNodeOption",    "obj<Viper.Option>(obj,str)")
+RT_FUNC(Model3DGenerateLODs,   rt_model3d_generate_lods,      "Viper.Graphics3D.SceneAsset.GenerateLods",      "i64(obj,i64,f64)")
+RT_FUNC(Model3DFindNodeOption, rt_model3d_find_node_option,   "Viper.Graphics3D.SceneAsset.FindNode",    "obj<Viper.Option>(obj,str)")
 RT_FUNC(Model3DInstantiate,    rt_model3d_instantiate,        "Viper.Graphics3D.SceneAsset.Instantiate",       "obj(obj)")
 RT_FUNC(Model3DInstantiateScene,rt_model3d_instantiate_scene, "Viper.Graphics3D.SceneAsset.InstantiateScene",  "obj(obj)")
 RT_FUNC(Model3DInstantiateSceneAt,rt_model3d_instantiate_scene_at, "Viper.Graphics3D.SceneAsset.InstantiateSceneAt", "obj<Viper.Graphics3D.SceneGraph>(obj,i64)")
-RT_FUNC(Model3DLoadAnimation, rt_model3d_load_animation, "Viper.Graphics3D.SceneAsset.LoadAnimation", "obj<Viper.Graphics3D.Animation3D>(str,i64)")
 RT_FUNC(Model3DLoadAnimationResult, rt_model3d_load_animation_result, "Viper.Graphics3D.SceneAsset.LoadAnimationResult", "obj<Viper.Result>(str,i64)")
-RT_FUNC(Model3DLoadAnimationAsset, rt_model3d_load_animation_asset, "Viper.Graphics3D.SceneAsset.LoadAnimationAsset", "obj<Viper.Graphics3D.Animation3D>(str,i64)")
 RT_FUNC(Model3DLoadAnimationAssetResult, rt_model3d_load_animation_asset_result, "Viper.Graphics3D.SceneAsset.LoadAnimationAssetResult", "obj<Viper.Result>(str,i64)")
-RT_FUNC(Model3DLoadNodeAnimation, rt_model3d_load_node_animation, "Viper.Graphics3D.SceneAsset.LoadNodeAnimation", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
 RT_FUNC(Model3DLoadNodeAnimationResult, rt_model3d_load_node_animation_result, "Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult", "obj<Viper.Result>(str,i64)")
-RT_FUNC(Model3DLoadNodeAnimationAsset, rt_model3d_load_node_animation_asset, "Viper.Graphics3D.SceneAsset.LoadNodeAnimationAsset", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
 RT_FUNC(Model3DLoadNodeAnimationAssetResult, rt_model3d_load_node_animation_asset_result, "Viper.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult", "obj<Viper.Result>(str,i64)")
 
 /// @summary Provides Asset Diagnostics 3D constants and static operations for 3D rendering and scene applications.
 /// @details
 /// `Viper.Graphics3D.AssetDiagnostics3D` is a static runtime surface and does not require an
-/// instance. Its public surface exposes properties such as `LastLoadError`, `LastLoadErrorCode`,
-/// `LoadWarningCount` and operations including `GetLoadWarning`, `GetLoadWarnings`,
-/// `GetImportReport`.
+/// instance. Its public surface exposes properties such as `LoadWarningCount` and operations
+/// including `GetLoadWarning`, `GetLoadWarnings`, `GetImportReport`.
 RT_CLASS_BEGIN("Viper.Graphics3D.AssetDiagnostics3D", AssetDiagnostics3D, "none", none)
-    RT_PROP("LastLoadError", "str", Assets3DLastLoadError, none)
-    RT_PROP("LastLoadErrorCode", "i64", Assets3DLastLoadErrorCode, none)
     RT_PROP("LoadWarningCount", "i64", Assets3DLoadWarningCount, none)
     RT_METHOD("GetLoadWarning", "str(i64)", Assets3DGetLoadWarning)
     RT_METHOD("GetLoadWarnings", "str()", Assets3DGetLoadWarnings)
     RT_METHOD("GetImportReport", "str()", Assets3DGetImportReport)
 RT_CLASS_END()
 
-/// @summary Provides GLTF functionality for 3D rendering and scene applications.
+/// @summary Provides glTF model import for 3D rendering and scene applications.
 /// @details
 /// `Viper.Graphics3D.GLTF` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `MeshCount`,
 /// `MaterialCount` and operations including `Load`, `LoadAsset`, `GetMesh`, `GetMaterial`.
-RT_CLASS_BEGIN("Viper.Graphics3D.GLTF", GLTF, "obj", none)
+RT_CLASS_BEGIN("Viper.Graphics3D.Gltf", GLTF, "obj", none)
     RT_PROP("MeshCount", "i64", GLTFMeshCount, none)
     RT_PROP("MaterialCount", "i64", GLTFMatCount, none)
-    RT_METHOD("Load", "obj<Viper.Graphics3D.GLTF>(str)", GLTFLoad)
-    RT_METHOD("LoadAsset", "obj<Viper.Graphics3D.GLTF>(str)", GLTFLoadAsset)
+    RT_METHOD("Load", "obj<Viper.Graphics3D.Gltf>(str)", GLTFLoad)
+    RT_METHOD("LoadAsset", "obj<Viper.Graphics3D.Gltf>(str)", GLTFLoadAsset)
     RT_METHOD("GetMesh", "obj<Viper.Graphics3D.Mesh3D>(i64)", GLTFGetMesh)
     RT_METHOD("GetMaterial", "obj<Viper.Graphics3D.Material3D>(i64)", GLTFGetMaterial)
 RT_CLASS_END()
 
-/// @summary Provides FBX functionality for 3D rendering and scene applications.
+/// @summary Provides FBX model import for 3D rendering and scene applications.
 /// @details
 /// `Viper.Graphics3D.FBX` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `MeshCount`,
 /// `AnimationCount`, `MaterialCount` and operations including `Load`, `GetMesh`, `GetSkeleton`,
 /// `GetAnimation`.
-RT_CLASS_BEGIN("Viper.Graphics3D.FBX", FBX, "obj", none)
+RT_CLASS_BEGIN("Viper.Graphics3D.Fbx", FBX, "obj", none)
     RT_PROP("MeshCount", "i64", FBXMeshCount, none)
     RT_PROP("AnimationCount", "i64", FBXAnimCount, none)
     RT_PROP("MaterialCount", "i64", FBXMaterialCount, none)
-    RT_METHOD("Load", "obj<Viper.Graphics3D.FBX>(str)", FBXLoad)
+    RT_METHOD("Load", "obj<Viper.Graphics3D.Fbx>(str)", FBXLoad)
     RT_METHOD("GetMesh", "obj<Viper.Graphics3D.Mesh3D>(i64)", FBXGetMesh)
     RT_METHOD("GetSkeleton", "obj<Viper.Graphics3D.Skeleton3D>()", FBXGetSkeleton)
     RT_METHOD("GetAnimation", "obj<Viper.Graphics3D.Animation3D>(i64)", FBXGetAnim)
@@ -516,8 +490,8 @@ RT_CLASS_END()
 /// @details
 /// `Viper.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
-/// `MeshCount`, `MaterialCount`, `SkeletonCount` and operations including `Load`, `LoadResult`,
-/// `LoadWithOptions`, `LoadWithOptionsEx`.
+/// `MeshCount`, `MaterialCount`, `SkeletonCount` and operations including `LoadResult`,
+/// `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
 RT_CLASS_BEGIN("Viper.Graphics3D.SceneAsset", Model3D, "obj", none)
     RT_PROP("MeshCount", "i64", Model3DMeshCount, none)
     RT_PROP("MaterialCount", "i64", Model3DMaterialCount, none)
@@ -527,12 +501,10 @@ RT_CLASS_BEGIN("Viper.Graphics3D.SceneAsset", Model3D, "obj", none)
     RT_PROP("NodeCount", "i64", Model3DNodeCount, none)
     RT_PROP("SceneCount", "i64", Model3DSceneCount, none)
     RT_PROP("VariantCount", "i64", Model3DVariantCount, none)
-    RT_METHOD("Load", "obj<Viper.Graphics3D.SceneAsset>(str)", Model3DLoad)
     RT_METHOD("LoadResult", "obj<Viper.Result>(str)", Model3DLoadResult)
     RT_METHOD("LoadWithOptions", "obj<Viper.Graphics3D.SceneAsset>(str,i1)", Model3DLoadWithOptions)
     RT_METHOD("LoadWithOptionsEx", "obj<Viper.Graphics3D.SceneAsset>(str,str)", Model3DLoadWithOptionsEx)
     RT_METHOD("LoadResultWithOptions", "obj<Viper.Result>(str,i1)", Model3DLoadResultWithOptions)
-    RT_METHOD("LoadAsset", "obj<Viper.Graphics3D.SceneAsset>(str)", Model3DLoadAsset)
     RT_METHOD("LoadAssetResult", "obj<Viper.Result>(str)", Model3DLoadAssetResult)
     RT_METHOD("GetCameraCount", "i64(i64)", Model3DGetCameraCount)
     RT_METHOD("GetMesh", "obj<Viper.Graphics3D.Mesh3D>(i64)", Model3DGetMesh)
@@ -545,19 +517,14 @@ RT_CLASS_BEGIN("Viper.Graphics3D.SceneAsset", Model3D, "obj", none)
     RT_METHOD("GetSceneName", "str(i64)", Model3DGetSceneName)
     RT_METHOD("GetVariantName", "str(i64)", Model3DGetVariantName)
     RT_METHOD("ApplyVariant", "i64(obj,i64)", Model3DApplyVariant)
-    RT_METHOD("GenerateLODs", "i64(i64,f64)", Model3DGenerateLODs)
-    RT_METHOD("FindNode", "obj(str)", Model3DFindNode)
-    RT_METHOD("FindNodeOption", "obj<Viper.Option>(str)", Model3DFindNodeOption)
+    RT_METHOD("GenerateLods", "i64(i64,f64)", Model3DGenerateLODs)
+    RT_METHOD("FindNode", "obj<Viper.Option>(str)", Model3DFindNodeOption)
     RT_METHOD("Instantiate", "obj()", Model3DInstantiate)
     RT_METHOD("InstantiateScene", "obj()", Model3DInstantiateScene)
     RT_METHOD("InstantiateSceneAt", "obj<Viper.Graphics3D.SceneGraph>(i64)", Model3DInstantiateSceneAt)
-    RT_METHOD("LoadAnimation", "obj<Viper.Graphics3D.Animation3D>(str,i64)", Model3DLoadAnimation)
     RT_METHOD("LoadAnimationResult", "obj<Viper.Result>(str,i64)", Model3DLoadAnimationResult)
-    RT_METHOD("LoadAnimationAsset", "obj<Viper.Graphics3D.Animation3D>(str,i64)", Model3DLoadAnimationAsset)
     RT_METHOD("LoadAnimationAssetResult", "obj<Viper.Result>(str,i64)", Model3DLoadAnimationAssetResult)
-    RT_METHOD("LoadNodeAnimation", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)", Model3DLoadNodeAnimation)
     RT_METHOD("LoadNodeAnimationResult", "obj<Viper.Result>(str,i64)", Model3DLoadNodeAnimationResult)
-    RT_METHOD("LoadNodeAnimationAsset", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)", Model3DLoadNodeAnimationAsset)
     RT_METHOD("LoadNodeAnimationAssetResult", "obj<Viper.Result>(str,i64)", Model3DLoadNodeAnimationAssetResult)
 RT_CLASS_END()
 
@@ -576,7 +543,7 @@ RT_FUNC(Canvas3DDrawMeshMorphed,     rt_canvas3d_draw_mesh_morphed,      "Viper.
 /// @summary Provides Morph Target 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.MorphTarget3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `ShapeCount` and operations including `AddShape`, `SetDelta`, `SetNormalDelta`, `SetWeight`.
 RT_CLASS_BEGIN("Viper.Graphics3D.MorphTarget3D", MorphTarget3D, "obj", MorphTarget3DNew)
     RT_PROP("ShapeCount", "i64", MorphTarget3DShapeCount, none)
@@ -614,7 +581,7 @@ RT_FUNC(Particles3DRebaseOrigin, rt_particles3d_rebase_origin,  "Viper.Graphics3
 RT_FUNC(Particles3DUpdate,       rt_particles3d_update,         "Viper.Graphics3D.Particles3D.Update",       "void(obj,f64)")
 RT_FUNC(Particles3DDraw,         rt_particles3d_draw,           "Viper.Graphics3D.Particles3D.Draw",         "void(obj,obj,obj)")
 RT_FUNC(Particles3DGetCount,     rt_particles3d_get_count,      "Viper.Graphics3D.Particles3D.get_Count",    "i64(obj)")
-RT_FUNC(Particles3DGetEmitting,  rt_particles3d_get_emitting,   "Viper.Graphics3D.Particles3D.get_Emitting", "i1(obj)")
+RT_FUNC(Particles3DGetEmitting,  rt_particles3d_get_emitting,   "Viper.Graphics3D.Particles3D.get_IsEmitting", "i1(obj)")
 RT_FUNC(Particles3DSetSeed,      rt_particles3d_set_seed,       "Viper.Graphics3D.Particles3D.set_Seed",     "void(obj,i64)")
 RT_FUNC(Particles3DGetSeed,      rt_particles3d_get_seed,       "Viper.Graphics3D.Particles3D.get_Seed",     "i64(obj)")
 
@@ -622,11 +589,11 @@ RT_FUNC(Particles3DGetSeed,      rt_particles3d_get_seed,       "Viper.Graphics3
 /// @details
 /// Create `Viper.Graphics3D.Particles3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Count`, `Emitting`, `Additive` and operations including `SetStretch`, `SetTrail`,
+/// `Count`, `IsEmitting`, `Additive` and operations including `SetStretch`, `SetTrail`,
 /// `SetSoftness`, `SetPosition`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Particles3D", Particles3D, "obj", Particles3DNew)
     RT_PROP("Count", "i64", Particles3DGetCount, none)
-    RT_PROP("Emitting", "i1", Particles3DGetEmitting, none)
+    RT_PROP("IsEmitting", "i1", Particles3DGetEmitting, none)
     RT_PROP("Additive", "i1", none, Particles3DSetAdditive)
     // Live PRNG state: set for reproducible spawn streams (determinism/replay),
     // read to checkpoint the stream. Emitters otherwise seed from a process
@@ -661,11 +628,11 @@ RT_CLASS_END()
 RT_FUNC(PostFX3DNew,            rt_postfx3d_new,             "Viper.Graphics3D.PostFX3D.New",            "obj()")
 RT_FUNC(PostFX3DAddBloom,       rt_postfx3d_add_bloom,       "Viper.Graphics3D.PostFX3D.AddBloom",       "void(obj,f64,f64,i64)")
 RT_FUNC(PostFX3DAddTonemap,     rt_postfx3d_add_tonemap,     "Viper.Graphics3D.PostFX3D.AddTonemap",     "void(obj,i64,f64)")
-RT_FUNC(PostFX3DAddFXAA,        rt_postfx3d_add_fxaa,        "Viper.Graphics3D.PostFX3D.AddFXAA",        "void(obj)")
+RT_FUNC(PostFX3DAddFXAA,        rt_postfx3d_add_fxaa,        "Viper.Graphics3D.PostFX3D.AddFxaa",        "void(obj)")
 RT_FUNC(PostFX3DAddColorGrade,  rt_postfx3d_add_color_grade, "Viper.Graphics3D.PostFX3D.AddColorGrade",  "void(obj,f64,f64,f64)")
 RT_FUNC(PostFX3DAddVignette,    rt_postfx3d_add_vignette,    "Viper.Graphics3D.PostFX3D.AddVignette",    "void(obj,f64,f64)")
-RT_FUNC(PostFX3DSetEnabled,     rt_postfx3d_set_enabled,     "Viper.Graphics3D.PostFX3D.set_Enabled",    "void(obj,i1)")
-RT_FUNC(PostFX3DGetEnabled,     rt_postfx3d_get_enabled,     "Viper.Graphics3D.PostFX3D.get_Enabled",    "i1(obj)")
+RT_FUNC(PostFX3DSetEnabled,     rt_postfx3d_set_enabled,     "Viper.Graphics3D.PostFX3D.set_IsEnabled",    "void(obj,i1)")
+RT_FUNC(PostFX3DGetEnabled,     rt_postfx3d_get_enabled,     "Viper.Graphics3D.PostFX3D.get_IsEnabled",    "i1(obj)")
 RT_FUNC(PostFX3DClear,          rt_postfx3d_clear,           "Viper.Graphics3D.PostFX3D.Clear",          "void(obj)")
 RT_FUNC(PostFX3DEffectCount,    rt_postfx3d_get_effect_count,"Viper.Graphics3D.PostFX3D.get_EffectCount","i64(obj)")
 RT_FUNC(PostFX3DNewQuality,     rt_postfx3d_new_quality,     "Viper.Graphics3D.PostFX3D.NewQuality",     "obj(obj,i64)")
@@ -675,30 +642,30 @@ RT_FUNC(Canvas3DSetPostFX,      rt_canvas3d_set_post_fx,     "Viper.Graphics3D.C
 /// @details
 /// Create `Viper.Graphics3D.PostFX3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Enabled`, `EffectCount`, `LastError` and operations including `AddAutoExposure`, `AddColorLUT`,
-/// `MakeIdentityLUT`, `AddSunShafts`.
+/// `IsEnabled`, `EffectCount`, `LastError` and operations including `AddAutoExposure`,
+/// `AddColorLut`, `MakeIdentityLut`, `AddSunShafts`.
 RT_CLASS_BEGIN("Viper.Graphics3D.PostFX3D", PostFX3D, "obj", PostFX3DNew)
-    RT_PROP("Enabled", "i1", PostFX3DGetEnabled, PostFX3DSetEnabled)
+    RT_PROP("IsEnabled", "i1", PostFX3DGetEnabled, PostFX3DSetEnabled)
     RT_PROP("EffectCount", "i64", PostFX3DEffectCount, none)
     // Eye adaptation + 3D LUT grading (identity strip via MakeIdentityLUT).
     RT_METHOD("AddAutoExposure", "void(f64,f64,f64)", PostFX3DAddAutoExposure)
-    RT_METHOD("AddColorLUT", "void(obj,f64)", PostFX3DAddColorLUT)
-    RT_METHOD("MakeIdentityLUT", "obj()", PostFX3DMakeIdentityLUT)
+    RT_METHOD("AddColorLut", "void(obj,f64)", PostFX3DAddColorLUT)
+    RT_METHOD("MakeIdentityLut", "obj()", PostFX3DMakeIdentityLUT)
     RT_METHOD("AddSunShafts", "void(f64,f64,i64)", PostFX3DAddSunShafts)
     RT_PROP("LastError", "str", PostFX3DGetLastError, none)
     RT_METHOD("AddBloom", "void(f64,f64,i64)", PostFX3DAddBloom)
     RT_METHOD("AddTonemap", "void(i64,f64)", PostFX3DAddTonemap)
-    RT_METHOD("AddFXAA", "void()", PostFX3DAddFXAA)
+    RT_METHOD("AddFxaa", "void()", PostFX3DAddFXAA)
     RT_METHOD("AddColorGrade", "void(f64,f64,f64)", PostFX3DAddColorGrade)
     RT_METHOD("AddVignette", "void(f64,f64)", PostFX3DAddVignette)
     RT_METHOD("Clear", "void()", PostFX3DClear)
     RT_METHOD("NewQuality", "obj(obj,i64)", PostFX3DNewQuality)
-    RT_METHOD("AddSSAO", "void(f64,f64,i64)", PostFX3DAddSSAO)
-    RT_METHOD("AddDOF", "void(f64,f64,f64)", PostFX3DAddDOF)
+    RT_METHOD("AddSsao", "void(f64,f64,i64)", PostFX3DAddSSAO)
+    RT_METHOD("AddDof", "void(f64,f64,f64)", PostFX3DAddDOF)
     RT_METHOD("SetDofFocus", "i1(f64)", PostFX3DSetDofFocus)
     RT_METHOD("AddMotionBlur", "void(f64,i64)", PostFX3DAddMotionBlur)
-    RT_METHOD("AddTAA", "void(f64)", PostFX3DAddTAA)
-    RT_METHOD("AddSSR", "void(f64,f64)", PostFX3DAddSSR)
+    RT_METHOD("AddTaa", "void(f64)", PostFX3DAddTAA)
+    RT_METHOD("AddSsr", "void(f64,f64)", PostFX3DAddSSR)
 RT_CLASS_END()
 
 // Ray3D — raycasting
@@ -723,8 +690,8 @@ RT_FUNC(RayHit3DTriangle,        rt_ray3d_hit_triangle,        "Viper.Graphics3D
 
 /// @summary Provides Ray Hit 3D constants and static operations for 3D rendering and scene applications.
 /// @details
-/// `Viper.Graphics3D.RayHit3D` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Distance`, `Point`, `Normal`.
+/// `Viper.Graphics3D.RayHit3D` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Distance`, `Point`, `Normal`.
 RT_CLASS_BEGIN("Viper.Graphics3D.RayHit3D", RayHit3D, "none", none)
     RT_PROP("Distance", "f64", RayHit3DDistance, none)
     RT_PROP("Point", "obj", RayHit3DPoint, none)
@@ -733,8 +700,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.RayHit3D", RayHit3D, "none", none)
 RT_CLASS_END()
 
 // FPS Camera extensions
-RT_FUNC(Camera3DFPSInit,    rt_camera3d_fps_init,    "Viper.Graphics3D.Camera3D.FPSInit",    "void(obj)")
-RT_FUNC(Camera3DFPSUpdate,  rt_camera3d_fps_update,  "Viper.Graphics3D.Camera3D.FPSUpdate",  "void(obj,f64,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Camera3DFPSInit,    rt_camera3d_fps_init,    "Viper.Graphics3D.Camera3D.FirstPersonInit",    "void(obj)")
+RT_FUNC(Camera3DFPSUpdate,  rt_camera3d_fps_update,  "Viper.Graphics3D.Camera3D.FirstPersonUpdate",  "void(obj,f64,f64,f64,f64,f64,f64,f64)")
 RT_FUNC(Camera3DGetYaw,     rt_camera3d_get_yaw,     "Viper.Graphics3D.Camera3D.get_Yaw",    "f64(obj)")
 RT_FUNC(Camera3DGetPitch,   rt_camera3d_get_pitch,   "Viper.Graphics3D.Camera3D.get_Pitch",  "f64(obj)")
 RT_FUNC(Camera3DSetYaw,     rt_camera3d_set_yaw,     "Viper.Graphics3D.Camera3D.set_Yaw",    "void(obj,f64)")
@@ -763,17 +730,17 @@ RT_FUNC(Canvas3DClearClipRect2D, rt_canvas3d_clear_clip_rect2d, "Viper.Graphics3
 RT_FUNC(Canvas3DMeasureText2D,  rt_canvas3d_measure_text2d,  "Viper.Graphics3D.Canvas3D.MeasureText2D",  "i64(obj,str,f64)")
 
 // SpatialAudio3D — low-level spatial audio helpers
-RT_FUNC(Sound3DSetListener,  rt_sound3d_set_listener,  "Viper.Sound.SpatialAudio3D.SetListener",  "void(obj,obj)")
-RT_FUNC(Sound3DPlayAt,       rt_sound3d_play_at,       "Viper.Sound.SpatialAudio3D.PlayAt",       "i64(obj,obj,f64,i64)")
-RT_FUNC(Sound3DUpdateVoice,  rt_sound3d_update_voice,  "Viper.Sound.SpatialAudio3D.UpdateVoice",  "void(i64,obj,f64)")
-RT_FUNC(Sound3DSyncBindings, rt_sound3d_sync_bindings, "Viper.Sound.SpatialAudio3D.SyncBindings", "void(f64)")
+RT_FUNC(Sound3DSetListener,  rt_sound3d_set_listener,  "Viper.Audio.SpatialAudio3D.SetListener",  "void(obj,obj)")
+RT_FUNC(Sound3DPlayAt,       rt_sound3d_play_at,       "Viper.Audio.SpatialAudio3D.PlayAt",       "i64(obj,obj,f64,i64)")
+RT_FUNC(Sound3DUpdateVoice,  rt_sound3d_update_voice,  "Viper.Audio.SpatialAudio3D.UpdateVoice",  "void(i64,obj,f64)")
+RT_FUNC(Sound3DSyncBindings, rt_sound3d_sync_bindings, "Viper.Audio.SpatialAudio3D.SyncBindings", "void(f64)")
 
 /// @summary Provides Spatial Audio 3D constants and static operations for audio playback and synthesis.
 /// @details
-/// `Viper.Sound.SpatialAudio3D` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `SetListener`, `PlayAt`, `UpdateVoice`,
+/// `Viper.Sound.SpatialAudio3D` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `SetListener`, `PlayAt`, `UpdateVoice`,
 /// `SyncBindings`.
-RT_CLASS_BEGIN("Viper.Sound.SpatialAudio3D", SpatialAudio3D, "none", none)
+RT_CLASS_BEGIN("Viper.Audio.SpatialAudio3D", SpatialAudio3D, "none", none)
     RT_METHOD("SetListener", "void(obj,obj)", Sound3DSetListener)
     RT_METHOD("PlayAt", "i64(obj,obj,f64,i64)", Sound3DPlayAt)
     RT_METHOD("UpdateVoice", "void(i64,obj,f64)", Sound3DUpdateVoice)
@@ -822,8 +789,8 @@ RT_FUNC(SoundSource3DSetVelocity,      rt_soundsource3d_set_velocity,       "Vip
 RT_FUNC(SoundSource3DGetDopplerFactor, rt_soundsource3d_get_doppler_factor, "Viper.Graphics3D.SoundSource3D.get_DopplerFactor","f64(obj)")
 RT_FUNC(SoundSource3DGetMaxDistance,   rt_soundsource3d_get_max_distance,   "Viper.Graphics3D.SoundSource3D.get_MaxDistance",  "f64(obj)")
 RT_FUNC(SoundSource3DSetMaxDistance,   rt_soundsource3d_set_max_distance,   "Viper.Graphics3D.SoundSource3D.set_MaxDistance",  "void(obj,f64)")
-RT_FUNC(SoundSource3DGetRefDistance,   rt_soundsource3d_get_ref_distance,   "Viper.Graphics3D.SoundSource3D.get_RefDistance",  "f64(obj)")
-RT_FUNC(SoundSource3DSetRefDistance,   rt_soundsource3d_set_ref_distance,   "Viper.Graphics3D.SoundSource3D.set_RefDistance",  "void(obj,f64)")
+RT_FUNC(SoundSource3DGetRefDistance,   rt_soundsource3d_get_ref_distance,   "Viper.Graphics3D.SoundSource3D.get_ReferenceDistance",  "f64(obj)")
+RT_FUNC(SoundSource3DSetRefDistance,   rt_soundsource3d_set_ref_distance,   "Viper.Graphics3D.SoundSource3D.set_ReferenceDistance",  "void(obj,f64)")
 RT_FUNC(SoundSource3DGetVolume,        rt_soundsource3d_get_volume,         "Viper.Graphics3D.SoundSource3D.get_Volume",       "i64(obj)")
 RT_FUNC(SoundSource3DSetVolume,        rt_soundsource3d_set_volume,         "Viper.Graphics3D.SoundSource3D.set_Volume",       "void(obj,i64)")
 RT_FUNC(SoundSource3DGetPitch,         rt_soundsource3d_get_pitch,          "Viper.Graphics3D.SoundSource3D.get_Pitch",        "f64(obj)")
@@ -851,7 +818,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.SoundSource3D", SoundSource3D, "obj", SoundSour
     RT_PROP("Position", "obj<Viper.Math.Vec3>", SoundSource3DGetPosition, SoundSource3DSetPosition)
     RT_PROP("Velocity", "obj<Viper.Math.Vec3>", SoundSource3DGetVelocity, SoundSource3DSetVelocity)
     RT_PROP("DopplerFactor", "f64", SoundSource3DGetDopplerFactor, none)
-    RT_PROP("RefDistance", "f64", SoundSource3DGetRefDistance, SoundSource3DSetRefDistance)
+    RT_PROP("ReferenceDistance", "f64", SoundSource3DGetRefDistance, SoundSource3DSetRefDistance)
     RT_PROP("MaxDistance", "f64", SoundSource3DGetMaxDistance, SoundSource3DSetMaxDistance)
     RT_PROP("Volume", "i64", SoundSource3DGetVolume, SoundSource3DSetVolume)
     // User playback-rate multiplier; composes with the (now applied) Doppler
@@ -874,63 +841,63 @@ RT_CLASS_END()
 //=============================================================================
 
 // World3D
-RT_FUNC(World3DNew,             rt_world3d_new,             "Viper.Graphics3D.Physics3DWorld.New",             "obj(f64,f64,f64)")
-RT_FUNC(World3DStep,            rt_world3d_step,            "Viper.Graphics3D.Physics3DWorld.Step",            "void(obj,f64)")
-RT_FUNC(World3DStepFixed,       rt_world3d_step_fixed,      "Viper.Graphics3D.Physics3DWorld.StepFixed",       "i64(obj,f64,f64,i64)")
-RT_FUNC(World3DGetFixedStepAlpha, rt_world3d_get_fixed_step_alpha, "Viper.Graphics3D.Physics3DWorld.get_FixedStepAlpha", "f64(obj)")
-RT_FUNC(World3DGetDroppedFixedSteps, rt_world3d_get_dropped_fixed_steps, "Viper.Graphics3D.Physics3DWorld.get_DroppedFixedSteps", "i64(obj)")
-RT_FUNC(World3DAdd,             rt_world3d_add,             "Viper.Graphics3D.Physics3DWorld.Add",             "void(obj,obj)")
-RT_FUNC(World3DTryAdd,          rt_world3d_try_add,         "Viper.Graphics3D.Physics3DWorld.TryAdd",          "i1(obj,obj)")
-RT_FUNC(World3DRemove,          rt_world3d_remove,          "Viper.Graphics3D.Physics3DWorld.Remove",          "void(obj,obj)")
-RT_FUNC(World3DBodyCount,       rt_world3d_body_count,      "Viper.Graphics3D.Physics3DWorld.get_BodyCount",   "i64(obj)")
-RT_FUNC(World3DContainsBody,    rt_world3d_contains_body,   "Viper.Graphics3D.Physics3DWorld.ContainsBody",    "i1(obj,obj)")
-RT_FUNC(World3DLastCcdRequestedSubsteps, rt_world3d_get_last_ccd_requested_substeps, "Viper.Graphics3D.Physics3DWorld.get_LastCcdRequestedSubsteps", "i64(obj)")
-RT_FUNC(World3DLastCcdSubsteps, rt_world3d_get_last_ccd_substeps, "Viper.Graphics3D.Physics3DWorld.get_LastCcdSubsteps", "i64(obj)")
-RT_FUNC(World3DCcdSubstepClampedCount, rt_world3d_get_ccd_substep_clamped_count, "Viper.Graphics3D.Physics3DWorld.get_CcdSubstepClampedCount", "i64(obj)")
-RT_FUNC(World3DLastCcdClampedBodyCount, rt_world3d_get_last_ccd_clamped_body_count, "Viper.Graphics3D.Physics3DWorld.get_LastCcdClampedBodyCount", "i64(obj)")
-RT_FUNC(World3DCcdSubstepClampedBodyCount, rt_world3d_get_ccd_substep_clamped_body_count, "Viper.Graphics3D.Physics3DWorld.get_CcdSubstepClampedBodyCount", "i64(obj)")
-RT_FUNC(World3DCcdToiCount, rt_world3d_get_ccd_toi_count, "Viper.Graphics3D.Physics3DWorld.get_CcdToiCount", "i64(obj)")
-RT_FUNC(World3DSetMaxQueryHits, rt_world3d_set_max_query_hits, "Viper.Graphics3D.Physics3DWorld.SetMaxQueryHits", "void(obj,i64)")
-RT_FUNC(World3DGetMaxQueryHits, rt_world3d_get_max_query_hits, "Viper.Graphics3D.Physics3DWorld.get_MaxQueryHits", "i64(obj)")
-RT_FUNC(World3DBroadphaseFallbackCount, rt_world3d_get_broadphase_fallback_count, "Viper.Graphics3D.Physics3DWorld.get_BroadphaseFallbackCount", "i64(obj)")
-RT_FUNC(World3DQueryBroadphaseRebuildCount, rt_world3d_get_query_broadphase_rebuild_count, "Viper.Graphics3D.Physics3DWorld.get_QueryBroadphaseRebuildCount", "i64(obj)")
-RT_FUNC(World3DGetSolverIterations, rt_world3d_get_solver_iterations, "Viper.Graphics3D.Physics3DWorld.get_SolverIterations", "i64(obj)")
-RT_FUNC(World3DSetSolverIterations, rt_world3d_set_solver_iterations, "Viper.Graphics3D.Physics3DWorld.set_SolverIterations", "void(obj,i64)")
-RT_FUNC(World3DGetPositionIterations, rt_world3d_get_position_iterations, "Viper.Graphics3D.Physics3DWorld.get_PositionIterations", "i64(obj)")
-RT_FUNC(World3DSetPositionIterations, rt_world3d_set_position_iterations, "Viper.Graphics3D.Physics3DWorld.set_PositionIterations", "void(obj,i64)")
-RT_FUNC(World3DGetContactBeta, rt_world3d_get_contact_beta, "Viper.Graphics3D.Physics3DWorld.get_ContactBeta", "f64(obj)")
-RT_FUNC(World3DSetContactBeta, rt_world3d_set_contact_beta, "Viper.Graphics3D.Physics3DWorld.set_ContactBeta", "void(obj,f64)")
-RT_FUNC(World3DGetRestitutionThreshold, rt_world3d_get_restitution_threshold, "Viper.Graphics3D.Physics3DWorld.get_RestitutionThreshold", "f64(obj)")
-RT_FUNC(World3DSetRestitutionThreshold, rt_world3d_set_restitution_threshold, "Viper.Graphics3D.Physics3DWorld.set_RestitutionThreshold", "void(obj,f64)")
-RT_FUNC(World3DLastSolverIslandCount, rt_world3d_get_last_solver_island_count, "Viper.Graphics3D.Physics3DWorld.get_LastSolverIslandCount", "i64(obj)")
-RT_FUNC(World3DLastSolverActiveBodyCount, rt_world3d_get_last_solver_active_body_count, "Viper.Graphics3D.Physics3DWorld.get_LastSolverActiveBodyCount", "i64(obj)")
-RT_FUNC(World3DLastSolverContactCount, rt_world3d_get_last_solver_contact_count, "Viper.Graphics3D.Physics3DWorld.get_LastSolverContactCount", "i64(obj)")
-RT_FUNC(World3DSetGravity,      rt_world3d_set_gravity,     "Viper.Graphics3D.Physics3DWorld.SetGravity",      "void(obj,f64,f64,f64)")
+RT_FUNC(World3DNew,             rt_world3d_new,             "Viper.Graphics3D.PhysicsWorld3D.New",             "obj(f64,f64,f64)")
+RT_FUNC(World3DStep,            rt_world3d_step,            "Viper.Graphics3D.PhysicsWorld3D.Step",            "void(obj,f64)")
+RT_FUNC(World3DStepFixed,       rt_world3d_step_fixed,      "Viper.Graphics3D.PhysicsWorld3D.StepFixed",       "i64(obj,f64,f64,i64)")
+RT_FUNC(World3DGetFixedStepAlpha, rt_world3d_get_fixed_step_alpha, "Viper.Graphics3D.PhysicsWorld3D.get_FixedStepAlpha", "f64(obj)")
+RT_FUNC(World3DGetDroppedFixedSteps, rt_world3d_get_dropped_fixed_steps, "Viper.Graphics3D.PhysicsWorld3D.get_DroppedFixedSteps", "i64(obj)")
+RT_FUNC(World3DAdd,             rt_world3d_add,             "Viper.Graphics3D.PhysicsWorld3D.Add",             "void(obj,obj)")
+RT_FUNC(World3DTryAdd,          rt_world3d_try_add,         "Viper.Graphics3D.PhysicsWorld3D.TryAdd",          "i1(obj,obj)")
+RT_FUNC(World3DRemove,          rt_world3d_remove,          "Viper.Graphics3D.PhysicsWorld3D.Remove",          "void(obj,obj)")
+RT_FUNC(World3DBodyCount,       rt_world3d_body_count,      "Viper.Graphics3D.PhysicsWorld3D.get_BodyCount",   "i64(obj)")
+RT_FUNC(World3DContainsBody,    rt_world3d_contains_body,   "Viper.Graphics3D.PhysicsWorld3D.ContainsBody",    "i1(obj,obj)")
+RT_FUNC(World3DLastCcdRequestedSubsteps, rt_world3d_get_last_ccd_requested_substeps, "Viper.Graphics3D.PhysicsWorld3D.get_LastCcdRequestedSubsteps", "i64(obj)")
+RT_FUNC(World3DLastCcdSubsteps, rt_world3d_get_last_ccd_substeps, "Viper.Graphics3D.PhysicsWorld3D.get_LastCcdSubsteps", "i64(obj)")
+RT_FUNC(World3DCcdSubstepClampedCount, rt_world3d_get_ccd_substep_clamped_count, "Viper.Graphics3D.PhysicsWorld3D.get_CcdSubstepClampedCount", "i64(obj)")
+RT_FUNC(World3DLastCcdClampedBodyCount, rt_world3d_get_last_ccd_clamped_body_count, "Viper.Graphics3D.PhysicsWorld3D.get_LastCcdClampedBodyCount", "i64(obj)")
+RT_FUNC(World3DCcdSubstepClampedBodyCount, rt_world3d_get_ccd_substep_clamped_body_count, "Viper.Graphics3D.PhysicsWorld3D.get_CcdSubstepClampedBodyCount", "i64(obj)")
+RT_FUNC(World3DCcdToiCount, rt_world3d_get_ccd_toi_count, "Viper.Graphics3D.PhysicsWorld3D.get_CcdToiCount", "i64(obj)")
+RT_FUNC(World3DSetMaxQueryHits, rt_world3d_set_max_query_hits, "Viper.Graphics3D.PhysicsWorld3D.SetMaxQueryHits", "void(obj,i64)")
+RT_FUNC(World3DGetMaxQueryHits, rt_world3d_get_max_query_hits, "Viper.Graphics3D.PhysicsWorld3D.get_MaxQueryHits", "i64(obj)")
+RT_FUNC(World3DBroadphaseFallbackCount, rt_world3d_get_broadphase_fallback_count, "Viper.Graphics3D.PhysicsWorld3D.get_BroadphaseFallbackCount", "i64(obj)")
+RT_FUNC(World3DQueryBroadphaseRebuildCount, rt_world3d_get_query_broadphase_rebuild_count, "Viper.Graphics3D.PhysicsWorld3D.get_QueryBroadphaseRebuildCount", "i64(obj)")
+RT_FUNC(World3DGetSolverIterations, rt_world3d_get_solver_iterations, "Viper.Graphics3D.PhysicsWorld3D.get_SolverIterations", "i64(obj)")
+RT_FUNC(World3DSetSolverIterations, rt_world3d_set_solver_iterations, "Viper.Graphics3D.PhysicsWorld3D.set_SolverIterations", "void(obj,i64)")
+RT_FUNC(World3DGetPositionIterations, rt_world3d_get_position_iterations, "Viper.Graphics3D.PhysicsWorld3D.get_PositionIterations", "i64(obj)")
+RT_FUNC(World3DSetPositionIterations, rt_world3d_set_position_iterations, "Viper.Graphics3D.PhysicsWorld3D.set_PositionIterations", "void(obj,i64)")
+RT_FUNC(World3DGetContactBeta, rt_world3d_get_contact_beta, "Viper.Graphics3D.PhysicsWorld3D.get_ContactBeta", "f64(obj)")
+RT_FUNC(World3DSetContactBeta, rt_world3d_set_contact_beta, "Viper.Graphics3D.PhysicsWorld3D.set_ContactBeta", "void(obj,f64)")
+RT_FUNC(World3DGetRestitutionThreshold, rt_world3d_get_restitution_threshold, "Viper.Graphics3D.PhysicsWorld3D.get_RestitutionThreshold", "f64(obj)")
+RT_FUNC(World3DSetRestitutionThreshold, rt_world3d_set_restitution_threshold, "Viper.Graphics3D.PhysicsWorld3D.set_RestitutionThreshold", "void(obj,f64)")
+RT_FUNC(World3DLastSolverIslandCount, rt_world3d_get_last_solver_island_count, "Viper.Graphics3D.PhysicsWorld3D.get_LastSolverIslandCount", "i64(obj)")
+RT_FUNC(World3DLastSolverActiveBodyCount, rt_world3d_get_last_solver_active_body_count, "Viper.Graphics3D.PhysicsWorld3D.get_LastSolverActiveBodyCount", "i64(obj)")
+RT_FUNC(World3DLastSolverContactCount, rt_world3d_get_last_solver_contact_count, "Viper.Graphics3D.PhysicsWorld3D.get_LastSolverContactCount", "i64(obj)")
+RT_FUNC(World3DSetGravity,      rt_world3d_set_gravity,     "Viper.Graphics3D.PhysicsWorld3D.SetGravity",      "void(obj,f64,f64,f64)")
 
-RT_FUNC(World3DCollisionCount,  rt_world3d_get_collision_count,  "Viper.Graphics3D.Physics3DWorld.get_CollisionCount",  "i64(obj)")
-RT_FUNC(World3DCollisionBodyA,  rt_world3d_get_collision_body_a, "Viper.Graphics3D.Physics3DWorld.GetCollisionBodyA",   "obj(obj,i64)")
-RT_FUNC(World3DCollisionBodyB,  rt_world3d_get_collision_body_b, "Viper.Graphics3D.Physics3DWorld.GetCollisionBodyB",   "obj(obj,i64)")
-RT_FUNC(World3DCollisionNormal, rt_world3d_get_collision_normal, "Viper.Graphics3D.Physics3DWorld.GetCollisionNormal",  "obj(obj,i64)")
-RT_FUNC(World3DCollisionDepth,  rt_world3d_get_collision_depth,  "Viper.Graphics3D.Physics3DWorld.GetCollisionDepth",   "f64(obj,i64)")
-RT_FUNC(World3DCollisionEventCount, rt_world3d_get_collision_event_count, "Viper.Graphics3D.Physics3DWorld.get_CollisionEventCount", "i64(obj)")
-RT_FUNC(World3DGetCollisionEvent, rt_world3d_get_collision_event, "Viper.Graphics3D.Physics3DWorld.GetCollisionEvent", "obj(obj,i64)")
-RT_FUNC(World3DEnterEventCount, rt_world3d_get_enter_event_count, "Viper.Graphics3D.Physics3DWorld.get_EnterEventCount", "i64(obj)")
-RT_FUNC(World3DGetEnterEvent, rt_world3d_get_enter_event, "Viper.Graphics3D.Physics3DWorld.GetEnterEvent", "obj(obj,i64)")
-RT_FUNC(World3DStayEventCount, rt_world3d_get_stay_event_count, "Viper.Graphics3D.Physics3DWorld.get_StayEventCount", "i64(obj)")
-RT_FUNC(World3DGetStayEvent, rt_world3d_get_stay_event, "Viper.Graphics3D.Physics3DWorld.GetStayEvent", "obj(obj,i64)")
-RT_FUNC(World3DExitEventCount, rt_world3d_get_exit_event_count, "Viper.Graphics3D.Physics3DWorld.get_ExitEventCount", "i64(obj)")
-RT_FUNC(World3DGetExitEvent, rt_world3d_get_exit_event, "Viper.Graphics3D.Physics3DWorld.GetExitEvent", "obj(obj,i64)")
-RT_FUNC(World3DClearCollisionEvents, rt_world3d_clear_collision_events, "Viper.Graphics3D.Physics3DWorld.ClearCollisionEvents", "void(obj)")
-RT_FUNC(World3DRaycast, rt_world3d_raycast, "Viper.Graphics3D.Physics3DWorld.Raycast", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,obj,f64,i64)")
-RT_FUNC(World3DRaycastAll, rt_world3d_raycast_all, "Viper.Graphics3D.Physics3DWorld.RaycastAll", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,obj,f64,i64)")
-RT_FUNC(World3DSweepSphere, rt_world3d_sweep_sphere, "Viper.Graphics3D.Physics3DWorld.SweepSphere", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,obj,i64)")
-RT_FUNC(World3DSweepCapsule, rt_world3d_sweep_capsule, "Viper.Graphics3D.Physics3DWorld.SweepCapsule", "obj(obj,obj,obj,f64,obj,i64)")
-RT_FUNC(World3DOverlapSphere, rt_world3d_overlap_sphere, "Viper.Graphics3D.Physics3DWorld.OverlapSphere", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)")
-RT_FUNC(World3DOverlapAABB, rt_world3d_overlap_aabb, "Viper.Graphics3D.Physics3DWorld.OverlapAABB", "obj(obj,obj,obj,i64)")
-RT_FUNC(World3DRebaseOrigin, rt_world3d_rebase_origin, "Viper.Graphics3D.Physics3DWorld.RebaseOrigin", "void(obj,f64,f64,f64)")
-RT_FUNC(World3DProbeClearance, rt_world3d_probe_clearance, "Viper.Graphics3D.Physics3DWorld.ProbeClearance", "i1(obj,obj<Viper.Math.Vec3>,f64,f64,i64)")
-RT_FUNC(World3DProbeLedge, rt_world3d_probe_ledge, "Viper.Graphics3D.Physics3DWorld.ProbeLedge", "obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)")
-RT_FUNC(World3DProbeVault, rt_world3d_probe_vault, "Viper.Graphics3D.Physics3DWorld.ProbeVault", "obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)")
+RT_FUNC(World3DCollisionCount,  rt_world3d_get_collision_count,  "Viper.Graphics3D.PhysicsWorld3D.get_CollisionCount",  "i64(obj)")
+RT_FUNC(World3DCollisionBodyA,  rt_world3d_get_collision_body_a, "Viper.Graphics3D.PhysicsWorld3D.GetCollisionBodyA",   "obj(obj,i64)")
+RT_FUNC(World3DCollisionBodyB,  rt_world3d_get_collision_body_b, "Viper.Graphics3D.PhysicsWorld3D.GetCollisionBodyB",   "obj(obj,i64)")
+RT_FUNC(World3DCollisionNormal, rt_world3d_get_collision_normal, "Viper.Graphics3D.PhysicsWorld3D.GetCollisionNormal",  "obj(obj,i64)")
+RT_FUNC(World3DCollisionDepth,  rt_world3d_get_collision_depth,  "Viper.Graphics3D.PhysicsWorld3D.GetCollisionDepth",   "f64(obj,i64)")
+RT_FUNC(World3DCollisionEventCount, rt_world3d_get_collision_event_count, "Viper.Graphics3D.PhysicsWorld3D.get_CollisionEventCount", "i64(obj)")
+RT_FUNC(World3DGetCollisionEvent, rt_world3d_get_collision_event, "Viper.Graphics3D.PhysicsWorld3D.GetCollisionEvent", "obj(obj,i64)")
+RT_FUNC(World3DEnterEventCount, rt_world3d_get_enter_event_count, "Viper.Graphics3D.PhysicsWorld3D.get_EnterEventCount", "i64(obj)")
+RT_FUNC(World3DGetEnterEvent, rt_world3d_get_enter_event, "Viper.Graphics3D.PhysicsWorld3D.GetEnterEvent", "obj(obj,i64)")
+RT_FUNC(World3DStayEventCount, rt_world3d_get_stay_event_count, "Viper.Graphics3D.PhysicsWorld3D.get_StayEventCount", "i64(obj)")
+RT_FUNC(World3DGetStayEvent, rt_world3d_get_stay_event, "Viper.Graphics3D.PhysicsWorld3D.GetStayEvent", "obj(obj,i64)")
+RT_FUNC(World3DExitEventCount, rt_world3d_get_exit_event_count, "Viper.Graphics3D.PhysicsWorld3D.get_ExitEventCount", "i64(obj)")
+RT_FUNC(World3DGetExitEvent, rt_world3d_get_exit_event, "Viper.Graphics3D.PhysicsWorld3D.GetExitEvent", "obj(obj,i64)")
+RT_FUNC(World3DClearCollisionEvents, rt_world3d_clear_collision_events, "Viper.Graphics3D.PhysicsWorld3D.ClearCollisionEvents", "void(obj)")
+RT_FUNC(World3DRaycast, rt_world3d_raycast, "Viper.Graphics3D.PhysicsWorld3D.Raycast", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,obj,f64,i64)")
+RT_FUNC(World3DRaycastAll, rt_world3d_raycast_all, "Viper.Graphics3D.PhysicsWorld3D.RaycastAll", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,obj,f64,i64)")
+RT_FUNC(World3DSweepSphere, rt_world3d_sweep_sphere, "Viper.Graphics3D.PhysicsWorld3D.SweepSphere", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,obj,i64)")
+RT_FUNC(World3DSweepCapsule, rt_world3d_sweep_capsule, "Viper.Graphics3D.PhysicsWorld3D.SweepCapsule", "obj(obj,obj,obj,f64,obj,i64)")
+RT_FUNC(World3DOverlapSphere, rt_world3d_overlap_sphere, "Viper.Graphics3D.PhysicsWorld3D.OverlapSphere", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)")
+RT_FUNC(World3DOverlapAABB, rt_world3d_overlap_aabb, "Viper.Graphics3D.PhysicsWorld3D.OverlapAABB", "obj(obj,obj,obj,i64)")
+RT_FUNC(World3DRebaseOrigin, rt_world3d_rebase_origin, "Viper.Graphics3D.PhysicsWorld3D.RebaseOrigin", "void(obj,f64,f64,f64)")
+RT_FUNC(World3DProbeClearance, rt_world3d_probe_clearance, "Viper.Graphics3D.PhysicsWorld3D.ProbeClearance", "i1(obj,obj<Viper.Math.Vec3>,f64,f64,i64)")
+RT_FUNC(World3DProbeLedge, rt_world3d_probe_ledge, "Viper.Graphics3D.PhysicsWorld3D.ProbeLedge", "obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)")
+RT_FUNC(World3DProbeVault, rt_world3d_probe_vault, "Viper.Graphics3D.PhysicsWorld3D.ProbeVault", "obj<Viper.Graphics3D.LedgeHit3D>(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,f64,f64,f64,i64)")
 
 // Joint constructors
 RT_FUNC(DistJoint3DNew,         rt_distance_joint3d_new,         "Viper.Graphics3D.DistanceJoint3D.New",         "obj(obj,obj,f64)")
@@ -953,17 +920,17 @@ RT_FUNC(SixDofJoint3DNew,       rt_sixdof_joint3d_new,           "Viper.Graphics
 RT_FUNC(SixDofJoint3DSetLinearLimits, rt_sixdof_joint3d_set_linear_limits, "Viper.Graphics3D.SixDofJoint3D.SetLinearLimits", "void(obj,obj,obj)")
 RT_FUNC(SixDofJoint3DSetAngularLimits, rt_sixdof_joint3d_set_angular_limits, "Viper.Graphics3D.SixDofJoint3D.SetAngularLimits", "void(obj,obj,obj)")
 RT_FUNC(SixDofJoint3DSetLinearMotor, rt_sixdof_joint3d_set_linear_motor, "Viper.Graphics3D.SixDofJoint3D.SetLinearMotor", "void(obj,i1,obj,f64)")
-RT_FUNC(World3DAddJoint,        rt_world3d_add_joint,            "Viper.Graphics3D.Physics3DWorld.AddJoint",      "void(obj,obj,i64)")
-RT_FUNC(World3DRemoveJoint,     rt_world3d_remove_joint,         "Viper.Graphics3D.Physics3DWorld.RemoveJoint",   "void(obj,obj)")
-RT_FUNC(World3DJointCount,      rt_world3d_joint_count,          "Viper.Graphics3D.Physics3DWorld.get_JointCount","i64(obj)")
+RT_FUNC(World3DAddJoint,        rt_world3d_add_joint,            "Viper.Graphics3D.PhysicsWorld3D.AddJoint",      "void(obj,obj,i64)")
+RT_FUNC(World3DRemoveJoint,     rt_world3d_remove_joint,         "Viper.Graphics3D.PhysicsWorld3D.RemoveJoint",   "void(obj,obj)")
+RT_FUNC(World3DJointCount,      rt_world3d_joint_count,          "Viper.Graphics3D.PhysicsWorld3D.get_JointCount","i64(obj)")
 
 /// @summary Provides Physics 3D World functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Physics3DWorld` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `BodyCount`, `CollisionCount`, `CollisionEventCount` and operations including `SetMaxQueryHits`,
-/// `Step`, `StepFixed`, `Add`.
-RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DWorld", Physics3DWorld, "obj", World3DNew)
+/// `BodyCount`, `CollisionCount`, `CollisionEventCount` and operations including
+/// `SetMaxQueryHits`, `Step`, `StepFixed`, `Add`.
+RT_CLASS_BEGIN("Viper.Graphics3D.PhysicsWorld3D", Physics3DWorld, "obj", World3DNew)
     RT_PROP("BodyCount", "i64", World3DBodyCount, none)
     RT_PROP("CollisionCount", "i64", World3DCollisionCount, none)
     RT_PROP("CollisionEventCount", "i64", World3DCollisionEventCount, none)
@@ -1022,7 +989,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DWorld", Physics3DWorld, "obj", World3D
     RT_METHOD("ClearCollisionEvents", "void()", World3DClearCollisionEvents)
 RT_CLASS_END()
 
-RT_FUNC(PhysicsHit3DGetBody, rt_physics_hit3d_get_body, "Viper.Graphics3D.PhysicsHit3D.get_Body", "obj<Viper.Graphics3D.Physics3DBody>(obj)")
+RT_FUNC(PhysicsHit3DGetBody, rt_physics_hit3d_get_body, "Viper.Graphics3D.PhysicsHit3D.get_Body", "obj<Viper.Graphics3D.PhysicsBody3D>(obj)")
 RT_FUNC(PhysicsHit3DGetCollider, rt_physics_hit3d_get_collider, "Viper.Graphics3D.PhysicsHit3D.get_Collider", "obj<Viper.Graphics3D.Collider3D>(obj)")
 RT_FUNC(PhysicsHit3DGetSurfaceType, rt_physics_hit3d_get_surface_type, "Viper.Graphics3D.PhysicsHit3D.get_SurfaceType", "i64(obj)")
 RT_FUNC(PhysicsHit3DGetPoint, rt_physics_hit3d_get_point, "Viper.Graphics3D.PhysicsHit3D.get_Point", "obj<Viper.Math.Vec3>(obj)")
@@ -1038,7 +1005,7 @@ RT_FUNC(PhysicsHit3DGetIsTrigger, rt_physics_hit3d_get_is_trigger, "Viper.Graphi
 /// Its public surface exposes properties such as `SurfaceType`, `Body`, `Collider`.
 RT_CLASS_BEGIN("Viper.Graphics3D.PhysicsHit3D", PhysicsHit3D, "none", none)
     RT_PROP("SurfaceType", "i64", PhysicsHit3DGetSurfaceType, none)
-    RT_PROP("Body", "obj<Viper.Graphics3D.Physics3DBody>", PhysicsHit3DGetBody, none)
+    RT_PROP("Body", "obj<Viper.Graphics3D.PhysicsBody3D>", PhysicsHit3DGetBody, none)
     RT_PROP("Collider", "obj<Viper.Graphics3D.Collider3D>", PhysicsHit3DGetCollider, none)
     RT_PROP("Point", "obj<Viper.Math.Vec3>", PhysicsHit3DGetPoint, none)
     RT_PROP("Normal", "obj<Viper.Math.Vec3>", PhysicsHit3DGetNormal, none)
@@ -1064,13 +1031,13 @@ RT_FUNC(Ragdoll3DSetRadiusScale,   rt_ragdoll3d_set_radius_scale,   "Viper.Graph
 RT_FUNC(Ragdoll3DGetMinBoneLength, rt_ragdoll3d_get_min_bone_length,"Viper.Graphics3D.Ragdoll3D.get_MinBoneLength","f64(obj)")
 RT_FUNC(Ragdoll3DSetMinBoneLength, rt_ragdoll3d_set_min_bone_length,"Viper.Graphics3D.Ragdoll3D.set_MinBoneLength","void(obj,f64)")
 RT_FUNC(Ragdoll3DGetBodyCount,     rt_ragdoll3d_get_body_count,     "Viper.Graphics3D.Ragdoll3D.get_BodyCount",    "i64(obj)")
-RT_FUNC(Ragdoll3DGetActive,        rt_ragdoll3d_get_active,         "Viper.Graphics3D.Ragdoll3D.get_Active",       "i1(obj)")
+RT_FUNC(Ragdoll3DGetActive,        rt_ragdoll3d_get_active,         "Viper.Graphics3D.Ragdoll3D.get_IsActive",       "i1(obj)")
 RT_FUNC(Ragdoll3DSetJointLimits,   rt_ragdoll3d_set_joint_limits,   "Viper.Graphics3D.Ragdoll3D.SetJointLimits",   "void(obj,str,f64,f64)")
 RT_FUNC(Ragdoll3DActivate,         rt_ragdoll3d_activate,           "Viper.Graphics3D.Ragdoll3D.Activate",         "void(obj,obj,obj,obj)")
 RT_FUNC(Ragdoll3DDeactivate,       rt_ragdoll3d_deactivate,         "Viper.Graphics3D.Ragdoll3D.Deactivate",       "void(obj,f64)")
 RT_FUNC(Ragdoll3DSetPowered,       rt_ragdoll3d_set_powered,        "Viper.Graphics3D.Ragdoll3D.SetPowered",       "void(obj,i64,f64)")
 RT_FUNC(Ragdoll3DStep,             rt_ragdoll3d_step,               "Viper.Graphics3D.Ragdoll3D.Step",             "void(obj,f64)")
-RT_FUNC(Ragdoll3DGetBody,          rt_ragdoll3d_get_body,           "Viper.Graphics3D.Ragdoll3D.GetBody",          "obj<Viper.Graphics3D.Physics3DBody>(obj,str)")
+RT_FUNC(Ragdoll3DGetBody,          rt_ragdoll3d_get_body,           "Viper.Graphics3D.Ragdoll3D.GetBody",          "obj<Viper.Graphics3D.PhysicsBody3D>(obj,str)")
 
 /// @summary Provides Ragdoll 3D functionality for 3D rendering and scene applications.
 /// @details
@@ -1083,19 +1050,19 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Ragdoll3D", Ragdoll3D, "obj", Ragdoll3DNew)
     RT_PROP("RadiusScale", "f64", Ragdoll3DGetRadiusScale, Ragdoll3DSetRadiusScale)
     RT_PROP("MinBoneLength", "f64", Ragdoll3DGetMinBoneLength, Ragdoll3DSetMinBoneLength)
     RT_PROP("BodyCount", "i64", Ragdoll3DGetBodyCount, none)
-    RT_PROP("Active", "i1", Ragdoll3DGetActive, none)
+    RT_PROP("IsActive", "i1", Ragdoll3DGetActive, none)
     RT_METHOD("SetJointLimits", "void(str,f64,f64)", Ragdoll3DSetJointLimits)
     RT_METHOD("Activate", "void(obj,obj,obj)", Ragdoll3DActivate)
     RT_METHOD("Deactivate", "void(f64)", Ragdoll3DDeactivate)
     RT_METHOD("SetPowered", "void(i64,f64)", Ragdoll3DSetPowered)
     RT_METHOD("Step", "void(f64)", Ragdoll3DStep)
-    RT_METHOD("GetBody", "obj<Viper.Graphics3D.Physics3DBody>(str)", Ragdoll3DGetBody)
+    RT_METHOD("GetBody", "obj<Viper.Graphics3D.PhysicsBody3D>(str)", Ragdoll3DGetBody)
 RT_CLASS_END()
 
 /// @summary Provides Ledge Hit 3D constants and static operations for 3D rendering and scene applications.
 /// @details
-/// `Viper.Graphics3D.LedgeHit3D` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `GrabPoint`, `SurfaceNormal`, `WallNormal`.
+/// `Viper.Graphics3D.LedgeHit3D` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `GrabPoint`, `SurfaceNormal`, `WallNormal`.
 RT_CLASS_BEGIN("Viper.Graphics3D.LedgeHit3D", LedgeHit3D, "none", none)
     RT_PROP("GrabPoint", "obj<Viper.Math.Vec3>", LedgeHit3DGetGrabPoint, none)
     RT_PROP("SurfaceNormal", "obj<Viper.Math.Vec3>", LedgeHit3DGetSurfaceNormal, none)
@@ -1141,8 +1108,8 @@ RT_FUNC(CollisionEvent3DGetContactSeparation, rt_collision_event3d_get_contact_s
 /// @summary Provides Collision Event 3D constants and static operations for 3D rendering and scene applications.
 /// @details
 /// `Viper.Graphics3D.CollisionEvent3D` is a static runtime surface and does not require an
-/// instance. Its public surface exposes properties such as `SurfaceTypeA`, `SurfaceTypeB`, `BodyA`
-/// and operations including `GetContact`, `GetContactPoint`, `GetContactNormal`,
+/// instance. Its public surface exposes properties such as `SurfaceTypeA`, `SurfaceTypeB`,
+/// `BodyA` and operations including `GetContact`, `GetContactPoint`, `GetContactNormal`,
 /// `GetContactSeparation`.
 RT_CLASS_BEGIN("Viper.Graphics3D.CollisionEvent3D", CollisionEvent3D, "none", none)
     RT_PROP("SurfaceTypeA", "i64", CollisionEvent3DGetSurfaceTypeA, none)
@@ -1176,15 +1143,12 @@ RT_CLASS_BEGIN("Viper.Graphics3D.ContactPoint3D", ContactPoint3D, "none", none)
 RT_CLASS_END()
 
 // Collider3D
-RT_FUNC(Collider3DNewBox,         rt_collider3d_new_box,         "Viper.Graphics3D.Collider3D.NewBox",         "obj(f64,f64,f64)")
-RT_FUNC(Collider3DNewSphere,      rt_collider3d_new_sphere,      "Viper.Graphics3D.Collider3D.NewSphere",      "obj(f64)")
 RT_FUNC(Collider3DSetFriction, rt_collider3d_set_friction, "Viper.Graphics3D.Collider3D.set_Friction", "void(obj,f64)")
 RT_FUNC(Collider3DGetFriction, rt_collider3d_get_friction, "Viper.Graphics3D.Collider3D.get_Friction", "f64(obj)")
 RT_FUNC(Collider3DSetRestitution, rt_collider3d_set_restitution, "Viper.Graphics3D.Collider3D.set_Restitution", "void(obj,f64)")
 RT_FUNC(Collider3DGetRestitution, rt_collider3d_get_restitution, "Viper.Graphics3D.Collider3D.get_Restitution", "f64(obj)")
 RT_FUNC(Collider3DSetSurfaceType, rt_collider3d_set_surface_type, "Viper.Graphics3D.Collider3D.set_SurfaceType", "void(obj,i64)")
 RT_FUNC(Collider3DGetSurfaceType, rt_collider3d_get_surface_type, "Viper.Graphics3D.Collider3D.get_SurfaceType", "i64(obj)")
-RT_FUNC(Collider3DNewCapsule,     rt_collider3d_new_capsule,     "Viper.Graphics3D.Collider3D.NewCapsule",     "obj(f64,f64)")
 RT_FUNC(Collider3DBox,            rt_collider3d_new_box,         "Viper.Graphics3D.Collider3D.Box",            "obj(f64,f64,f64)")
 RT_FUNC(Collider3DSphere,         rt_collider3d_new_sphere,      "Viper.Graphics3D.Collider3D.Sphere",         "obj(f64)")
 RT_FUNC(Collider3DCapsule,        rt_collider3d_new_capsule,     "Viper.Graphics3D.Collider3D.Capsule",        "obj(f64,f64)")
@@ -1202,16 +1166,13 @@ RT_FUNC(Collider3DGetBoundsMax,   rt_collider3d_get_local_bounds_max, "Viper.Gra
 /// @details
 /// `Viper.Graphics3D.Collider3D` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
-/// `Friction`, `Restitution`, `SurfaceType` and operations including `NewBox`, `NewSphere`,
-/// `NewCapsule`, `Box`.
+/// `Friction`, `Restitution`, `SurfaceType` and operations including `Box`, `Sphere`, `Capsule`,
+/// `NewConvexHull`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Collider3D", Collider3D, "obj", none)
     RT_PROP("Friction", "f64", Collider3DGetFriction, Collider3DSetFriction)
     RT_PROP("Restitution", "f64", Collider3DGetRestitution, Collider3DSetRestitution)
     RT_PROP("SurfaceType", "i64", Collider3DGetSurfaceType, Collider3DSetSurfaceType)
     RT_PROP("Type", "i64", Collider3DGetType, none)
-    RT_METHOD("NewBox", "obj(f64,f64,f64)", Collider3DNewBox)
-    RT_METHOD("NewSphere", "obj(f64)", Collider3DNewSphere)
-    RT_METHOD("NewCapsule", "obj(f64,f64)", Collider3DNewCapsule)
     RT_METHOD("Box", "obj(f64,f64,f64)", Collider3DBox)
     RT_METHOD("Sphere", "obj(f64)", Collider3DSphere)
     RT_METHOD("Capsule", "obj(f64,f64)", Collider3DCapsule)
@@ -1227,58 +1188,58 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Collider3D", Collider3D, "obj", none)
 RT_CLASS_END()
 
 // Body3D
-RT_FUNC(Body3DNew,              rt_body3d_new,               "Viper.Graphics3D.Physics3DBody.New",              "obj(f64)")
-RT_FUNC(Body3DNewAABB,          rt_body3d_new_aabb,          "Viper.Graphics3D.Physics3DBody.NewAABB",          "obj(f64,f64,f64,f64)")
-RT_FUNC(Body3DNewSphere,        rt_body3d_new_sphere,        "Viper.Graphics3D.Physics3DBody.NewSphere",        "obj(f64,f64)")
-RT_FUNC(Body3DNewCapsule,       rt_body3d_new_capsule,       "Viper.Graphics3D.Physics3DBody.NewCapsule",       "obj(f64,f64,f64)")
-RT_FUNC(Body3DSetCollider,      rt_body3d_set_collider,      "Viper.Graphics3D.Physics3DBody.set_Collider",     "void(obj,obj<Viper.Graphics3D.Collider3D>)")
-RT_FUNC(Body3DGetCollider,      rt_body3d_get_collider,      "Viper.Graphics3D.Physics3DBody.get_Collider",     "obj<Viper.Graphics3D.Collider3D>(obj)")
-RT_FUNC(Body3DSetPosition,      rt_body3d_set_position,      "Viper.Graphics3D.Physics3DBody.SetPosition",      "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DGetPosition,      rt_body3d_get_position,      "Viper.Graphics3D.Physics3DBody.get_Position",     "obj<Viper.Math.Vec3>(obj)")
-RT_FUNC(Body3DSetScale,         rt_body3d_set_scale,         "Viper.Graphics3D.Physics3DBody.SetScale",         "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DGetScale,         rt_body3d_get_scale,         "Viper.Graphics3D.Physics3DBody.get_Scale",        "obj<Viper.Math.Vec3>(obj)")
-RT_FUNC(Body3DSetOrientation,   rt_body3d_set_orientation,   "Viper.Graphics3D.Physics3DBody.SetOrientation",   "void(obj,obj)")
-RT_FUNC(Body3DGetOrientation,   rt_body3d_get_orientation,   "Viper.Graphics3D.Physics3DBody.get_Orientation",  "obj<Viper.Math.Quat>(obj)")
-RT_FUNC(Body3DSetVelocity,      rt_body3d_set_velocity,      "Viper.Graphics3D.Physics3DBody.SetVelocity",      "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DGetVelocity,      rt_body3d_get_velocity,      "Viper.Graphics3D.Physics3DBody.get_Velocity",     "obj<Viper.Math.Vec3>(obj)")
-RT_FUNC(Body3DSetAngularVelocity, rt_body3d_set_angular_velocity, "Viper.Graphics3D.Physics3DBody.SetAngularVelocity", "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DGetAngularVelocity, rt_body3d_get_angular_velocity, "Viper.Graphics3D.Physics3DBody.get_AngularVelocity", "obj<Viper.Math.Vec3>(obj)")
-RT_FUNC(Body3DApplyForce,       rt_body3d_apply_force,       "Viper.Graphics3D.Physics3DBody.ApplyForce",       "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DApplyForceAtPoint, rt_body3d_apply_force_at_point, "Viper.Graphics3D.Physics3DBody.ApplyForceAtPoint", "void(obj,f64,f64,f64,f64,f64,f64)")
-RT_FUNC(Body3DApplyImpulse,     rt_body3d_apply_impulse,     "Viper.Graphics3D.Physics3DBody.ApplyImpulse",     "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DApplyImpulseAtPoint, rt_body3d_apply_impulse_at_point, "Viper.Graphics3D.Physics3DBody.ApplyImpulseAtPoint", "void(obj,f64,f64,f64,f64,f64,f64)")
-RT_FUNC(Body3DApplyTorque,      rt_body3d_apply_torque,      "Viper.Graphics3D.Physics3DBody.ApplyTorque",      "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DApplyAngularImpulse, rt_body3d_apply_angular_impulse, "Viper.Graphics3D.Physics3DBody.ApplyAngularImpulse", "void(obj,f64,f64,f64)")
-RT_FUNC(Body3DSetRestitution,   rt_body3d_set_restitution,   "Viper.Graphics3D.Physics3DBody.set_Restitution",  "void(obj,f64)")
-RT_FUNC(Body3DGetRestitution,   rt_body3d_get_restitution,   "Viper.Graphics3D.Physics3DBody.get_Restitution",  "f64(obj)")
-RT_FUNC(Body3DSetFriction,      rt_body3d_set_friction,      "Viper.Graphics3D.Physics3DBody.set_Friction",     "void(obj,f64)")
-RT_FUNC(Body3DSetUserData, rt_body3d_set_user_data, "Viper.Graphics3D.Physics3DBody.set_UserData", "void(obj,i64)")
-RT_FUNC(Body3DGetUserData, rt_body3d_get_user_data, "Viper.Graphics3D.Physics3DBody.get_UserData", "i64(obj)")
-RT_FUNC(Body3DGetFriction,      rt_body3d_get_friction,      "Viper.Graphics3D.Physics3DBody.get_Friction",     "f64(obj)")
-RT_FUNC(Body3DSetLinearDamping, rt_body3d_set_linear_damping, "Viper.Graphics3D.Physics3DBody.set_LinearDamping", "void(obj,f64)")
-RT_FUNC(Body3DGetLinearDamping, rt_body3d_get_linear_damping, "Viper.Graphics3D.Physics3DBody.get_LinearDamping", "f64(obj)")
-RT_FUNC(Body3DSetAngularDamping, rt_body3d_set_angular_damping, "Viper.Graphics3D.Physics3DBody.set_AngularDamping", "void(obj,f64)")
-RT_FUNC(Body3DGetAngularDamping, rt_body3d_get_angular_damping, "Viper.Graphics3D.Physics3DBody.get_AngularDamping", "f64(obj)")
-RT_FUNC(Body3DSetCollisionLayer, rt_body3d_set_collision_layer, "Viper.Graphics3D.Physics3DBody.set_CollisionLayer", "void(obj,i64)")
-RT_FUNC(Body3DGetCollisionLayer, rt_body3d_get_collision_layer, "Viper.Graphics3D.Physics3DBody.get_CollisionLayer", "i64(obj)")
-RT_FUNC(Body3DSetCollisionMask,  rt_body3d_set_collision_mask,  "Viper.Graphics3D.Physics3DBody.set_CollisionMask",  "void(obj,i64)")
-RT_FUNC(Body3DGetCollisionMask,  rt_body3d_get_collision_mask,  "Viper.Graphics3D.Physics3DBody.get_CollisionMask",  "i64(obj)")
-RT_FUNC(Body3DSetStatic,        rt_body3d_set_static,        "Viper.Graphics3D.Physics3DBody.set_Static",       "void(obj,i1)")
-RT_FUNC(Body3DIsStatic,         rt_body3d_is_static,         "Viper.Graphics3D.Physics3DBody.get_Static",       "i1(obj)")
-RT_FUNC(Body3DSetKinematic,     rt_body3d_set_kinematic,     "Viper.Graphics3D.Physics3DBody.set_Kinematic",    "void(obj,i1)")
-RT_FUNC(Body3DIsKinematic,      rt_body3d_is_kinematic,      "Viper.Graphics3D.Physics3DBody.get_Kinematic",    "i1(obj)")
-RT_FUNC(Body3DSetTrigger,       rt_body3d_set_trigger,       "Viper.Graphics3D.Physics3DBody.set_Trigger",      "void(obj,i1)")
-RT_FUNC(Body3DIsTrigger,        rt_body3d_is_trigger,        "Viper.Graphics3D.Physics3DBody.get_Trigger",      "i1(obj)")
-RT_FUNC(Body3DSetCanSleep,      rt_body3d_set_can_sleep,     "Viper.Graphics3D.Physics3DBody.set_CanSleep",     "void(obj,i1)")
-RT_FUNC(Body3DCanSleep,         rt_body3d_can_sleep,         "Viper.Graphics3D.Physics3DBody.get_CanSleep",     "i1(obj)")
-RT_FUNC(Body3DIsSleeping,       rt_body3d_is_sleeping,       "Viper.Graphics3D.Physics3DBody.get_Sleeping",     "i1(obj)")
-RT_FUNC(Body3DWake,             rt_body3d_wake,              "Viper.Graphics3D.Physics3DBody.Wake",             "void(obj)")
-RT_FUNC(Body3DSleep,            rt_body3d_sleep,             "Viper.Graphics3D.Physics3DBody.Sleep",            "void(obj)")
-RT_FUNC(Body3DSetUseCcd,        rt_body3d_set_use_ccd,       "Viper.Graphics3D.Physics3DBody.set_UseCcd",       "void(obj,i1)")
-RT_FUNC(Body3DGetUseCcd,        rt_body3d_get_use_ccd,       "Viper.Graphics3D.Physics3DBody.get_UseCcd",       "i1(obj)")
-RT_FUNC(Body3DIsGrounded,       rt_body3d_is_grounded,       "Viper.Graphics3D.Physics3DBody.get_Grounded",     "i1(obj)")
-RT_FUNC(Body3DGetGroundNormal,  rt_body3d_get_ground_normal, "Viper.Graphics3D.Physics3DBody.get_GroundNormal", "obj<Viper.Math.Vec3>(obj)")
-RT_FUNC(Body3DGetMass,          rt_body3d_get_mass,          "Viper.Graphics3D.Physics3DBody.get_Mass",         "f64(obj)")
+RT_FUNC(Body3DNew,              rt_body3d_new,               "Viper.Graphics3D.PhysicsBody3D.New",              "obj(f64)")
+RT_FUNC(Body3DNewAABB,          rt_body3d_new_aabb,          "Viper.Graphics3D.PhysicsBody3D.NewAABB",          "obj(f64,f64,f64,f64)")
+RT_FUNC(Body3DNewSphere,        rt_body3d_new_sphere,        "Viper.Graphics3D.PhysicsBody3D.Sphere",        "obj(f64,f64)")
+RT_FUNC(Body3DNewCapsule,       rt_body3d_new_capsule,       "Viper.Graphics3D.PhysicsBody3D.NewCapsule",       "obj(f64,f64,f64)")
+RT_FUNC(Body3DSetCollider,      rt_body3d_set_collider,      "Viper.Graphics3D.PhysicsBody3D.set_Collider",     "void(obj,obj<Viper.Graphics3D.Collider3D>)")
+RT_FUNC(Body3DGetCollider,      rt_body3d_get_collider,      "Viper.Graphics3D.PhysicsBody3D.get_Collider",     "obj<Viper.Graphics3D.Collider3D>(obj)")
+RT_FUNC(Body3DSetPosition,      rt_body3d_set_position,      "Viper.Graphics3D.PhysicsBody3D.SetPosition",      "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DGetPosition,      rt_body3d_get_position,      "Viper.Graphics3D.PhysicsBody3D.get_Position",     "obj<Viper.Math.Vec3>(obj)")
+RT_FUNC(Body3DSetScale,         rt_body3d_set_scale,         "Viper.Graphics3D.PhysicsBody3D.SetScale",         "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DGetScale,         rt_body3d_get_scale,         "Viper.Graphics3D.PhysicsBody3D.get_Scale",        "obj<Viper.Math.Vec3>(obj)")
+RT_FUNC(Body3DSetOrientation,   rt_body3d_set_orientation,   "Viper.Graphics3D.PhysicsBody3D.SetOrientation",   "void(obj,obj)")
+RT_FUNC(Body3DGetOrientation,   rt_body3d_get_orientation,   "Viper.Graphics3D.PhysicsBody3D.get_Orientation",  "obj<Viper.Math.Quat>(obj)")
+RT_FUNC(Body3DSetVelocity,      rt_body3d_set_velocity,      "Viper.Graphics3D.PhysicsBody3D.SetVelocity",      "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DGetVelocity,      rt_body3d_get_velocity,      "Viper.Graphics3D.PhysicsBody3D.get_Velocity",     "obj<Viper.Math.Vec3>(obj)")
+RT_FUNC(Body3DSetAngularVelocity, rt_body3d_set_angular_velocity, "Viper.Graphics3D.PhysicsBody3D.SetAngularVelocity", "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DGetAngularVelocity, rt_body3d_get_angular_velocity, "Viper.Graphics3D.PhysicsBody3D.get_AngularVelocity", "obj<Viper.Math.Vec3>(obj)")
+RT_FUNC(Body3DApplyForce,       rt_body3d_apply_force,       "Viper.Graphics3D.PhysicsBody3D.ApplyForce",       "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DApplyForceAtPoint, rt_body3d_apply_force_at_point, "Viper.Graphics3D.PhysicsBody3D.ApplyForceAtPoint", "void(obj,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Body3DApplyImpulse,     rt_body3d_apply_impulse,     "Viper.Graphics3D.PhysicsBody3D.ApplyImpulse",     "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DApplyImpulseAtPoint, rt_body3d_apply_impulse_at_point, "Viper.Graphics3D.PhysicsBody3D.ApplyImpulseAtPoint", "void(obj,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Body3DApplyTorque,      rt_body3d_apply_torque,      "Viper.Graphics3D.PhysicsBody3D.ApplyTorque",      "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DApplyAngularImpulse, rt_body3d_apply_angular_impulse, "Viper.Graphics3D.PhysicsBody3D.ApplyAngularImpulse", "void(obj,f64,f64,f64)")
+RT_FUNC(Body3DSetRestitution,   rt_body3d_set_restitution,   "Viper.Graphics3D.PhysicsBody3D.set_Restitution",  "void(obj,f64)")
+RT_FUNC(Body3DGetRestitution,   rt_body3d_get_restitution,   "Viper.Graphics3D.PhysicsBody3D.get_Restitution",  "f64(obj)")
+RT_FUNC(Body3DSetFriction,      rt_body3d_set_friction,      "Viper.Graphics3D.PhysicsBody3D.set_Friction",     "void(obj,f64)")
+RT_FUNC(Body3DSetUserData, rt_body3d_set_user_data, "Viper.Graphics3D.PhysicsBody3D.set_UserData", "void(obj,i64)")
+RT_FUNC(Body3DGetUserData, rt_body3d_get_user_data, "Viper.Graphics3D.PhysicsBody3D.get_UserData", "i64(obj)")
+RT_FUNC(Body3DGetFriction,      rt_body3d_get_friction,      "Viper.Graphics3D.PhysicsBody3D.get_Friction",     "f64(obj)")
+RT_FUNC(Body3DSetLinearDamping, rt_body3d_set_linear_damping, "Viper.Graphics3D.PhysicsBody3D.set_LinearDamping", "void(obj,f64)")
+RT_FUNC(Body3DGetLinearDamping, rt_body3d_get_linear_damping, "Viper.Graphics3D.PhysicsBody3D.get_LinearDamping", "f64(obj)")
+RT_FUNC(Body3DSetAngularDamping, rt_body3d_set_angular_damping, "Viper.Graphics3D.PhysicsBody3D.set_AngularDamping", "void(obj,f64)")
+RT_FUNC(Body3DGetAngularDamping, rt_body3d_get_angular_damping, "Viper.Graphics3D.PhysicsBody3D.get_AngularDamping", "f64(obj)")
+RT_FUNC(Body3DSetCollisionLayer, rt_body3d_set_collision_layer, "Viper.Graphics3D.PhysicsBody3D.set_CollisionLayer", "void(obj,i64)")
+RT_FUNC(Body3DGetCollisionLayer, rt_body3d_get_collision_layer, "Viper.Graphics3D.PhysicsBody3D.get_CollisionLayer", "i64(obj)")
+RT_FUNC(Body3DSetCollisionMask,  rt_body3d_set_collision_mask,  "Viper.Graphics3D.PhysicsBody3D.set_CollisionMask",  "void(obj,i64)")
+RT_FUNC(Body3DGetCollisionMask,  rt_body3d_get_collision_mask,  "Viper.Graphics3D.PhysicsBody3D.get_CollisionMask",  "i64(obj)")
+RT_FUNC(Body3DSetStatic,        rt_body3d_set_static,        "Viper.Graphics3D.PhysicsBody3D.set_IsStatic",       "void(obj,i1)")
+RT_FUNC(Body3DIsStatic,         rt_body3d_is_static,         "Viper.Graphics3D.PhysicsBody3D.get_IsStatic",       "i1(obj)")
+RT_FUNC(Body3DSetKinematic,     rt_body3d_set_kinematic,     "Viper.Graphics3D.PhysicsBody3D.set_IsKinematic",    "void(obj,i1)")
+RT_FUNC(Body3DIsKinematic,      rt_body3d_is_kinematic,      "Viper.Graphics3D.PhysicsBody3D.get_IsKinematic",    "i1(obj)")
+RT_FUNC(Body3DSetTrigger,       rt_body3d_set_trigger,       "Viper.Graphics3D.PhysicsBody3D.set_IsTrigger",      "void(obj,i1)")
+RT_FUNC(Body3DIsTrigger,        rt_body3d_is_trigger,        "Viper.Graphics3D.PhysicsBody3D.get_IsTrigger",      "i1(obj)")
+RT_FUNC(Body3DSetCanSleep,      rt_body3d_set_can_sleep,     "Viper.Graphics3D.PhysicsBody3D.set_CanSleep",     "void(obj,i1)")
+RT_FUNC(Body3DCanSleep,         rt_body3d_can_sleep,         "Viper.Graphics3D.PhysicsBody3D.get_CanSleep",     "i1(obj)")
+RT_FUNC(Body3DIsSleeping,       rt_body3d_is_sleeping,       "Viper.Graphics3D.PhysicsBody3D.get_IsSleeping",     "i1(obj)")
+RT_FUNC(Body3DWake,             rt_body3d_wake,              "Viper.Graphics3D.PhysicsBody3D.Wake",             "void(obj)")
+RT_FUNC(Body3DSleep,            rt_body3d_sleep,             "Viper.Graphics3D.PhysicsBody3D.Sleep",            "void(obj)")
+RT_FUNC(Body3DSetUseCcd,        rt_body3d_set_use_ccd,       "Viper.Graphics3D.PhysicsBody3D.set_UseCcd",       "void(obj,i1)")
+RT_FUNC(Body3DGetUseCcd,        rt_body3d_get_use_ccd,       "Viper.Graphics3D.PhysicsBody3D.get_UseCcd",       "i1(obj)")
+RT_FUNC(Body3DIsGrounded,       rt_body3d_is_grounded,       "Viper.Graphics3D.PhysicsBody3D.get_IsGrounded",     "i1(obj)")
+RT_FUNC(Body3DGetGroundNormal,  rt_body3d_get_ground_normal, "Viper.Graphics3D.PhysicsBody3D.get_GroundNormal", "obj<Viper.Math.Vec3>(obj)")
+RT_FUNC(Body3DGetMass,          rt_body3d_get_mass,          "Viper.Graphics3D.PhysicsBody3D.get_Mass",         "f64(obj)")
 
 /// @summary Provides Physics 3D Body functionality for 3D rendering and scene applications.
 /// @details
@@ -1286,7 +1247,7 @@ RT_FUNC(Body3DGetMass,          rt_body3d_get_mass,          "Viper.Graphics3D.P
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `UserData`, `Collider`, `Position` and operations including `NewAABB`, `NewSphere`,
 /// `NewCapsule`, `SetPosition`.
-RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DBody", Physics3DBody, "obj", Body3DNew)
+RT_CLASS_BEGIN("Viper.Graphics3D.PhysicsBody3D", Physics3DBody, "obj", Body3DNew)
     RT_PROP("UserData", "i64", Body3DGetUserData, Body3DSetUserData)
     RT_PROP("Collider", "obj<Viper.Graphics3D.Collider3D>", Body3DGetCollider, Body3DSetCollider)
     RT_PROP("Position", "obj<Viper.Math.Vec3>", Body3DGetPosition, none)
@@ -1300,17 +1261,17 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DBody", Physics3DBody, "obj", Body3DNew
     RT_PROP("AngularDamping", "f64", Body3DGetAngularDamping, Body3DSetAngularDamping)
     RT_PROP("CollisionLayer", "i64", Body3DGetCollisionLayer, Body3DSetCollisionLayer)
     RT_PROP("CollisionMask", "i64", Body3DGetCollisionMask, Body3DSetCollisionMask)
-    RT_PROP("Static", "i1", Body3DIsStatic, Body3DSetStatic)
-    RT_PROP("Kinematic", "i1", Body3DIsKinematic, Body3DSetKinematic)
-    RT_PROP("Trigger", "i1", Body3DIsTrigger, Body3DSetTrigger)
+    RT_PROP("IsStatic", "i1", Body3DIsStatic, Body3DSetStatic)
+    RT_PROP("IsKinematic", "i1", Body3DIsKinematic, Body3DSetKinematic)
+    RT_PROP("IsTrigger", "i1", Body3DIsTrigger, Body3DSetTrigger)
     RT_PROP("CanSleep", "i1", Body3DCanSleep, Body3DSetCanSleep)
-    RT_PROP("Sleeping", "i1", Body3DIsSleeping, none)
+    RT_PROP("IsSleeping", "i1", Body3DIsSleeping, none)
     RT_PROP("UseCcd", "i1", Body3DGetUseCcd, Body3DSetUseCcd)
-    RT_PROP("Grounded", "i1", Body3DIsGrounded, none)
+    RT_PROP("IsGrounded", "i1", Body3DIsGrounded, none)
     RT_PROP("GroundNormal", "obj<Viper.Math.Vec3>", Body3DGetGroundNormal, none)
     RT_PROP("Mass", "f64", Body3DGetMass, none)
     RT_METHOD("NewAABB", "obj(f64,f64,f64,f64)", Body3DNewAABB)
-    RT_METHOD("NewSphere", "obj(f64,f64)", Body3DNewSphere)
+    RT_METHOD("Sphere", "obj(f64,f64)", Body3DNewSphere)
     RT_METHOD("NewCapsule", "obj(f64,f64,f64)", Body3DNewCapsule)
     RT_METHOD("SetPosition", "void(f64,f64,f64)", Body3DSetPosition)
     RT_METHOD("SetScale", "void(f64,f64,f64)", Body3DSetScale)
@@ -1335,7 +1296,7 @@ RT_FUNC(Character3DGetStepHeight,rt_character3d_get_step_height,"Viper.Graphics3
 RT_FUNC(Character3DSetSlopeLimit,rt_character3d_set_slope_limit,"Viper.Graphics3D.Character3D.SetSlopeLimit","void(obj,f64)")
 RT_FUNC(Character3DSetWorld,    rt_character3d_set_world,    "Viper.Graphics3D.Character3D.set_World",     "void(obj,obj)")
 RT_FUNC(Character3DGetWorld,    rt_character3d_get_world,    "Viper.Graphics3D.Character3D.get_World",     "obj(obj)")
-RT_FUNC(Character3DIsGrounded,   rt_character3d_is_grounded,   "Viper.Graphics3D.Character3D.get_Grounded",  "i1(obj)")
+RT_FUNC(Character3DIsGrounded,   rt_character3d_is_grounded,   "Viper.Graphics3D.Character3D.get_IsGrounded",  "i1(obj)")
 RT_FUNC(Character3DJustLanded,   rt_character3d_just_landed,   "Viper.Graphics3D.Character3D.get_JustLanded","i1(obj)")
 RT_FUNC(Character3DGetPosition,  rt_character3d_get_position,  "Viper.Graphics3D.Character3D.get_Position",  "obj<Viper.Math.Vec3>(obj)")
 RT_FUNC(Character3DSetPosition,  rt_character3d_set_position,  "Viper.Graphics3D.Character3D.SetPosition",   "void(obj,f64,f64,f64)")
@@ -1349,18 +1310,18 @@ RT_FUNC(Character3DGetCollideDynamic, rt_character3d_get_collide_dynamic, "Viper
 RT_FUNC(Character3DSetRidePlatforms,  rt_character3d_set_ride_platforms,  "Viper.Graphics3D.Character3D.set_RidePlatforms",  "void(obj,i1)")
 RT_FUNC(Character3DGetRidePlatforms,  rt_character3d_get_ride_platforms,  "Viper.Graphics3D.Character3D.get_RidePlatforms",  "i1(obj)")
 RT_FUNC(Character3DIsSliding,         rt_character3d_is_sliding,          "Viper.Graphics3D.Character3D.IsSliding",          "i1(obj)")
-RT_FUNC(Character3DGetGroundBody,     rt_character3d_get_ground_body,     "Viper.Graphics3D.Character3D.GetGroundBody",      "obj<Viper.Graphics3D.Physics3DBody>(obj)")
+RT_FUNC(Character3DGetGroundBody,     rt_character3d_get_ground_body,     "Viper.Graphics3D.Character3D.GetGroundBody",      "obj<Viper.Graphics3D.PhysicsBody3D>(obj)")
 
 /// @summary Provides Character 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Character3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `StepHeight`, `World`, `Grounded` and operations including `Move`, `SetSlopeLimit`,
+/// `StepHeight`, `World`, `IsGrounded` and operations including `Move`, `SetSlopeLimit`,
 /// `SetPosition`, `TrySetHeight`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Character3D", Character3D, "obj", Character3DNew)
     RT_PROP("StepHeight", "f64", Character3DGetStepHeight, Character3DSetStepHeight)
     RT_PROP("World", "obj", Character3DGetWorld, Character3DSetWorld)
-    RT_PROP("Grounded", "i1", Character3DIsGrounded, none)
+    RT_PROP("IsGrounded", "i1", Character3DIsGrounded, none)
     RT_PROP("JustLanded", "i1", Character3DJustLanded, none)
     RT_PROP("Position", "obj<Viper.Math.Vec3>", Character3DGetPosition, none)
     RT_PROP("Height", "f64", Character3DGetHeight, Character3DSetHeight)
@@ -1372,7 +1333,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Character3D", Character3D, "obj", Character3DNe
     RT_METHOD("SetPosition", "void(f64,f64,f64)", Character3DSetPosition)
     RT_METHOD("TrySetHeight", "i1(f64)", Character3DTrySetHeight)
     RT_METHOD("IsSliding", "i1()", Character3DIsSliding)
-    RT_METHOD("GetGroundBody", "obj<Viper.Graphics3D.Physics3DBody>()", Character3DGetGroundBody)
+    RT_METHOD("GetGroundBody", "obj<Viper.Graphics3D.PhysicsBody3D>()", Character3DGetGroundBody)
 RT_CLASS_END()
 
 // Trigger3D — standalone AABB zone with enter/exit detection
@@ -1400,7 +1361,7 @@ RT_CLASS_END()
 /// @summary Provides Distance Joint 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.DistanceJoint3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Distance`.
 RT_CLASS_BEGIN("Viper.Graphics3D.DistanceJoint3D", DistanceJoint3D, "obj", DistJoint3DNew)
     RT_PROP("Distance", "f64", DistJoint3DGetDist, DistJoint3DSetDist)
@@ -1422,8 +1383,8 @@ RT_CLASS_END()
 /// @summary Provides Hinge Joint 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.HingeJoint3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetMotor`, `GetAngle`, `SetLimits`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetMotor`, `GetAngle`, `SetLimits`.
 RT_CLASS_BEGIN("Viper.Graphics3D.HingeJoint3D", HingeJoint3D, "obj", HingeJoint3DNew)
     RT_METHOD("SetMotor", "void(i1,f64,f64)", HingeJoint3DSetMotor)
     RT_METHOD("GetAngle", "f64()", HingeJoint3DGetAngle)
@@ -1434,7 +1395,7 @@ RT_CLASS_END()
 /// @summary Provides Rope Joint 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.RopeJoint3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `MaxLength`.
 RT_CLASS_BEGIN("Viper.Graphics3D.RopeJoint3D", RopeJoint3D, "obj", RopeJoint3DNew)
     RT_PROP("MaxLength", "f64", RopeJoint3DGetMaxLen, RopeJoint3DSetMaxLen)
@@ -1444,8 +1405,8 @@ RT_CLASS_END()
 /// @summary Provides Six Dof Joint 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.SixDofJoint3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetLinearLimits`, `SetAngularLimits`, `SetLinearMotor`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetLinearLimits`, `SetAngularLimits`, `SetLinearMotor`.
 RT_CLASS_BEGIN("Viper.Graphics3D.SixDofJoint3D", SixDofJoint3D, "obj", SixDofJoint3DNew)
     RT_METHOD("SetLinearLimits", "void(obj,obj)", SixDofJoint3DSetLinearLimits)
     RT_METHOD("SetAngularLimits", "void(obj,obj)", SixDofJoint3DSetAngularLimits)

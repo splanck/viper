@@ -11,9 +11,9 @@ bind Viper.Terminal;
 //   - The binary FBX path is untouched.
 
 func start() {
-    var cube = FBX.Load("src/tests/fixtures/runtime/test_fbx_ascii_cube.fbx");
+    var cube = Fbx.Load("src/tests/fixtures/runtime/test_fbx_ascii_cube.fbx");
     if (cube == null) {
-        Say("FAIL: ASCII cube should load: " + AssetDiagnostics3D.LastLoadError);
+        Say("FAIL: ASCII cube should load: ");
         return;
     }
     if (cube.MeshCount != 1) {
@@ -26,9 +26,9 @@ func start() {
         return;
     }
 
-    var quad = FBX.Load("src/tests/fixtures/runtime/test_fbx_ascii_quad.fbx");
+    var quad = Fbx.Load("src/tests/fixtures/runtime/test_fbx_ascii_quad.fbx");
     if (quad == null) {
-        Say("FAIL: ASCII quad with normals/UVs should load: " + AssetDiagnostics3D.LastLoadError);
+        Say("FAIL: ASCII quad with normals/UVs should load: ");
         return;
     }
     var quadMesh = quad.GetMesh(0);
@@ -37,17 +37,17 @@ func start() {
         return;
     }
 
-    var broken = FBX.Load("src/tests/fixtures/runtime/test_fbx_ascii_malformed.fbx");
+    var broken = Fbx.Load("src/tests/fixtures/runtime/test_fbx_ascii_malformed.fbx");
     if (broken != null) {
         Say("FAIL: malformed ASCII FBX must return null");
         return;
     }
-    if (AssetDiagnostics3D.LastLoadError == "") {
-        Say("FAIL: malformed ASCII FBX must set a load diagnostic");
+    if (AssetDiagnostics3D.LoadWarningCount < 1 and AssetDiagnostics3D.GetImportReport() == "") {
+        Say("FAIL: malformed ASCII FBX must record a load diagnostic");
         return;
     }
 
-    var binary = FBX.Load("src/tests/fixtures/runtime/test_humanoid.fbx");
+    var binary = Fbx.Load("src/tests/fixtures/runtime/test_humanoid.fbx");
     if (binary == null || binary.MeshCount < 1) {
         Say("FAIL: binary FBX path must keep working");
         return;

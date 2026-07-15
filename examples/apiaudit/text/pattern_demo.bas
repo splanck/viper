@@ -25,7 +25,7 @@ PRINT "FindOption no match: "; Viper.Text.Pattern.FindOption("abcdef", "[0-9]+")
 PRINT "--- FindFrom ---"
 PRINT "FindFrom pos 6: "; Viper.Text.Pattern.FindFrom("abc123def456", "[0-9]+", 6)
 DIM foundFrom AS OBJECT
-foundFrom = Viper.Text.Pattern.FindFromOption("abc123def456", "[0-9]+", 6)
+foundFrom = Viper.Text.Pattern.FindFrom("abc123def456", "[0-9]+", 6)
 PRINT "FindFromOption IsSome: "; foundFrom.IsSome
 PRINT "FindFromOption value: "; foundFrom.UnwrapStr()
 
@@ -34,10 +34,10 @@ PRINT "--- FindPos ---"
 PRINT "FindPos digits: "; Viper.Text.Pattern.FindPos("abc123def", "[0-9]+")
 PRINT "FindPos no match: "; Viper.Text.Pattern.FindPos("abcdef", "[0-9]+")
 DIM foundPos AS OBJECT
-foundPos = Viper.Text.Pattern.FindPosOption("abc123def", "[0-9]+")
+foundPos = Viper.Text.Pattern.FindPos("abc123def", "[0-9]+")
 PRINT "FindPosOption IsSome: "; foundPos.IsSome
 PRINT "FindPosOption value: "; foundPos.UnwrapI64()
-PRINT "FindPosOption no match: "; Viper.Text.Pattern.FindPosOption("abcdef", "[0-9]+").IsNone
+PRINT "FindPosOption no match: "; Viper.Text.Pattern.FindPos("abcdef", "[0-9]+").IsNone
 
 ' --- FindAll ---
 PRINT "--- FindAll ---"

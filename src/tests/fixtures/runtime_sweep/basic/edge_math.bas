@@ -138,10 +138,10 @@ PRINT "Shl(1, -1): "; iresult
 iresult = Viper.Math.Bits.Shr(-1, 1)
 PRINT "Shr(-1, 1): "; iresult
 
-iresult = Viper.Math.Bits.Count(0)
+iresult = Viper.Math.Bits.CountOnes(0)
 PRINT "Count(0): "; iresult
 
-iresult = Viper.Math.Bits.Count(-1)
+iresult = Viper.Math.Bits.CountOnes(-1)
 PRINT "Count(-1): "; iresult
 
 PRINT ""

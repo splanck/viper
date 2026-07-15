@@ -139,7 +139,7 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
     if (name == "Viper.Collections.Heap")
         return types::runtimeClass("Viper.Collections.Heap", {types::unknown()});
     if (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
-        name == "Viper.Collections.TreeMap" || name == "Viper.Collections.Trie" ||
+        name == "Viper.Collections.SortedMap" || name == "Viper.Collections.Trie" ||
         name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
         name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
         name == "Viper.Collections.MultiMap")

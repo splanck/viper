@@ -565,7 +565,7 @@ class DatabaseServer {
             i = i + 1;
         }
         userNames.add(name);
-        userPasswords.add(CryptoHash.SHA256(password));
+        userPasswords.add(CryptoHash.Sha256(password));
         return true;
     }
 
@@ -623,7 +623,7 @@ class DatabaseServer {
     // Verify user password
     expose func verifyPassword(name: String, password: String) -> Boolean {
         Threads.Monitor.Enter(lock);
-        var hashed = CryptoHash.SHA256(password);
+        var hashed = CryptoHash.Sha256(password);
         var i = 0;
         while i < userNames.count() {
             if userNames.get(i) == name {
@@ -648,7 +648,7 @@ class DatabaseServer {
     // Change user password
     expose func changePassword(name: String, newPassword: String) -> Boolean {
         Threads.Monitor.Enter(lock);
-        var hashed = CryptoHash.SHA256(newPassword);
+        var hashed = CryptoHash.Sha256(newPassword);
         var i = 0;
         while i < userNames.count() {
             if userNames.get(i) == name {

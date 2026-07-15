@@ -85,7 +85,7 @@ func start() {
 
     // --- Neg ---
     Say("--- Neg ---");
-    var vneg = Vec3.Neg(v1);
+    var vneg = Vec3.Negate(v1);
     Say("Neg(1,2,3) X:");
     SayNum(vneg.X);
     Say("Neg(1,2,3) Y:");
@@ -132,9 +132,9 @@ func start() {
     // --- LenSq ---
     Say("--- LenSq ---");
     Say("LenSq(1,2,3):");
-    SayNum(Vec3.LenSq(v1));
+    SayNum(Vec3.LengthSquared(v1));
     Say("LenSq(3,4,0):");
-    SayNum(Vec3.LenSq(v34));
+    SayNum(Vec3.LengthSquared(v34));
 
     // --- Dist ---
     Say("--- Dist ---");

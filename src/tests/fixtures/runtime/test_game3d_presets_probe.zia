@@ -75,7 +75,7 @@ func start() {
     env.WithWater(0.02);
     env.WithFog(5.0, 60.0);
     if (G3D.SceneGraph.get_NodeCount(scene) <= beforeNodes + 1 ||
-        G3D.Physics3DWorld.get_BodyCount(physics) < 1) {
+        G3D.PhysicsWorld3D.get_BodyCount(physics) < 1) {
         fail("Environment helpers did not add terrain, water, and physics");
         return;
     }

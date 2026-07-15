@@ -29,7 +29,7 @@ func fail(message: String) {
 }
 
 func main() {
-    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var world = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var pins = new PinManager();
     pins.initPins(world);
     pins.setRackSeed(137, config.DIFFICULTY_STANDARD);
@@ -45,14 +45,14 @@ func main() {
     }
 
     var head = pins.getPinBody(0);
-    var point = Physics3DBody.get_Position(head);
+    var point = PhysicsBody3D.get_Position(head);
     pins.registerImpact(head, point, 20.0, 20.0);
     pins.updateKnockdowns(config.PHYSICS_DT);
     if (pins.isKnocked(0)) {
         fail("collision event directly marked an upright pin down"); return;
     }
 
-    Physics3DBody.SetOrientation(head,
+    PhysicsBody3D.SetOrientation(head,
         Quat.FromAxisAngle(new Vec3(1.0, 0.0, 0.0), 1.20));
     pins.updateKnockdowns(config.PIN_DOWN_DWELL * 0.55);
     if (pins.isKnocked(0)) {
@@ -63,7 +63,7 @@ func main() {
         fail("sustained physical tilt was not counted"); return;
     }
 
-    var quietWorld = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var quietWorld = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var quietPins = new PinManager();
     quietPins.initPins(quietWorld);
     quietPins.updateKnockdowns(config.SETTLE_QUIET_DWELL * 0.45);

@@ -79,17 +79,17 @@ func start() {    Viper.Terminal.BeginBatch();
     Viper.Math.Random.Seed(123);
     var a = Viper.Math.Random.NextInt(100);
     var b = Viper.Math.Random.NextInt(100);
-    var n = Viper.Math.Random.Next();
+    var n = Viper.Math.Random.NextDouble();
     Viper.Math.Random.Seed(123);
     var c = Viper.Math.Random.NextInt(100);
     var d = Viper.Math.Random.NextInt(100);
-    var n2 = Viper.Math.Random.Next();
+    var n2 = Viper.Math.Random.NextDouble();
     assertEqInt(a, c, "rand1");
     assertEqInt(b, d, "rand2");
     assertApprox(n, n2, 0.0000001, "randf");
 
-    var key = Viper.Terminal.GetKeyTimeout(0);
-    var ink = Viper.Terminal.InKey();
+    var key = Viper.Terminal.ReadKeyFor(0);
+    var ink = Viper.Terminal.PollKey();
     assertTrue(key == "" || key == key, "keytimeout");
     assertTrue(ink == "" || ink == ink, "inkey");
 

@@ -107,9 +107,9 @@ module Test;
 
 func start() {
     var i = Viper.Core.Parse.TryInt("123");
-    var n = Viper.Core.Parse.TryNum("12.5");
+    var n = Viper.Core.Parse.TryDouble("12.5");
     var b = Viper.Core.Parse.TryBool("yes");
-    var d = Viper.Core.Parse.TryNum("12.5");
+    var d = Viper.Core.Parse.TryDouble("12.5");
     var i64 = Viper.Core.Parse.TryInt("123");
 }
 )");
@@ -253,7 +253,7 @@ func keep(item: Any) -> Boolean {
 
 func start() {
     var seq = Viper.Collections.Seq.New();
-    var kept = Viper.Collections.Seq.Keep(seq, &keep);
+    var kept = Viper.Collections.Seq.Filter(seq, &keep);
 }
 )");
 

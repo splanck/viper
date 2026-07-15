@@ -2,10 +2,10 @@
 module TestTextFormats;
 
 bind Viper.Terminal;
-bind Viper.Text.Csv;
+bind Viper.Data.Csv;
 bind Viper.Text.Html;
 bind Viper.Text.Markdown;
-bind Viper.Text.Toml;
+bind Viper.Data.Toml;
 
 func start() {
     var s = new Viper.Collections.Seq();
@@ -25,7 +25,7 @@ func start() {
     Say(Viper.Text.Markdown.ToText("# Hello\n\nWorld"));
     Say(Viper.Text.Markdown.ToHtml("**bold**"));
 
-    SayBool(Viper.Text.Toml.IsValid("[section]\nkey = \"value\""));
+    SayBool(Viper.Data.Toml.IsValid("[section]\nkey = \"value\""));
 
     Say("done");
 }

@@ -8,7 +8,7 @@ These tables summarize concrete findings from the 2026-07-02 live dump.
 |---|---:|
 | `Viper.Input.Keyboard` | 113 |
 | `Viper.Graphics3D.Canvas3D` | 113 |
-| `Viper.Game3D.Keys` | 99 |
+| `Viper.Input.Key` | 99 |
 | `Viper.Input.Key` | 97 |
 | `Viper.GUI.CodeEditor` | 96 |
 | `Viper.Graphics.Canvas` | 86 |
@@ -76,7 +76,7 @@ Representative pairs:
 - `Viper.Graphics3D.Material3D.Color` and `SetColor`.
 - `Viper.Graphics3D.Light3D.Intensity` and `SetIntensity`.
 - `Viper.Graphics3D.SceneNode.Position` and `SetPosition`.
-- `Viper.Graphics3D.Physics3DBody.Velocity` and `SetVelocity`.
+- `Viper.Graphics3D.PhysicsBody3D.Velocity` and `SetVelocity`.
 - `Viper.Graphics3D.Transform3D.Position` and `SetPosition`.
 
 ## Side-Channel APIs
@@ -87,11 +87,11 @@ Current count: 16.
 - `Viper.System.Exec.LastExitCode`.
 - `Viper.System.Pty.LastError`.
 - `Viper.Zia.SemanticJob.Error`.
-- `Viper.Text.JsonStream.Error`.
+- `Viper.Data.JsonStream.Error`.
 - `Viper.Data.Xml.Error`.
 - `Viper.Data.Yaml.Error`.
 - `Viper.Data.Serialize.Error`.
-- `Viper.Game.UI.Table.LastHeaderClick`.
+- `Viper.Game.UI.HudTable.LastHeaderClick`.
 - `Viper.Game2D.SceneDocument.LastError`.
 - `Viper.Network.SmtpClient.get_LastError`.
 - `Viper.Network.RestClient.LastStatus`.
@@ -115,7 +115,7 @@ Two-or-fewer-member classes include:
 - `Viper.Assets.Resolver`.
 - `Viper.Workspace.WorkspaceWatcher`.
 - `Viper.Project.Manifest`.
-- `Viper.Crypto.Rand`.
+- `Viper.Crypto.SecureRandom`.
 - `Viper.GUI.Font`.
 - `Viper.Graphics3D.CubeMap3D`.
 - `Viper.Graphics3D.DistanceJoint3D`.

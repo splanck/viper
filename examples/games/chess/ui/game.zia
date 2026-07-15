@@ -610,7 +610,7 @@ class ChessGame {
         }
 
         // Mouse hold — update drag position
-        if Mouse.Left() {
+        if Mouse.IsDown(Viper.Input.Mouse.ButtonLeft) {
             if dragFrom >= 0 {
                 dragX = mx;
                 dragY = my;
@@ -1407,7 +1407,7 @@ class ChessGame {
 
         aiWorkerThread = Thread.StartSafe(&aiSearchWorker, 0);
         setGameState(STATE_AI_THINK);
-        aiThinkStartMs = Clock.Ticks();
+        aiThinkStartMs = Clock.NowMs();
     }
 
     /// @brief Per-frame check on the AI worker. If the worker finished,
@@ -1419,7 +1419,7 @@ class ChessGame {
         if aiWorkerThread!.SafeIsAlive() { return; }
 
         if gameMode == MODE_CVC {
-            var elapsed = Clock.Ticks() - aiThinkStartMs;
+            var elapsed = Clock.NowMs() - aiThinkStartMs;
             if elapsed < CVC_DELAY_MS {
                 return;
             }
@@ -1794,7 +1794,7 @@ class ChessGame {
     hide func render() {
         var mx = Mouse.X();
         var my = Mouse.Y();
-        var mouseDown = Mouse.Left();
+        var mouseDown = Mouse.IsDown(Viper.Input.Mouse.ButtonLeft);
         var animProgress = animationProgressPermille();
         var hoverSq = renderer.squareAt(mx, my);
         theme.setLargeText(userSettings.largeText);

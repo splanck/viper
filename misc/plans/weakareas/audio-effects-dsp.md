@@ -80,7 +80,7 @@ mac), moving audio TUs out of the 3D-backend source group **decouples spatial au
    math out of `audio/`.
 5. **CMake:** remove the moved TUs from the graphics/3d source list; add them to the
    audio library source list. Confirm headless and 3D-disabled builds still link.
-6. **`runtime.def`:** keep existing `Viper.Sound.SpatialAudio3D.*` names stable. For
+6. **`runtime.def`:** keep existing `Viper.Audio.SpatialAudio3D.*` names stable. For
    `Viper.Graphics3D.SoundListener3D` / `SoundSource3D`, add `Viper.Sound.*` aliases or
    facades only if demos/tests prove the public type should move; never break existing
    code in this cleanup.
@@ -116,14 +116,14 @@ typedef struct rt_audio_fx { rt_fx_kind kind; void *state; struct rt_audio_fx *n
 
 ### API surface (`runtime.def`) — corrected to the real namespace + integer-group model
 ```
-RT_FUNC(SndGroupAddLowpass,  rt_snd_group_add_lowpass,  "Viper.Sound.Audio.GroupAddLowpass",  "i64(i64,f64,f64)")     // (group, cutoffHz, q) -> fxId
-RT_FUNC(SndGroupAddHighpass, rt_snd_group_add_highpass, "Viper.Sound.Audio.GroupAddHighpass", "i64(i64,f64,f64)")
-RT_FUNC(SndGroupAddPeaking,  rt_snd_group_add_peaking,  "Viper.Sound.Audio.GroupAddPeaking",  "i64(i64,f64,f64,f64)") // (group, freq, q, gainDb)
-RT_FUNC(SndGroupAddDelay,    rt_snd_group_add_delay,    "Viper.Sound.Audio.GroupAddDelay",    "i64(i64,f64,f64,f64)") // (group, ms, feedback, wet)
-RT_FUNC(SndGroupAddReverb,   rt_snd_group_add_reverb,   "Viper.Sound.Audio.GroupAddReverb",   "i64(i64,f64,f64,f64)") // (group, roomSize, damping, wet)
-RT_FUNC(SndGroupFxBypass,    rt_snd_group_fx_bypass,    "Viper.Sound.Audio.GroupSetFxBypass", "void(i64,i64,i1)")     // (group, fxId, bypass)
-RT_FUNC(SndGroupRemoveFx,    rt_snd_group_remove_fx,    "Viper.Sound.Audio.GroupRemoveFx",    "void(i64,i64)")
-RT_FUNC(SndGroupClearFx,     rt_snd_group_clear_fx,     "Viper.Sound.Audio.GroupClearFx",     "void(i64)")
+RT_FUNC(SndGroupAddLowpass,  rt_snd_group_add_lowpass,  "Viper.Audio.Mixer.GroupAddLowpass",  "i64(i64,f64,f64)")     // (group, cutoffHz, q) -> fxId
+RT_FUNC(SndGroupAddHighpass, rt_snd_group_add_highpass, "Viper.Audio.Mixer.GroupAddHighpass", "i64(i64,f64,f64)")
+RT_FUNC(SndGroupAddPeaking,  rt_snd_group_add_peaking,  "Viper.Audio.Mixer.GroupAddPeaking",  "i64(i64,f64,f64,f64)") // (group, freq, q, gainDb)
+RT_FUNC(SndGroupAddDelay,    rt_snd_group_add_delay,    "Viper.Audio.Mixer.GroupAddDelay",    "i64(i64,f64,f64,f64)") // (group, ms, feedback, wet)
+RT_FUNC(SndGroupAddReverb,   rt_snd_group_add_reverb,   "Viper.Audio.Mixer.GroupAddReverb",   "i64(i64,f64,f64,f64)") // (group, roomSize, damping, wet)
+RT_FUNC(SndGroupFxBypass,    rt_snd_group_fx_bypass,    "Viper.Audio.Mixer.GroupSetFxBypass", "void(i64,i64,i1)")     // (group, fxId, bypass)
+RT_FUNC(SndGroupRemoveFx,    rt_snd_group_remove_fx,    "Viper.Audio.Mixer.GroupRemoveFx",    "void(i64,i64)")
+RT_FUNC(SndGroupClearFx,     rt_snd_group_clear_fx,     "Viper.Audio.Mixer.GroupClearFx",     "void(i64)")
 ```
 
 ## Tests (`src/tests/runtime/`)
@@ -134,7 +134,7 @@ RT_FUNC(SndGroupClearFx,     rt_snd_group_clear_fx,     "Viper.Sound.Audio.Group
 - Add a build assertion (or local script smoke) that spatial audio compiles with **3D graphics
   disabled** (proves decoupling).
 - `check_runtime_completeness.sh` + a name-resolution test confirming existing
-  `Viper.Sound.SpatialAudio3D.*` names remain valid and any new aliases resolve.
+  `Viper.Audio.SpatialAudio3D.*` names remain valid and any new aliases resolve.
 
 **Effects (Part 2) — offline render, no device:**
 - Biquad LP: 1 kHz + 8 kHz input → high band RMS drops after a 2 kHz lowpass.

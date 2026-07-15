@@ -25,7 +25,7 @@
 module lifecycle_probe;
 
 bind Viper.Graphics3D;
-bind Viper.Sound;
+bind Viper.Audio;
 bind Viper.Terminal;
 bind "./config";
 bind "./menu";
@@ -70,6 +70,6 @@ func main() {
         Say("RESULT: fail");
         return;
     }
-    Audio.Shutdown();
+    Mixer.Shutdown();
     Say("RESULT: ok");
 }

@@ -303,7 +303,7 @@ expose Integer Scene3D.VisibilityPortalCount
 // auto-LOD on SceneNode3D (extends existing manual LOD)
 expose Boolean Mesh3D.Resident
 expose Integer Mesh3D.ResidentBytes
-expose func SceneNode3D.SetAutoLOD(on: Boolean, screenErrorPx: Float)
+expose func SceneNode3D.SetAutoLod(on: Boolean, screenErrorPx: Float)
 expose func SceneNode3D.SetLodResident(index: Integer, on: Boolean)
 expose func SceneNode3D.GetLodResident(index: Integer) -> Boolean
 expose func SceneNode3D.GetLodResidentBytes(index: Integer) -> Integer
@@ -356,7 +356,7 @@ unsupported backends. Supporting software and real platform GPU backends render
 the primary directional caster into up to four camera-depth cascades and publish
 split metadata to the backend light payload.
 
-## Physics — `Viper.Graphics3D.Physics3DWorld` / joints / `Collider3D`
+## Physics — `Viper.Graphics3D.PhysicsWorld3D` / joints / `Collider3D`
 
 ```zia
 expose Integer Physics3DWorld.SolverIterations;
@@ -469,7 +469,7 @@ class Viper.Graphics3D.BlendTree3D {           // parametric blend over AnimBlen
 }
 expose func Animation3D.Retarget(animation: Animation3D, srcSkeleton: Skeleton3D,
                                  dstSkeleton: Skeleton3D) -> Animation3D
-expose func AnimController3D.SetAnimationLOD(distance: Float, rateHz: Float)
+expose func AnimController3D.SetAnimationLod(distance: Float, rateHz: Float)
 ```
 `Game3D.Animator3D` gains thin `setIKSolver`, `setBlendTree`,
 `playLayerAdditive`, and `crossfadeLayerAdditive` wrappers.
@@ -481,7 +481,7 @@ and `CrossfadeLayer` remain masked replace overlays for compatibility.
 `Game3D.Animator3D.playLayerAdditive(layer, state)` and
 `crossfadeLayerAdditive(layer, state, seconds)` forward to the same behavior
 through the code-first Game3D wrapper and preserve layer entry events.
-`AnimController3D.SetAnimationLOD(distance, rateHz)` is implemented as deterministic
+`AnimController3D.SetAnimationLod(distance, rateHz)` is implemented as deterministic
 update-rate throttling: elapsed time accumulates between samples and is applied in
 batches at `rateHz`; non-positive inputs disable the throttle.
 `BlendTree3D.New1D/New2D`, `AddSample`, `SetParam`, `Update`, and `SampleCount`

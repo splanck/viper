@@ -139,7 +139,7 @@ func runNativeCompressedUploadProbe() -> String {
     if (Canvas3D.BackendSupports(canvas, "bc7")) {
         generatedPath = IO.TempFile.PathWithExt("openworld_native_bc7", ".ktx2");
         writeNativeKtx2(generatedPath, 145);
-        texture = TextureAsset3D.LoadKTX2(generatedPath);
+        texture = TextureAsset3D.LoadKtx2(generatedPath);
         nativeFormat = "bc7";
         expectedR = 255;
         expectedG = 255;
@@ -147,7 +147,7 @@ func runNativeCompressedUploadProbe() -> String {
     } else if (Canvas3D.BackendSupports(canvas, "astc")) {
         generatedPath = IO.TempFile.PathWithExt("openworld_native_astc", ".ktx2");
         writeNativeKtx2(generatedPath, 157);
-        texture = TextureAsset3D.LoadKTX2(generatedPath);
+        texture = TextureAsset3D.LoadKtx2(generatedPath);
         nativeFormat = "astc";
         expectedR = 255;
         expectedG = 0;
@@ -155,7 +155,7 @@ func runNativeCompressedUploadProbe() -> String {
     } else if (Canvas3D.BackendSupports(canvas, "etc2")) {
         generatedPath = IO.TempFile.PathWithExt("openworld_native_etc2", ".ktx2");
         writeNativeKtx2(generatedPath, 151);
-        texture = TextureAsset3D.LoadKTX2(generatedPath);
+        texture = TextureAsset3D.LoadKtx2(generatedPath);
         nativeFormat = "etc2";
         expectedR = 247;
         expectedG = 247;
@@ -186,12 +186,12 @@ func runNativeCompressedUploadProbe() -> String {
         Vec3.New(0.0, 0.0, -1.0));
 
     Canvas3D.SetTextureUploadBudget(canvas, 0);
-    var zeroStart = Clock.TicksUs();
+    var zeroStart = Clock.NowMicros();
     Canvas3D.Clear(canvas, 0.02, 0.02, 0.025);
     Canvas3D.Begin(canvas, camera);
     Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
     Canvas3D.End(canvas);
-    var zeroFrameUs = Clock.TicksUs() - zeroStart;
+    var zeroFrameUs = Clock.NowMicros() - zeroStart;
     var zeroPendingBytes = canvas.TextureUploadPendingBytes;
     var zeroUploadBytes = canvas.TextureUploadBytes;
     if (zeroPendingBytes <= 0 || zeroUploadBytes != 0) {
@@ -201,7 +201,7 @@ func runNativeCompressedUploadProbe() -> String {
     }
 
     Canvas3D.SetTextureUploadBudget(canvas, 1);
-    var releaseStart = Clock.TicksUs();
+    var releaseStart = Clock.NowMicros();
     var nativeReady = false;
     var i = 0;
     while (i < 8) {
@@ -215,7 +215,7 @@ func runNativeCompressedUploadProbe() -> String {
         }
         i = i + 1;
     }
-    var nativeReleaseUs = Clock.TicksUs() - releaseStart;
+    var nativeReleaseUs = Clock.NowMicros() - releaseStart;
     var releaseUploadBytes = canvas.TextureUploadBytes;
     var releasePendingBytes = canvas.TextureUploadPendingBytes;
     Canvas3D.SetTextureUploadBudget(canvas, -1);
@@ -282,9 +282,9 @@ func start() {
     Game3D.Assets3D.SetResidencyBudget(-1);
     Game3D.Assets3D.ClearCache();
 
-    var blockingStart = Clock.TicksUs();
+    var blockingStart = Clock.NowMicros();
     var blockingTemplate: Game3D.SceneTemplate = Game3D.Prefab.LoadAsset(path);
-    var blockingUs = Clock.TicksUs() - blockingStart;
+    var blockingUs = Clock.NowMicros() - blockingStart;
     if (blockingTemplate == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
         fail("blocking template load failed");
@@ -304,18 +304,18 @@ func start() {
     }
 
     Game3D.Assets3D.SetUploadBudget(0);
-    var asyncStart = Clock.TicksUs();
+    var asyncStart = Clock.NowMicros();
     var asyncHandle: Game3D.AssetHandle3D = Game3D.Prefab.LoadAssetAsync(path);
-    var asyncCreateUs = Clock.TicksUs() - asyncStart;
+    var asyncCreateUs = Clock.NowMicros() - asyncStart;
     if (asyncHandle == null) {
         Game3D.Assets3D.SetUploadBudget(-1);
         fail("async template load did not return a handle");
         return;
     }
 
-    var observeStart = Clock.TicksUs();
-    var firstReady = asyncHandle.Ready;
-    var firstObserveUs = Clock.TicksUs() - observeStart;
+    var observeStart = Clock.NowMicros();
+    var firstReady = asyncHandle.IsReady;
+    var firstObserveUs = Clock.NowMicros() - observeStart;
     if (firstReady) {
         Game3D.Assets3D.SetUploadBudget(-1);
         fail("async template completed synchronously under zero upload budget");
@@ -325,7 +325,7 @@ func start() {
     var stayedPending = true;
     var i = 0;
     while (i < 20) {
-        if (asyncHandle.Ready) {
+        if (asyncHandle.IsReady) {
             stayedPending = false;
             break;
         }
@@ -338,19 +338,19 @@ func start() {
         return;
     }
 
-    var releaseStart = Clock.TicksUs();
+    var releaseStart = Clock.NowMicros();
     Game3D.Assets3D.SetUploadBudget(1);
     var ready = false;
     i = 0;
     while (i < 200) {
-        if (asyncHandle.Ready) {
+        if (asyncHandle.IsReady) {
             ready = true;
             break;
         }
         Thread.Sleep(5);
         i = i + 1;
     }
-    var releaseUs = Clock.TicksUs() - releaseStart;
+    var releaseUs = Clock.NowMicros() - releaseStart;
     if (ready == false) {
         Game3D.Assets3D.SetUploadBudget(-1);
         fail("positive upload budget did not release async commit: " +

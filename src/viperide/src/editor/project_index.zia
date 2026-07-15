@@ -112,7 +112,7 @@ class ProjectIndexer {
             if active != null {
                 var activeDoc = active!;
                 if activeDoc.filePath != "" {
-                    root = Viper.IO.Path.Dir(activeDoc.filePath);
+                    root = Viper.IO.Path.Directory(activeDoc.filePath);
                     signature = root;
                 }
             }
@@ -447,7 +447,7 @@ class ProjectIndexer {
             }
             workScheduler.Complete(scheduler.JOB_INDEX_SYNC);
         } else {
-            var now = Viper.Time.Clock.Ticks();
+            var now = Viper.Time.Clock.NowMs();
             if doc.filePath != pendingActivePath or revision != pendingActiveRevision {
                 pendingActivePath = doc.filePath;
                 pendingActiveRevision = revision;
@@ -490,7 +490,7 @@ class ProjectIndexer {
 
     hide func NormalizePath(path: String) -> String {
         if path == "" { return ""; }
-        return IO.Path.Norm(IO.Path.Abs(path));
+        return IO.Path.Normalize(IO.Path.Absolute(path));
     }
 
     hide func TrackUpdate(content: String) {

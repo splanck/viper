@@ -15,7 +15,7 @@
 '     redraws any mushroom that was underneath, so actors and terrain
 '     interleave correctly. This keeps the frame paint cost proportional
 '     to actors-in-motion rather than to field area.
-'   * NON-BLOCKING INPUT. `Viper.Terminal.InKey()` returns "" when no key
+'   * NON-BLOCKING INPUT. `Viper.Terminal.PollKey()` returns "" when no key
 '     is queued, so the loop ticks even when the player is idle — the
 '     centipede still advances. This is the canonical "real-time action
 '     game" input pattern. Contrast with the menu code below which uses
@@ -209,11 +209,11 @@ End Sub
 
 ' === WAIT FOR KEY ===
 ' Blocking keypress wait. Used by menu screens that want to pause until
-' the user acknowledges. Distinct from `Viper.Terminal.InKey()` used in
+' the user acknowledges. Distinct from `Viper.Terminal.PollKey()` used in
 ' the main loop, which is non-blocking.
 Sub WaitForKey()
     Dim k As String
-    k = Viper.Terminal.GetKey()
+    k = Viper.Terminal.ReadKey()
 End Sub
 
 ' === GAME INPUT ===
@@ -226,13 +226,13 @@ Function ReadGameKey() As String
     Dim prefix As String
     Dim code As String
 
-    k = Viper.Terminal.InKey()
+    k = Viper.Terminal.PollKey()
     If k <> CHR(27) Then Return k
 
-    prefix = Viper.Terminal.GetKeyTimeout(5)
+    prefix = Viper.Terminal.ReadKeyFor(5)
     If prefix <> "[" And prefix <> "O" Then Return k
 
-    code = Viper.Terminal.GetKeyTimeout(5)
+    code = Viper.Terminal.ReadKeyFor(5)
     If code = "A" Then Return "UP"
     If code = "B" Then Return "DOWN"
     If code = "C" Then Return "RIGHT"
@@ -535,7 +535,7 @@ running = 1
 
 Do While running = 1
     ShowMainMenu()
-    choice = Viper.Terminal.GetKey()
+    choice = Viper.Terminal.ReadKey()
 
     If choice = "1" Then
         PlayGame()

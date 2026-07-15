@@ -292,7 +292,7 @@ ranking operations for counting occurrences.
 |---------------------|-------------------------|---------------------------------------------------------------------|
 | `Inc(key)`          | `Integer(String)`       | Increment count for key by 1; returns new count                     |
 | `Dec(key)`          | `Integer(String)`       | Decrement count for key by 1; removes key if count reaches 0        |
-| `IncBy(key, n)`     | `Integer(String, Integer)` | Add positive n; non-positive n returns 0 without changing the map|
+| `IncrementBy(key, n)`     | `Integer(String, Integer)` | Add positive n; non-positive n returns 0 without changing the map|
 | `Get(key)`          | `Integer(String)`       | Get current count for key (0 if not present)                        |
 | `Set(key, count)`   | `Void(String, Integer)` | Set a positive count; zero or negative removes the key               |
 | `Has(key)`          | `Boolean(String)`       | Check if key exists in the map                                      |
@@ -305,7 +305,7 @@ ranking operations for counting occurrences.
 
 - `Dec` automatically removes a key when its count reaches zero and returns 0 for a missing key.
 - `Get` returns 0 for keys that have never been added (does not insert)
-- `IncBy` accepts only a positive increment. For zero or a negative value it makes no change and
+- `IncrementBy` accepts only a positive increment. For zero or a negative value it makes no change and
   returns 0, even when the key already has a nonzero count.
 - `MostCommon(n)` returns copied key strings ordered from highest count to lowest, all keys when
   `n` exceeds `Count`, and an empty Seq when `n <= 0`. Ties have unspecified order.
@@ -342,7 +342,7 @@ func start() {
     SayInt(cm.Count);                // 3 (distinct keys)
 
     // Bulk increment
-    cm.IncBy("banana", 5);
+    cm.IncrementBy("banana", 5);
     SayInt(cm.Get("banana"));      // 6
 
     // Total across all keys
@@ -375,7 +375,7 @@ cm.Inc("cherry")
 PRINT cm.Count                ' 3 (distinct keys)
 
 ' Bulk increment
-cm.IncBy("banana", 5)
+cm.IncrementBy("banana", 5)
 PRINT cm.Get("banana")      ' 6
 
 ' Total of all counts
@@ -696,7 +696,6 @@ Negative capacities trap.
 - `Keys()` and `Values()` return retained snapshots in matching MRU-to-LRU order. Keys are copied;
   values are shared, not deep-cloned.
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
-- `Cap` remains available as a compatibility alias for `Capacity`.
 - `Put` remains available as a compatibility alias for `Set`.
 - A null runtime key is treated as the empty string key. The cache is not thread-safe.
 

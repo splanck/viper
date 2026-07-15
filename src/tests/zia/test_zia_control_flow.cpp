@@ -203,7 +203,7 @@ func start() {    var numbers: List[Integer] = [1, 2, 3];
 ///          this was invisible to interpreter-run tests — but native codegen
 ///          leaves stack garbage there, so the release trapped "invalid string
 ///          handle". This crashed the IDE's native build on Open Folder
-///          (for dir in Dir.DirsSeq(...)). The fix emits a null store to the loop
+///          (for dir in Dir.Dirs(...)). The fix emits a null store to the loop
 ///          variable's string slot before the loop on every backend.
 TEST(ZiaControlFlow, ForInStringLoopVarNullInitialized) {
     SourceManager sm;

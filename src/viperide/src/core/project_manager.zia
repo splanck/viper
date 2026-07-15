@@ -277,7 +277,7 @@ class ProjectManager {
         while i < all.count() {
             var r = all.get(i);
             var rp = r.rootPath;
-            var prefix = rp + Path.Sep();
+            var prefix = rp + Path.Separator();
             if (path == rp or Str.StartsWith(path, prefix)) and Str.get_Length(rp) > bestLen {
                 best = r;
                 bestLen = Str.get_Length(rp);
@@ -341,7 +341,7 @@ class ProjectManager {
         loadedTreeDirs.Push(normalizedDir);
 
         var dirs = new List();
-        for dirName in Dir.DirsSeq(dirPath) {
+        for dirName in Dir.Dirs(dirPath) {
             dirs.Push(dirName);
         }
         dirs.Sort();
@@ -355,7 +355,7 @@ class ProjectManager {
         }
 
         var files = new List();
-        for fileName in Dir.FilesSeq(dirPath) {
+        for fileName in Dir.Files(dirPath) {
             files.Push(fileName);
         }
         files.Sort();
@@ -673,7 +673,7 @@ class ProjectManager {
         if IsPlainChildName(newName) == false {
             return "";
         }
-        var newPath = Path.Join(Path.Dir(oldPath), newName);
+        var newPath = Path.Join(Path.Directory(oldPath), newName);
         if IO.File.Exists(newPath) or Dir.Exists(newPath) {
             return "";
         }
@@ -710,7 +710,7 @@ class ProjectManager {
         if sourcePath == "" or targetDir == "" { return ""; }
         if Dir.Exists(targetDir) == false { return ""; }
         // Reject moving a folder into itself or one of its descendants.
-        if targetDir == sourcePath or Str.StartsWith(targetDir, sourcePath + Path.Sep()) {
+        if targetDir == sourcePath or Str.StartsWith(targetDir, sourcePath + Path.Separator()) {
             return "";
         }
         var baseName = Path.Name(sourcePath);
@@ -742,7 +742,7 @@ class ProjectManager {
         if IsPlainChildName(newName) == false {
             return 0;
         }
-        var newPath = Path.Join(Path.Dir(path), newName);
+        var newPath = Path.Join(Path.Directory(path), newName);
         var isDir = Dir.Exists(path);
         return CountProjectBindsForRename(path, newPath, isDir, docMgr);
     }
@@ -758,7 +758,7 @@ class ProjectManager {
         if path == "" { return false; }
         var trashPath = TrashPathFor(path);
         if trashPath == "" { return false; }
-        Dir.MakeAll(Path.Dir(trashPath));
+        Dir.MakeAll(Path.Directory(trashPath));
         if IO.File.Exists(path) {
             IO.File.Move(path, trashPath);
             CloseOpenDocumentsUnder(path, docMgr);
@@ -836,7 +836,7 @@ class ProjectManager {
         var i = docMgr.GetCount() - 1;
         while i >= 0 {
             var doc = docMgr.documents.get(i);
-            if doc.filePath == path or Str.StartsWith(doc.filePath, path + Path.Sep()) {
+            if doc.filePath == path or Str.StartsWith(doc.filePath, path + Path.Separator()) {
                 docMgr.CloseDocument(i);
             }
             i = i - 1;
@@ -851,7 +851,7 @@ class ProjectManager {
     func RelativePathIn(owner: project.Project, fullPath: String) -> String {
         if owner == null or owner.rootPath == "" { return fullPath; }
         var root = owner.rootPath;
-        var prefix = root + Path.Sep();
+        var prefix = root + Path.Separator();
         if Str.StartsWith(fullPath, prefix) {
             return NormalizeBindSeparators(Str.Mid(fullPath, Str.get_Length(prefix) + 1));
         }
@@ -865,7 +865,7 @@ class ProjectManager {
         var newNorm = NormalizeAbsPath(newPath);
         var replacement = "";
         if oldWasDir {
-            var prefix = oldNorm + Path.Sep();
+            var prefix = oldNorm + Path.Separator();
             if Str.StartsWith(entryAbs, prefix) {
                 var suffix = Str.Mid(entryAbs, Str.get_Length(prefix) + 1);
                 replacement = Path.Join(newNorm, suffix);
@@ -970,13 +970,13 @@ class ProjectManager {
     }
 
     func CollectZiaFiles(dirPath: String, files: List) {
-        for dirName in Dir.DirsSeq(dirPath) {
+        for dirName in Dir.Dirs(dirPath) {
             var fullDir = Path.Join(dirPath, dirName);
             if ShouldExcludePath(fullDir, true) == false {
                 CollectZiaFiles(fullDir, files);
             }
         }
-        for fileName in Dir.FilesSeq(dirPath) {
+        for fileName in Dir.Files(dirPath) {
             var fullPath = Path.Join(dirPath, fileName);
             if ShouldExcludePath(fullPath, false) == false and IsZiaFile(fullPath) {
                 if ListContains(files, fullPath) == false {

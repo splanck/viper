@@ -102,11 +102,10 @@ int main() {
     assert(hasMethod(*weakRefCls, "Free", "void(obj)"));
     assert(hasMethod(*weakRefCls, "Reset", "void(obj,obj)"));
 
-    const il::runtime::RuntimeClass *valueTypeCls = findClass("Viper.Core.ValueType");
-    assert(valueTypeCls != nullptr && "Viper.Core.ValueType not found in catalog");
-    assert(hasMethod(*valueTypeCls, "AddField", "void(i64,i64,i1)"));
-    assert(!hasMethod(*valueTypeCls, "ValueType", "obj(i64)") &&
-           "Viper.Core.ValueType must not expose Viper.Core.Box.ValueType as a method");
+    // Viper.Core.ValueType was removed from the public catalog; value-type
+    // registration lives only under Viper.Runtime.Unsafe.
+    assert(findClass("Viper.Core.ValueType") == nullptr &&
+           "Viper.Core.ValueType must not be published");
 
     const il::runtime::RuntimeClass *systemClipboardCls = findClass("Viper.System.Clipboard");
     assert(systemClipboardCls != nullptr && "Viper.System.Clipboard not found in catalog");
@@ -121,13 +120,13 @@ int main() {
 
     const il::runtime::RuntimeClass *bitmapFontCls = findClass("Viper.Graphics.BitmapFont");
     assert(bitmapFontCls != nullptr && "Viper.Graphics.BitmapFont not found in catalog");
-    assert(hasMethod(*bitmapFontCls, "LoadBDF", "obj<Viper.Graphics.BitmapFont>(str)"));
-    assert(hasMethod(*bitmapFontCls, "LoadPSF", "obj<Viper.Graphics.BitmapFont>(str)"));
+    assert(hasMethod(*bitmapFontCls, "LoadBdf", "obj<Viper.Graphics.BitmapFont>(str)"));
+    assert(hasMethod(*bitmapFontCls, "LoadPsf", "obj<Viper.Graphics.BitmapFont>(str)"));
 
-    const il::runtime::RuntimeClass *spriteFontCls = findClass("Viper.Graphics.SpriteFont");
-    assert(spriteFontCls != nullptr && "Viper.Graphics.SpriteFont not found in catalog");
-    assert(hasMethod(*spriteFontCls, "LoadBDF", "obj<Viper.Graphics.SpriteFont>(str)"));
-    assert(hasMethod(*spriteFontCls, "LoadPSF", "obj<Viper.Graphics.SpriteFont>(str)"));
+    const il::runtime::RuntimeClass *spriteFontCls = findClass("Viper.Graphics.BitmapFont");
+    assert(spriteFontCls != nullptr && "Viper.Graphics.BitmapFont not found in catalog");
+    assert(hasMethod(*spriteFontCls, "LoadBdf", "obj<Viper.Graphics.BitmapFont>(str)"));
+    assert(hasMethod(*spriteFontCls, "LoadPsf", "obj<Viper.Graphics.BitmapFont>(str)"));
 
     const il::runtime::RuntimeClass *guiAppCls = findClass("Viper.GUI.App");
     assert(guiAppCls != nullptr && "Viper.GUI.App not found in catalog");
@@ -179,7 +178,7 @@ int main() {
 
     constexpr std::array<std::string_view, 43> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D",
-        "Viper.Graphics.Surface2D",
+        "Viper.Graphics.RenderTarget2D",
         "Viper.Graphics.Texture2D",
         "Viper.Graphics.GpuTexture2D",
         "Viper.Graphics.Renderer2D",
@@ -187,7 +186,7 @@ int main() {
         "Viper.Graphics.Shader2D",
         "Viper.Graphics.PostProcess2D",
         "Viper.Graphics.Viewport2D",
-        "Viper.Graphics.ScreenScaler",
+        "Viper.Graphics.Viewport2D",
         "Viper.Graphics.TileSet2D",
         "Viper.Graphics.TileLayer2D",
         "Viper.Graphics.ObjectLayer2D",
@@ -198,8 +197,8 @@ int main() {
         "Viper.Graphics.BitmapFont",
         "Viper.Graphics.SdfFont",
         "Viper.Graphics.NineSlice2D",
-        "Viper.Graphics.ParticleSystem2D",
-        "Viper.Graphics.Emitter2D",
+        "Viper.Game.ParticleEmitter",
+        "Viper.Game.ParticleEmitter",
         "Viper.Graphics.DebugDraw2D",
         "Viper.Graphics.Transform2D",
         "Viper.Graphics.Sampler2D",
@@ -210,7 +209,7 @@ int main() {
         "Viper.Graphics.AnimationClip2D",
         "Viper.Graphics.AnimatedSprite2D",
         "Viper.Graphics.TextLayout2D",
-        "Viper.Graphics.SpriteFont",
+        "Viper.Graphics.BitmapFont",
         "Viper.Graphics.RenderPass2D",
         "Viper.Graphics.RenderGraph2D",
         "Viper.Graphics.CollisionMask2D",

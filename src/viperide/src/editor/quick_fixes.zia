@@ -83,8 +83,8 @@ func RuntimeBindTargetForIdentifier(name: String) -> String {
     if name == "Machine" { return "Viper.System.Machine"; }
     if name == "Exec" { return "Viper.System.Exec"; }
     if name == "Process" { return "Viper.System.Process"; }
-    if name == "Ini" { return "Viper.Text.Ini"; }
-    if name == "Json" { return "Viper.Text.Json"; }
+    if name == "Ini" { return "Viper.Data.Ini"; }
+    if name == "Json" { return "Viper.Data.Json"; }
     if name == "ProjectIndex" { return "Viper.Zia.ProjectIndex"; }
     if name == "ZiaToolchain" { return "Viper.Zia.Toolchain"; }
     if name == "ZiaCompletion" { return "Viper.Zia.Completion"; }

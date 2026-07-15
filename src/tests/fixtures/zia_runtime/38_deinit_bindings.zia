@@ -1,7 +1,7 @@
 module RuntimeTest38;
 
 bind Viper.Terminal;
-bind Viper.Memory;
+bind Viper.Runtime.Unsafe;
 
 var released: Boolean = false;
 
@@ -13,7 +13,7 @@ class Resource {
 }
 
 func makeResource() {    var r = new Resource();
-    Release(r);
+    Viper.Runtime.Unsafe.Release(r);
 }
 
 func start() {    makeResource();

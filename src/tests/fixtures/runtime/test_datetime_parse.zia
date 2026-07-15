@@ -14,7 +14,7 @@ bind "./_support";
 func testParseISO() {
     setTest("ParseISO");
 
-    var ts = Viper.Time.DateTime.ParseISO("2024-01-15T10:30:00Z");
+    var ts = Viper.Time.DateTime.ParseIso8601("2024-01-15T10:30:00Z");
     assertNeqInt(ts, 0, "ParseISO returns non-zero timestamp");
 
     var year = Viper.Time.DateTime.Year(ts);
@@ -30,7 +30,7 @@ func testParseISO() {
 func testParseISOComponents() {
     setTest("ParseISOComponents");
 
-    var ts = Viper.Time.DateTime.ParseISO("2024-06-20T14:45:30Z");
+    var ts = Viper.Time.DateTime.ParseIso8601("2024-06-20T14:45:30Z");
     var year = Viper.Time.DateTime.Year(ts);
     assertEqInt(year, 2024, "ISO year");
 
@@ -83,8 +83,9 @@ func testParseTimeMidnight() {
 func testTryParseISO() {
     setTest("TryParseISO");
 
-    var ts = Viper.Time.DateTime.TryParse("2024-01-15T10:30:00Z");
-    assertNeqInt(ts, 0, "TryParse ISO string returns non-zero");
+    var parsed = Viper.Time.DateTime.TryParse("2024-01-15T10:30:00Z");
+    assertTrue(parsed.IsSome, "TryParse ISO string returns Some");
+    var ts = parsed.UnwrapI64();
 
     var year = Viper.Time.DateTime.Year(ts);
     assertEqInt(year, 2024, "TryParse year");
@@ -93,8 +94,9 @@ func testTryParseISO() {
 func testTryParseDateOnly() {
     setTest("TryParseDateOnly");
 
-    var ts = Viper.Time.DateTime.TryParse("2024-03-25");
-    assertNeqInt(ts, 0, "TryParse date-only returns non-zero");
+    var parsedDate = Viper.Time.DateTime.TryParse("2024-03-25");
+    assertTrue(parsedDate.IsSome, "TryParse date-only returns Some");
+    var ts = parsedDate.UnwrapI64();
 
     var month = Viper.Time.DateTime.Month(ts);
     assertEqInt(month, 3, "TryParse date-only month");
@@ -103,11 +105,11 @@ func testTryParseDateOnly() {
 func testTryParseInvalid() {
     setTest("TryParseInvalid");
 
-    var ts = Viper.Time.DateTime.TryParse("not-a-date");
-    assertEqInt(ts, 0, "TryParse invalid returns 0");
+    var parsedBad = Viper.Time.DateTime.TryParse("not-a-date");
+    assertTrue(parsedBad.IsNone, "TryParse invalid returns None");
 
-    var ts2 = Viper.Time.DateTime.TryParse("");
-    assertEqInt(ts2, 0, "TryParse empty returns 0");
+    var parsedEmpty = Viper.Time.DateTime.TryParse("");
+    assertTrue(parsedEmpty.IsNone, "TryParse empty returns None");
 }
 
 func start() {

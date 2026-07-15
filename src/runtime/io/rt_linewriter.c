@@ -453,11 +453,9 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
 /// ```
 ///
 /// @param obj Pointer to a LineWriter object. Must not be NULL and writer must be open.
-/// @param ch The character value to write (0-255). Values outside this range
-///           are silently ignored.
+/// @param ch The character value to write (0-255). Values outside this range trap.
 ///
-/// @note Only the low 8 bits are written; the value is treated as unsigned.
-/// @note Values outside 0-255 trap instead of being silently ignored.
+/// @note Accepted values are written as one unsigned byte.
 /// @note Traps if obj is NULL or writer is closed.
 /// @note Thread safety: Not thread-safe for the same LineWriter object.
 ///

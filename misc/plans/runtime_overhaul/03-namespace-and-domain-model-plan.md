@@ -5,7 +5,7 @@
 The runtime API has grown across several layers without a visible ownership
 model. Users see multiple plausible places for the same concept:
 
-- `Viper.Input.Keyboard` and `Viper.Game3D.Keys`
+- `Viper.Input.Keyboard` and `Viper.Input.Key`
 - `Viper.Graphics`, `Viper.Graphics2D`, `Viper.Game`, and `Viper.Game2D`
 - `Viper.Graphics3D` and `Viper.Game3D`
 - `GLTF`/`FBX` loaders, `SceneAsset`, and `Game3D.Assets3D`
@@ -45,7 +45,7 @@ Keyboard.GetText()
 Keyboard.EnableTextInput()
 ```
 
-`Viper.Game3D.Keys` is removed from the public canonical API. Game3D examples use
+`Viper.Input.Key` is removed from the public canonical API. Game3D examples use
 `Viper.Input.Key`.
 
 Implementation notes:
@@ -122,7 +122,7 @@ Work item:
 
 Add a script or runtime surface audit that rejects:
 
-- `Viper.Game3D.Keys.*`
+- `Viper.Input.Key.*`
 - new input constants outside `Viper.Input.Key`
 - new 3D file-format loader names outside `Viper.Graphics3D`
 - new public `*3D` rendering primitives under `Viper.Game3D`
@@ -134,7 +134,7 @@ Allowlist deliberate bridges such as `Game3D.World3D.Spawn`.
 
 1. Add `Viper.Input.Key`.
 2. Update docs/examples/tests for input keys.
-3. Hide or remove `Viper.Game3D.Keys`.
+3. Hide or remove `Viper.Input.Key`.
 4. Rename `Assets3D.LoadTemplate*` toward `Prefab`.
 5. Route ordinary 3D asset docs through `SceneAsset`.
 6. Add namespace ownership audit.

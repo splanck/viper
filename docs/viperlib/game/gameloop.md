@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-07-15
 ---
 
 # GameBase + IScene — Game Loop Framework
@@ -13,7 +13,12 @@ last-verified: 2026-04-09
 
 ## Overview
 
-Every Viper game needs the same ~100 lines of boilerplate: canvas creation, frame loop, input polling, DeltaTime clamping, and frame pacing. **GameBase** encapsulates all of this into a single class you extend, while **IScene** provides a clean interface for organizing game states (menus, gameplay, game over, etc.).
+Many Viper games need the same canvas creation, frame loop, input polling,
+DeltaTime clamping, and frame-pacing code. **GameBase** is an example-library
+class that packages that loop, while **IScene** is its interface for organizing
+menus, gameplay, game-over screens, and similar states. Neither is a registered
+runtime class: import the source files from `examples/games/lib` into an
+application.
 
 **Location:** `examples/games/lib/gamebase.zia` and `examples/games/lib/iscene.zia`
 
@@ -37,8 +42,8 @@ interface IScene {
 ```
 setScene(newScene) called
         │
-        ▼ (next frame boundary)
-  currentScene.onExit()
+        ▼ (next loop boundary; first boundary if called before run)
+  currentScene.onExit()      [only when a scene is already active]
         │
         ▼
   currentScene = newScene
@@ -53,7 +58,7 @@ setScene(newScene) called
 
 ---
 
-## GameBase Entity
+## GameBase Class
 
 ### Import
 
@@ -67,15 +72,19 @@ bind "../lib/iscene";
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `initGame` | `(title: String, width: Integer, height: Integer)` | Initialize canvas, frame pacing, scene system. Call after `new`. |
-| `run` | `()` | Start the main game loop. Blocks until `quit()` is called. |
+| `run` | `()` | Start the main loop. Blocks until `quit()` or a window-close request ends it. |
 | `setScene` | `(scene: IScene)` | Queue a scene transition (applied at next frame boundary). |
 | `quit` | `()` | Signal the game to stop at end of current frame. |
 | `getCanvas` | `() -> Canvas` | Access the canvas for drawing operations. |
 | `getDT` | `() -> Integer` | Get current clamped delta time in milliseconds. |
+| `getFX` | `() -> ScreenFX` | Access the owned screen-effects instance. |
 | `getWidth` | `() -> Integer` | Get canvas width. |
 | `getHeight` | `() -> Integer` | Get canvas height. |
-| `setDTMax` | `(max: Integer)` | Set maximum delta time clamp (default 50ms). |
-| `setTargetFps` | `(fps: Integer)` | Set target frames per second (default 60). |
+| `setDTMax` | `(max: Integer)` | Set the GameBase delta clamp (default 50 ms); pass a positive value. |
+| `setTargetFps` | `(fps: Integer)` | Forward the frame-rate target to Canvas (initially 60). `0` selects the graphics default and a negative value is unlimited. |
+| `shake` | `(intensity, durationMs, decayMs)` | Start a screen shake. |
+| `flash` | `(color, durationMs)` | Start a color flash. |
+| `transitionTo` | `(scene, color, durationMs)` | Fade out, queue the scene, then fade in. |
 
 ### Override Hooks
 
@@ -83,6 +92,25 @@ bind "../lib/iscene";
 |------|-----------|------------|
 | `onInit` | `()` | Once, at end of `initGame()`. Set up your game here. |
 | `onFrame` | `(dt: Integer)` | Every frame, after scene draw. Use for global overlays. |
+
+### Frame Order And Edge Cases
+
+Each loop iteration polls the canvas, clamps `Canvas.DeltaTime` first to at
+least 1 ms and then to `dtMax`, updates ScreenFX, completes an orchestrated
+fade transition if needed, applies one pending scene, updates and draws the
+current scene, draws ScreenFX, calls `onFrame`, and flips the canvas.
+
+`setScene()` called during a scene update is applied on the next iteration.
+A scene queued by `onInit()` is applied on the first iteration. Multiple calls
+before that boundary are last-write-wins. The framework clears to color `0`
+immediately before drawing a real scene; when no scene is active, `onFrame()`
+must clear the canvas itself if it does not want prior pixels retained.
+
+The current loop sets `running = false` when it observes `Canvas.ShouldClose`
+but still completes that iteration, including callbacks, effect drawing, and
+`Flip()`. `quit()` similarly takes effect after the current iteration. A
+nonpositive `dtMax` can override the 1 ms lower clamp and expose zero or
+negative delta times; this is a known defect, so keep it positive.
 
 ---
 
@@ -101,6 +129,7 @@ class SimpleGame extends GameBase {
 
     override expose func onFrame(dt: Integer) {
         var canvas = self.getCanvas();
+        canvas.Clear(0);
         canvas.Text(20, 20, "Hello, Viper!", RGB(255, 255, 255));
 
         if canvas.KeyHeld(256) != 0 {   // ESC
@@ -228,7 +257,10 @@ func start() {
 
 ### Why `initGame()` Instead of `init()`
 
-Zia's inherited `init()` with arguments has a known code generation limitation. The two-step pattern (`new` + `initGame`) works reliably across modules:
+`initGame()` is this example library's explicit setup contract, not a workaround
+for a current inherited-initializer limitation. It lets the subclass be created
+first and then initializes the canvas, NullScene sentinels, effects, and finally
+the dynamically dispatched `onInit()` hook:
 
 ```rust
 var game = new MyGame();              // Zero-arg implicit constructor
@@ -247,13 +279,18 @@ class MenuScene implements IScene {
 }
 ```
 
-### Why NullScene Instead of `IScene?`
+### Why NullScene Instead of Nullable State
 
-Zia's optional chaining (`?.`) supports field access but not method calls on interface types. Instead of `IScene?` with null checks, GameBase uses a **Null Object** sentinel — a `NullScene` class with empty methods. This eliminates all null-checking complexity.
+GameBase uses a **Null Object** sentinel—a `NullScene` with empty methods—so
+all interface fields contain a concrete object before a real scene is installed.
+The separate `hasScene` and `hasPending` flags still decide whether lifecycle
+methods and rendering run.
 
 ### Deferred Scene Transitions
 
-`setScene()` doesn't switch immediately — it queues the transition for the start of the next frame. This prevents mid-frame state corruption (e.g., a scene switching during its own `update()`).
+`setScene()` does not switch immediately. It queues one transition for the
+scene-transition phase of a later loop iteration. This prevents a scene from
+being replaced in the middle of its own `update()` or `draw()`.
 
 ---
 
@@ -281,8 +318,13 @@ if playerWon {
 
 The transition is fully automated:
 1. `FadeOut` starts with the specified color/duration
-2. When fade-out completes, the scene switches (via `setScene`)
-3. `FadeIn` starts automatically
+2. On the first later iteration with no active fade-out, `setScene` queues the target
+3. That queued scene is applied in the same iteration and `FadeIn` starts automatically
+
+A duration at or below zero creates no fade and therefore becomes a deferred
+scene switch on the next loop iteration. Calling `transitionTo()` again while a
+transition is pending replaces its target, color, and duration and restarts the
+fade-out.
 
 ### Custom FX Access
 
@@ -293,7 +335,9 @@ var fx = game.getFX();
 fx.FadeOut(0xFF000080, 300);   // Manual fade control
 ```
 
-The overlay is rendered automatically — GameBase delegates to `ScreenFX.Draw()` each frame.
+The effect overlay is rendered automatically after the scene's `draw()` and
+before `onFrame()`. Global overlay drawing in `onFrame()` therefore appears
+above ScreenFX.
 
 ---
 
@@ -307,7 +351,7 @@ The overlay is rendered automatically — GameBase delegates to `ScreenFX.Draw()
 
 ## See Also
 
-- [Scene Manager](scenemanager.md) — Multi-scene transitions with crossfade
+- [Scene Manager](scenemanager.md) — Bounded scene-name registry and transition timer
 - [Game Utilities](core.md) — Timer, StateMachine, ObjectPool
 - [Visual Effects](effects.md) — ScreenFX for shake, fade, flash
 - [Viper Runtime Library](../README.md)

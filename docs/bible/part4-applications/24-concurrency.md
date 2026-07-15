@@ -1020,7 +1020,7 @@ func start() {
     var throttle = Throttler.New(1000);  // At most once per second
 
     for i in 0..10 {
-        if throttle.Try() {
+        if throttle.TryAcquire() {
             Terminal.Say("Action executed at iteration " + Fmt.Int(i));
         } else {
             Terminal.Say("Throttled at iteration " + Fmt.Int(i));
@@ -1033,7 +1033,7 @@ func start() {
 | Method/Property | Description |
 |-----------------|-------------|
 | `Throttler.New(intervalMs)` | Create with minimum interval |
-| `.Try()` | Try to proceed (returns true if allowed) |
+| `.TryAcquire()` | Try to proceed (returns true if allowed) |
 | `.Reset()` | Reset state |
 | `.CanProceed` | Whether an action is allowed now |
 | `.Count` | Total successful actions |

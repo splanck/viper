@@ -18,9 +18,9 @@ last-verified: 2026-07-15
 - [Viper.Crypto.Legacy.Aes](#vipercryptolegacyaes)
 - [Viper.Crypto.Legacy.Hash](#vipercryptolegacyhash)
 - [Viper.Crypto.KeyDerive](#vipercryptokeyderive)
-- [Viper.Crypto.Module](#vipercryptomodule)
+- [Viper.Crypto.Compliance](#vipercryptomodule)
 - [Viper.Crypto.Password](#vipercryptopassword)
-- [Viper.Crypto.Rand](#vipercryptorand)
+- [Viper.Crypto.SecureRandom](#vipercryptorand)
 - [Viper.Crypto.Tls](#vipercryptotls)
 
 ---
@@ -69,7 +69,7 @@ module AesDemo;
 
 bind Viper.Terminal;
 bind Viper.Crypto.Aes as Aes;
-bind Viper.Crypto.Rand as CRand;
+bind Viper.Crypto.SecureRandom as CRand;
 bind Viper.Collections;
 bind Viper.Text.Fmt as Fmt;
 
@@ -103,7 +103,7 @@ DIM plaintext AS STRING = textResult.UnwrapStr()
 PRINT "Decrypted: "; plaintext
 
 ' Authenticated AES with explicit key and AAD
-DIM key AS OBJECT = Viper.Crypto.Rand.Bytes(16)   ' 128-bit AES-GCM key
+DIM key AS OBJECT = Viper.Crypto.SecureRandom.Bytes(16)   ' 128-bit AES-GCM key
 DIM aad AS OBJECT = Viper.Collections.Bytes.FromStr("file:v1")
 DIM data AS OBJECT = Viper.Collections.Bytes.FromStr("Secret data")
 DIM enc AS OBJECT = Viper.Crypto.Aes.EncryptAuth(data, key, aad)
@@ -281,7 +281,7 @@ DIM decrypted AS OBJECT = decryptResult.Unwrap()
 ```basic
 ' Derive a key from password (useful when you need the same key multiple times)
 DIM password AS STRING = "user-password"
-DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)
+DIM salt AS OBJECT = Viper.Crypto.SecureRandom.Bytes(16)
 DIM data AS OBJECT = Viper.Collections.Bytes.FromStr("Secret data")
 
 ' Derive key
@@ -336,8 +336,8 @@ Cipher operations expose both compatibility and production failure shapes:
 | Encrypt user data             | `Viper.Crypto.Cipher.Encrypt()`      |
 | Encrypt with managed keys     | `Viper.Crypto.Cipher.EncryptWithKey()` |
 | Password storage              | `Viper.Crypto.Password.Hash()`          |
-| Message authentication only   | `Viper.Crypto.Hash.HmacSHA256()`     |
-| Data integrity check          | `Viper.Crypto.Hash.SHA256()`         |
+| Message authentication only   | `Viper.Crypto.Hash.HmacSha256()`     |
+| Data integrity check          | `Viper.Crypto.Hash.Sha256()`         |
 | Secure communication          | `Viper.Crypto.Tls`                   |
 
 ---
@@ -434,16 +434,16 @@ bind Viper.Terminal;
 bind Viper.Crypto.Hash as Hash;
 
 func start() {
-    Say("SHA256: " + Hash.SHA256("hello"));
-    Say("HMAC-SHA256: " + Hash.HmacSHA256("key", "hello"));
+    Say("SHA256: " + Hash.Sha256("hello"));
+    Say("HMAC-SHA256: " + Hash.HmacSha256("key", "hello"));
 }
 ```
 
 ### BASIC Example
 
 ```basic
-PRINT "SHA256: "; Viper.Crypto.Hash.SHA256("hello")
-PRINT "HMAC-SHA256: "; Viper.Crypto.Hash.HmacSHA256("key", "hello")
+PRINT "SHA256: "; Viper.Crypto.Hash.Sha256("hello")
+PRINT "HMAC-SHA256: "; Viper.Crypto.Hash.HmacSha256("key", "hello")
 ```
 
 ### HMAC Example
@@ -454,12 +454,12 @@ DIM secretKey AS STRING = "my-secret-key"
 DIM message AS STRING = "Important message to authenticate"
 
 ' Compute HMAC-SHA256
-DIM mac AS STRING = Viper.Crypto.Hash.HmacSHA256(secretKey, message)
+DIM mac AS STRING = Viper.Crypto.Hash.HmacSha256(secretKey, message)
 PRINT "HMAC: "; mac
 
 ' Verify message authenticity
 DIM receivedMac AS STRING = "..." ' Received with message
-DIM computedMac AS STRING = Viper.Crypto.Hash.HmacSHA256(secretKey, message)
+DIM computedMac AS STRING = Viper.Crypto.Hash.HmacSha256(secretKey, message)
 IF Viper.Crypto.Hash.ConstantTimeEquals(receivedMac, computedMac) THEN
     PRINT "Message is authentic"
 ELSE
@@ -467,9 +467,9 @@ ELSE
 END IF
 
 ' HMAC with binary data
-DIM keyBytes AS OBJECT = Viper.Crypto.Rand.Bytes(32)
+DIM keyBytes AS OBJECT = Viper.Crypto.SecureRandom.Bytes(32)
 DIM dataBytes AS OBJECT = Viper.IO.File.ReadAllBytes("data.bin")
-DIM binaryMac AS STRING = Viper.Crypto.Hash.HmacSHA256Bytes(keyBytes, dataBytes)
+DIM binaryMac AS STRING = Viper.Crypto.Hash.HmacSha256Bytes(keyBytes, dataBytes)
 ```
 
 ### HMAC Algorithm
@@ -572,15 +572,15 @@ module KeyDeriveDemo;
 
 bind Viper.Terminal;
 bind Viper.Crypto.KeyDerive as KD;
-bind Viper.Crypto.Rand as CRand;
+bind Viper.Crypto.SecureRandom as CRand;
 
 func start() {
     // Generate a random salt
     var salt = CRand.Bytes(16);
 
     // Derive a key using PBKDF2-SHA256
-    var keyHex = KD.Pbkdf2SHA256Str("password123", salt, 300000, 32);
-    var scryptHex = KD.ScryptSHA256Str("password123", salt, 16384, 8, 1, 32);
+    var keyHex = KD.Pbkdf2Sha256Encoded("password123", salt, 300000, 32);
+    var scryptHex = KD.ScryptEncoded("password123", salt, 16384, 8, 1, 32);
     Say("Derived key: " + keyHex);
     Say("scrypt key: " + scryptHex);
 }
@@ -591,14 +591,14 @@ func start() {
 ```basic
 ' Derive a key from a password
 DIM password AS STRING = "user-password"
-DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)  ' Random 16-byte salt
+DIM salt AS OBJECT = Viper.Crypto.SecureRandom.Bytes(16)  ' Random 16-byte salt
 DIM iterations AS INTEGER = 300000  ' High iteration count for security
 
 ' Derive a 32-byte key
-DIM key AS OBJECT = Viper.Crypto.KeyDerive.Pbkdf2SHA256(password, salt, iterations, 32)
+DIM key AS OBJECT = Viper.Crypto.KeyDerive.Pbkdf2Sha256(password, salt, iterations, 32)
 
 ' Or get it as a hex string
-DIM keyHex AS STRING = Viper.Crypto.KeyDerive.Pbkdf2SHA256Str(password, salt, iterations, 32)
+DIM keyHex AS STRING = Viper.Crypto.KeyDerive.Pbkdf2Sha256Encoded(password, salt, iterations, 32)
 PRINT "Derived key: "; keyHex
 ```
 
@@ -625,7 +625,7 @@ END FUNCTION
 
 ---
 
-## Viper.Crypto.Module
+## Viper.Crypto.Compliance
 
 Validation-readiness controls for the zero-dependency in-tree crypto module.
 
@@ -649,7 +649,7 @@ global policy scope is visible in source and generated API docs.
 - Mode and error state are process-global and serialized; the `ForProcess` names make that scope
   explicit
 - Runs self-tests for SHA-2, HMAC/HKDF-SHA256, AES-128-GCM, AES-256-GCM, and an HMAC-DRBG known-answer path before enabling approved mode
-- Routes `Viper.Crypto.Rand` and internal nonce/key generation through the module HMAC-DRBG once approved mode is enabled
+- Routes `Viper.Crypto.SecureRandom` and internal nonce/key generation through the module HMAC-DRBG once approved mode is enabled
 - Serializes module state and DRBG access, chunks oversized random requests to the DRBG request limit, and reseeds the DRBG from OS entropy on the configured reseed interval
 - Self-test or DRBG initialization failure pins the module in an error state. The error state fails closed for service checks, and disabling approved mode does not re-enable compatibility algorithms after such a failure.
 - Keeps compatibility-mode algorithms available when approved mode is disabled
@@ -664,14 +664,14 @@ Approved mode is a validation-readiness policy mode, not a CMVP certificate. Vip
 ### BASIC Example
 
 ```basic
-IF Viper.Crypto.Module.EnableApprovedModeForProcess() THEN
-    PRINT "Crypto module status: "; Viper.Crypto.Module.Status()
+IF Viper.Crypto.Compliance.EnableApprovedModeForProcess() THEN
+    PRINT "Crypto module status: "; Viper.Crypto.Compliance.Status()
 END IF
 ```
 
 ---
 
-## Viper.Crypto.Rand
+## Viper.Crypto.SecureRandom
 
 Cryptographically secure random number generation.
 
@@ -719,7 +719,7 @@ domain without range overflow.
 module CryptoRandDemo;
 
 bind Viper.Terminal;
-bind Viper.Crypto.Rand as CRand;
+bind Viper.Crypto.SecureRandom as CRand;
 bind Viper.Collections;
 bind Viper.Text.Fmt as Fmt;
 
@@ -739,14 +739,14 @@ func start() {
 
 ```basic
 ' Generate random bytes
-DIM key AS OBJECT = Viper.Crypto.Rand.Bytes(32)   ' 256-bit key
-DIM iv AS OBJECT = Viper.Crypto.Rand.Bytes(16)    ' 128-bit IV
-DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)  ' Salt for PBKDF2
+DIM key AS OBJECT = Viper.Crypto.SecureRandom.Bytes(32)   ' 256-bit key
+DIM iv AS OBJECT = Viper.Crypto.SecureRandom.Bytes(16)    ' 128-bit IV
+DIM salt AS OBJECT = Viper.Crypto.SecureRandom.Bytes(16)  ' Salt for PBKDF2
 
 ' Generate random integers
-DIM dice AS INTEGER = Viper.Crypto.Rand.Int(1, 6)       ' Roll a die: 1-6
-DIM card AS INTEGER = Viper.Crypto.Rand.Int(0, 51)      ' Pick a card: 0-51
-DIM token AS INTEGER = Viper.Crypto.Rand.Int(100000, 999999)  ' 6-digit code
+DIM dice AS INTEGER = Viper.Crypto.SecureRandom.Int(1, 6)       ' Roll a die: 1-6
+DIM card AS INTEGER = Viper.Crypto.SecureRandom.Int(0, 51)      ' Pick a card: 0-51
+DIM token AS INTEGER = Viper.Crypto.SecureRandom.Int(100000, 999999)  ' 6-digit code
 ```
 
 ### Security Token Example
@@ -754,7 +754,7 @@ DIM token AS INTEGER = Viper.Crypto.Rand.Int(100000, 999999)  ' 6-digit code
 ```basic
 ' Generate a secure random token
 FUNCTION GenerateToken(length AS INTEGER) AS STRING
-    DIM bytes AS OBJECT = Viper.Crypto.Rand.Bytes(length)
+    DIM bytes AS OBJECT = Viper.Crypto.SecureRandom.Bytes(length)
     RETURN Viper.Collections.Bytes.ToHex(bytes)
 END FUNCTION
 
@@ -770,7 +770,7 @@ PRINT "API Token: "; apiToken
 SUB SecureShuffle(arr() AS INTEGER)
     DIM n AS INTEGER = UBOUND(arr)
     FOR i = n TO 1 STEP -1
-        DIM j AS INTEGER = Viper.Crypto.Rand.Int(0, i)
+        DIM j AS INTEGER = Viper.Crypto.SecureRandom.Int(0, i)
         ' Swap arr(i) and arr(j)
         DIM temp AS INTEGER = arr(i)
         arr(i) = arr(j)

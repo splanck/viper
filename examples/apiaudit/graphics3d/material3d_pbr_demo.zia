@@ -6,7 +6,7 @@ bind Viper.Terminal;
 func start() {
     Say("=== Material3D PBR Demo ===");
 
-    var base = Material3D.NewPBR(0.7, 0.55, 0.35);
+    var base = Material3D.PBR(0.7, 0.55, 0.35);
     Material3D.set_Metallic(base, 0.8);
     Material3D.set_Roughness(base, 0.25);
     Material3D.set_AmbientOcclusion(base, 0.9);

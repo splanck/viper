@@ -14,7 +14,7 @@ loaders, locale-JSON/date-pattern/plural-rule parsers, stream manifest), but:
 - They are **opt-in** (`VIPER_ENABLE_FUZZ=ON`) and not run on any regular cadence.
 - Only the 3D/asset loader harnesses currently have committed corpora; Zia/BASIC/IL and
   localization parser harnesses ship no seed corpus.
-- Key input surfaces are **unfuzzed**: `Viper.Text.Json`, LSP/MCP JSON-RPC framing/parsing,
+- Key input surfaces are **unfuzzed**: `Viper.Data.Json`, LSP/MCP JSON-RPC framing/parsing,
   and selected network/protocol parsers such as HTTP request parsing. Bytecode has an
   in-memory module format; add a binary-deserializer fuzzer only if/when a serialized
   bytecode loader is present.

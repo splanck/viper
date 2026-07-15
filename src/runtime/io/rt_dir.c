@@ -24,8 +24,8 @@
 
 /// @brief Return 1 if `cpath` is a protected target that must not be deleted.
 ///
-/// Blocks RemoveAll on empty strings, root paths, `"."`, `".."`, and the
-/// process's own current working directory — all of which would be
+/// Blocks RemoveAll on empty strings, root paths, `"."`, `".."`, the process's
+/// current working directory, and an existing ancestor of that directory — all of which would be
 /// catastrophic to wipe. Used as a safety gate before recursive deletion.
 static int rt_dir_remove_all_target_is_protected(const char *cpath) {
     if (!cpath || cpath[0] == '\0')
@@ -792,7 +792,7 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
 /// **Warning:** This function:
 /// - Permanently deletes files (no recycle bin)
 /// - Cannot be undone
-/// - May delete more than expected if symlinks point elsewhere
+/// - Removes encountered symlinks/reparse points themselves without following their targets
 /// - Traps if any child cannot be removed
 ///
 /// **Edge cases:**

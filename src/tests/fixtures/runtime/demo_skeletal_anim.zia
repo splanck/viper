@@ -12,11 +12,11 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Meshes — simple boxes representing bone segments
-    var upper_mesh = Mesh3D.NewBox(0.3, 2.0, 0.3);
-    var lower_mesh = Mesh3D.NewBox(0.25, 1.8, 0.25);
-    var body_mesh = Mesh3D.NewBox(1.5, 2.5, 0.8);
-    var head_mesh = Mesh3D.NewSphere(0.5, 12);
-    var floor_mesh = Mesh3D.NewPlane(12.0, 12.0);
+    var upper_mesh = Mesh3D.Box(0.3, 2.0, 0.3);
+    var lower_mesh = Mesh3D.Box(0.25, 1.8, 0.25);
+    var body_mesh = Mesh3D.Box(1.5, 2.5, 0.8);
+    var head_mesh = Mesh3D.Sphere(0.5, 12);
+    var floor_mesh = Mesh3D.Plane(12.0, 12.0);
 
     // Set bone weights: each vertex of upper_mesh is fully weighted to bone 1 (upper arm)
     var i = 0;
@@ -60,21 +60,21 @@ func start() {
     AnimPlayer3D.Play(player, wave);
 
     // Materials
-    var skin_mat = Material3D.NewColor(0.9, 0.7, 0.5);
-    var body_mat = Material3D.NewColor(0.2, 0.4, 0.8);
-    var head_mat = Material3D.NewColor(0.9, 0.75, 0.55);
+    var skin_mat = Material3D.FromColor(0.9, 0.7, 0.5);
+    var body_mat = Material3D.FromColor(0.2, 0.4, 0.8);
+    var head_mat = Material3D.FromColor(0.9, 0.75, 0.55);
     Material3D.SetShininess(head_mat, 32.0);
-    var floor_mat = Material3D.NewColor(0.25, 0.25, 0.3);
+    var floor_mat = Material3D.FromColor(0.25, 0.25, 0.3);
 
     // Lighting
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.9);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
 
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 

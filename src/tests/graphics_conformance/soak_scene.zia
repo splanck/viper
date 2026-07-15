@@ -24,7 +24,7 @@ bind Viper.System.Environment as Env;
 bind Viper.Terminal as Terminal;
 
 func intStr(i: Integer) -> String {
-    return Convert.ToString_Int(i);
+    return Convert.ToStringInt(i);
 }
 
 func envInt(name: String, fallback: Integer) -> Integer {
@@ -62,7 +62,7 @@ class SoakScene {
         ground.Name = "Ground";
         world.Spawn(ground);
 
-        var groundBody = Physics3DBody.NewAABB(12.0, 0.1, 12.0, 0.0);
+        var groundBody = PhysicsBody3D.NewAABB(12.0, 0.1, 12.0, 0.0);
         var groundCol = Entity3D.New();
         groundCol.Name = "GroundCollider";
         groundCol.AttachBody(groundBody);
@@ -101,7 +101,7 @@ class SoakScene {
             var ang = (k + churnPhase) * 0.7853981633974483;
             var crate = Entity3D.Of(crateMesh, crateMat);
             crate.Name = "Crate" + intStr(churnPhase) + "_" + intStr(k);
-            var body = Physics3DBody.NewAABB(0.25, 0.25, 0.25, 1.0);
+            var body = PhysicsBody3D.NewAABB(0.25, 0.25, 0.25, 1.0);
             crate.AttachBody(body);
             crate.SetPosition(Cos(ang) * 3.0, 2.0 + 0.25 * k, Sin(ang) * 3.0);
             world.Spawn(crate);

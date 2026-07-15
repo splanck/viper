@@ -17,7 +17,7 @@ PRINT "SceneNode bindings demo"
 scene = Viper.Graphics3D.SceneGraph.New()
 parent = Viper.Graphics3D.SceneNode.New()
 child = Viper.Graphics3D.SceneNode.New()
-body = Viper.Graphics3D.Physics3DBody.NewSphere(0.5, 1.0)
+body = Viper.Graphics3D.PhysicsBody3D.Sphere(0.5, 1.0)
 
 Viper.Graphics3D.SceneNode.SetPosition(parent, 5.0, 0.0, 0.0)
 Viper.Graphics3D.SceneNode.AddChild(parent, child)
@@ -25,7 +25,7 @@ Viper.Graphics3D.SceneGraph.Add(scene, parent)
 
 child.BindBody(body)
 child.SyncMode = 0
-Viper.Graphics3D.Physics3DBody.SetPosition(body, 6.0, 1.5, -2.0)
+Viper.Graphics3D.PhysicsBody3D.SetPosition(body, 6.0, 1.5, -2.0)
 scene.SyncBindings(0.016)
 
 childPos = child.Position

@@ -16,7 +16,7 @@ func start() {
 
     // --- Create ---
     Say("--- Create ---");
-    var d = DO.Create(2024, 6, 15);
+    var d = DO.FromParts(2024, 6, 15);
     Say("Created 2024-06-15");
 
     // --- Year / Month / Day ---
@@ -81,19 +81,19 @@ func start() {
 
     // --- DiffDays ---
     Say("--- DiffDays ---");
-    var jan1 = DO.Create(2024, 1, 1);
+    var jan1 = DO.FromParts(2024, 1, 1);
     SayInt(d.DiffDays(jan1));
 
     // --- IsLeapYear ---
     Say("--- IsLeapYear ---");
     SayBool(d.get_IsLeapYear());
-    var d2023 = DO.Create(2023, 3, 1);
+    var d2023 = DO.FromParts(2023, 3, 1);
     SayBool(d2023.get_IsLeapYear());
 
     // --- DaysInMonth ---
     Say("--- DaysInMonth ---");
     SayInt(d.get_DaysInMonth());
-    var feb = DO.Create(2024, 2, 1);
+    var feb = DO.FromParts(2024, 2, 1);
     SayInt(feb.get_DaysInMonth());
 
     // --- StartOfMonth ---
@@ -114,14 +114,14 @@ func start() {
 
     // --- Cmp ---
     Say("--- Cmp ---");
-    var later = DO.Create(2024, 12, 25);
-    SayInt(d.Cmp(later));
-    SayInt(later.Cmp(d));
-    SayInt(d.Cmp(d));
+    var later = DO.FromParts(2024, 12, 25);
+    SayInt(d.Compare(later));
+    SayInt(later.Compare(d));
+    SayInt(d.Compare(d));
 
     // --- Equals ---
     Say("--- Equals ---");
-    var same = DO.Create(2024, 6, 15);
+    var same = DO.FromParts(2024, 6, 15);
     SayBool(d.Equals(same));
     SayBool(d.Equals(later));
 

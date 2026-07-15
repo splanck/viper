@@ -198,9 +198,9 @@ func orderedDither(pix: Pixels, ox: Integer, oy: Integer,
 ///        without any obvious pattern.
 func noiseFill(pix: Pixels, ox: Integer, oy: Integer,
                w: Integer, h: Integer, baseColor: Integer, variance: Integer) {
-    var br = Color.GetR(baseColor);
-    var bg = Color.GetG(baseColor);
-    var bb = Color.GetB(baseColor);
+    var br = Color.GetRed(baseColor);
+    var bg = Color.GetGreen(baseColor);
+    var bb = Color.GetBlue(baseColor);
     var y = 0;
     while y < h {
         var x = 0;
@@ -740,9 +740,9 @@ class TextureFactory {
                     if by + bh > h { bh = h - by; }
                     // Brick fill with slight noise
                     var shade = noise2d(col + row * 4, 0, 85, 20) - 10;
-                    var r = Color.GetR(brickColor) + shade;
-                    var g = Color.GetG(brickColor) + shade;
-                    var b = Color.GetB(brickColor) + shade;
+                    var r = Color.GetRed(brickColor) + shade;
+                    var g = Color.GetGreen(brickColor) + shade;
+                    var b = Color.GetBlue(brickColor) + shade;
                     if r < 0 { r = 0; } if r > 255 { r = 255; }
                     if g < 0 { g = 0; } if g > 255 { g = 255; }
                     if b < 0 { b = 0; } if b > 255 { b = 255; }

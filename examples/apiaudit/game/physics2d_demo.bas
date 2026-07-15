@@ -9,7 +9,7 @@ PRINT body.X
 PRINT body.Y
 PRINT body.Width
 PRINT body.Height
-body.SetVel(10, 0)
+body.SetVelocity(10, 0)
 PRINT body.VelocityX
 PRINT body.VelocityY
 body.ApplyForce(0, 100)

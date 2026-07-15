@@ -26,7 +26,7 @@ bind Str = Viper.String;
 /// @return True when the file extension is allowed.
 expose func SearchKindMatches(filePath: String, fileKinds: String) -> Boolean {
     if fileKinds == "" { return true; }
-    var ext = Str.ToLower(Path.Ext(filePath));
+    var ext = Str.ToLower(Path.Extension(filePath));
     if ext == "" { return false; }
     var normalized = "," + Str.ToLower(Str.Replace(fileKinds, " ", "")) + ",";
     return Str.IndexOf(normalized, "," + ext + ",") != 0;
@@ -45,8 +45,8 @@ expose func ShouldSearchIgnore(rootPath: String,
     if rootPath == "" or fullPath == "" { return false; }
     var rel = fullPath;
     var prefix = rootPath;
-    if Str.EndsWith(prefix, Path.Sep()) == false {
-        prefix = prefix + Path.Sep();
+    if Str.EndsWith(prefix, Path.Separator()) == false {
+        prefix = prefix + Path.Separator();
     }
     if Str.StartsWith(fullPath, prefix) {
         rel = Str.Mid(fullPath, Str.get_Length(prefix) + 1);
@@ -84,8 +84,8 @@ expose func SearchPathAllowed(rootPath: String,
 expose func RelativeSearchPath(rootPath: String, filePath: String) -> String {
     var rel = filePath;
     var prefix = rootPath;
-    if prefix != "" and Str.EndsWith(prefix, Path.Sep()) == false {
-        prefix = prefix + Path.Sep();
+    if prefix != "" and Str.EndsWith(prefix, Path.Separator()) == false {
+        prefix = prefix + Path.Separator();
     }
     if prefix != "" and Str.StartsWith(filePath, prefix) {
         rel = Str.Mid(filePath, Str.get_Length(prefix) + 1);
@@ -98,8 +98,8 @@ expose func RelativeSearchPath(rootPath: String, filePath: String) -> String {
 /// @return Path with `/` separators.
 expose func NormalizeSearchPath(path: String) -> String {
     var normalized = Str.Replace(path, "\\", "/");
-    if Path.Sep() != "/" {
-        normalized = Str.Replace(normalized, Path.Sep(), "/");
+    if Path.Separator() != "/" {
+        normalized = Str.Replace(normalized, Path.Separator(), "/");
     }
     return normalized;
 }

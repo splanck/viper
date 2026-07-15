@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Crypto.Rand - Cryptographically Secure Random
+// API Audit: Viper.Crypto.SecureRandom - Cryptographically Secure Random
 // =============================================================================
 // Tests: Int, Bytes
 // =============================================================================
@@ -10,7 +10,7 @@ bind Viper.Collections;
 bind Viper.Terminal;
 
 func start() {
-    Say("=== API Audit: Viper.Crypto.Rand ===");
+    Say("=== API Audit: Viper.Crypto.SecureRandom ===");
 
     // --- Int ---
     Say("--- Int ---");

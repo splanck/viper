@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - The permutation table is seeded from the caller-supplied integer seed
-//     using a Fisher-Yates shuffle; different seeds produce uncorrelated noise.
+//     using a Fisher-Yates shuffle; the same seed reproduces the same field.
 //   - The doubled permutation table (perm[512]) avoids modular arithmetic in
 //     the inner loop; indices are masked with 0xFF before lookup.
 //   - Noise values are in the range approximately [-1, 1] for 3D and [-0.7, 0.7]
@@ -241,7 +241,7 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z) {
 /// @param obj PerlinNoise object.
 /// @param x X coordinate.
 /// @param y Y coordinate.
-/// @param octaves Number of noise layers to sum (clamped to 1-16).
+/// @param octaves Number of noise layers to sum (non-positive returns 0; positive values clamp to 16).
 /// @param persistence Amplitude multiplier per octave (0.5 = halve each layer).
 /// @return Summed noise value (range depends on octaves and persistence).
 double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence) {

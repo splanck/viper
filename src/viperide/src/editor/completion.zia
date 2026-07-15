@@ -281,7 +281,7 @@ class CompletionController {
             return;
         }
         if pendingQuery == false {
-            pendingSinceMs = Viper.Time.Clock.Ticks();
+            pendingSinceMs = Viper.Time.Clock.NowMs();
         }
         pendingQuery = true;
     }
@@ -305,7 +305,7 @@ class CompletionController {
             return;
         }
         if pendingJob != null {
-            pendingSinceMs = Viper.Time.Clock.Ticks();
+            pendingSinceMs = Viper.Time.Clock.NowMs();
             pendingQuery = true;
             if workScheduler != null and engine != null {
                 workScheduler.Queue(scheduler.JOB_COMPLETION,
@@ -802,7 +802,7 @@ class CompletionController {
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
-        if Input.Keyboard.IsDown(Input.Keyboard.get_KeyTab()) == false {
+        if Input.Keyboard.IsDown(Viper.Input.Key.Tab) == false {
             tabAcceptKeyDown = false;
         }
 
@@ -820,7 +820,7 @@ class CompletionController {
         }
 
         if pendingQuery {
-            var now = Viper.Time.Clock.Ticks();
+            var now = Viper.Time.Clock.NowMs();
             if now - pendingSinceMs >= COMPLETION_DEBOUNCE_MS {
                 StartCompletionJob();
                 return true;
@@ -926,7 +926,7 @@ class CompletionController {
             workspaceFileIndex = workspaceFileIndex + 1;
             processed = processed + 1;
 
-            if Str.ToLower(Path.Ext(filePath)) != ".zia" { continue; }
+            if Str.ToLower(Path.Extension(filePath)) != ".zia" { continue; }
             var content = completion_workspace_source.ContentFor(workspaceDocs,
                                                                  filePath,
                                                                  MAX_WORKSPACE_SYMBOL_SOURCE_BYTES);

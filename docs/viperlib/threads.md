@@ -237,8 +237,8 @@ FIFO-fair, re-entrant monitor for explicit object locking.
 - `Monitor.Exit: null object`
 - `Monitor.Exit: not owner`
 - `Monitor.Wait: not owner`
-- `Monitor.Pause: not owner`
-- `Monitor.PauseAll: not owner`
+- `Monitor.Notify: not owner`
+- `Monitor.NotifyAll: not owner`
 
 ### Zia Example
 
@@ -1260,7 +1260,7 @@ DIM throttle AS OBJECT = Viper.Threads.Throttler.New(1000)
 ' In an event loop
 SUB OnMouseMove(x AS INTEGER, y AS INTEGER)
     ' Only update at most once per second
-    IF throttle.Try() THEN
+    IF throttle.TryAcquire() THEN
         UpdateDisplay(x, y)
     END IF
 END SUB
@@ -1314,10 +1314,10 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 | Method                     | Signature                   | Description                                      |
 |----------------------------|-----------------------------|--------------------------------------------------|
 | `Schedule(name, delayMs)`  | `Void(String, Integer)`     | Schedule a named task with delay in milliseconds |
-| `ScheduleGen(name, delayMs, generation)` | `Void(String, Integer, Integer)` | Schedule, tagging the entry with a caller-supplied generation (e.g. a document revision) |
+| `ScheduleGeneration(name, delayMs, generation)` | `Void(String, Integer, Integer)` | Schedule, tagging the entry with a caller-supplied generation (e.g. a document revision) |
 | `Cancel(name)`             | `Boolean(String)`           | Cancel a scheduled task by name                  |
 | `IsDue(name)`              | `Boolean(String)`           | Check if a named task is due                     |
-| `IsDueGen(name, generation)` | `Boolean(String, Integer)` | Due **and** the entry still carries `generation` (`0`/false if superseded) |
+| `IsDueGeneration(name, generation)` | `Boolean(String, Integer)` | Due **and** the entry still carries `generation` (`0`/false if superseded) |
 | `GenerationOf(name)`       | `Integer(String)`           | Generation currently scheduled for `name`, or `-1` if not scheduled |
 | `Poll()`                   | `Seq()`                     | Get all due tasks (removes them from scheduler)  |
 | `Clear()`                  | `Void()`                    | Remove all scheduled tasks                       |
@@ -1326,7 +1326,7 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 
 - **Poll-based:** Tasks don't execute automatically. Call `Poll()` or `IsDue()` to check for due tasks.
 - **Named tasks:** Tasks are identified by name. Scheduling a task with the same name as an existing task replaces it.
-- **Revision-aware scheduling:** `ScheduleGen(name, delayMs, generation)` stamps an entry with a caller-defined generation (e.g. a document revision). Because re-scheduling a name replaces its entry, `IsDueGen(name, g)` fires only for the *latest* generation — a newer `ScheduleGen` supersedes an older one, so stale work is discarded in a single call (`GenerationOf(name)` answers "is my revision still the one queued?"). This is the canonical primitive for debounced, edit-superseding background work — live diagnostics, search-as-you-type, incremental indexing — and should be preferred over hand-rolled `Viper.Time.Clock.Ticks()` timers. Plain `Schedule` records generation `0`.
+- **Revision-aware scheduling:** `ScheduleGeneration(name, delayMs, generation)` stamps an entry with a caller-defined generation (e.g. a document revision). Because re-scheduling a name replaces its entry, `IsDueGeneration(name, g)` fires only for the *latest* generation — a newer `ScheduleGeneration` supersedes an older one, so stale work is discarded in a single call (`GenerationOf(name)` answers "is my revision still the one queued?"). This is the canonical primitive for debounced, edit-superseding background work — live diagnostics, search-as-you-type, incremental indexing — and should be preferred over hand-rolled `Viper.Time.Clock.NowMs()` timers. Plain `Schedule` records generation `0`.
 - **Full string keys:** Task names compare by byte length and contents, so strings with embedded NUL bytes remain distinct.
 - **Poll ownership:** `Poll()` returns a Seq that owns the returned task-name strings.
 - **Clock:** Uses a monotonic clock when the platform exposes one and falls back
@@ -1338,7 +1338,7 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
   due names are returned newest-scheduled first, not sorted by deadline. Replacing
   an existing name does not move its list position.
 - **Generation sentinel:** `GenerationOf` uses `-1` for "not scheduled," while
-  `ScheduleGen` accepts any Integer. A scheduled generation of `-1` is therefore
+  `ScheduleGeneration` accepts any Integer. A scheduled generation of `-1` is therefore
   indistinguishable from absence through `GenerationOf`; reserve `-1` when that
   query is part of the protocol.
 - **Immediate tasks:** A delay of 0 schedules a task that is immediately due on the next `Poll()`.
@@ -1631,29 +1631,29 @@ func start() {
     Say("Empty: " + Fmt.Bool(q.get_IsEmpty()));
 
     // Enqueue items
-    q.Enqueue(Box.I64(10));
-    q.Enqueue(Box.I64(20));
-    q.Enqueue(Box.I64(30));
+    q.Push(Box.I64(10));
+    q.Push(Box.I64(20));
+    q.Push(Box.I64(30));
     Say("Count: " + Fmt.Int(q.get_Count()));
 
     // Peek (non-destructive)
     Say("Peek: " + Fmt.Int(Box.ToI64(q.Peek())));
 
     // TryDequeueOption (non-blocking)
-    var next = q.TryDequeueOption();
+    var next = q.TryPop();
     if next.IsSome {
         Say("TryDequeueOption: " + Fmt.Int(Box.ToI64(next.Unwrap())));
     }
 
     // Dequeue (blocking, but items available)
-    Say("Dequeue: " + Fmt.Int(Box.ToI64(q.Dequeue())));
+    Say("Dequeue: " + Fmt.Int(Box.ToI64(q.Pop())));
 
     // DequeueTimeout
-    Say("DequeueTimeout: " + Fmt.Int(Box.ToI64(q.DequeueTimeout(100))));
+    Say("DequeueTimeout: " + Fmt.Int(Box.ToI64(q.PopFor(100))));
     Say("Empty after all: " + Fmt.Bool(q.get_IsEmpty()));
 
     // Clear
-    q.Enqueue(Box.I64(99));
+    q.Push(Box.I64(99));
     q.Clear();
     Say("Count after clear: " + Fmt.Int(q.get_Count()));
 }
@@ -1666,29 +1666,29 @@ DIM q AS OBJECT = Viper.Threads.ConcurrentQueue.New()
 PRINT "Empty: "; q.IsEmpty
 
 ' Enqueue items (values are objects, use Box)
-q.Enqueue(Viper.Core.Box.I64(10))
-q.Enqueue(Viper.Core.Box.I64(20))
-q.Enqueue(Viper.Core.Box.I64(30))
+q.Push(Viper.Core.Box.I64(10))
+q.Push(Viper.Core.Box.I64(20))
+q.Push(Viper.Core.Box.I64(30))
 PRINT "Count: "; q.Count
 
 ' Peek (non-destructive)
 PRINT "Peek: "; Viper.Core.Box.ToI64(q.Peek())
 
 ' TryDequeueOption (non-blocking)
-DIM next AS OBJECT = q.TryDequeueOption()
+DIM next AS OBJECT = q.TryPop()
 IF next.IsSome THEN
     PRINT "TryDequeueOption: "; Viper.Core.Box.ToI64(next.Unwrap())
 END IF
 
 ' Dequeue (blocking, but items available)
-PRINT "Dequeue: "; Viper.Core.Box.ToI64(q.Dequeue())
+PRINT "Dequeue: "; Viper.Core.Box.ToI64(q.Pop())
 
 ' DequeueTimeout
-PRINT "DequeueTimeout: "; Viper.Core.Box.ToI64(q.DequeueTimeout(100))
+PRINT "DequeueTimeout: "; Viper.Core.Box.ToI64(q.PopFor(100))
 PRINT "Empty after all: "; q.IsEmpty
 
 ' Clear
-q.Enqueue(Viper.Core.Box.I64(99))
+q.Push(Viper.Core.Box.I64(99))
 q.Clear()
 PRINT "Count after clear: "; q.Count
 ```
@@ -1754,7 +1754,6 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
   to the caller. Sending does not consume the caller's existing reference.
 - On a synchronous channel, `Count` can transiently be 1 while a published
   handoff awaits consumption even though `Capacity` is 0.
-- `Cap` remains available as a compatibility alias for `Capacity`.
 
 ### Zia Example
 
@@ -1782,7 +1781,7 @@ func start() {
 
     // Receive items
     Say("Recv: " + Fmt.Int(Box.ToI64(ch.Recv())));    // 1
-    var maybe = ch.TryRecvOption();
+    var maybe = ch.TryRecv();
     if maybe.IsSome {
         Say("TryRecvOption: " + Fmt.Int(Box.ToI64(maybe.Unwrap()))); // 2
     }
@@ -1826,7 +1825,7 @@ PRINT "Count: "; ch.Count     ' Output: 5
 PRINT "IsFull: "; ch.IsFull  ' Output: 0 (cap 16, only 5 items)
 
 ' Non-blocking receive
-DIM item AS Viper.Option = ch.TryRecvOption()
+DIM item AS Viper.Option = ch.TryRecv()
 IF item.IsSome THEN
     PRINT "TryRecvOption: "; Viper.Core.Box.ToI64(item.Unwrap())  ' Output: 10
 END IF

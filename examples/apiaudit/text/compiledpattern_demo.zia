@@ -38,7 +38,7 @@ func start() {
     // --- FindFrom ---
     Say("--- FindFrom ---");
     Say(pat.FindFrom("abc123def456", 6));
-    var foundFrom = pat.FindFromOption("abc123def456", 6);
+    var foundFrom = pat.FindFrom("abc123def456", 6);
     SayBool(foundFrom.IsSome);
     Say(foundFrom.UnwrapStr());
 
@@ -46,10 +46,10 @@ func start() {
     Say("--- FindPos ---");
     SayInt(pat.FindPos("abc123def"));
     SayInt(pat.FindPos("abcdef"));
-    var foundPos = pat.FindPosOption("abc123def");
+    var foundPos = pat.FindPos("abc123def");
     SayBool(foundPos.IsSome);
     SayInt(foundPos.UnwrapI64());
-    SayBool(pat.FindPosOption("abcdef").IsNone);
+    SayBool(pat.FindPos("abcdef").IsNone);
 
     // --- FindAll ---
     Say("--- FindAll ---");
@@ -94,7 +94,7 @@ func start() {
 
     // --- SplitN ---
     Say("--- SplitN ---");
-    var parts2 = commaPat.SplitN("one,two;;three,four", 2);
+    var parts2 = commaPat.Split("one,two;;three,four", 2);
     SayInt(Seq.get_Count(parts2));
     Say(Obj.ToString(Seq.Get(parts2, 0)));
     Say(Obj.ToString(Seq.Get(parts2, 1)));

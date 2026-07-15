@@ -123,7 +123,7 @@ PRINT "Translate(5,10) * Point(1,0) Y: "; tpt.Y
 ' --- TransformVec ---
 PRINT "--- TransformVec ---"
 DIM tv AS Viper.Math.Vec2
-tv = Viper.Math.Mat3.TransformVec(tr, pt)
+tv = Viper.Math.Mat3.TransformVector(tr, pt)
 PRINT "Translate(5,10) * Vec(1,0) X: "; tv.X
 PRINT "Translate(5,10) * Vec(1,0) Y: "; tv.Y
 

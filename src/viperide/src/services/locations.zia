@@ -143,7 +143,7 @@ func OpenResolvedLocation(shell: app_shell.AppShell,
 func SameLocationPath(a: String, b: String) -> Boolean {
     if a == b { return true; }
     if a == "" or b == "" { return false; }
-    return Path.Norm(Path.Abs(a)) == Path.Norm(Path.Abs(b));
+    return Path.Normalize(Path.Absolute(a)) == Path.Normalize(Path.Absolute(b));
 }
 
 func IsLocationData(data: String) -> Boolean {

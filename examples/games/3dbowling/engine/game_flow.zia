@@ -198,7 +198,7 @@ class BowlingGameFlow extends BowlingGameSetup {
 
     /// @brief Run runtime-owned fixed-step physics and matching game logic.
     hide func runFixedStep(dt: Float, rolling: Boolean) {
-        var steps = Physics3DWorld.StepFixed(physWorld, dt, config.PHYSICS_DT, config.MAX_FIXED_STEPS);
+        var steps = PhysicsWorld3D.StepFixed(physWorld, dt, config.PHYSICS_DT, config.MAX_FIXED_STEPS);
         var i = 0;
         while (i < steps) {
             if (rolling && gameState == config.STATE_ROLLING) {
@@ -212,7 +212,7 @@ class BowlingGameFlow extends BowlingGameSetup {
             i = i + 1;
         }
 
-        fixedStepAlpha = Physics3DWorld.get_FixedStepAlpha(physWorld);
+        fixedStepAlpha = PhysicsWorld3D.get_FixedStepAlpha(physWorld);
         if (steps > 0 || fixedStepAlpha > 0.0) {
             camCtrl.updateBallFollow(ballObj.getPosition(),
                 config.PHYSICS_DT * ((steps + 0.0) + fixedStepAlpha));
@@ -507,7 +507,7 @@ class BowlingGameFlow extends BowlingGameSetup {
 
     /// @brief Spawn sparks + sounds + camera shake on each pin-pin / ball-pin impact.
     hide func handlePinImpacts() {
-        var collisionCount = Physics3DWorld.get_CollisionEventCount(physWorld);
+        var collisionCount = PhysicsWorld3D.get_CollisionEventCount(physWorld);
         var bestStrength = 0.0;
         var bestPos = new Vec3(0.0, 0.0, 0.0);
         var ballPinImpact = false;
@@ -516,25 +516,25 @@ class BowlingGameFlow extends BowlingGameSetup {
         // Pass one makes pin-pin cascade eligibility independent of the
         // runtime's collision-event ordering for this fixed step.
         for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
-            var evt = Physics3DWorld.GetCollisionEvent(physWorld, ci);
+            var evt = PhysicsWorld3D.GetCollisionEvent(physWorld, ci);
             var bodyA = CollisionEvent3D.get_BodyA(evt);
             var bodyB = CollisionEvent3D.get_BodyB(evt);
-            var layerA = Physics3DBody.get_CollisionLayer(bodyA);
-            var layerB = Physics3DBody.get_CollisionLayer(bodyB);
+            var layerA = PhysicsBody3D.get_CollisionLayer(bodyA);
+            var layerB = PhysicsBody3D.get_CollisionLayer(bodyB);
             impactBatch.scanPair(layerA, layerB,
                 CollisionEvent3D.get_IsTrigger(evt));
         }
         impactBatch.finishScan();
 
         for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
-            var evt = Physics3DWorld.GetCollisionEvent(physWorld, ci);
+            var evt = PhysicsWorld3D.GetCollisionEvent(physWorld, ci);
             if (CollisionEvent3D.get_IsTrigger(evt)) { continue; }
             var bodyA = CollisionEvent3D.get_BodyA(evt);
             var bodyB = CollisionEvent3D.get_BodyB(evt);
-            var layerA = Physics3DBody.get_CollisionLayer(bodyA);
-            var layerB = Physics3DBody.get_CollisionLayer(bodyB);
-            var posA = Physics3DBody.get_Position(bodyA);
-            var posB = Physics3DBody.get_Position(bodyB);
+            var layerA = PhysicsBody3D.get_CollisionLayer(bodyA);
+            var layerB = PhysicsBody3D.get_CollisionLayer(bodyB);
+            var posA = PhysicsBody3D.get_Position(bodyA);
+            var posB = PhysicsBody3D.get_Position(bodyB);
             var point = mathutil.vec3Mid(posA, posB);
             if (CollisionEvent3D.get_ContactCount(evt) > 0) {
                 var cp = CollisionEvent3D.GetContactPoint(evt, 0);

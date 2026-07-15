@@ -10,7 +10,7 @@ last-verified: 2026-07-15
 
 **Part of the [Viper Runtime Library](README.md)**
 
-Core playback, synthesis, and low-level spatial classes live in the `Viper.Sound` namespace.
+Core playback, synthesis, and low-level spatial classes live in the `Viper.Audio` namespace.
 Scene-bound `SoundListener3D` and `SoundSource3D` wrappers live in `Viper.Graphics3D`.
 
 `Audio.IsAvailable()` reports whether audio support was compiled into the runtime; it does **not**
@@ -25,14 +25,14 @@ handle can be produced.
 
 ## Contents
 
-- [Viper.Sound.Sound](#vipersoundsound)
-- [Viper.Sound.Music](#vipersoundmusic)
-- [Viper.Sound.Voice](#vipersoundvoice)
-- [Viper.Sound.Audio (Static)](#vipersoundaudio)
-- [Viper.Sound.Playlist](#vipersoundplaylist)
-- [Viper.Sound.SoundBank](#vipersoundsoundbank)
-- [Viper.Sound.Synth](#vipersoundsynth)
-- [Viper.Sound.MusicGen](#vipersoundmusicgen)
+- [Viper.Audio.Sound](#viperaudiosound)
+- [Viper.Audio.Music](#vipersoundmusic)
+- [Viper.Audio.Voice](#vipersoundvoice)
+- [Viper.Audio.Mixer (Static)](#vipersoundaudio)
+- [Viper.Audio.Playlist](#vipersoundplaylist)
+- [Viper.Audio.SoundBank](#viperaudiosoundbank)
+- [Viper.Audio.Synth](#vipersoundsynth)
+- [Viper.Audio.MusicGen](#vipersoundmusicgen)
 - [Mix Groups](#mix-groups)
 - [Mix Group Effects](#mix-group-effects)
 - [Spatial Audio](#spatial-audio)
@@ -42,12 +42,12 @@ handle can be produced.
 
 ---
 
-## Viper.Sound.Sound
+## Viper.Audio.Sound
 
 Sound effect class for short audio clips. Sounds are loaded entirely into memory for low-latency playback.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Sound.Sound.Load(path)`
+**Constructor:** `Viper.Audio.Sound.Load(path)`
 
 ### Static Methods
 
@@ -61,8 +61,8 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 | Method                   | Signature                          | Description                                              |
 |--------------------------|------------------------------------|----------------------------------------------------------|
 | `Play()`                 | `Integer()`                        | Play once through the SFX mix group. Returns voice ID for control |
-| `PlayEx(volume, pan)`    | `Integer(Integer, Integer)`        | Play through the SFX mix group with volume (0–100) and pan (−100 to +100) |
-| `PlayEx2(volume, pan, pitch)` | `Integer(Integer, Integer, Float)` | `PlayEx` plus a playback-rate multiplier (0.25–4.0; 1.0 = native) |
+| `Play(volume, pan)`    | `Integer(Integer, Integer)`        | Play through the SFX mix group with volume (0–100) and pan (−100 to +100) |
+| `Play(volume, pan, pitch)` | `Integer(Integer, Integer, Float)` | `Play` plus a playback-rate multiplier (0.25–4.0; 1.0 = native) |
 | `PlayLoop(volume, pan)`  | `Integer(Integer, Integer)`        | Play looped through the SFX mix group with volume and pan |
 | `Free()`                 | `Void()`                            | Release this Sound reference and its decoded buffer when no references remain |
 
@@ -84,14 +84,14 @@ again unless another owner (for example, a `SoundBank`) retained the Sound.
 
 ### Voice Control
 
-After playing a sound, you receive a voice ID that can be used with `Viper.Sound.Voice`:
+After playing a sound, you receive a voice ID that can be used with `Viper.Audio.Voice`:
 
 | Method                                 | Description                                       |
 |----------------------------------------|---------------------------------------------------|
-| `Viper.Sound.Voice.IsPlaying(id)`      | Returns `true` if voice is still playing          |
-| `Viper.Sound.Voice.SetPan(id, pan)`    | Set pan: −100 = hard left, 0 = center, 100 = right |
-| `Viper.Sound.Voice.SetVolume(id, vol)` | Set voice volume (0–100)                          |
-| `Viper.Sound.Voice.Stop(id)`           | Stop a playing voice                              |
+| `Viper.Audio.Voice.IsPlaying(id)`      | Returns `true` if voice is still playing          |
+| `Viper.Audio.Voice.SetPan(id, pan)`    | Set pan: −100 = hard left, 0 = center, 100 = right |
+| `Viper.Audio.Voice.SetVolume(id, vol)` | Set voice volume (0–100)                          |
+| `Viper.Audio.Voice.Stop(id)`           | Stop a playing voice                              |
 
 ### Zia Example
 
@@ -99,9 +99,9 @@ After playing a sound, you receive a voice ID that can be used with `Viper.Sound
 module SoundDemo;
 
 bind Viper.Terminal;
-bind Viper.Sound.Audio as Audio;
-bind Viper.Sound.Sound as Sound;
-bind Viper.Sound.Voice as Voice;
+bind Viper.Audio.Mixer as Audio;
+bind Viper.Audio.Sound as Sound;
+bind Viper.Audio.Voice as Voice;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -113,7 +113,7 @@ func start() {
         var id = snd.Play();
 
         // Play with volume and pan
-        var id2 = snd.PlayEx(80, -50);  // 80% volume, panned left
+        var id2 = snd.Play(80, -50);  // 80% volume, panned left
 
         // Control the playing voice
         Voice.SetVolume(id2, 50);
@@ -132,11 +132,11 @@ func start() {
 
 ```basic
 ' Load sound effects
-DIM laser AS Viper.Sound.Sound
-DIM explosion AS Viper.Sound.Sound
+DIM laser AS Viper.Audio.Sound
+DIM explosion AS Viper.Audio.Sound
 
-laser = Viper.Sound.Sound.Load("laser.wav")
-explosion = Viper.Sound.Sound.Load("explosion.wav")
+laser = Viper.Audio.Sound.Load("laser.wav")
+explosion = Viper.Audio.Sound.Load("explosion.wav")
 
 IF NOT Viper.Core.Object.RefEquals(laser, NOTHING) THEN
     ' Play with default settings
@@ -144,10 +144,10 @@ IF NOT Viper.Core.Object.RefEquals(laser, NOTHING) THEN
 
     ' Play with custom volume and pan
     DIM voiceId AS INTEGER
-    voiceId = laser.PlayEx(80, -50)  ' 80% volume, panned left
+    voiceId = laser.Play(80, -50)  ' 80% volume, panned left
 
     ' Control the playing sound
-    Viper.Sound.Voice.SetVolume(voiceId, 50)
+    Viper.Audio.Voice.SetVolume(voiceId, 50)
 END IF
 
 ' Play looping background sound
@@ -155,17 +155,17 @@ DIM engineSound AS INTEGER
 engineSound = laser.PlayLoop(60, 0)
 
 ' Later, stop the loop
-Viper.Sound.Voice.Stop(engineSound)
+Viper.Audio.Voice.Stop(engineSound)
 ```
 
 ---
 
-## Viper.Sound.Music
+## Viper.Audio.Music
 
 Buffered music class for longer audio tracks. Playback uses incremental decode and fixed-size buffers for memory efficiency.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Sound.Music.Load(path)`
+**Constructor:** `Viper.Audio.Music.Load(path)`
 
 > **Concurrent limit:** Up to **4** music streams may be loaded at the same time.
 > `Music.Load()` returns `null` if this limit is exceeded. Stop and free unused
@@ -219,8 +219,8 @@ inert, so load a new Music object after reinitializing audio.
 module MusicDemo;
 
 bind Viper.Terminal;
-bind Viper.Sound.Audio as Audio;
-bind Viper.Sound.Music as Music;
+bind Viper.Audio.Mixer as Audio;
+bind Viper.Audio.Music as Music;
 bind Viper.Graphics.Canvas as Canvas;
 bind Viper.Text.Fmt as Fmt;
 
@@ -252,12 +252,12 @@ func start() {
 
 ```basic
 ' Initialize audio and create the window used by the loop.
-Viper.Sound.Audio.Init()
+Viper.Audio.Mixer.Init()
 DIM canvas AS Viper.Graphics.Canvas = Viper.Graphics.Canvas.New("Music Player", 400, 200)
 
 ' Load background music (WAV, at a supported sample rate)
-DIM bgMusic AS Viper.Sound.Music
-bgMusic = Viper.Sound.Music.Load("background.wav")
+DIM bgMusic AS Viper.Audio.Music
+bgMusic = Viper.Audio.Music.Load("background.wav")
 
 IF NOT Viper.Core.Object.RefEquals(bgMusic, NOTHING) THEN
     ' Set initial volume
@@ -292,12 +292,12 @@ IF NOT Viper.Core.Object.RefEquals(bgMusic, NOTHING) THEN
     bgMusic.Stop()
 END IF
 
-Viper.Sound.Audio.Shutdown()
+Viper.Audio.Mixer.Shutdown()
 ```
 
 ---
 
-## Viper.Sound.Voice
+## Viper.Audio.Voice
 
 Static class for controlling individual playing voices (sound instances).
 
@@ -324,7 +324,7 @@ Static class for controlling individual playing voices (sound instances).
 
 > **Pitch:** Rates other than 1.0 resample with a fractional cursor (linear
 > interpolation), so pitch and duration scale together — pitch 2.0 plays one
-> octave up in half the time. Typical gunshot variation: `PlayEx2(vol, pan,
+> octave up in half the time. Typical gunshot variation: `Play(vol, pan,
 > 0.92 + 0.16 * rng)`.
 
 > **Occlusion:** The amount maps to a perceptual lowpass sweep (~22 kHz open
@@ -347,7 +347,7 @@ value. This makes it suitable for lip-sync rather than output-bus metering.
 module VoiceDemo;
 
 bind Viper.Terminal;
-bind Viper.Sound;
+bind Viper.Audio;
 
 func start() {
     // Initialize audio system
@@ -375,7 +375,7 @@ func start() {
 
 ---
 
-## Viper.Sound.Audio
+## Viper.Audio.Mixer
 
 Global audio system control functions.
 
@@ -431,7 +431,7 @@ flag. `StopAllSounds()` affects Sound voices only; it does not stop Music or pla
 module AudioDemo;
 
 bind Viper.Terminal;
-bind Viper.Sound.Audio as Audio;
+bind Viper.Audio.Mixer as Audio;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -453,34 +453,34 @@ func start() {
 
 ```basic
 ' Initialize audio
-Viper.Sound.Audio.Init()
+Viper.Audio.Mixer.Init()
 
 ' Set master volume
-Viper.Sound.Audio.SetMasterVolume(80)
+Viper.Audio.Mixer.SetMasterVolume(80)
 
 ' Pause all audio during pause menu
 SUB ShowPauseMenu()
-    Viper.Sound.Audio.PauseAll()
+    Viper.Audio.Mixer.PauseAll()
 
     ' ... show menu ...
 
-    Viper.Sound.Audio.ResumeAll()
+    Viper.Audio.Mixer.ResumeAll()
 END SUB
 
 ' Stop all sound effects when changing levels
 SUB ChangeLevel(level AS INTEGER)
-    Viper.Sound.Audio.StopAllSounds()
+    Viper.Audio.Mixer.StopAllSounds()
 
     ' ... load new level ...
 END SUB
 
 ' Cleanup before exit
-Viper.Sound.Audio.Shutdown()
+Viper.Audio.Mixer.Shutdown()
 ```
 
 ---
 
-## Viper.Sound.Playlist
+## Viper.Audio.Playlist
 
 Mutable queue of music paths with navigation, shuffle, repeat, volume, auto-advance, and optional
 crossfades. A Playlist owns its path strings and only loads its current Music stream; during a
@@ -541,7 +541,7 @@ permutation slot. Playlist objects are not thread-safe.
 module PlaylistDemo;
 
 bind Viper.Terminal;
-bind Viper.Sound;
+bind Viper.Audio;
 
 func start() {
     var tracks = Playlist.New();
@@ -572,7 +572,7 @@ func start() {
 
 ---
 
-## Viper.Sound.SoundBank
+## Viper.Audio.SoundBank
 
 Named sound registry that maps string names to loaded Sound objects. Games use SoundBank to manage sounds by name instead of managing Sound handles directly.
 
@@ -592,7 +592,7 @@ Named sound registry that maps string names to loaded Sound objects. Games use S
 | `Register(name, path)`    | `Integer(String, String)`          | Load WAV, OGG Vorbis, or MP3 and register under name. Returns 1 on success |
 | `RegisterSound(name, sound)` | `Integer(String, Sound)`        | Register an existing Sound object (e.g., from Synth). Returns 1 on success |
 | `Play(name)`              | `Integer(String)`                  | Play named sound. Returns voice ID, or -1 if not found              |
-| `PlayEx(name, vol, pan)`  | `Integer(String, Integer, Integer)` | Play with volume (0-100) and pan (-100 to 100)                     |
+| `Play(name, vol, pan)`  | `Integer(String, Integer, Integer)` | Play with volume (0-100) and pan (-100 to 100)                     |
 | `Has(name)`               | `Boolean(String)`                  | Check if name is registered                                         |
 | `Get(name)`               | `Sound(String)`                    | Get the Sound object for a name, or null                            |
 | `Remove(name)`            | `Void(String)`                     | Remove a named entry                                                |
@@ -615,7 +615,7 @@ removing or clearing the bank does not invalidate references already returned to
 ```rust
 module BankDemo;
 
-bind Viper.Sound;
+bind Viper.Audio;
 
 func start() {
     Audio.Init();
@@ -631,7 +631,7 @@ func start() {
 
     // Play by name
     bank.Play("laser");
-    bank.PlayEx("explode", 80, -50);  // 80% vol, panned left
+    bank.Play("explode", 80, -50);  // 80% vol, panned left
 
     Audio.Shutdown();
 }
@@ -639,7 +639,7 @@ func start() {
 
 ---
 
-## Viper.Sound.Synth
+## Viper.Audio.Synth
 
 Procedural sound synthesis — generates Sound objects from parameters without WAV files. All generated sounds are 16-bit PCM mono at 44100 Hz.
 
@@ -690,7 +690,7 @@ the same playback/lifetime rules as file-loaded Sounds. Use `Sound.PlayEx`, `Sou
 ```rust
 module SynthDemo;
 
-bind Viper.Sound;
+bind Viper.Audio;
 
 func start() {
     Audio.Init();
@@ -728,7 +728,7 @@ func start() {
 
 ---
 
-## Viper.Sound.MusicGen
+## Viper.Audio.MusicGen
 
 Procedural music composition — a tracker-style sequencer that builds multi-channel songs with ADSR envelopes and chiptune effects. It pre-renders stereo 16-bit PCM at 44100 Hz into a standard Sound object, requiring zero external audio assets. Think NES/SNES-era music but at 44.1kHz with full ADSR envelopes.
 
@@ -758,7 +758,7 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 | `New(bpm)`                                    | `MusicGen(Integer)`                                | Create a new song; BPM is clamped to 20–300                                |
 | `AddChannel(waveform)`                        | `Integer(Integer)`                                 | Add a channel (waveform clamps to 0–4). Returns index, or -1 if full/invalid |
 | `SetEnvelope(ch, attack, decay, sustain, release)` | `void(Integer, Integer, Integer, Integer, Integer)` | Set ADSR envelope: attack/decay/release in ms (0-5000), sustain in % (0-100) |
-| `SetChannelVol(ch, volume)`                   | `void(Integer, Integer)`                           | Set channel volume (0-100, default 80)                                     |
+| `SetChannelVolume(ch, volume)`                   | `void(Integer, Integer)`                           | Set channel volume (0-100, default 80)                                     |
 | `SetDuty(ch, duty)`                           | `void(Integer, Integer)`                           | Set square wave duty cycle (1-99, default 50). NES values: 12, 25, 50, 75 |
 | `SetPan(ch, pan)`                             | `void(Integer, Integer)`                           | Set stereo pan (-100=left, 0=center, 100=right)                            |
 | `SetDetune(ch, cents)`                        | `void(Integer, Integer)`                           | Constant pitch offset in cents (-1200 to 1200) for chorusing               |
@@ -777,7 +777,7 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 | Method                                        | Signature                                              | Description                                                  |
 |-----------------------------------------------|--------------------------------------------------------|--------------------------------------------------------------|
 | `AddNote(ch, beatPos, midiNote, duration)`    | `Integer(Integer, Integer, Integer, Integer)`          | Add a note. Returns 1 on success, 0 if channel is full      |
-| `AddNoteVel(ch, beatPos, midiNote, dur, vel)` | `Integer(Integer, Integer, Integer, Integer, Integer)` | Add a note with explicit velocity (0-100). Default is 100    |
+| `AddNoteVelocity(ch, beatPos, midiNote, dur, vel)` | `Integer(Integer, Integer, Integer, Integer, Integer)` | Add a note with explicit velocity (0-100). Default is 100    |
 
 ### Song Properties
 
@@ -835,7 +835,7 @@ values produce brighter hi-hat/cymbal noise.
 ```rust
 module MusicDemo;
 
-bind Viper.Sound;
+bind Viper.Audio;
 
 func start() {
     Audio.Init();
@@ -894,9 +894,9 @@ func start() {
 
 ```basic
 ' Procedural music demo
-Viper.Sound.Audio.Init()
+Viper.Audio.Mixer.Init()
 
-DIM song AS Viper.Sound.MusicGen = Viper.Sound.MusicGen.New(120)
+DIM song AS Viper.Audio.MusicGen = Viper.Audio.MusicGen.New(120)
 DIM channel AS INTEGER = song.AddChannel(1)
 song.SetEnvelope(channel, 10, 50, 70, 100)
 song.AddNote(channel, 0, 60, 100)
@@ -906,12 +906,12 @@ song.AddNote(channel, 300, 72, 100)
 song.Length = 400
 song.SetLoopable(TRUE)
 
-DIM snd AS Viper.Sound.Sound = song.Build()
+DIM snd AS Viper.Audio.Sound = song.Build()
 IF NOT Viper.Core.Object.RefEquals(snd, NOTHING) THEN
     DIM voiceId AS INTEGER = snd.PlayLoop(70, 0)
 END IF
 
-Viper.Sound.Audio.Shutdown()
+Viper.Audio.Mixer.Shutdown()
 ```
 
 ---
@@ -936,7 +936,7 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 | `Audio.GetGroupVolume(group)` | `Integer(Integer)` | Get group volume (100 if invalid group) |
 | `Audio.RegisterGroup(name)` | `Integer(String)` | Register or find a named group. Built-ins `music` and `sfx` return 0 and 1 |
 | `Audio.FindGroup(name)` | `Integer(String)` | Return a named group id, or -1 |
-| `Audio.FindGroupOption(name)` | `Option[Integer](String)` | Return a named group id as `Some(id)`, or `None` |
+| `Audio.FindGroup(name)` | `Option[Integer](String)` | Return a named group id as `Some(id)`, or `None` |
 | `Audio.SetGroupVolumeNamed(name, vol)` | `Void(String, Integer)` | Register if needed, then set volume |
 | `Audio.GetGroupVolumeNamed(name)` | `Integer(String)` | Get a named group volume, or 100 if missing |
 | `Audio.GroupName(group)` | `String(Integer)` | Return a registered group name, or empty string |
@@ -970,7 +970,7 @@ rule is silently ignored.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Sound.PlayGroup(group)` | `Integer(Integer)` | Play in mix group (applies group volume) |
-| `Sound.PlayExGroup(vol, pan, group)` | `Integer(Int, Int, Int)` | Play with volume/pan in group |
+| `Sound.PlayGroup(vol, pan, group)` | `Integer(Int, Int, Int)` | Play with volume/pan in group |
 | `Sound.PlayLoopGroup(vol, pan, group)` | `Integer(Int, Int, Int)` | Loop with volume/pan in group |
 
 Plain `Sound.Play`, `Sound.PlayEx`, and `Sound.PlayLoop` use the SFX group by default.
@@ -981,7 +981,7 @@ audio system. An invalid group passed to a Sound `Play*Group` method falls back 
 
 Named groups are useful for settings such as UI, ambience, dialogue, and cutscene sound
 without overloading the two built-ins. Registered named groups receive stable ids within
-the current process and can be passed to `PlayGroup`, `PlayExGroup`, and
+the current process and can be passed to `PlayGroup`, `PlayGroupWithVolumePan`, and
 `PlayLoopGroup`. Registration returns -1 for an empty canonical name or after all 156 slots
 are used.
 
@@ -1025,8 +1025,8 @@ practical value.
 ```rust
 module AudioFxDemo;
 
-bind Viper.Sound.Audio as Audio;
-bind Viper.Sound.Sound as Sound;
+bind Viper.Audio.Mixer as Audio;
+bind Viper.Audio.Sound as Sound;
 
 func start() {
     if Audio.Init() == 0 {
@@ -1041,7 +1041,7 @@ func start() {
 
     var hit = Sound.LoadAsset("assets/audio/hit.wav");
     if hit != null {
-        hit.PlayExGroup(90, 0, sfx);
+        hit.PlayGroup(90, 0, sfx);
     }
 
     Audio.GroupSetFxBypass(sfx, occlusion, true);
@@ -1057,11 +1057,11 @@ remain available as settings state in audio-disabled builds.
 
 ## Spatial Audio
 
-`Viper.Sound.SpatialAudio3D` is the low-level spatial audio surface. Its
+`Viper.Audio.SpatialAudio3D` is the low-level spatial audio surface. Its
 implementation lives under `src/runtime/audio/` with the rest of the audio
 runtime. It computes linear distance attenuation and stereo pan before
 delegating to normal `Sound` voice playback. The registry types the object
-arguments generically, but callers must pass a `Viper.Sound.Sound` and
+arguments generically, but callers must pass a `Viper.Audio.Sound` and
 `Viper.Math.Vec3` handles in the positions shown below.
 
 | Method | Signature | Description |
@@ -1143,7 +1143,7 @@ successfully—otherwise the playlist swaps or stops without a fade.
 ### Example
 
 ```rust
-bind Viper.Sound;
+bind Viper.Audio;
 
 // Set up volume sliders
 Audio.SetGroupVolume(0, 80);  // Music at 80%

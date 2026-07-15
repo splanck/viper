@@ -6,7 +6,7 @@ bind Viper.Terminal as Terminal;
 func start() {
     var tod = TimeOfDay3D.New();
     var sky = Sky3D.New();
-    var sun = Light3D.NewDirectional(Vec3.New(0.0, -1.0, 0.0), 1.0, 1.0, 1.0);
+    var sun = Light3D.Directional(Vec3.New(0.0, -1.0, 0.0), 1.0, 1.0, 1.0);
     tod.SetSunLight(sun);
     tod.SetSky(sky);
 

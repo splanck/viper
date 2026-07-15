@@ -33,19 +33,19 @@ func start() {
     }
 
     // === Test 3: DNS utilities (no network needed) ===
-    var isIp = Viper.Network.Dns.IsIPv4("192.168.1.1");
+    var isIp = Viper.Network.Dns.IsIpv4("192.168.1.1");
     if (isIp != true) {
         Say("FAIL: 192.168.1.1 should be valid IPv4");
         return;
     }
 
-    var notIp = Viper.Network.Dns.IsIPv4("not-an-ip");
+    var notIp = Viper.Network.Dns.IsIpv4("not-an-ip");
     if (notIp != false) {
         Say("FAIL: 'not-an-ip' should not be IPv4");
         return;
     }
 
-    var isIp6 = Viper.Network.Dns.IsIPv6("::1");
+    var isIp6 = Viper.Network.Dns.IsIpv6("::1");
     if (isIp6 != true) {
         Say("FAIL: ::1 should be valid IPv6");
         return;

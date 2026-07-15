@@ -63,7 +63,7 @@ expose func ContentFor(docs: document_manager.DocumentManager,
         }
     }
     if IO.File.Exists(filePath) {
-        if maxBytes > 0 and IO.File.Size(filePath) > maxBytes {
+        if maxBytes > 0 and IO.File.SizeBytes(filePath) > maxBytes {
             return "";
         }
         return IO.File.ReadAllText(filePath);

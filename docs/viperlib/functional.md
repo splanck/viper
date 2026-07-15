@@ -293,12 +293,10 @@ generic `UnwrapOr` is for `Ok`, not the typed Ok factories.
 |------------------|--------------------|---------------------------------------------------------------|
 | `UnwrapErr()`    | `Object()`         | Generic Err object; traps on Ok                                |
 | `UnwrapErrStr()` | `String()`         | Err string; traps on Ok or a mismatched payload                |
-| `OkValue()`      | `Object()`         | Non-trapping generic Ok accessor; null for Err                 |
-| `ErrValue()`     | `Object()`         | Non-trapping generic Err accessor; null for Ok                 |
 | `Expect(msg)`    | `Object(String)`   | Generic Ok object, or an invalid-operation trap containing `msg` |
 | `ExpectErr(msg)` | `Object(String)`   | Generic Err object, or an invalid-operation trap containing `msg` |
 
-`OkValue`, `ErrValue`, `Expect`, and `ExpectErr` are object-payload operations. Use the matching
+`Unwrap`, `UnwrapErr`, `Expect`, and `ExpectErr` are object-payload operations. Use the matching
 typed unwrap method for string, integer, or double values.
 
 ### Combinators and Utilities

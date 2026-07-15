@@ -52,7 +52,7 @@ func start() {
     SayBool(bg.IsSelected(10));
     bg.SelectNext();
     SayInt(bg.Selected);
-    bg.SelectPrev();
+    bg.SelectPrevious();
     SayInt(bg.Selected);
     bg.ClearSelection();
     SayBool(bg.HasSelection);
@@ -90,8 +90,7 @@ func start() {
     SayInt(qt.ItemCount);
 
     var qr = qt.QueryRect(0, 0, 300, 300);
-    SayInt(qr);
-    SayInt(qt.ResultCount);
+    SayInt(qr.Count);
 
     qt.Remove(2);
     SayInt(qt.ItemCount);

@@ -641,8 +641,8 @@ Static utility class for DNS resolution and IP address validation.
 | Method                  | Returns | Description                                  |
 |-------------------------|---------|----------------------------------------------|
 | `Resolve(hostname)`     | String  | Resolve to the first address returned by the OS resolver |
-| `Resolve4(hostname)`    | String  | Resolve to first IPv4 address only           |
-| `Resolve6(hostname)`    | String  | Resolve to first IPv6 address only           |
+| `ResolveIpv4(hostname)`    | String  | Resolve to first IPv4 address only           |
+| `ResolveIpv6(hostname)`    | String  | Resolve to first IPv6 address only           |
 | `ResolveAll(hostname)`  | Seq     | Resolve to all addresses (IPv4 and IPv6)     |
 | `Reverse(ipAddress)`    | String  | Reverse DNS lookup, return hostname          |
 
@@ -651,8 +651,8 @@ Static utility class for DNS resolution and IP address validation.
 | Method              | Returns | Description                                  |
 |---------------------|---------|----------------------------------------------|
 | `IsIP(address)`     | Boolean | Check if valid IPv4 or IPv6 address          |
-| `IsIPv4(address)`   | Boolean | Check if string is valid IPv4 address        |
-| `IsIPv6(address)`   | Boolean | Check if string is valid IPv6 address        |
+| `IsIpv4(address)`   | Boolean | Check if string is valid IPv4 address        |
+| `IsIpv6(address)`   | Boolean | Check if string is valid IPv6 address        |
 
 ### Local Info Methods
 
@@ -673,8 +673,8 @@ bind Viper.Text.Fmt as Fmt;
 func start() {
     // IP validation (no network required)
     Say("IsIP 1.2.3.4: " + Fmt.Bool(Dns.IsIP("1.2.3.4")));
-    Say("IsIPv4 1.2.3.4: " + Fmt.Bool(Dns.IsIPv4("1.2.3.4")));
-    Say("IsIPv6 ::1: " + Fmt.Bool(Dns.IsIPv6("::1")));
+    Say("IsIPv4 1.2.3.4: " + Fmt.Bool(Dns.IsIpv4("1.2.3.4")));
+    Say("IsIPv6 ::1: " + Fmt.Bool(Dns.IsIpv6("::1")));
     Say("LocalHost: " + Dns.LocalHost());
 
     // Resolve localhost
@@ -703,9 +703,9 @@ NEXT i
 ' Check if input is a valid IP address
 DIM input AS STRING = "192.168.1.1"
 
-IF Viper.Network.Dns.IsIPv4(input) THEN
+IF Viper.Network.Dns.IsIpv4(input) THEN
     PRINT input; " is a valid IPv4 address"
-ELSE IF Viper.Network.Dns.IsIPv6(input) THEN
+ELSE IF Viper.Network.Dns.IsIpv6(input) THEN
     PRINT input; " is a valid IPv6 address"
 ELSE
     PRINT input; " is a hostname, resolving..."
@@ -725,7 +725,7 @@ DIM localAddrs AS Viper.Collections.Seq = Viper.Network.Dns.LocalAddrs()
 PRINT "Local addresses:"
 FOR i = 0 TO localAddrs.Count - 1
     DIM addr AS STRING = Viper.Collections.Seq.GetStr(localAddrs, i)
-    IF Viper.Network.Dns.IsIPv4(addr) THEN
+    IF Viper.Network.Dns.IsIpv4(addr) THEN
         PRINT "  IPv4: "; addr
     ELSE
         PRINT "  IPv6: "; addr
@@ -746,8 +746,8 @@ PRINT "8.8.8.8 is: "; hostname
 DNS operations trap on errors:
 
 - `Resolve()` traps if hostname not found
-- `Resolve4()` traps if no IPv4 address exists
-- `Resolve6()` traps if no IPv6 address exists
+- `ResolveIpv4()` traps if no IPv4 address exists
+- `ResolveIpv6()` traps if no IPv6 address exists
 - `Reverse()` traps if reverse lookup fails
 - Forward and reverse lookup methods trap on null or empty input. The validation methods instead
   return false for invalid input; `LocalHost` and `LocalAddrs` take no input.
@@ -758,7 +758,7 @@ There is no way to distinguish between a non-existent domain (NXDOMAIN), a DNS s
 > the operating-system resolver and can take several seconds or longer on an unresponsive setup;
 > these methods do not expose a programmatic timeout.
 
-Validation methods (`IsIPv4`, `IsIPv6`, `IsIP`) never trap and return `False` for invalid input.
+Validation methods (`IsIpv4`, `IsIpv6`, `IsIP`) never trap and return `False` for invalid input.
 
 `LocalAddrs()` uses platform interface enumeration and can include addresses from interfaces that
 are not currently up. The ViperDOS adapter returns an empty sequence. Address order is platform
@@ -1135,7 +1135,7 @@ IPv6 literal hosts are bracketed automatically when `Authority`, `HostPort`, or 
 
 | Method                           | Returns | Description                        |
 |----------------------------------|---------|------------------------------------|
-| `DelQueryParam(name)`            | Url     | Remove query parameter             |
+| `RemoveQueryParam(name)`            | Url     | Remove query parameter             |
 | `GetQueryParam(name)`            | String  | Get query parameter value          |
 | `HasQueryParam(name)`            | Boolean | Check if parameter exists          |
 | `QueryMap()`                     | Map     | Get all parameters as Map          |
@@ -1285,7 +1285,7 @@ END IF
 
 ' Modify parameters
 url.SetQueryParam("c", "3")
-url.DelQueryParam("a")
+url.RemoveQueryParam("a")
 
 ' Get all parameters as Map
 DIM params AS Viper.Collections.Map = url.QueryMap()
@@ -1551,7 +1551,7 @@ and base URL configuration across multiple requests.
 | Method                         | Returns | Description                                    |
 |--------------------------------|---------|------------------------------------------------|
 | `ClearAuth()`                  | void    | Remove authentication header                   |
-| `DelHeader(name)`              | void    | Remove a default header                        |
+| `RemoveHeader(name)`              | void    | Remove a default header                        |
 | `SetAuthBasic(username, pass)` | void    | Set HTTP Basic authentication                  |
 | `SetAuthBearer(token)`         | void    | Set Bearer token authentication                |
 | `SetHeader(name, value)`       | void    | Set a default header for all requests          |
@@ -1559,7 +1559,7 @@ and base URL configuration across multiple requests.
 | `SetTimeout(ms)`               | void    | Set request timeout in milliseconds            |
 
 Default-header names are stored in a case-sensitive Map even though HTTP header names are
-case-insensitive. Use one canonical spelling. `DelHeader` removes only an exact key, and
+case-insensitive. Use one canonical spelling. `RemoveHeader` removes only an exact key, and
 `ClearAuth` removes only the exact `Authorization` key; it will not remove a separately configured
 `authorization` entry. Invalid header names or values are ignored rather than trapped.
 
@@ -1798,7 +1798,7 @@ DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
   by removing trailing slashes from the base and leading slashes from the path, then inserting one
   slash; this is concatenation, not RFC URL-reference resolution.
 - **Persistent headers:** Headers set with `SetHeader` are sent with every request until removed
-  with an exact-case `DelHeader`; `ClearAuth` removes only the exact `Authorization` key.
+  with an exact-case `RemoveHeader`; `ClearAuth` removes only the exact `Authorization` key.
 - **Authentication:** Built-in support for Bearer tokens and HTTP Basic auth
 - **Timeout:** Configurable per-address/socket-operation timeout (default 30 seconds)
 - **JSON helpers:** Automatic serialization/deserialization for JSON APIs
@@ -1936,7 +1936,7 @@ Token bucket rate limiter for controlling the rate of operations. Tokens refill 
 | Method              | Signature       | Description                                              |
 |---------------------|-----------------|----------------------------------------------------------|
 | `TryAcquire()`      | `Boolean()`     | Try to consume 1 token (returns false if none available) |
-| `TryAcquireN(n)`    | `Boolean(Integer)` | Consume all N requested tokens or consume none        |
+| `TryAcquire(n)`    | `Boolean(Integer)` | Consume all N requested tokens or consume none        |
 | `Reset()`           | `Void()`        | Reset to full capacity                                   |
 
 ### How It Works
@@ -1946,10 +1946,10 @@ Token bucket rate limiter for controlling the rate of operations. Tokens refill 
 3. Each operation consumes one or more tokens
 4. If insufficient tokens are available, the operation is denied (returns false)
 
-> **Token precision:** Tokens refill as a floating-point value internally. The `Available` property returns the floor of the current token count. `TryAcquire` and `TryAcquireN` consume whole tokens only. Not thread-safe — external synchronization required for concurrent use.
+> **Token precision:** Tokens refill as a floating-point value internally. The `Available` property returns the floor of the current token count. `TryAcquire` and `TryAcquire` consume whole tokens only. Not thread-safe — external synchronization required for concurrent use.
 
 `maxTokens <= 0` is normalized to 1, `refillPerSec <= 0` is normalized to 1.0, and
-`TryAcquireN(n)` returns false when `n <= 0`. Capacity is stored as a `Double`; keep `maxTokens`
+`TryAcquire(n)` returns false when `n <= 0`. Capacity is stored as a `Double`; keep `maxTokens`
 at or below `9,007,199,254,740,992` (2^53) when exact integer capacity and getter results matter.
 Larger `Integer` inputs lose precision internally, and values near the 64-bit maximum can make the
 conversion performed by `Max` out of range.
@@ -1979,7 +1979,7 @@ FOR i = 1 TO 12
 NEXT i
 
 ' Batch operations - acquire multiple tokens
-IF limiter.TryAcquireN(5) THEN
+IF limiter.TryAcquire(5) THEN
     PRINT "Acquired a batch of 5 tokens"
 END IF
 
@@ -2384,9 +2384,9 @@ Static network utility functions for port checking, CIDR matching, and IP classi
 |--------|---------|-------------|
 | `IsPortOpen(host, port, timeoutMs)` | Boolean | Check if a remote port accepts connections |
 | `GetFreePort()` | Integer | Get a free (available) port on localhost |
-| `MatchCIDR(ip, cidr)` | Boolean | Check if an IPv4 address matches an IPv4 CIDR range (e.g., `"10.0.0.0/8"`) |
-| `IsPrivateIP(ip)` | Boolean | Check if an IPv4 address is RFC 1918 private or loopback |
-| `LocalIPv4()` | String | Get route-selected local IPv4 address, or loopback on failure |
+| `MatchCidr(ip, cidr)` | Boolean | Check if an IPv4 address matches an IPv4 CIDR range (e.g., `"10.0.0.0/8"`) |
+| `IsPrivateIp(ip)` | Boolean | Check if an IPv4 address is RFC 1918 private or loopback |
+| `LocalIpv4()` | String | Get route-selected local IPv4 address, or loopback on failure |
 
 `IsPortOpen` uses 1,000ms when `timeoutMs <= 0` and gives each resolved address its own full
 timeout; the total call can therefore take approximately `address count × timeoutMs`. It probes
@@ -2397,10 +2397,10 @@ than hard guarantees.
 
 `GetFreePort` binds an IPv4 `127.0.0.1:0` socket and closes it, so another process can claim the
 returned port before the caller binds; it returns `0` on failure. For production listeners, bind
-the server itself to port 0 and read back its assigned port. `MatchCIDR` is IPv4-only, treats a
-network without `/prefix` as `/32`, and requires strict numeric addresses. `IsPrivateIP` recognizes
+the server itself to port 0 and read back its assigned port. `MatchCidr` is IPv4-only, treats a
+network without `/prefix` as `/32`, and requires strict numeric addresses. `IsPrivateIp` recognizes
 only RFC 1918 space plus `127.0.0.0/8`; it is not a complete local/special-use-address or trust
-decision. `LocalIPv4` reports the IPv4 source address selected for a UDP route to `8.8.8.8:53`, or
+decision. `LocalIpv4` reports the IPv4 source address selected for a UDP route to `8.8.8.8:53`, or
 `127.0.0.1` on failure; it does not enumerate interfaces and is not necessarily a stable “primary”
 address.
 
@@ -2773,5 +2773,5 @@ last runtime handle is reclaimed.
 TCP, UDP, DNS, HTTP, TLS, WebSocket, SSE, SMTP, and `NetUtils.IsPortOpen` resolve with `AF_UNSPEC`
 and can attempt IPv4 and IPv6. Wildcard listeners prefer a dual-stack IPv6 socket when the
 operating system permits it and fall back to IPv4; an explicitly bound address uses that address's
-family. `NetUtils.GetFreePort`, `MatchCIDR`, `IsPrivateIP`, and `LocalIPv4` are intentionally
+family. `NetUtils.GetFreePort`, `MatchCidr`, `IsPrivateIp`, and `LocalIpv4` are intentionally
 IPv4-only.

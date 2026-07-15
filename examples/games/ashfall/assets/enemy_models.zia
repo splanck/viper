@@ -104,10 +104,10 @@ class EnemyModels {
         world = w; texLib = t; reg = r; cap = poolCap;
         var i = 0;
         while i < cap {
-            var cm = G3D.Material3D.NewPBR(0.5, 0.5, 0.5);
+            var cm = G3D.Material3D.PBR(0.5, 0.5, 0.5);
             cm.Roughness = 0.55;
             cm.Metallic = 0.55;
-            var am = G3D.Material3D.NewColor(0.5, 0.7, 1.0);
+            var am = G3D.Material3D.FromColor(0.5, 0.7, 1.0);
             am.EmissiveIntensity = 0.8;
             var cn = Game3D.Entity3D.New();
             cn.Material = cm;
@@ -361,9 +361,9 @@ class EnemyModels {
         // Composite corpse: copy the slot's look into the dying entities.
         ensureMeshes(a);
         var mi = meshIndex(a);
-        var cm = G3D.Material3D.NewPBR(colR * 0.8, colG * 0.8, colB * 0.8);
+        var cm = G3D.Material3D.PBR(colR * 0.8, colG * 0.8, colB * 0.8);
         cm.Roughness = 0.7;
-        var am = G3D.Material3D.NewColor(1.0, 0.35, 0.2);
+        var am = G3D.Material3D.FromColor(1.0, 0.35, 0.2);
         am.EmissiveIntensity = 2.2;
         dyNodeA[d].Mesh = meshChassis[mi];
         dyNodeA[d].Material = cm;

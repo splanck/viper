@@ -97,7 +97,7 @@ One pipeline, three feeders — no scattered health math (validated by damage-ma
 
 ## 6. Save/config (`core/savegame.zia`)
 
-JSON via `Viper.Text.Json.Parse` + hand-built writer (strings.zia helpers) at
+JSON via `Viper.Data.Json.Parse` + hand-built writer (strings.zia helpers) at
 `Path.DataDir("ashfall")` (E4): `settings.json` (video/audio/controls/accessibility, written
 on every change — bowling crash-safety pattern), `profile.json` (campaign progress, medals,
 stats, upgrades, collectibles), `checkpoint.json` (level id, checkpoint id, loadout, ammo,

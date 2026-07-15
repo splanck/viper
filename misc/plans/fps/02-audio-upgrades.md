@@ -3,7 +3,7 @@
 > **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
 > Shipped: E5 per-voice playback rate in the ViperAUD mixer (fractional cursor + linear
 > interpolation, clamp 0.25–4.0, fast path untouched at pitch 1.0) — `Voice.SetPitch/GetPitch`,
-> `Sound.PlayEx2(vol,pan,pitch)`, vaud `vaud_set_voice_pitch`/`vaud_play_ex2`. E6
+> `Sound.Play(vol,pan,pitch)`, vaud `vaud_set_voice_pitch`/`vaud_play_ex2`. E6
 > `SoundSource3D.Pitch` (composes with Doppler) — and the **Doppler factor is now actually
 > applied** (it was computed and discarded; see ENGINE_BUGS_FOUND.md BUG-E5). E7 per-voice
 > one-pole lowpass + `Voice.SetLowpass` / `Voice.SetOcclusion` / `SoundSource3D.Occlusion`
@@ -31,8 +31,8 @@ resamples per-voice for 3D sources — E5 generalizes that path rather than inve
 
 ## 1. Current state (verified anchors)
 
-- `Viper.Sound.Sound.PlayEx` = `(volume, pan)` — runtime.def:3471 (RT_FUNC
-  `"i64(obj<Viper.Sound.Sound>,i64,i64)"`), method surface runtime.def:9606; `PlayExGroup`
+- `Viper.Audio.Sound.PlayEx` = `(volume, pan)` — runtime.def:3471 (RT_FUNC
+  `"i64(obj<Viper.Audio.Sound>,i64,i64)"`), method surface runtime.def:9606; `PlayExGroup`
   adds a group id (:3460). `Voice` = Stop/SetVolume/SetPan/IsPlaying (:9616-9622 region).
   **No pitch anywhere.**
 - 3D audio: `SoundSource3D` has Doppler (`get_DopplerFactor` — runtime.def ~14246) and
@@ -48,15 +48,15 @@ resamples per-voice for 3D sources — E5 generalizes that path rather than inve
 ## 2. New API surface
 
 ```text
-Viper.Sound.Voice.set_Pitch(f64)                    void(i64,f64)   — 0.25..4.0, clamps
-Viper.Sound.Voice.get_Pitch                         f64(i64)
-Viper.Sound.Voice.SetLowpass(f64)                   void(i64,f64)   — cutoff Hz; <=0 disables
-Viper.Sound.Voice.SetOcclusion(f64)                 void(i64,f64)   — 0=open..1=fully occluded (maps to cutoff+gain curve, 80ms smoothed)
-Viper.Sound.Sound.PlayEx2(i64,i64,f64)              i64(obj,i64,i64,f64) — volume, pan, pitch
+Viper.Audio.Voice.set_Pitch(f64)                    void(i64,f64)   — 0.25..4.0, clamps
+Viper.Audio.Voice.get_Pitch                         f64(i64)
+Viper.Audio.Voice.SetLowpass(f64)                   void(i64,f64)   — cutoff Hz; <=0 disables
+Viper.Audio.Voice.SetOcclusion(f64)                 void(i64,f64)   — 0=open..1=fully occluded (maps to cutoff+gain curve, 80ms smoothed)
+Viper.Audio.Sound.Play(i64,i64,f64)              i64(obj,i64,i64,f64) — volume, pan, pitch
 Viper.Graphics3D.SoundSource3D.set_Pitch(f64)       void(obj,f64)   — multiplies with Doppler
 Viper.Graphics3D.SoundSource3D.get_Pitch            f64(obj)
 Viper.Graphics3D.SoundSource3D.set_Occlusion(f64)   void(obj,f64)
-Viper.Sound.Audio.SetGroupDucking(str,str,f64,f64,f64) void(str,str,f64,f64,f64)
+Viper.Audio.Mixer.SetGroupDucking(str,str,f64,f64,f64) void(str,str,f64,f64,f64)
     — (triggerGroup, targetGroup, amount 0..1, attackSec, releaseSec): while any voice in
       triggerGroup is audible, targetGroup gain is scaled toward (1-amount).
 ```

@@ -21,7 +21,7 @@ func testPath() {
     assertNotEmpty(joined, "path join");
 
     // Dir (fixed from GetDir)
-    var dir = Viper.IO.Path.Dir("/home/user/file.txt");
+    var dir = Viper.IO.Path.Directory("/home/user/file.txt");
     assertEqStr(dir, "/home/user", "path dir");
 
     // Name (fixed from GetName)
@@ -29,7 +29,7 @@ func testPath() {
     assertEqStr(name, "file.txt", "path name");
 
     // Ext (fixed from GetExt)
-    var ext = Viper.IO.Path.Ext("/home/user/file.txt");
+    var ext = Viper.IO.Path.Extension("/home/user/file.txt");
     assertEqStr(ext, ".txt", "path ext");
 
     // Stem (fixed from GetBase)
@@ -37,32 +37,32 @@ func testPath() {
     assertEqStr(stem, "file", "path stem");
 
     // Multiple extensions
-    var ext2 = Viper.IO.Path.Ext("/home/user/archive.tar.gz");
+    var ext2 = Viper.IO.Path.Extension("/home/user/archive.tar.gz");
     assertEqStr(ext2, ".gz", "path ext multi");
 
     // No extension
-    var noExt = Viper.IO.Path.Ext("/home/user/README");
+    var noExt = Viper.IO.Path.Extension("/home/user/README");
     assertEqStr(noExt, "", "path ext none");
 
     // Norm (fixed from Normalize)
-    var normalized = Viper.IO.Path.Norm("/home/user/../user/./docs");
+    var normalized = Viper.IO.Path.Normalize("/home/user/../user/./docs");
     assertNotEmpty(normalized, "path norm");
 
     // Abs (fixed from Absolute)
-    var absolute = Viper.IO.Path.Abs("relative/path");
+    var absolute = Viper.IO.Path.Absolute("relative/path");
     assertNotEmpty(absolute, "path abs");
 
     // IsAbs
-    assertTrue(Viper.IO.Path.IsAbs("/absolute/path"), "path isabs true");
-    assertFalse(Viper.IO.Path.IsAbs("relative/path"), "path isabs false");
+    assertTrue(Viper.IO.Path.IsAbsolute("/absolute/path"), "path isabs true");
+    assertFalse(Viper.IO.Path.IsAbsolute("relative/path"), "path isabs false");
 
     // Sep
-    var sep = Viper.IO.Path.Sep();
+    var sep = Viper.IO.Path.Separator();
     assertNotEmpty(sep, "path sep");
 
     // WithExt
-    var withExt = Viper.IO.Path.WithExt("/home/user/file.txt", ".md");
-    assertEqStr(Viper.IO.Path.Ext(withExt), ".md", "path withext");
+    var withExt = Viper.IO.Path.WithExtension("/home/user/file.txt", ".md");
+    assertEqStr(Viper.IO.Path.Extension(withExt), ".md", "path withext");
 }
 
 func testDir() {
@@ -96,7 +96,7 @@ func testFileOps() {
     assertEqStr(content, "Hello, Viper!", "file read content");
 
     // Size
-    var size = Viper.IO.File.Size(testPath);
+    var size = Viper.IO.File.SizeBytes(testPath);
     assertEqInt(size, 13, "file size");
 
     // Append (fixed from AppendText)

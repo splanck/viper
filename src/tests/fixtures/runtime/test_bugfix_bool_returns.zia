@@ -11,8 +11,8 @@ func start() {
     var uf = new Viper.Collections.UnionFind(5);
     uf.Union(0, 1);
     uf.Union(1, 2);
-    var c1 = uf.Connected(0, 2);  // should be true
-    var c2 = uf.Connected(0, 3);  // should be false
+    var c1 = uf.IsConnected(0, 2);  // should be true
+    var c2 = uf.IsConnected(0, 3);  // should be false
     if (!c1) {
         Say("FAIL: UnionFind.Connected(0,2) should be true");
         passed = false;

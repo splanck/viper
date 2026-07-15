@@ -39,7 +39,7 @@ func runUpdate(fn: (Float) -> Unit, dt: Float) {
 }
 
 func start() {
-    var box = G3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var box = G3D.Mesh3D.Box(1.0, 1.0, 1.0);
     if (G3D.Mesh3D.get_TriangleCount(box) != 12) {
         Terminal.Say("FAIL: namespace alias did not call Mesh3D.NewBox");
         return;
@@ -72,7 +72,7 @@ func start() {
 
     var canvas = G3D.Canvas3D.New("Game3D Surface Probe", 64, 64);
     G3D.Canvas3D.Poll(canvas);
-    var wDown = Keyboard.IsDown(Keyboard.get_KeyW());
+    var wDown = Keyboard.IsDown(Viper.Input.Key.W);
     if (wDown) {
         controller.lateCalls = controller.lateCalls + 0;
     }

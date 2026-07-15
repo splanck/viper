@@ -100,7 +100,7 @@ class SceneGame {
         backendName = canvas.Backend;
 
         var aspect = (width + 0.0) / (height + 0.0);
-        camera = Camera3D.NewHorizontalFov(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
+        camera = Camera3D.WithHorizontalFov(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
 
         planeMesh = Mesh3D.Plane(1.0, 1.0);
         boxMesh = Mesh3D.Box(1.0, 1.0, 1.0);
@@ -239,7 +239,7 @@ class SceneGame {
         postfx = PostFX3D.New();
         PostFX3D.AddTonemap(postfx, 1, 1.16);
         PostFX3D.AddBloom(postfx, 0.78, 0.18, 3);
-        PostFX3D.AddFXAA(postfx);
+        PostFX3D.AddFxaa(postfx);
         PostFX3D.AddColorGrade(postfx, 0.02, 1.08, 1.10);
         PostFX3D.AddVignette(postfx, 0.96, 0.28);
         Canvas3D.SetPostFX(canvas, postfx);

@@ -6,52 +6,15 @@
 
 ## Classes
 
-<a id="viper-memory"></a>
-### `Viper.Memory`
-
-Provides Memory functionality for runtime memory management.
-
-`Viper.Memory` exposes a registry-backed runtime surface without requiring callers to construct
-the class directly. Its public surface exposes operations including `Retain`, `Release`,
-`RetainStr`, `ReleaseStr`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-memory-retain"></a>`Retain` | `void(obj)` | `Viper.Memory.Retain` |
-| <a id="viper-memory-release"></a>`Release` | `i64(obj)` | `Viper.Memory.Release` |
-| <a id="viper-memory-retainstr"></a>`RetainStr` | `void(str)` | `Viper.Memory.RetainStr` |
-| <a id="viper-memory-releasestr"></a>`ReleaseStr` | `i64(str)` | `Viper.Memory.ReleaseStr` |
-
-<a id="viper-memory-gc"></a>
-### `Viper.Memory.GC`
-
-Provides GC functionality for runtime memory management.
-
-`Viper.Memory.GC` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Collect`,
-`TrackedCount`, `TotalCollected`, `PassCount`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-memory-gc-collect"></a>`Collect` | `i64()` | `Viper.Memory.GC.Collect` |
-| <a id="viper-memory-gc-trackedcount"></a>`TrackedCount` | `i64()` | `Viper.Memory.GC.TrackedCount` |
-| <a id="viper-memory-gc-totalcollected"></a>`TotalCollected` | `i64()` | `Viper.Memory.GC.TotalCollected` |
-| <a id="viper-memory-gc-passcount"></a>`PassCount` | `i64()` | `Viper.Memory.GC.PassCount` |
-| <a id="viper-memory-gc-setthreshold"></a>`SetThreshold` | `void(i64)` | `Viper.Memory.GC.SetThreshold` |
-| <a id="viper-memory-gc-getthreshold"></a>`GetThreshold` | `i64()` | `Viper.Memory.GC.GetThreshold` |
-
 <a id="viper-memory-weakref"></a>
 ### `Viper.Memory.WeakRef`
 
-Provides Weak Ref functionality for runtime memory management.
+Holds a zeroing reference without keeping its managed target alive.
 
-Create `Viper.Memory.WeakRef` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes operations including `Get`,
-`Alive`, `Free`, `Reset`.
+`New` and `Clear` accept a live managed object, array, string, or null and do not
+retain it. `Get` atomically promotes a live target to a retained strong reference and returns
+null after the target is freed or cleared. `Free` detaches the target and releases one owned
+weak-reference handle; using a handle after its last reference was freed traps.
 
 Constructor: `Viper.Memory.WeakRef.New`
 
@@ -61,11 +24,11 @@ Constructor: `Viper.Memory.WeakRef.New`
 |---|---|---|
 | <a id="viper-memory-weakref-new"></a>`New` | `obj<Viper.Memory.WeakRef>(obj)` | `Viper.Memory.WeakRef.New` |
 | <a id="viper-memory-weakref-get"></a>`Get` | `obj()` | `Viper.Memory.WeakRef.Get` |
-| <a id="viper-memory-weakref-alive"></a>`Alive` | `i1()` | `Viper.Memory.WeakRef.Alive` |
+| <a id="viper-memory-weakref-isalive"></a>`IsAlive` | `i1()` | `Viper.Memory.WeakRef.IsAlive` |
 | <a id="viper-memory-weakref-free"></a>`Free` | `void()` | `Viper.Memory.WeakRef.Free` |
 | <a id="viper-memory-weakref-reset"></a>`Reset` | `void(obj)` | `Viper.Memory.WeakRef.Reset` |
 | `Get` | `obj(obj)` | `Viper.Memory.WeakRef.Get` |
-| `Alive` | `i1(obj)` | `Viper.Memory.WeakRef.Alive` |
+| `IsAlive` | `i1(obj)` | `Viper.Memory.WeakRef.IsAlive` |
 | `Free` | `void(obj)` | `Viper.Memory.WeakRef.Free` |
 | `Reset` | `void(obj,obj)` | `Viper.Memory.WeakRef.Reset` |
 
@@ -73,19 +36,9 @@ Constructor: `Viper.Memory.WeakRef.New`
 
 | Function | Signature | Runtime symbol |
 |---|---|---|
-| `Viper.Memory.Retain` | `void(obj)` | `rt_memory_retain` |
-| `Viper.Memory.Release` | `i64(obj)` | `rt_memory_release` |
-| `Viper.Memory.RetainStr` | `void(str)` | `rt_memory_retain_str` |
-| `Viper.Memory.ReleaseStr` | `i64(str)` | `rt_memory_release_str` |
-| `Viper.Memory.GC.Collect` | `i64()` | `rt_gc_collect` |
-| `Viper.Memory.GC.TrackedCount` | `i64()` | `rt_gc_tracked_count` |
-| `Viper.Memory.GC.TotalCollected` | `i64()` | `rt_gc_total_collected` |
-| `Viper.Memory.GC.PassCount` | `i64()` | `rt_gc_pass_count` |
-| `Viper.Memory.GC.SetThreshold` | `void(i64)` | `rt_gc_set_threshold` |
-| `Viper.Memory.GC.GetThreshold` | `i64()` | `rt_gc_get_threshold` |
 | `Viper.Memory.WeakRef.New` | `obj<Viper.Memory.WeakRef>(obj)` | `rt_weakref_new` |
 | `Viper.Memory.WeakRef.Get` | `obj(obj)` | `rt_weakref_get` |
-| `Viper.Memory.WeakRef.Alive` | `i1(obj)` | `rt_weakref_alive` |
+| `Viper.Memory.WeakRef.IsAlive` | `i1(obj)` | `rt_weakref_alive` |
 | `Viper.Memory.WeakRef.Free` | `void(obj)` | `rt_weakref_free` |
 | `Viper.Memory.WeakRef.Reset` | `void(obj,obj)` | `rt_weakref_reset` |
 

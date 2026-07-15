@@ -10,9 +10,12 @@
 //
 // Key invariants:
 //   - All timestamps are Unix timestamps in seconds since the UTC epoch (1970-01-01 00:00:00).
-//   - Component extraction functions use local time; UTC variants use the _utc suffix.
-//   - rt_datetime_now_ms returns milliseconds since epoch for high-resolution timing.
-//   - Formatting follows ISO 8601 conventions by default.
+//   - Component extraction functions use local time; rt_datetime_to_iso is the
+//     UTC formatter, while named-zone formatting uses the embedded zone subset.
+//   - rt_datetime_now_ms returns wall-clock milliseconds since epoch; use Clock
+//     or Stopwatch for elapsed-time measurement.
+//   - rt_datetime_format delegates to host strftime; the explicit ToISO/ToLocal
+//     helpers provide fixed layouts.
 //
 // Ownership/Lifetime:
 //   - Returned strings are newly allocated and must be released by the caller.
@@ -98,7 +101,7 @@ rt_string rt_datetime_to_local(int64_t timestamp);
 /// @param minute Minute (0-59).
 /// @param second Second (0-59).
 /// @return Unix timestamp in seconds, or -1 if components are invalid or the local time is not
-/// representable.
+/// representable. The sentinel collides with the valid instant one second before the epoch.
 int64_t rt_datetime_create(
     int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second);
 

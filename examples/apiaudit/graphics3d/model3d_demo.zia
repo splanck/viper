@@ -11,8 +11,8 @@ func start() {
     var scene = SceneGraph.New();
     var parent = SceneNode.New();
     var child = SceneNode.New();
-    var mesh = Mesh3D.NewBox(1.0, 2.0, 3.0);
-    var mat = Material3D.NewColor(0.2, 0.4, 0.8);
+    var mesh = Mesh3D.Box(1.0, 2.0, 3.0);
+    var mat = Material3D.FromColor(0.2, 0.4, 0.8);
 
     SceneNode.set_Name(parent, "parent");
     SceneNode.set_Name(child, "child");
@@ -31,7 +31,7 @@ func start() {
     Say("MaterialCount = " + toString(SceneAsset.get_MaterialCount(model)));
     Say("NodeCount = " + toString(SceneAsset.get_NodeCount(model)));
 
-    var templateChild = SceneAsset.FindNodeOption(model, "child").Unwrap();
+    var templateChild = SceneAsset.FindNode(model, "child").Unwrap();
     Say("Template child Y = " + toString(Vec3.get_Y(SceneNode.get_Position(templateChild))));
 
     var instRoot = SceneAsset.Instantiate(model);

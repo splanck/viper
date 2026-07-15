@@ -983,7 +983,7 @@ GUIDs (Globally Unique Identifiers) are guaranteed-unique strings:
 ```rust
 bind Uuid = Viper.Text.Uuid;
 
-var id = Uuid.New();
+var id = Uuid.Generate();
 // "550e8400-e29b-41d4-a716-446655440000"
 ```
 
@@ -1014,7 +1014,7 @@ func checkPassword(input: String, salt: String, storedHash: String) -> Boolean {
 }
 
 // Registration:
-var salt = Uuid.New();  // Random salt for this user
+var salt = Uuid.Generate();  // Random salt for this user
 var hash = hashPassword(userPassword, salt);
 // Store both hash and salt in database
 
@@ -1385,7 +1385,7 @@ The Viper standard library provides:
 | Time | Time | Time.DateTime.Now, Time.Clock.Ticks, Time.Clock.Sleep |
 | Data | Generic collections, Viper.Collections | `list.add`, `map.set`, `set.add`, `Queue.New` |
 | System | Environment, Machine | Env.GetArgument, Env.GetVariable, Machine.Os |
-| Security | Crypto.Hash, Codec, Uuid | Hash.SHA256, Hash.HmacSHA256, Uuid.New |
+| Security | Crypto.Hash, Codec, Uuid | Hash.SHA256, Hash.HmacSHA256, Uuid.Generate |
 
 The standard library is your first resort when you need functionality. It's tested, optimized, and familiar to other programmers. Learning it is as important as learning the language syntax.
 

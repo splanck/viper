@@ -854,8 +854,8 @@ void rt_monitor_exit(void *obj) {
 /// @brief Releases the monitor and waits for a Pause signal.
 ///
 /// Atomically releases the monitor and enters a wait state. The thread
-/// remains blocked until another thread calls Monitor.Pause() or
-/// Monitor.PauseAll() on the same object. When signaled, the thread
+/// remains blocked until another thread calls Monitor.Notify() or
+/// Monitor.NotifyAll() on the same object. When signaled, the thread
 /// re-acquires the monitor before returning.
 ///
 /// **Producer/Consumer Example:**
@@ -1021,7 +1021,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
 /// ' Producer thread
 /// Monitor.Enter(queue)
 /// queue.Add(item)
-/// Monitor.Pause(queue)  ' Wake one consumer
+/// Monitor.Notify(queue)  ' Wake one consumer
 /// Monitor.Exit(queue)
 /// ```
 ///
@@ -1043,7 +1043,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
 /// @brief Wake one thread waiting on this monitor (signal/notify pattern).
 void rt_monitor_pause(void *obj) {
     if (!obj)
-        rt_trap("Monitor.Pause: not owner");
+        rt_trap("Monitor.Notify: not owner");
     if (!obj)
         return;
     RtMonitor *m = get_monitor_for(obj);
@@ -1054,7 +1054,7 @@ void rt_monitor_pause(void *obj) {
 
     if (!monitor_is_owner(m, self)) {
         pthread_mutex_unlock(&m->mu);
-        rt_trap("Monitor.Pause: not owner");
+        rt_trap("Monitor.Notify: not owner");
         return;
     }
 
@@ -1084,7 +1084,7 @@ void rt_monitor_pause(void *obj) {
 /// ' Signal all consumers that data is ready
 /// Monitor.Enter(queue)
 /// dataReady = True
-/// Monitor.PauseAll(queue)  ' Wake all waiters
+/// Monitor.NotifyAll(queue)  ' Wake all waiters
 /// Monitor.Exit(queue)
 /// ```
 ///
@@ -1107,7 +1107,7 @@ void rt_monitor_pause(void *obj) {
 /// @brief Wake all threads waiting on this monitor (broadcast/notify-all pattern).
 void rt_monitor_pause_all(void *obj) {
     if (!obj)
-        rt_trap("Monitor.PauseAll: not owner");
+        rt_trap("Monitor.NotifyAll: not owner");
     if (!obj)
         return;
     RtMonitor *m = get_monitor_for(obj);
@@ -1118,7 +1118,7 @@ void rt_monitor_pause_all(void *obj) {
 
     if (!monitor_is_owner(m, self)) {
         pthread_mutex_unlock(&m->mu);
-        rt_trap("Monitor.PauseAll: not owner");
+        rt_trap("Monitor.NotifyAll: not owner");
         return;
     }
 

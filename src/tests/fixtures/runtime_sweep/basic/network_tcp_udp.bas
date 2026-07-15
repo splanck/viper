@@ -65,7 +65,7 @@ DIM server2 AS Viper.Network.TcpServer
 server2 = Viper.Network.TcpServer.Listen(basePort + 1)
 Viper.Core.Diagnostics.Assert(server2.IsListening, "tcpserver.listen")
 Viper.Core.Diagnostics.AssertEq(server2.Port, basePort + 1, "tcpserver.port")
-Viper.Core.Diagnostics.Assert(server2.Address <> "", "tcpserver.address")
+Viper.Core.Diagnostics.Assert(LEN(server2.Address) > 0, "tcpserver.address")
 
 DIM client2 AS Viper.Network.Tcp
 client2 = Viper.Network.Tcp.Connect("127.0.0.1", basePort + 1)
@@ -77,19 +77,19 @@ Viper.Core.Diagnostics.AssertNotNull(serverConn2, "tcpserver.accept")
 Viper.Core.Diagnostics.Assert(client2.IsOpen, "tcp.isopen")
 Viper.Core.Diagnostics.Assert(client2.Port = basePort + 1, "tcp.port")
 Viper.Core.Diagnostics.Assert(client2.LocalPort > 0, "tcp.localport")
-Viper.Core.Diagnostics.Assert(client2.Host <> "", "tcp.host")
+Viper.Core.Diagnostics.Assert(LEN(client2.Host) > 0, "tcp.host")
 
 client2.SetRecvTimeout(1000)
 client2.SetSendTimeout(1000)
 serverConn2.SetRecvTimeout(1000)
 serverConn2.SetSendTimeout(1000)
 
-DIM payload AS Viper.Collections.Bytes
-payload = NEW Viper.Collections.Bytes(4)
-payload.Set(0, 112)
-payload.Set(1, 105)
-payload.Set(2, 110)
-payload.Set(3, 103)
+DIM payload AS Viper.IO.BinaryBuffer
+payload = Viper.IO.BinaryBuffer.NewCapacity(4)
+payload.WriteByte(112)
+payload.WriteByte(105)
+payload.WriteByte(110)
+payload.WriteByte(103)
 
 DIM sent AS INTEGER
 sent = client2.Send(payload)
@@ -106,12 +106,12 @@ WHILE avail < 4 AND tries < 100
 WEND
 Viper.Core.Diagnostics.Assert(avail >= 4, "tcp.available")
 
-DIM recvBytes AS Viper.Collections.Bytes
+DIM recvBytes AS Viper.IO.BinaryBuffer
 recvBytes = serverConn2.Recv(4)
 Viper.Core.Diagnostics.AssertEq(recvBytes.Length, 4, "tcp.recv")
 
 sent = client2.Send(payload)
-DIM recvExact AS Viper.Collections.Bytes
+DIM recvExact AS Viper.IO.BinaryBuffer
 recvExact = serverConn2.RecvExact(4)
 Viper.Core.Diagnostics.AssertEq(recvExact.Length, 4, "tcp.recvexact")
 
@@ -126,7 +126,7 @@ word = serverConn2.RecvStr(4)
 Viper.Core.Diagnostics.AssertEqStr(word, "word", "tcp.recvstr")
 
 serverConn2.SendAll(payload)
-DIM back AS Viper.Collections.Bytes
+DIM back AS Viper.IO.BinaryBuffer
 back = client2.RecvExact(4)
 Viper.Core.Diagnostics.AssertEq(back.Length, 4, "tcp.sendall")
 
@@ -142,7 +142,7 @@ DIM udpServer AS Viper.Network.Udp
 udpServer = Viper.Network.Udp.BindAt("127.0.0.1", 0)
 Viper.Core.Diagnostics.Assert(udpServer.IsBound, "udp.bindat")
 Viper.Core.Diagnostics.Assert(udpServer.Port > 0, "udp.port")
-Viper.Core.Diagnostics.Assert(udpServer.Address <> "", "udp.address")
+Viper.Core.Diagnostics.Assert(LEN(udpServer.Address) > 0, "udp.address")
 
 DIM udpClient AS Viper.Network.Udp
 udpClient = Viper.Network.Udp.New()
@@ -161,34 +161,34 @@ udpPort = udpServer.Port
 DIM msg AS STRING
 msg = "ping"
 udpClient.SendToStr("127.0.0.1", udpPort, msg)
-DIM udpRecv1 AS Viper.Collections.Bytes
+DIM udpRecv1 AS Viper.IO.BinaryBuffer
 udpRecv1 = udpServer.RecvFrom(32)
-Viper.Core.Diagnostics.AssertEqStr(udpRecv1.ToStr(), msg, "udp.recvfrom")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToStr(udpRecv1.ToBytes()), msg, "udp.recvfrom")
 
 DIM senderHost AS STRING
 senderHost = udpServer.SenderHost()
-Viper.Core.Diagnostics.Assert(senderHost <> "", "udp.senderhost")
+Viper.Core.Diagnostics.Assert(LEN(senderHost) > 0, "udp.senderhost")
 Viper.Core.Diagnostics.Assert(udpServer.SenderPort() > 0, "udp.senderport")
 
-DIM msgBytes AS Viper.Collections.Bytes
-msgBytes = NEW Viper.Collections.Bytes(4)
-msgBytes.Set(0, 112)
-msgBytes.Set(1, 111)
-msgBytes.Set(2, 110)
-msgBytes.Set(3, 103)
+DIM msgBytes AS Viper.IO.BinaryBuffer
+msgBytes = Viper.IO.BinaryBuffer.NewCapacity(4)
+msgBytes.WriteByte(112)
+msgBytes.WriteByte(111)
+msgBytes.WriteByte(110)
+msgBytes.WriteByte(103)
 udpClient.SendTo("127.0.0.1", udpPort, msgBytes)
-DIM udpRecv2 AS Viper.Collections.Bytes
+DIM udpRecv2 AS Viper.IO.BinaryBuffer
 udpRecv2 = udpServer.Recv(32)
-Viper.Core.Diagnostics.AssertEqStr(udpRecv2.ToStr(), "pong", "udp.recv")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToStr(udpRecv2.ToBytes()), "pong", "udp.recv")
 
 udpClient.SendToStr("127.0.0.1", udpPort, "data")
-DIM udpRecv3 AS Viper.Collections.Bytes
+DIM udpRecv3 AS Viper.IO.BinaryBuffer
 udpRecv3 = udpServer.RecvFor(32, 1000)
 IF Viper.Core.Object.RefEquals(udpRecv3, NOTHING) THEN
     udpRecv3 = udpServer.Recv(32)
 END IF
 Viper.Core.Diagnostics.AssertNotNull(udpRecv3, "udp.recvfor")
-Viper.Core.Diagnostics.AssertEqStr(udpRecv3.ToStr(), "data", "udp.recvfor")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToStr(udpRecv3.ToBytes()), "data", "udp.recvfor")
 
 udpClient.Close()
 udpServer.Close()

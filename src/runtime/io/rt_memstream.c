@@ -17,7 +17,8 @@
 //   - Position can be set to any non-negative value including beyond length.
 //   - Little-endian byte order is used for all multi-byte integer writes/reads.
 //   - Floats use IEEE 754 single precision; doubles use IEEE 754 double precision.
-//   - Initial buffer capacity is MEMSTREAM_INITIAL_CAPACITY (64) bytes.
+//   - New() starts at capacity zero and allocates at least
+//     MEMSTREAM_INITIAL_CAPACITY (64) bytes on its first non-empty write.
 //
 // Ownership/Lifetime:
 //   - MemStream objects are heap-allocated; the GC finalizer frees the data buffer.

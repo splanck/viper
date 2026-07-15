@@ -125,7 +125,7 @@ String formatting utilities for converting values to formatted strings.
   to preserve the exact IEEE-754 value when reparsed. Use `Viper.Core.Convert.ToStringDouble()`
   when exact round-trip text is required.
 - Signed zero formats as zero in `Num`, `NumFixed`, `Scientific`, `Percent`, and `Currency`.
-- `NumSci`, `NumPct`, and `BoolYN` remain available as compatibility aliases.
+- `Scientific`, `Percent`, and `YesNo` remain available as compatibility aliases.
 - `NumFixed`, `Scientific`, `Percent`, and `Currency` clamp requested decimal places to 0-20.
 - `IntRadix` returns an empty string outside radix 2-36. Decimal negatives use a minus sign;
   non-decimal radices, `Hex`, `HexPad`, `Bin`, and `Oct` format the unsigned 64-bit bit pattern.
@@ -162,7 +162,7 @@ func start() {
     Say("YesNo: " + Fmt.YesNo(false));       // Output: YesNo: no
 
     // Size formatting
-    Say("Size: " + Fmt.Size(1048576));       // Output: Size: 1.0 MB
+    Say("Size: " + Fmt.SizeBytes(1048576));       // Output: Size: 1.0 MB
 }
 ```
 
@@ -185,9 +185,9 @@ PRINT Viper.Text.Fmt.Bool(TRUE)              ' Output: "true"
 PRINT Viper.Text.Fmt.YesNo(FALSE)            ' Output: "no"
 
 ' Size formatting (auto-scales to KB, MB, GB, etc.)
-PRINT Viper.Text.Fmt.Size(1024)              ' Output: "1.0 KB"
-PRINT Viper.Text.Fmt.Size(1048576)           ' Output: "1.0 MB"
-PRINT Viper.Text.Fmt.Size(1234567890)        ' Output: "1.1 GB"
+PRINT Viper.Text.Fmt.SizeBytes(1024)              ' Output: "1.0 KB"
+PRINT Viper.Text.Fmt.SizeBytes(1048576)           ' Output: "1.0 MB"
+PRINT Viper.Text.Fmt.SizeBytes(1234567890)        ' Output: "1.1 GB"
 
 ' Radix formatting
 PRINT Viper.Text.Fmt.Hex(255)                ' Output: "ff"

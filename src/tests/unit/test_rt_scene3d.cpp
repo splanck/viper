@@ -3078,7 +3078,7 @@ static void test_auto_lod_uses_screen_error_selection() {
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1, "SceneGraph redraws after disabling auto LOD");
     EXPECT_TRUE(g_scene_last_vertex_count != 3,
-                "SceneNode.SetAutoLOD(false) restores authored distance thresholds");
+                "SceneNode.SetAutoLod(false) restores authored distance thresholds");
 }
 
 static void test_lod_residency_falls_back_and_reports_bytes() {

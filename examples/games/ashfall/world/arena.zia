@@ -26,7 +26,7 @@ var DUMMY_COUNT: Integer = 8;
 class Arena {
     hide Game3D.World3D world;
     hide G3D.Canvas3D canvas;
-    hide G3D.Physics3DWorld phys;
+    hide G3D.PhysicsWorld3D phys;
     hide G3D.Material3D matFloor;
     hide G3D.Material3D matWall;
     hide G3D.Material3D matCrate;
@@ -42,10 +42,10 @@ class Arena {
     hide List[Float] dummyHealth;
     hide List[Game3D.Entity3D] dummyNode;
     hide List[Game3D.Entity3D] dummyHeadNode;
-    hide List[G3D.Physics3DBody] dummyTorso;
-    hide List[G3D.Physics3DBody] dummyHead;
+    hide List[G3D.PhysicsBody3D] dummyTorso;
+    hide List[G3D.PhysicsBody3D] dummyHead;
     hide List[Game3D.Entity3D] ownedNodes;
-    hide List[G3D.Physics3DBody] ownedBodies;
+    hide List[G3D.PhysicsBody3D] ownedBodies;
     hide Boolean built;
     hide Integer lightMode;         // 0 noon / 1 dusk / 2 interior
     hide Integer killCount;
@@ -83,19 +83,19 @@ class Arena {
     }
 
     hide func buildMaterials() {
-        matFloor = G3D.Material3D.NewPBR(0.22, 0.23, 0.26);
+        matFloor = G3D.Material3D.PBR(0.22, 0.23, 0.26);
         matFloor.Roughness = 0.85;
-        matWall = G3D.Material3D.NewPBR(0.30, 0.31, 0.34);
+        matWall = G3D.Material3D.PBR(0.30, 0.31, 0.34);
         matWall.Roughness = 0.9;
-        matCrate = G3D.Material3D.NewPBR(0.45, 0.38, 0.22);
+        matCrate = G3D.Material3D.PBR(0.45, 0.38, 0.22);
         matCrate.Roughness = 0.7;
         if texLib != null {
             matFloor = texLib.mat(textures.SURF_METAL, 0.40, 0.42, 0.46);
             matWall = texLib.mat(textures.SURF_METAL, 0.46, 0.48, 0.52);
             matCrate = texLib.mat(textures.SURF_HULL, 0.5, 0.42, 0.3);
         }
-        matDummy = G3D.Material3D.NewColor(0.70, 0.24, 0.20);
-        matDummyHit = G3D.Material3D.NewColor(1.0, 0.85, 0.2);
+        matDummy = G3D.Material3D.FromColor(0.70, 0.24, 0.20);
+        matDummyHit = G3D.Material3D.FromColor(1.0, 0.85, 0.2);
     }
 
     // Spawn a visual box node + a matching static collider.
@@ -108,9 +108,9 @@ class Arena {
         e.SetPosition(cx, cy, cz);
         world.Spawn(e);
         ownedNodes.Add(e);
-        var body = G3D.Physics3DBody.NewAABB(hx, hy, hz, 0.0);
-        G3D.Physics3DBody.SetPosition(body, cx, cy, cz);
-        G3D.Physics3DWorld.Add(phys, body);
+        var body = G3D.PhysicsBody3D.NewAABB(hx, hy, hz, 0.0);
+        G3D.PhysicsBody3D.SetPosition(body, cx, cy, cz);
+        G3D.PhysicsWorld3D.Add(phys, body);
         ownedBodies.Add(body);
         return e;
     }
@@ -167,8 +167,8 @@ class Arena {
             dummyHits.Add(0);
             dummyHealth.Add(100.0);
             // Colored zone pad under each firing lane (alternating hues).
-            var padMat = G3D.Material3D.NewColor(0.2, 0.4, 0.6);
-            if i % 2 == 1 { padMat = G3D.Material3D.NewColor(0.55, 0.35, 0.2); }
+            var padMat = G3D.Material3D.FromColor(0.2, 0.4, 0.6);
+            if i % 2 == 1 { padMat = G3D.Material3D.FromColor(0.55, 0.35, 0.2); }
             padMat.EmissiveIntensity = 0.6;
             visBox(padMat, dx, 0.015, dz, 1.1, 0.015, 1.1);
             // Visual body + head.
@@ -177,14 +177,14 @@ class Arena {
             dummyNode.Add(bodyNode);
             dummyHeadNode.Add(headNode);
             // Shootable colliders (torso + head), tagged on the DUMMY layer.
-            var torso = G3D.Physics3DBody.NewAABB(0.35, 0.9, 0.25, 0.0);
-            G3D.Physics3DBody.SetPosition(torso, dx, 0.9, dz);
-            G3D.Physics3DBody.set_CollisionLayer(torso, config.LAYER_DUMMY);
-            G3D.Physics3DWorld.Add(phys, torso);
-            var head = G3D.Physics3DBody.NewAABB(0.28, 0.28, 0.28, 0.0);
-            G3D.Physics3DBody.SetPosition(head, dx, 2.0, dz);
-            G3D.Physics3DBody.set_CollisionLayer(head, config.LAYER_DUMMY);
-            G3D.Physics3DWorld.Add(phys, head);
+            var torso = G3D.PhysicsBody3D.NewAABB(0.35, 0.9, 0.25, 0.0);
+            G3D.PhysicsBody3D.SetPosition(torso, dx, 0.9, dz);
+            G3D.PhysicsBody3D.set_CollisionLayer(torso, config.LAYER_DUMMY);
+            G3D.PhysicsWorld3D.Add(phys, torso);
+            var head = G3D.PhysicsBody3D.NewAABB(0.28, 0.28, 0.28, 0.0);
+            G3D.PhysicsBody3D.SetPosition(head, dx, 2.0, dz);
+            G3D.PhysicsBody3D.set_CollisionLayer(head, config.LAYER_DUMMY);
+            G3D.PhysicsWorld3D.Add(phys, head);
             dummyTorso.Add(torso);
             dummyHead.Add(head);
             ownedBodies.Add(torso);
@@ -210,7 +210,7 @@ class Arena {
         }
         i = 0;
         while i < ownedBodies.Count {
-            G3D.Physics3DWorld.Remove(phys, ownedBodies[i]);
+            G3D.PhysicsWorld3D.Remove(phys, ownedBodies[i]);
             i = i + 1;
         }
         ownedNodes = []; ownedBodies = [];
@@ -261,8 +261,8 @@ class Arena {
             // Sink both visual zones and their query bodies under the floor.
             dummyNode[i].SetPosition(dummyX[i], -50.0, dummyZ[i]);
             dummyHeadNode[i].SetPosition(dummyX[i], -50.0, dummyZ[i]);
-            G3D.Physics3DBody.SetPosition(dummyTorso[i], dummyX[i], -50.0, dummyZ[i]);
-            G3D.Physics3DBody.SetPosition(dummyHead[i], dummyX[i], -50.0, dummyZ[i]);
+            G3D.PhysicsBody3D.SetPosition(dummyTorso[i], dummyX[i], -50.0, dummyZ[i]);
+            G3D.PhysicsBody3D.SetPosition(dummyHead[i], dummyX[i], -50.0, dummyZ[i]);
         }
     }
 
@@ -312,15 +312,15 @@ class Arena {
         lightMode = mode;
         var k = 0;
         while k < 8 {
-            var dark = G3D.Light3D.NewPoint(Math.Vec3.New(0.0, -100.0, 0.0), 0.0, 0.0, 0.0, 8.0);
+            var dark = G3D.Light3D.Point(Math.Vec3.New(0.0, -100.0, 0.0), 0.0, 0.0, 0.0, 8.0);
             G3D.Canvas3D.SetLight(canvas, 8 + k, dark);
             k = k + 1;
         }
         if mode == 1 {
             // Dusk accents: two warm corner points.
-            var p0 = G3D.Light3D.NewPoint(Math.Vec3.New(-12.0, 3.0, -12.0), 1.0, 0.55, 0.3, 16.0);
+            var p0 = G3D.Light3D.Point(Math.Vec3.New(-12.0, 3.0, -12.0), 1.0, 0.55, 0.3, 16.0);
             G3D.Canvas3D.SetLight(canvas, 8, p0);
-            var p1 = G3D.Light3D.NewPoint(Math.Vec3.New(12.0, 3.0, 12.0), 1.0, 0.55, 0.3, 16.0);
+            var p1 = G3D.Light3D.Point(Math.Vec3.New(12.0, 3.0, 12.0), 1.0, 0.55, 0.3, 16.0);
             G3D.Canvas3D.SetLight(canvas, 9, p1);
         } else if mode == 2 {
             // Interior ring of cool points.
@@ -329,7 +329,7 @@ class Arena {
                 var ang = (k + 0.0) / 8.0 * 6.2831853;
                 var lx = Math.Cos(ang) * 10.0;
                 var lz = Math.Sin(ang) * 10.0;
-                var pl = G3D.Light3D.NewPoint(Math.Vec3.New(lx, 3.0, lz), 0.6, 0.7, 0.9, 14.0);
+                var pl = G3D.Light3D.Point(Math.Vec3.New(lx, 3.0, lz), 0.6, 0.7, 0.9, 14.0);
                 G3D.Canvas3D.SetLight(canvas, 8 + k, pl);
                 k = k + 1;
             }

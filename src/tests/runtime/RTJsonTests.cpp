@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTJsonTests.cpp
-// Purpose: Tests for Viper.Text.Json parsing and formatting.
+// Purpose: Tests for Viper.Data.Json parsing and formatting.
 //
 //===----------------------------------------------------------------------===//
 

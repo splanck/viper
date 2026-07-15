@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Files & Directories
@@ -37,14 +37,17 @@ File system operations.
 | `WriteLines(path, lines)`     | `Void(String, Seq(String))` | Atomically writes a sequence of strings as lines; traps on I/O errors                |
 | `WriteAllLines(path, lines)`  | `Void(String, Seq(String))` | Alias of `WriteLines`                                                               |
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file; traps on I/O errors                                               |
-| `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
-| `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
+| `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing; not line-atomic)             |
+| `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n`, `\r`, or `\r\n` terminators (traps on I/O errors) |
 | `Modified(path)`              | `Integer(String)`      | Returns regular-file modification time as Unix timestamp, or -1 if missing or not a file  |
-| `Touch(path)`                 | `Void(String)`         | Creates file or updates its modification time; traps on I/O errors                        |
+| `Touch(path)`                 | `Void(String)`         | Creates a missing file or updates an existing path's modification time; currently accepts directories |
 
 ### Notes
 
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
+- `AppendLine` may perform several writes for the text and a separate write for the newline.
+  Concurrent appenders can therefore interleave records; synchronize externally when complete
+  lines must remain indivisible (VDOC-182).
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
 - Path strings with embedded NUL bytes are rejected before reaching platform file APIs.
 - `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories, special files, I/O errors, or unexpected short reads if the file changes while being read.
@@ -52,6 +55,8 @@ File system operations.
 - `Copy` and `Move` never overwrite an existing destination. `MoveOver` is the explicit replacement operation; it first attempts an in-place replace/rename and only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
 - `Copy` preserves regular-file permission bits and modification/access times where the platform exposes them. Cross-device `Move` uses the same copy path before deleting the source.
 - `Size` and `Modified` return `-1` for missing paths, directories, and special files. A real zero-byte file still reports size `0`.
+- `Touch` creates a regular file when the path is missing, but the current implementation updates
+  timestamps on an existing directory too (VDOC-183).
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
 - `WriteLines` / `WriteAllLines` append one LF byte after every sequence element, including the last. Their raw `seq<str>` argument is available to Zia but is currently rejected by safe BASIC; use `LineWriter` or whole-file text helpers from BASIC.
 - `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
@@ -72,9 +77,9 @@ func start() {
     // Path utilities
     var p = Path.Join("/tmp", "test.txt");
     Say("Path: " + p);
-    Say("Ext: " + Path.Ext(p));
+    Say("Ext: " + Path.Extension(p));
     Say("Name: " + Path.Name(p));
-    Say("Dir: " + Path.Dir(p));
+    Say("Dir: " + Path.Directory(p));
     Say("Stem: " + Path.Stem(p));
 
     // Write and read a file
@@ -84,7 +89,7 @@ func start() {
     Say("Exists: " + Fmt.Bool(File.Exists("/tmp/viper_test.txt")));
 
     // File size
-    Say("Size: " + Fmt.Int(File.Size("/tmp/viper_test.txt")));
+    Say("Size: " + Fmt.Int(File.SizeBytes("/tmp/viper_test.txt")));
 
     // Clean up
     File.Delete("/tmp/viper_test.txt");
@@ -166,7 +171,7 @@ Viper.IO.File.MoveOver("new_data.txt", "data.txt")
 
 ' Get file info
 DIM size AS INTEGER
-size = Viper.IO.File.Size("data.txt")
+size = Viper.IO.File.SizeBytes("data.txt")
 PRINT "File size:"; size; "bytes"
 
 DIM mtime AS INTEGER
@@ -204,13 +209,17 @@ Binary file stream for reading and writing raw bytes with random access capabili
 `Close()` and `Flush()` trap if the platform reports a delayed write or close failure.
 `BinFile` also normalizes the required C stdio transition between reads and writes on `"rw"`/`"r+"` streams, so switching direction does not rely on undefined buffered-stdio state.
 
+`Eof` follows C stream semantics rather than comparing `Pos` with `Size`. Reading exactly the last
+byte leaves it false; one more `Read` or `ReadByte` sets it. Use `Pos >= Size` when the question is
+whether the cursor is at the logical end. This differs from memory-backed `Stream.Eof` (VDOC-188).
+
 ### Properties
 
 | Property | Type    | Description                                   |
 |----------|---------|-----------------------------------------------|
 | `Pos`    | Integer | Current file position (read-only)             |
 | `Size`   | Integer | Total file size in bytes (read-only)          |
-| `Eof`    | Boolean | True if at end of file (read-only)            |
+| `Eof`    | Boolean | Sticky EOF flag, set after a read attempts to pass the end (read-only) |
 
 ### Methods
 
@@ -311,7 +320,9 @@ DIM buffer AS OBJECT = NEW Viper.Collections.Bytes(8)
 DIM bytesRead AS INTEGER = bf.Read(buffer, 0, 8)
 PRINT bytesRead               ' Output: 8
 
-' Check for end of file
+' An exact read to the end does not set the sticky EOF flag
+PRINT bf.Eof                  ' Output: 0
+PRINT bf.ReadByte()           ' Output: -1
 PRINT bf.Eof                  ' Output: 1
 
 bf.Close()
@@ -383,7 +394,7 @@ func start() {
     Say("Temp path: " + p);
 
     // Generate with prefix and extension
-var p2 = TempFile.PathWithExt("viper_", ".txt");
+    var p2 = TempFile.PathWithExt("viper_", ".txt");
     Say("Custom path: " + p2);
 
     // Create an actual temp file
@@ -503,7 +514,7 @@ Viper.IO.Dir.MakeAll("/home/user/a/b/c/d")
 ' List all entries in a directory
 DIM entries AS Viper.Collections.Seq
 entries = Viper.IO.Dir.List("/home/user")
-FOR i = 0 TO entries.Length - 1
+FOR i = 0 TO entries.Count - 1
     PRINT entries.Get(i)
 NEXT i
 
@@ -548,7 +559,8 @@ Directory operations trap on errors:
 - `Make()` traps if the parent directory doesn't exist or creation fails
 - `Remove()` traps if the directory is not empty or doesn't exist
 - `RemoveAll()` ignores an already-missing top-level directory, but traps if any existing child cannot be removed
-- `RemoveAll()` refuses protected targets such as the filesystem root, `.`, `..`, and the current working directory
+- `RemoveAll()` refuses protected targets such as the filesystem root, `.`, `..`, the current
+  working directory, and every ancestor of the current working directory
 - `Move()` traps if the source directory is missing or the destination already exists
 - `SetCurrent()` traps if the directory doesn't exist
 
@@ -570,7 +582,7 @@ Use the `*Seq` forms when a frontend or toolchain stage wants the explicit suffi
 ```basic
 DIM names AS Viper.Collections.Seq
 names = Viper.IO.Dir.ListSeq("/home/user")
-PRINT names.Length
+PRINT names.Count
 ```
 
 All listing functions exclude `.` and `..` entries. If the directory doesn't exist or can't be read, an empty sequence
@@ -619,6 +631,8 @@ written immediately:
 
 The app name must be alphanumeric/dash/underscore (max 64 chars); anything
 else traps. With an unchanged environment, repeated calls return the same absolute path.
+The current entry point validates only bytes before an embedded NUL, so distinct runtime Strings
+can alias one directory until VDOC-199 is fixed; do not pass binary-derived app names.
 `Abs()` and `Norm()` are lexical operations: they do not require the path to
 exist and do not resolve symbolic links.
 
@@ -635,26 +649,26 @@ func start() {
     var p = "/home/user/documents/report.txt";
 
     // Extract path components
-    Say("Dir:  " + Path.Dir(p));    // /home/user/documents
+    Say("Dir:  " + Path.Directory(p));    // /home/user/documents
     Say("Name: " + Path.Name(p));   // report.txt
     Say("Stem: " + Path.Stem(p));   // report
-    Say("Ext:  " + Path.Ext(p));    // .txt
+    Say("Ext:  " + Path.Extension(p));    // .txt
 
     // Join paths
     Say("Join: " + Path.Join("/home/user", "downloads"));
 
     // Replace extension
-    Say("WithExt: " + Path.WithExt(p, ".md"));
+    Say("WithExt: " + Path.WithExtension(p, ".md"));
 
     // Check if absolute
-    Say("IsAbs: " + Fmt.Bool(Path.IsAbs(p)));
-    Say("IsAbs relative: " + Fmt.Bool(Path.IsAbs("foo/bar")));
+    Say("IsAbs: " + Fmt.Bool(Path.IsAbsolute(p)));
+    Say("IsAbs relative: " + Fmt.Bool(Path.IsAbsolute("foo/bar")));
 
     // Normalize paths
-    Say("Norm: " + Path.Norm("/foo//bar/../baz"));
+    Say("Norm: " + Path.Normalize("/foo//bar/../baz"));
 
     // Platform separator
-    Say("Sep: " + Path.Sep());
+    Say("Sep: " + Path.Separator());
 }
 ```
 
@@ -665,10 +679,10 @@ DIM path AS STRING
 path = "/home/user/documents/report.txt"
 
 ' Extract path components
-PRINT Viper.IO.Path.Dir(path)   ' Output: "/home/user/documents"
+PRINT Viper.IO.Path.Directory(path)   ' Output: "/home/user/documents"
 PRINT Viper.IO.Path.Name(path)  ' Output: "report.txt"
 PRINT Viper.IO.Path.Stem(path)  ' Output: "report"
-PRINT Viper.IO.Path.Ext(path)   ' Output: ".txt"
+PRINT Viper.IO.Path.Extension(path)   ' Output: ".txt"
 
 ' Join paths
 DIM newPath AS STRING
@@ -677,19 +691,19 @@ PRINT newPath  ' Output: "/home/user/downloads"
 
 ' Replace extension
 DIM mdPath AS STRING
-mdPath = Viper.IO.Path.WithExt(path, ".md")
+mdPath = Viper.IO.Path.WithExtension(path, ".md")
 PRINT mdPath  ' Output: "/home/user/documents/report.md"
 
 ' Check if absolute
-PRINT Viper.IO.Path.IsAbs(path)      ' Output: true
-PRINT Viper.IO.Path.IsAbs("foo/bar") ' Output: false
+PRINT Viper.IO.Path.IsAbsolute(path)      ' Output: true
+PRINT Viper.IO.Path.IsAbsolute("foo/bar") ' Output: false
 
 ' Normalize paths
-PRINT Viper.IO.Path.Norm("/foo//bar/../baz")  ' Output: "/foo/baz"
-PRINT Viper.IO.Path.Norm("./a/b/../c")        ' Output: "a/c"
+PRINT Viper.IO.Path.Normalize("/foo//bar/../baz")  ' Output: "/foo/baz"
+PRINT Viper.IO.Path.Normalize("./a/b/../c")        ' Output: "a/c"
 
 ' Get platform separator
-PRINT Viper.IO.Path.Sep()  ' Output: "/" on Unix, "\" on Windows
+PRINT Viper.IO.Path.Separator()  ' Output: "/" on Unix, "\" on Windows
 ```
 
 ### Path Normalization
@@ -710,9 +724,14 @@ The `Norm()` function performs the following transformations:
 | Absolute path detection | Starts with `/` | Starts with `C:\`, `\\`, or root-relative `\` |
 | Example absolute path   | `/home/user`    | `C:\Users\user`           |
 
-Windows drive-relative paths such as `C:logs\app.txt` are not absolute. `Path.Norm()` preserves the `C:` relative prefix instead of converting it to `C:\`, and `Path.Join()` treats drive-rooted, UNC, and root-relative right-hand paths as absolute.
-On POSIX, `Path.Name("a\\b.txt")` returns `"a\\b.txt"` and `Path.Dir("a\\b.txt")` returns `"."`, because the backslash is part of the filename rather than a directory separator.
-`Path.WithExt("", "txt")` returns `.txt`, matching the behavior of applying an extension to an empty stem.
+Windows drive-relative paths such as `C:logs\app.txt` are not absolute. `Path.Normalize()` preserves the `C:` relative prefix instead of converting it to `C:\`, and `Path.Join()` treats drive-rooted, UNC, and root-relative right-hand paths as absolute.
+The current Windows `Path.Absolute()` implementation does not correctly resolve a drive-relative path;
+it can join `C:logs` underneath another drive's current directory and produce an invalid result
+(VDOC-184). Resolve that form with a platform-aware caller or avoid it.
+`Path.ExeDir()` uses fixed platform buffers and can return `"."` on long or non-ANSI executable
+paths; see VDOC-185 and the detailed warning in [Assets](assets.md).
+On POSIX, `Path.Name("a\\b.txt")` returns `"a\\b.txt"` and `Path.Directory("a\\b.txt")` returns `"."`, because the backslash is part of the filename rather than a directory separator.
+`Path.WithExtension("", "txt")` returns `.txt`, matching the behavior of applying an extension to an empty stem.
 
 ### Use Cases
 
@@ -755,7 +774,8 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 - **Parameter order is (path, pattern)** for `Match`, not (pattern, path)
 - Matching is byte-oriented and case-sensitive on POSIX; Windows comparisons are ASCII case-insensitive.
 - `*`, `?`, and character classes do not cross a path separator. `**` does; a backslash can escape a character inside a class.
-- Null path or pattern inputs return false for `Match` and an empty sequence for listing helpers
+- Null or embedded-NUL path/pattern inputs return false for `Match` and an empty sequence for
+  listing helpers
 - Listing helpers return an empty sequence for paths or patterns containing embedded NUL bytes.
 - `Files` returns only regular files, not directories
 - `FilesRecursive` descends into all subdirectories and traps if recursion exceeds the runtime depth guard.
@@ -765,6 +785,9 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 - On Windows, both `/` and `\` are treated as path separators for `*`, `?`, `**`, and literal separator matching.
 - On POSIX, only `/` is a path separator for glob matching; backslash is matched as a normal character.
 - `**` matching is memoized, so very deep path strings are handled without a fixed recursion attempt limit.
+- A current matcher defect lets ordinary wildcards after an earlier `**` cross separators. For
+  example, `Match("a/b", "**/a?b")` incorrectly returns true (VDOC-186); avoid mixing `**` with
+  later `?`, `*`, or character classes when separator boundaries matter.
 - Recursive traversal does not follow symbolic-link directories or Windows reparse points. Result order follows filesystem enumeration and is not sorted.
 
 ### Zia Example
@@ -793,17 +816,17 @@ PRINT Viper.IO.Glob.Match("readme.md", "read*")     ' Output: 1
 
 ' Find all .txt files in a directory
 DIM txtFiles AS OBJECT = Viper.IO.Glob.Files("/home/user/docs", "*.txt")
-FOR i = 0 TO txtFiles.Length - 1
+FOR i = 0 TO txtFiles.Count - 1
     PRINT txtFiles.Get(i)
 NEXT i
 
 ' Find all .bas files recursively
 DIM basFiles AS OBJECT = Viper.IO.Glob.FilesRecursive("/home/user/projects", "*.bas")
-PRINT "Found "; basFiles.Length; " BASIC files"
+PRINT "Found "; basFiles.Count; " BASIC files"
 
 ' Find all entries (files + dirs) matching a pattern
 DIM entries AS OBJECT = Viper.IO.Glob.Entries("/home/user", "test*")
-FOR i = 0 TO entries.Length - 1
+FOR i = 0 TO entries.Count - 1
     PRINT entries.Get(i)
 NEXT i
 ```
@@ -836,8 +859,14 @@ Workspace file inventory helper for IDEs and editor tools.
 - Hard excludes include every dot-prefixed entry, plus `.git`, `.hg`, `.svn`, `.viper`, `.viper-cache`, `build`, `cmake-build-*`, `node_modules`, and `.DS_Store`.
 - Root and nested `.gitignore` files are honored using an intentional subset: blank/comment lines, directory suffixes, `*`, `?`, `**`, and `!` negation are supported.
 - `extensionsCsv` may contain values such as `.zia,.json,.png`; an empty list includes all regular files.
+- Extension filtering lowercases both the filter and candidate extension on every platform, so it
+  is ASCII case-insensitive even on case-sensitive filesystems.
 - The `id` field is a stable 63-bit hash of the absolute, lexically normalized path for quick UI identity, not a persistent filesystem inode.
 - Enumeration is capped at 100,000 matching entries. `Enumerate` stops at the cap; `Page` and `Status` expose `maxEntries` / `truncated` so callers can report it.
+- The current `**/` ignore matcher can match a literal suffix inside a component—for example,
+  `**/bar` also ignores `foobar` (VDOC-192).
+- `.gitignore` cache invalidation uses whole-second modification times only. A quick same-second
+  rewrite can leave old rules cached with no public reset hook (VDOC-193).
 
 ---
 
@@ -891,9 +920,13 @@ entry src/main.zia
 args --dev, --scene=one
 ```
 
-Unknown directives or sections keep safe defaults and add diagnostic records instead of trapping.
+Unknown directives or sections add diagnostic records instead of trapping. Defaults are normally
+retained, subject to the unknown-section exception below.
 Build-only directives outside this tooling subset, such as `embed`, `pack`, and
 `pack-compressed`, therefore appear as diagnostics rather than being expanded.
+There is one current exception to the safe-default rule: directives following an unknown section
+are parsed as top-level directives until the next section header. Always reject `valid=false`
+results rather than consuming their fields (VDOC-194).
 
 ---
 
@@ -915,6 +948,11 @@ Transactional multi-file text edit validation and application.
 Each edit record is a `Map` with `file`, `startLine`, `startColumn`, `endLine`, `endColumn`, `newText`, and optional `expectedMtime` / `expectedSize`. Line and column values are 1-based byte positions. Validation results contain `success`, `editCount`, and `diagnostics`; apply results add `appliedFiles`.
 
 Validation rejects missing files, invalid ranges, overlapping edits in the same file, and stale expected metadata. Apply revalidates immediately before writing, stages every changed file beside its target, and commits each replacement with same-directory renames. If a later commit fails, rollback is best-effort; callers must still inspect `success` and diagnostics rather than treating a multi-file batch as a crash-proof filesystem transaction.
+The current commit phase does not recheck a target after all replacement files have been staged,
+so an external edit during that window can be overwritten (VDOC-195). Backup names are also based
+on a predictable process counter and are not exclusively reserved before rename on POSIX
+(VDOC-196). Serialize edits against other writers and inspect the target directory for stale
+sidecars until those defects are repaired.
 
 ---
 

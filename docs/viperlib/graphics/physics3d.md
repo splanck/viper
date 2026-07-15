@@ -17,13 +17,13 @@ asset pipeline, and scene examples, see [Graphics 3D Guide](../../graphics3d-gui
 
 ---
 
-## Viper.Graphics3D.Physics3DWorld
+## Viper.Graphics3D.PhysicsWorld3D
 
 3D rigid-body simulation world with manual stepping, gravity control, collision contact access,
 and joint integration.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics3D.Physics3DWorld(gx, gy, gz)`
+**Constructor:** `NEW Viper.Graphics3D.PhysicsWorld3D(gx, gy, gz)`
 
 ### Properties
 
@@ -327,7 +327,7 @@ content; bodies now own a collider instead of baking all shape state directly in
 
 ---
 
-## Viper.Graphics3D.Physics3DBody
+## Viper.Graphics3D.PhysicsBody3D
 
 3D rigid body with position, quaternion orientation, linear/angular velocity, collision filtering,
 sleeping, and optional CCD.
@@ -435,7 +435,7 @@ bind Viper.Terminal;
 
 func start() {
     var world = Physics3DWorld.New(0.0, 0.0, 0.0);
-    var body = Physics3DBody.NewSphere(0.5, 1.0);
+    var body = Physics3DBody.Sphere(0.5, 1.0);
     world.Add(body);
 
     body.SetOrientation(Quat.Identity());
@@ -463,8 +463,8 @@ DIM world AS OBJECT
 DIM body AS OBJECT
 DIM q AS OBJECT
 
-world = Viper.Graphics3D.Physics3DWorld.New(0.0, 0.0, 0.0)
-body = Viper.Graphics3D.Physics3DBody.NewSphere(0.5, 1.0)
+world = Viper.Graphics3D.PhysicsWorld3D.New(0.0, 0.0, 0.0)
+body = Viper.Graphics3D.PhysicsBody3D.Sphere(0.5, 1.0)
 world.Add(body)
 
 q = Viper.Math.Quat.Identity()
@@ -472,12 +472,12 @@ body.SetOrientation(q)
 body.ApplyTorque(0.0, 6.0, 0.0)
 world.Step(0.5)
 
-PRINT "Sleeping before: "; body.Sleeping
+PRINT "Sleeping before: "; body.IsSleeping
 body.Sleep()
-PRINT "Sleeping after: "; body.Sleeping
+PRINT "Sleeping after: "; body.IsSleeping
 body.Wake()
 
-body.Kinematic = 1
+body.IsKinematic = 1
 body.SetVelocity(1.0, 0.0, 0.0)
 body.SetAngularVelocity(0.0, 1.0, 0.0)
 world.Step(1.0)

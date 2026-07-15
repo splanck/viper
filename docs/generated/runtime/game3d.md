@@ -12,7 +12,7 @@
 Provides Layers constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Layers` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `World`, `Dynamic`, `Player`.
+Its public surface exposes properties such as `World`, `Dynamic`, `Player`.
 
 #### Properties
 
@@ -29,8 +29,8 @@ surface exposes properties such as `World`, `Dynamic`, `Player`.
 
 Provides Body Shape constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.BodyShape` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Box`, `Sphere`, `Capsule`.
+`Viper.Game3D.BodyShape` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Box`, `Sphere`, `Capsule`.
 
 #### Properties
 
@@ -46,7 +46,8 @@ public surface exposes properties such as `Box`, `Sphere`, `Capsule`.
 Provides Sync Mode constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.SyncMode` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `NodeFromBody`, `BodyFromNode`, `NodeFromAnimRootMotion`.
+Its public surface exposes properties such as `NodeFromBody`, `BodyFromNode`,
+`NodeFromAnimRootMotion`.
 
 #### Properties
 
@@ -62,8 +63,8 @@ surface exposes properties such as `NodeFromBody`, `BodyFromNode`, `NodeFromAnim
 
 Provides Alpha Mode constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.AlphaMode` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Opaque`, `Mask`, `Blend`.
+`Viper.Game3D.AlphaMode` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Opaque`, `Mask`, `Blend`.
 
 #### Properties
 
@@ -78,8 +79,8 @@ public surface exposes properties such as `Opaque`, `Mask`, `Blend`.
 
 Provides Shading Model constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.ShadingModel` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Phong`, `Toon`, `Pbr`.
+`Viper.Game3D.ShadingModel` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Phong`, `Toon`, `Pbr`.
 
 #### Properties
 
@@ -97,8 +98,8 @@ public surface exposes properties such as `Phong`, `Toon`, `Pbr`.
 
 Provides Quality Level constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.QualityLevel` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Performance`, `Balanced`, `Cinematic`.
+`Viper.Game3D.QualityLevel` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Performance`, `Balanced`, `Cinematic`.
 
 #### Properties
 
@@ -113,8 +114,8 @@ public surface exposes properties such as `Performance`, `Balanced`, `Cinematic`
 
 Provides Collision Phase constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.CollisionPhase` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Enter`, `Stay`, `Exit`.
+`Viper.Game3D.CollisionPhase` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Enter`, `Stay`, `Exit`.
 
 #### Properties
 
@@ -125,125 +126,13 @@ public surface exposes properties such as `Enter`, `Stay`, `Exit`.
 | <a id="viper-game3d-collisionphase-exit"></a>`Exit` | `i64` | read-only |
 | <a id="viper-game3d-collisionphase-any"></a>`Any` | `i64` | read-only |
 
-<a id="viper-game3d-keys"></a>
-### `Viper.Game3D.Keys`
-
-Provides Keys constants and static operations for Game3D worlds and gameplay systems.
-
-`Viper.Game3D.Keys` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `KeyW`, `KeyA`, `KeyS`.
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-game3d-keys-keyw"></a>`KeyW` | `i64` | read-only |
-| <a id="viper-game3d-keys-keya"></a>`KeyA` | `i64` | read-only |
-| <a id="viper-game3d-keys-keys"></a>`KeyS` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyd"></a>`KeyD` | `i64` | read-only |
-| <a id="viper-game3d-keys-space"></a>`Space` | `i64` | read-only |
-| <a id="viper-game3d-keys-escape"></a>`Escape` | `i64` | read-only |
-| <a id="viper-game3d-keys-shift"></a>`Shift` | `i64` | read-only |
-| <a id="viper-game3d-keys-ctrl"></a>`Ctrl` | `i64` | read-only |
-| <a id="viper-game3d-keys-up"></a>`Up` | `i64` | read-only |
-| <a id="viper-game3d-keys-down"></a>`Down` | `i64` | read-only |
-| <a id="viper-game3d-keys-left"></a>`Left` | `i64` | read-only |
-| <a id="viper-game3d-keys-right"></a>`Right` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf11"></a>`KeyF11` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyb"></a>`KeyB` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyc"></a>`KeyC` | `i64` | read-only |
-| <a id="viper-game3d-keys-keye"></a>`KeyE` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf"></a>`KeyF` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyg"></a>`KeyG` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyh"></a>`KeyH` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyi"></a>`KeyI` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyj"></a>`KeyJ` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyk"></a>`KeyK` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyl"></a>`KeyL` | `i64` | read-only |
-| <a id="viper-game3d-keys-keym"></a>`KeyM` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyn"></a>`KeyN` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyo"></a>`KeyO` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyp"></a>`KeyP` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyq"></a>`KeyQ` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyr"></a>`KeyR` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyt"></a>`KeyT` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyu"></a>`KeyU` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyv"></a>`KeyV` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyx"></a>`KeyX` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyy"></a>`KeyY` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyz"></a>`KeyZ` | `i64` | read-only |
-| <a id="viper-game3d-keys-key0"></a>`Key0` | `i64` | read-only |
-| <a id="viper-game3d-keys-key1"></a>`Key1` | `i64` | read-only |
-| <a id="viper-game3d-keys-key2"></a>`Key2` | `i64` | read-only |
-| <a id="viper-game3d-keys-key3"></a>`Key3` | `i64` | read-only |
-| <a id="viper-game3d-keys-key4"></a>`Key4` | `i64` | read-only |
-| <a id="viper-game3d-keys-key5"></a>`Key5` | `i64` | read-only |
-| <a id="viper-game3d-keys-key6"></a>`Key6` | `i64` | read-only |
-| <a id="viper-game3d-keys-key7"></a>`Key7` | `i64` | read-only |
-| <a id="viper-game3d-keys-key8"></a>`Key8` | `i64` | read-only |
-| <a id="viper-game3d-keys-key9"></a>`Key9` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf1"></a>`KeyF1` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf2"></a>`KeyF2` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf3"></a>`KeyF3` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf4"></a>`KeyF4` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf5"></a>`KeyF5` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf6"></a>`KeyF6` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf7"></a>`KeyF7` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf8"></a>`KeyF8` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf9"></a>`KeyF9` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf10"></a>`KeyF10` | `i64` | read-only |
-| <a id="viper-game3d-keys-keyf12"></a>`KeyF12` | `i64` | read-only |
-| <a id="viper-game3d-keys-enter"></a>`Enter` | `i64` | read-only |
-| <a id="viper-game3d-keys-tab"></a>`Tab` | `i64` | read-only |
-| <a id="viper-game3d-keys-backspace"></a>`Backspace` | `i64` | read-only |
-| <a id="viper-game3d-keys-insert"></a>`Insert` | `i64` | read-only |
-| <a id="viper-game3d-keys-delete"></a>`Delete` | `i64` | read-only |
-| <a id="viper-game3d-keys-home"></a>`Home` | `i64` | read-only |
-| <a id="viper-game3d-keys-end"></a>`End` | `i64` | read-only |
-| <a id="viper-game3d-keys-pageup"></a>`PageUp` | `i64` | read-only |
-| <a id="viper-game3d-keys-pagedown"></a>`PageDown` | `i64` | read-only |
-| <a id="viper-game3d-keys-alt"></a>`Alt` | `i64` | read-only |
-| <a id="viper-game3d-keys-lshift"></a>`LShift` | `i64` | read-only |
-| <a id="viper-game3d-keys-rshift"></a>`RShift` | `i64` | read-only |
-| <a id="viper-game3d-keys-lctrl"></a>`LCtrl` | `i64` | read-only |
-| <a id="viper-game3d-keys-rctrl"></a>`RCtrl` | `i64` | read-only |
-| <a id="viper-game3d-keys-lalt"></a>`LAlt` | `i64` | read-only |
-| <a id="viper-game3d-keys-ralt"></a>`RAlt` | `i64` | read-only |
-| <a id="viper-game3d-keys-quote"></a>`Quote` | `i64` | read-only |
-| <a id="viper-game3d-keys-comma"></a>`Comma` | `i64` | read-only |
-| <a id="viper-game3d-keys-minus"></a>`Minus` | `i64` | read-only |
-| <a id="viper-game3d-keys-period"></a>`Period` | `i64` | read-only |
-| <a id="viper-game3d-keys-slash"></a>`Slash` | `i64` | read-only |
-| <a id="viper-game3d-keys-semicolon"></a>`Semicolon` | `i64` | read-only |
-| <a id="viper-game3d-keys-equals"></a>`Equals` | `i64` | read-only |
-| <a id="viper-game3d-keys-lbracket"></a>`LBracket` | `i64` | read-only |
-| <a id="viper-game3d-keys-backslash"></a>`Backslash` | `i64` | read-only |
-| <a id="viper-game3d-keys-rbracket"></a>`RBracket` | `i64` | read-only |
-| <a id="viper-game3d-keys-grave"></a>`Grave` | `i64` | read-only |
-| <a id="viper-game3d-keys-num0"></a>`Num0` | `i64` | read-only |
-| <a id="viper-game3d-keys-num1"></a>`Num1` | `i64` | read-only |
-| <a id="viper-game3d-keys-num2"></a>`Num2` | `i64` | read-only |
-| <a id="viper-game3d-keys-num3"></a>`Num3` | `i64` | read-only |
-| <a id="viper-game3d-keys-num4"></a>`Num4` | `i64` | read-only |
-| <a id="viper-game3d-keys-num5"></a>`Num5` | `i64` | read-only |
-| <a id="viper-game3d-keys-num6"></a>`Num6` | `i64` | read-only |
-| <a id="viper-game3d-keys-num7"></a>`Num7` | `i64` | read-only |
-| <a id="viper-game3d-keys-num8"></a>`Num8` | `i64` | read-only |
-| <a id="viper-game3d-keys-num9"></a>`Num9` | `i64` | read-only |
-| <a id="viper-game3d-keys-numdot"></a>`NumDot` | `i64` | read-only |
-| <a id="viper-game3d-keys-numdiv"></a>`NumDiv` | `i64` | read-only |
-| <a id="viper-game3d-keys-nummul"></a>`NumMul` | `i64` | read-only |
-| <a id="viper-game3d-keys-numsub"></a>`NumSub` | `i64` | read-only |
-| <a id="viper-game3d-keys-numadd"></a>`NumAdd` | `i64` | read-only |
-| <a id="viper-game3d-keys-numenter"></a>`NumEnter` | `i64` | read-only |
-
 <a id="viper-game3d-mousebuttons"></a>
 ### `Viper.Game3D.MouseButtons`
 
 Provides Mouse Buttons constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.MouseButtons` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Left`, `Right`, `Middle`.
+`Viper.Game3D.MouseButtons` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Left`, `Right`, `Middle`.
 
 #### Properties
 
@@ -261,7 +150,7 @@ public surface exposes properties such as `Left`, `Right`, `Middle`.
 Provides Layer Mask functionality for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.LayerMask` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes a property such as `Bits` and
+construct the class directly. Its public surface exposes properties such as `Bits` and
 operations including `None`, `All`, `Of`, `Include`.
 
 #### Properties
@@ -287,8 +176,8 @@ Provides Input 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.Input3D` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`LookSensitivity`, `PadBound`, `PadLookSensitivity` and operations including `Update`, `IsDown`,
-`Pressed`, `Released`.
+`LookSensitivity`, `PadBound`, `PadLookSensitivity` and operations including `Update`,
+`IsDown`, `Pressed`, `Released`.
 
 Constructor: `Viper.Game3D.Input3D.New`
 
@@ -391,7 +280,7 @@ Provides Sound 3D functionality for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Sound3D` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Listener`,
-`ListenerFollowsCamera`, `RefDistance` and operations including `ListenerFollowCamera`,
+`ListenerFollowsCamera`, `ReferenceDistance` and operations including `ListenerFollowCamera`,
 `SetListenerPose`, `SetAttenuation`, `Load`.
 
 #### Properties
@@ -400,7 +289,7 @@ construct the class directly. Its public surface exposes properties such as `Lis
 |---|---|---|
 | <a id="viper-game3d-sound3d-listener"></a>`Listener` | `obj<Viper.Graphics3D.SoundListener3D>` | read-only |
 | <a id="viper-game3d-sound3d-listenerfollowscamera"></a>`ListenerFollowsCamera` | `i1` | read-only |
-| <a id="viper-game3d-sound3d-refdistance"></a>`RefDistance` | `f64` | read-only |
+| <a id="viper-game3d-sound3d-referencedistance"></a>`ReferenceDistance` | `f64` | read-only |
 | <a id="viper-game3d-sound3d-maxdistance"></a>`MaxDistance` | `f64` | read-only |
 | <a id="viper-game3d-sound3d-volume"></a>`Volume` | `i64` | read/write |
 | <a id="viper-game3d-sound3d-sourcecount"></a>`SourceCount` | `i64` | read-only |
@@ -413,8 +302,8 @@ construct the class directly. Its public surface exposes properties such as `Lis
 | <a id="viper-game3d-sound3d-listenerfollowcamera"></a>`ListenerFollowCamera` | `void(i1)` | `Viper.Game3D.Sound3D.ListenerFollowCamera` |
 | <a id="viper-game3d-sound3d-setlistenerpose"></a>`SetListenerPose` | `void(obj,obj,obj)` | `Viper.Game3D.Sound3D.SetListenerPose` |
 | <a id="viper-game3d-sound3d-setattenuation"></a>`SetAttenuation` | `void(f64,f64)` | `Viper.Game3D.Sound3D.SetAttenuation` |
-| <a id="viper-game3d-sound3d-load"></a>`Load` | `obj<Viper.Sound.Sound>(str)` | `Viper.Game3D.Sound3D.Load` |
-| <a id="viper-game3d-sound3d-loadasset"></a>`LoadAsset` | `obj<Viper.Sound.Sound>(str)` | `Viper.Game3D.Sound3D.LoadAsset` |
+| <a id="viper-game3d-sound3d-load"></a>`Load` | `obj<Viper.Audio.Sound>(str)` | `Viper.Game3D.Sound3D.Load` |
+| <a id="viper-game3d-sound3d-loadasset"></a>`LoadAsset` | `obj<Viper.Audio.Sound>(str)` | `Viper.Game3D.Sound3D.LoadAsset` |
 | <a id="viper-game3d-sound3d-playat"></a>`PlayAt` | `obj<Viper.Graphics3D.SoundSource3D>(obj,obj)` | `Viper.Game3D.Sound3D.PlayAt` |
 | <a id="viper-game3d-sound3d-playattached"></a>`PlayAttached` | `obj<Viper.Graphics3D.SoundSource3D>(obj,obj)` | `Viper.Game3D.Sound3D.PlayAttached` |
 | <a id="viper-game3d-sound3d-play2d"></a>`Play2D` | `i64(obj)` | `Viper.Game3D.Sound3D.Play2D` |
@@ -431,8 +320,8 @@ construct the class directly. Its public surface exposes properties such as `Lis
 
 Provides Render Pass constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.RenderPass` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Shadow`, `Opaque`, `Transparent`.
+`Viper.Game3D.RenderPass` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Shadow`, `Opaque`, `Transparent`.
 
 #### Properties
 
@@ -450,8 +339,8 @@ public surface exposes properties such as `Shadow`, `Opaque`, `Transparent`.
 
 Provides Hitch Source constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.HitchSource` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `StreamCommit`, `FrameTotal`.
+`Viper.Game3D.HitchSource` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `StreamCommit`, `FrameTotal`.
 
 #### Properties
 
@@ -466,7 +355,7 @@ public surface exposes properties such as `StreamCommit`, `FrameTotal`.
 Provides Minimap 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.Minimap3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as
+object with the instance members below. Its public surface exposes properties such as
 `MarkerCount` and operations including `SetMapImage`, `SetTrackedEntity`, `SetViewport`,
 `SetCompass`.
 
@@ -504,7 +393,7 @@ Constructor: `Viper.Game3D.Minimap3D.New`
 Provides Reverb Zone 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.ReverbZone3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Priority` and operations including `WithReverb`.
 
 Constructor: `Viper.Game3D.ReverbZone3D.New`
@@ -544,8 +433,8 @@ Constructor: `Viper.Game3D.AmbientBed3D.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-game3d-ambientbed3d-addzone"></a>`AddZone` | `obj(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Sound.Sound>,i64)` | `Viper.Game3D.AmbientBed3D.AddZone` |
-| <a id="viper-game3d-ambientbed3d-setdefault"></a>`SetDefault` | `obj(obj<Viper.Sound.Sound>,i64)` | `Viper.Game3D.AmbientBed3D.SetDefault` |
+| <a id="viper-game3d-ambientbed3d-addzone"></a>`AddZone` | `obj(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Audio.Sound>,i64)` | `Viper.Game3D.AmbientBed3D.AddZone` |
+| <a id="viper-game3d-ambientbed3d-setdefault"></a>`SetDefault` | `obj(obj<Viper.Audio.Sound>,i64)` | `Viper.Game3D.AmbientBed3D.SetDefault` |
 | <a id="viper-game3d-ambientbed3d-new"></a>`New` | `obj(obj<Viper.Game3D.World3D>)` | `Viper.Game3D.AmbientBed3D.New` |
 
 <a id="viper-game3d-effectregistry3d"></a>
@@ -554,8 +443,9 @@ Constructor: `Viper.Game3D.AmbientBed3D.New`
 Provides Effect Registry 3D functionality for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.EffectRegistry3D` exposes a registry-backed runtime surface without requiring
-callers to construct the class directly. Its public surface exposes properties such as `PostFx`,
-`Count`, `ParticlesCount` and operations including `AddParticles`, `AddDecal`, `Update`, `Draw`.
+callers to construct the class directly. Its public surface exposes properties such as
+`PostFx`, `Count`, `ParticlesCount` and operations including `AddParticles`, `AddDecal`,
+`Update`, `Draw`.
 
 #### Properties
 
@@ -581,8 +471,8 @@ callers to construct the class directly. Its public surface exposes properties s
 
 Provides Effects 3D constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.Effects3D` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `Explosion`, `Sparks`, `Dust`, `Smoke`.
+`Viper.Game3D.Effects3D` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `Explosion`, `Sparks`, `Dust`, `Smoke`.
 
 #### Methods
 
@@ -600,9 +490,9 @@ public surface exposes operations including `Explosion`, `Sparks`, `Dust`, `Smok
 Provides Character Controller 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.CharacterController3D` values through its registered constructor and use
-the returned object with the instance members below. Its public surface exposes properties such
-as `Character`, `Entity`, `Speed` and operations including `Update`, `Teleport`, `Grounded`,
-`SetCrouching`.
+the returned object with the instance members below. Its public surface exposes properties
+such as `Character`, `Entity`, `Speed` and operations including `Update`, `Teleport`,
+`IsGrounded`, `SetCrouching`.
 
 Constructor: `Viper.Game3D.CharacterController3D.New`
 
@@ -625,7 +515,7 @@ Constructor: `Viper.Game3D.CharacterController3D.New`
 |---|---|---|
 | <a id="viper-game3d-charactercontroller3d-update"></a>`Update` | `void(obj,obj,f64)` | `Viper.Game3D.CharacterController3D.Update` |
 | <a id="viper-game3d-charactercontroller3d-teleport"></a>`Teleport` | `void(f64,f64,f64)` | `Viper.Game3D.CharacterController3D.Teleport` |
-| <a id="viper-game3d-charactercontroller3d-grounded"></a>`Grounded` | `i1()` | `Viper.Game3D.CharacterController3D.Grounded` |
+| <a id="viper-game3d-charactercontroller3d-isgrounded"></a>`IsGrounded` | `i1()` | `Viper.Game3D.CharacterController3D.IsGrounded` |
 | <a id="viper-game3d-charactercontroller3d-setcrouching"></a>`SetCrouching` | `i1(i1)` | `Viper.Game3D.CharacterController3D.SetCrouching` |
 | <a id="viper-game3d-charactercontroller3d-iscrouching"></a>`IsCrouching` | `i1()` | `Viper.Game3D.CharacterController3D.IsCrouching` |
 | <a id="viper-game3d-charactercontroller3d-issliding"></a>`IsSliding` | `i1()` | `Viper.Game3D.CharacterController3D.IsSliding` |
@@ -640,8 +530,8 @@ Constructor: `Viper.Game3D.CharacterController3D.New`
 Provides First Person Controller functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.FirstPersonController` values through its registered constructor and use
-the returned object with the instance members below. Its public surface exposes properties such
-as `Character`, `Speed`, `LookSensitivity` and operations including `CaptureMouse`,
+the returned object with the instance members below. Its public surface exposes properties
+such as `Character`, `Speed`, `LookSensitivity` and operations including `CaptureMouse`,
 `ReleaseMouse`, `Update`, `LateUpdate`.
 
 Constructor: `Viper.Game3D.FirstPersonController.New`
@@ -754,8 +644,8 @@ Constructor: `Viper.Game3D.FollowController.New`
 Provides Third Person Controller functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.ThirdPersonController` values through its registered constructor and use
-the returned object with the instance members below. Its public surface exposes properties such
-as `Target`, `Character`, `Distance` and operations including `Update`, `LateUpdate`.
+the returned object with the instance members below. Its public surface exposes properties
+such as `Target`, `Character`, `Distance` and operations including `Update`, `LateUpdate`.
 
 Constructor: `Viper.Game3D.ThirdPersonController.New`
 
@@ -796,8 +686,8 @@ Provides Rail Camera 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.RailCamera3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Progress`, `Speed`, `PositionDamping` and operations including `SetLookEntity`, `SetLookPoint`,
-`SetLookPath`, `AddFovKey`.
+`Progress`, `Speed`, `PositionDamping` and operations including `SetLookEntity`,
+`SetLookPoint`, `SetLookPath`, `AddFovKey`.
 
 Constructor: `Viper.Game3D.RailCamera3D.New`
 
@@ -868,7 +758,7 @@ Provides Timeline 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.Timeline3D` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`Duration`, `Time`, `Playing` and operations including `AddCameraCut`, `AddCameraMove`,
+`Duration`, `Time`, `IsPlaying` and operations including `AddCameraCut`, `AddCameraMove`,
 `AddFovRamp`, `AddAnim`.
 
 Constructor: `Viper.Game3D.Timeline3D.New`
@@ -879,8 +769,8 @@ Constructor: `Viper.Game3D.Timeline3D.New`
 |---|---|---|
 | <a id="viper-game3d-timeline3d-duration"></a>`Duration` | `f64` | read-only |
 | <a id="viper-game3d-timeline3d-time"></a>`Time` | `f64` | read-only |
-| <a id="viper-game3d-timeline3d-playing"></a>`Playing` | `i1` | read-only |
-| <a id="viper-game3d-timeline3d-finished"></a>`Finished` | `i1` | read-only |
+| <a id="viper-game3d-timeline3d-isplaying"></a>`IsPlaying` | `i1` | read-only |
+| <a id="viper-game3d-timeline3d-isfinished"></a>`IsFinished` | `i1` | read-only |
 | <a id="viper-game3d-timeline3d-skippable"></a>`Skippable` | `i1` | read/write |
 
 #### Methods
@@ -910,8 +800,9 @@ Constructor: `Viper.Game3D.Timeline3D.New`
 Provides Dialogue 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.Dialogue3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Active`,
-`LineCount`, `ChoicePending` and operations including `Say`, `SayVoiced`, `AskChoice`, `Show`.
+object with the instance members below. Its public surface exposes properties such as
+`IsActive`, `LineCount`, `ChoicePending` and operations including `Say`, `SayVoiced`,
+`AskChoice`, `Show`.
 
 Constructor: `Viper.Game3D.Dialogue3D.New`
 
@@ -919,7 +810,7 @@ Constructor: `Viper.Game3D.Dialogue3D.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game3d-dialogue3d-active"></a>`Active` | `i1` | read-only |
+| <a id="viper-game3d-dialogue3d-isactive"></a>`IsActive` | `i1` | read-only |
 | <a id="viper-game3d-dialogue3d-linecount"></a>`LineCount` | `i64` | read-only |
 | <a id="viper-game3d-dialogue3d-choicepending"></a>`ChoicePending` | `i1` | read-only |
 
@@ -953,8 +844,9 @@ Constructor: `Viper.Game3D.Dialogue3D.New`
 Provides Lip Sync 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.LipSync3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Driving`,
-`Level` and operations including `BindMorph`, `BindMouthShape`, `BindHeadBone`, `Drive`.
+object with the instance members below. Its public surface exposes properties such as
+`IsDriving`, `Level` and operations including `BindMorph`, `BindMouthShape`, `BindHeadBone`,
+`Drive`.
 
 Constructor: `Viper.Game3D.LipSync3D.New`
 
@@ -962,7 +854,7 @@ Constructor: `Viper.Game3D.LipSync3D.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game3d-lipsync3d-driving"></a>`Driving` | `i1` | read-only |
+| <a id="viper-game3d-lipsync3d-isdriving"></a>`IsDriving` | `i1` | read-only |
 | <a id="viper-game3d-lipsync3d-level"></a>`Level` | `f64` | read-only |
 
 #### Methods
@@ -997,7 +889,7 @@ Constructor: `Viper.Game3D.Hitbox3D.New`
 | <a id="viper-game3d-hitbox3d-kind"></a>`Kind` | `i64` | read/write |
 | <a id="viper-game3d-hitbox3d-team"></a>`Team` | `i64` | read/write |
 | <a id="viper-game3d-hitbox3d-channel"></a>`Channel` | `i64` | read/write |
-| <a id="viper-game3d-hitbox3d-active"></a>`Active` | `i1` | read/write |
+| <a id="viper-game3d-hitbox3d-isactive"></a>`IsActive` | `i1` | read/write |
 | <a id="viper-game3d-hitbox3d-friendlyfire"></a>`FriendlyFire` | `i1` | read/write |
 
 #### Methods
@@ -1014,8 +906,8 @@ Constructor: `Viper.Game3D.Hitbox3D.New`
 
 Provides Hitbox Kind constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.HitboxKind` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Hurt`, `Hit`.
+`Viper.Game3D.HitboxKind` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Hurt`, `Hit`.
 
 #### Properties
 
@@ -1029,8 +921,8 @@ public surface exposes properties such as `Hurt`, `Hit`.
 
 Provides Hit Event 3D constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.HitEvent3D` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Attacker`, `Victim`, `Hitbox` and operations
+`Viper.Game3D.HitEvent3D` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Attacker`, `Victim`, `Hitbox` and operations
 including `Point`, `Normal`.
 
 #### Properties
@@ -1055,8 +947,8 @@ including `Point`, `Normal`.
 Provides Health 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.Health3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Current`,
-`Max`, `IsDead` and operations including `Damage`, `Heal`, `Revive`, `JustDied`.
+object with the instance members below. Its public surface exposes properties such as
+`Current`, `Max`, `IsDead` and operations including `Damage`, `Heal`, `Revive`, `JustDied`.
 
 Constructor: `Viper.Game3D.Health3D.New`
 
@@ -1067,8 +959,8 @@ Constructor: `Viper.Game3D.Health3D.New`
 | <a id="viper-game3d-health3d-current"></a>`Current` | `f64` | read-only |
 | <a id="viper-game3d-health3d-max"></a>`Max` | `f64` | read/write |
 | <a id="viper-game3d-health3d-isdead"></a>`IsDead` | `i1` | read-only |
-| <a id="viper-game3d-health3d-invulnseconds"></a>`InvulnSeconds` | `f64` | read/write |
-| <a id="viper-game3d-health3d-invulnerable"></a>`Invulnerable` | `i1` | read-only |
+| <a id="viper-game3d-health3d-invulnerabilityseconds"></a>`InvulnerabilitySeconds` | `f64` | read/write |
+| <a id="viper-game3d-health3d-isinvulnerable"></a>`IsInvulnerable` | `i1` | read-only |
 
 #### Methods
 
@@ -1089,8 +981,8 @@ Constructor: `Viper.Game3D.Health3D.New`
 
 Provides Damage Event 3D constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.DamageEvent3D` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `Victim`, `Source`, `Amount`.
+`Viper.Game3D.DamageEvent3D` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `Victim`, `Source`, `Amount`.
 
 #### Properties
 
@@ -1108,8 +1000,9 @@ public surface exposes properties such as `Victim`, `Source`, `Amount`.
 Coordinates a Game3D world, scene, camera, physics, streaming, and gameplay systems.
 
 Create `Viper.Game3D.World3D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Canvas`,
-`Camera`, `Scene` and operations including `AddCloth`, `RemoveCloth`, `SaveState`, `LoadState`.
+object with the instance members below. Its public surface exposes properties such as
+`Canvas`, `Camera`, `Scene` and operations including `AddCloth`, `RemoveCloth`, `SaveState`,
+`LoadState`.
 
 Constructor: `Viper.Game3D.World3D.New`
 
@@ -1120,12 +1013,12 @@ Constructor: `Viper.Game3D.World3D.New`
 | <a id="viper-game3d-world3d-canvas"></a>`Canvas` | `obj<Viper.Graphics3D.Canvas3D>` | read-only |
 | <a id="viper-game3d-world3d-camera"></a>`Camera` | `obj<Viper.Graphics3D.Camera3D>` | read-only |
 | <a id="viper-game3d-world3d-scene"></a>`Scene` | `obj<Viper.Graphics3D.SceneGraph>` | read-only |
-| <a id="viper-game3d-world3d-physics"></a>`Physics` | `obj<Viper.Graphics3D.Physics3DWorld>` | read-only |
+| <a id="viper-game3d-world3d-physics"></a>`Physics` | `obj<Viper.Graphics3D.PhysicsWorld3D>` | read-only |
 | <a id="viper-game3d-world3d-input"></a>`Input` | `obj<Viper.Game3D.Input3D>` | read-only |
 | <a id="viper-game3d-world3d-audio"></a>`Audio` | `obj<Viper.Game3D.Sound3D>` | read-only |
 | <a id="viper-game3d-world3d-effects"></a>`Effects` | `obj<Viper.Game3D.EffectRegistry3D>` | read-only |
 | <a id="viper-game3d-world3d-stream"></a>`Stream` | `obj<Viper.Game3D.WorldStream3D>` | read-only |
-| <a id="viper-game3d-world3d-dt"></a>`Dt` | `f64` | read-only |
+| <a id="viper-game3d-world3d-deltatime"></a>`DeltaTime` | `f64` | read-only |
 | <a id="viper-game3d-world3d-elapsed"></a>`Elapsed` | `f64` | read-only |
 | <a id="viper-game3d-world3d-frame"></a>`Frame` | `i64` | read-only |
 | <a id="viper-game3d-world3d-droppedfixedsteps"></a>`DroppedFixedSteps` | `i64` | read-only |
@@ -1146,8 +1039,8 @@ Constructor: `Viper.Game3D.World3D.New`
 | <a id="viper-game3d-world3d-iblenabled"></a>`IblEnabled` | `i1` | read/write |
 | <a id="viper-game3d-world3d-iblintensity"></a>`IblIntensity` | `f64` | read/write |
 | <a id="viper-game3d-world3d-timescale"></a>`TimeScale` | `f64` | read/write |
-| <a id="viper-game3d-world3d-paused"></a>`Paused` | `i1` | read/write |
-| <a id="viper-game3d-world3d-unscaleddt"></a>`UnscaledDt` | `f64` | read-only |
+| <a id="viper-game3d-world3d-ispaused"></a>`IsPaused` | `i1` | read/write |
+| <a id="viper-game3d-world3d-unscaleddeltatime"></a>`UnscaledDeltaTime` | `f64` | read-only |
 | <a id="viper-game3d-world3d-unscaledelapsed"></a>`UnscaledElapsed` | `f64` | read-only |
 | <a id="viper-game3d-world3d-activetimeline"></a>`ActiveTimeline` | `obj<Viper.Game3D.Timeline3D>` | read-only |
 
@@ -1182,10 +1075,8 @@ Constructor: `Viper.Game3D.World3D.New`
 | <a id="viper-game3d-world3d-spawn"></a>`Spawn` | `obj(obj)` | `Viper.Game3D.World3D.Spawn` |
 | <a id="viper-game3d-world3d-spawnheightfieldcollider"></a>`SpawnHeightfieldCollider` | `obj(obj,f64,f64,f64,f64,f64,f64)` | `Viper.Game3D.World3D.SpawnHeightfieldCollider` |
 | <a id="viper-game3d-world3d-despawn"></a>`Despawn` | `void(obj)` | `Viper.Game3D.World3D.Despawn` |
-| <a id="viper-game3d-world3d-findnode"></a>`FindNode` | `obj(str)` | `Viper.Game3D.World3D.FindNode` |
-| <a id="viper-game3d-world3d-findnodeoption"></a>`FindNodeOption` | `obj<Viper.Option>(str)` | `Viper.Game3D.World3D.FindNodeOption` |
-| <a id="viper-game3d-world3d-findentity"></a>`FindEntity` | `obj(str)` | `Viper.Game3D.World3D.FindEntity` |
-| <a id="viper-game3d-world3d-findentityoption"></a>`FindEntityOption` | `obj<Viper.Option>(str)` | `Viper.Game3D.World3D.FindEntityOption` |
+| <a id="viper-game3d-world3d-findnode"></a>`FindNode` | `obj<Viper.Option>(str)` | `Viper.Game3D.World3D.FindNode` |
+| <a id="viper-game3d-world3d-findentity"></a>`FindEntity` | `obj<Viper.Option>(str)` | `Viper.Game3D.World3D.FindEntity` |
 | <a id="viper-game3d-world3d-setcameracontroller"></a>`SetCameraController` | `void(obj)` | `Viper.Game3D.World3D.SetCameraController` |
 | <a id="viper-game3d-world3d-lookat"></a>`LookAt` | `void(obj)` | `Viper.Game3D.World3D.LookAt` |
 | <a id="viper-game3d-world3d-onresize"></a>`OnResize` | `void(i64,i64)` | `Viper.Game3D.World3D.OnResize` |
@@ -1216,7 +1107,7 @@ Constructor: `Viper.Game3D.World3D.New`
 | <a id="viper-game3d-world3d-runfixedwithoverlay"></a>`RunFixedWithOverlay` | `void(f64,obj,obj)` | `Viper.Game3D.World3D.RunFixedWithOverlay` |
 | <a id="viper-game3d-world3d-runframes"></a>`RunFrames` | `void(i64,f64,obj)` | `Viper.Game3D.World3D.RunFrames` |
 | <a id="viper-game3d-world3d-runframesonly"></a>`RunFramesOnly` | `void(i64,f64)` | `Viper.Game3D.World3D.RunFramesOnly` |
-| <a id="viper-game3d-world3d-tick"></a>`Tick` | `i1()` | `Viper.Game3D.World3D.Tick` |
+| <a id="viper-game3d-world3d-update"></a>`Update` | `i1()` | `Viper.Game3D.World3D.Update` |
 | <a id="viper-game3d-world3d-stepsimulation"></a>`StepSimulation` | `void(f64)` | `Viper.Game3D.World3D.StepSimulation` |
 | <a id="viper-game3d-world3d-beginframe"></a>`BeginFrame` | `void()` | `Viper.Game3D.World3D.BeginFrame` |
 | <a id="viper-game3d-world3d-drawscene"></a>`DrawScene` | `void()` | `Viper.Game3D.World3D.DrawScene` |
@@ -1234,8 +1125,8 @@ Provides World Stream 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.WorldStream3D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`ResidentCellCount`, `ResidentTerrainTileCount`, `PendingRequestCount` and operations including
-`GetResidentTerrainTile`, `GetCellCount`, `GetCellName`, `GetCellCenter`.
+`ResidentCellCount`, `ResidentTerrainTileCount`, `PendingRequestCount` and operations
+including `GetResidentTerrainTile`, `GetCellCount`, `GetCellName`, `GetCellCenter`.
 
 Constructor: `Viper.Game3D.WorldStream3D.New`
 
@@ -1311,7 +1202,7 @@ Constructor: `Viper.Game3D.WorldStream3D.New`
 Provides Lighting constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Lighting` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Studio`, `Outdoor`, `Night`, `Interior`.
+Its public surface exposes operations including `Studio`, `Outdoor`, `Night`, `Interior`.
 
 #### Methods
 
@@ -1328,8 +1219,8 @@ surface exposes operations including `Studio`, `Outdoor`, `Night`, `Interior`.
 
 Provides Materials constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.Materials` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `Plastic`, `Metal`, `Rubber`, `Glass`.
+`Viper.Game3D.Materials` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `Plastic`, `Metal`, `Rubber`, `Glass`.
 
 #### Methods
 
@@ -1349,7 +1240,7 @@ public surface exposes operations including `Plastic`, `Metal`, `Rubber`, `Glass
 Provides Post FX constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.PostFX` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Cinematic`, `Crisp`, `None`.
+Its public surface exposes operations including `Cinematic`, `Crisp`, `None`.
 
 #### Methods
 
@@ -1365,7 +1256,7 @@ surface exposes operations including `Cinematic`, `Crisp`, `None`.
 Provides Quality constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Quality` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Apply`.
+Its public surface exposes operations including `Apply`.
 
 #### Methods
 
@@ -1379,7 +1270,7 @@ surface exposes operations including `Apply`.
 Provides Prefab constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Prefab` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Box`, `BoxXYZ`, `Sphere`, `Cylinder`.
+Its public surface exposes operations including `Box`, `BoxXYZ`, `Sphere`, `Cylinder`.
 
 #### Methods
 
@@ -1441,8 +1332,8 @@ construct the class directly. Its public surface exposes properties such as `Sha
 Provides Collision 3D Event functionality for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Collision3DEvent` exposes a registry-backed runtime surface without requiring
-callers to construct the class directly. Its public surface exposes properties such as `Phase`,
-`EntityA`, `EntityB` and operations including `Point`, `Normal`, `ContactPoint`,
+callers to construct the class directly. Its public surface exposes properties such as
+`Phase`, `EntityA`, `EntityB` and operations including `Point`, `Normal`, `ContactPoint`,
 `ContactNormal`.
 
 #### Properties
@@ -1475,8 +1366,8 @@ callers to construct the class directly. Its public surface exposes properties s
 Provides Assets 3D constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Assets3D` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `LoadEntity`, `LoadEntityAsset`, `LoadAnimation`,
-`LoadAnimationAsset`.
+Its public surface exposes operations including `LoadEntity`, `LoadEntityAsset`,
+`LoadAnimation`, `LoadAnimationAsset`.
 
 #### Methods
 
@@ -1488,16 +1379,8 @@ surface exposes operations including `LoadEntity`, `LoadEntityAsset`, `LoadAnima
 | <a id="viper-game3d-assets3d-loadanimationasset"></a>`LoadAnimationAsset` | `obj<Viper.Graphics3D.Animation3D>(str,i64)` | `Viper.Game3D.Assets3D.LoadAnimationAsset` |
 | <a id="viper-game3d-assets3d-loadnodeanimation"></a>`LoadNodeAnimation` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `Viper.Game3D.Assets3D.LoadNodeAnimation` |
 | <a id="viper-game3d-assets3d-loadnodeanimationasset"></a>`LoadNodeAnimationAsset` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `Viper.Game3D.Assets3D.LoadNodeAnimationAsset` |
-| <a id="viper-game3d-assets3d-loadtemplate"></a>`LoadTemplate` | `obj(str)` | `Viper.Game3D.Assets3D.LoadTemplate` |
-| <a id="viper-game3d-assets3d-loadtemplateasset"></a>`LoadTemplateAsset` | `obj(str)` | `Viper.Game3D.Assets3D.LoadTemplateAsset` |
-| <a id="viper-game3d-assets3d-loadprefab"></a>`LoadPrefab` | `obj(str)` | `Viper.Game3D.Assets3D.LoadPrefab` |
-| <a id="viper-game3d-assets3d-loadprefabasset"></a>`LoadPrefabAsset` | `obj(str)` | `Viper.Game3D.Assets3D.LoadPrefabAsset` |
 | <a id="viper-game3d-assets3d-loadentityasync"></a>`LoadEntityAsync` | `obj(str)` | `Viper.Game3D.Assets3D.LoadEntityAsync` |
 | <a id="viper-game3d-assets3d-loadentityassetasync"></a>`LoadEntityAssetAsync` | `obj(str)` | `Viper.Game3D.Assets3D.LoadEntityAssetAsync` |
-| <a id="viper-game3d-assets3d-loadtemplateasync"></a>`LoadTemplateAsync` | `obj(str)` | `Viper.Game3D.Assets3D.LoadTemplateAsync` |
-| <a id="viper-game3d-assets3d-loadtemplateassetasync"></a>`LoadTemplateAssetAsync` | `obj(str)` | `Viper.Game3D.Assets3D.LoadTemplateAssetAsync` |
-| <a id="viper-game3d-assets3d-loadprefabasync"></a>`LoadPrefabAsync` | `obj(str)` | `Viper.Game3D.Assets3D.LoadPrefabAsync` |
-| <a id="viper-game3d-assets3d-loadprefabassetasync"></a>`LoadPrefabAssetAsync` | `obj(str)` | `Viper.Game3D.Assets3D.LoadPrefabAssetAsync` |
 | <a id="viper-game3d-assets3d-setresidencybudget"></a>`SetResidencyBudget` | `void(i64)` | `Viper.Game3D.Assets3D.SetResidencyBudget` |
 | <a id="viper-game3d-assets3d-getresidentbytes"></a>`GetResidentBytes` | `i64()` | `Viper.Game3D.Assets3D.GetResidentBytes` |
 | <a id="viper-game3d-assets3d-setresidencyhint"></a>`SetResidencyHint` | `void(obj,f64,f64)` | `Viper.Game3D.Assets3D.SetResidencyHint` |
@@ -1513,14 +1396,14 @@ surface exposes operations including `LoadEntity`, `LoadEntityAsset`, `LoadAnima
 Provides Asset Handle 3D functionality for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.AssetHandle3D` exposes a registry-backed runtime surface without requiring callers
-to construct the class directly. Its public surface exposes properties such as `Ready`,
-`Progress`, `Error` and operations including `Cancel`, `GetEntity`, `GetTemplate`, `GetPrefab`.
+to construct the class directly. Its public surface exposes properties such as `IsReady`,
+`Progress`, `Error` and operations including `Cancel`, `GetEntity`, `GetPrefab`.
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-game3d-assethandle3d-ready"></a>`Ready` | `i1` | read-only |
+| <a id="viper-game3d-assethandle3d-isready"></a>`IsReady` | `i1` | read-only |
 | <a id="viper-game3d-assethandle3d-progress"></a>`Progress` | `f64` | read-only |
 | <a id="viper-game3d-assethandle3d-error"></a>`Error` | `str` | read-only |
 
@@ -1530,7 +1413,6 @@ to construct the class directly. Its public surface exposes properties such as `
 |---|---|---|
 | <a id="viper-game3d-assethandle3d-cancel"></a>`Cancel` | `void()` | `Viper.Game3D.AssetHandle3D.Cancel` |
 | <a id="viper-game3d-assethandle3d-getentity"></a>`GetEntity` | `obj<Viper.Game3D.Entity3D>()` | `Viper.Game3D.AssetHandle3D.GetEntity` |
-| <a id="viper-game3d-assethandle3d-gettemplate"></a>`GetTemplate` | `obj()` | `Viper.Game3D.AssetHandle3D.GetTemplate` |
 | <a id="viper-game3d-assethandle3d-getprefab"></a>`GetPrefab` | `obj()` | `Viper.Game3D.AssetHandle3D.GetPrefab` |
 
 <a id="viper-game3d-scenetemplate"></a>
@@ -1539,8 +1421,9 @@ to construct the class directly. Its public surface exposes properties such as `
 Provides Scene Template functionality for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.SceneTemplate` exposes a registry-backed runtime surface without requiring callers
-to construct the class directly. Its public surface exposes properties such as `Model`, `Path`,
-`IsAsset` and operations including `GetSceneName`, `GetCameraCount`, `GetCamera`, `Instantiate`.
+to construct the class directly. Its public surface exposes properties such as `Model`,
+`Path`, `IsAsset` and operations including `GetSceneName`, `GetCameraCount`, `GetCamera`,
+`Instantiate`.
 
 #### Properties
 
@@ -1594,8 +1477,8 @@ Provides Animator 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.Animator3D` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`Controller`, `NodeAnimator` and operations including `Play`, `Crossfade`, `PlayLayerAdditive`,
-`CrossfadeLayerAdditive`.
+`Controller`, `NodeAnimator` and operations including `Play`, `Crossfade`,
+`PlayLayerAdditive`, `CrossfadeLayerAdditive`.
 
 Constructor: `Viper.Game3D.Animator3D.New`
 
@@ -1631,8 +1514,8 @@ Constructor: `Viper.Game3D.Animator3D.New`
 
 Provides Environment 3D constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.Environment3D` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `Outdoor`, `Sunset`, `Overcast`, `Night`.
+`Viper.Game3D.Environment3D` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `Outdoor`, `Sunset`, `Overcast`, `Night`.
 
 #### Methods
 
@@ -1667,7 +1550,8 @@ construct the class directly. Its public surface exposes operations including `W
 Provides Debug 3D constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Debug3D` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `ShowOverlay`, `DrawAxes`, `DrawPhysics`, `DrawCameraInfo`.
+Its public surface exposes operations including `ShowOverlay`, `DrawAxes`, `DrawPhysics`,
+`DrawCameraInfo`.
 
 #### Methods
 
@@ -1685,8 +1569,8 @@ surface exposes operations including `ShowOverlay`, `DrawAxes`, `DrawPhysics`, `
 Provides Surface Table 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.SurfaceTable3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`AddClip`, `SetLoudness`, `ClipCount`.
+returned object with the instance members below. Its public surface exposes operations
+including `AddClip`, `SetLoudness`, `ClipCount`.
 
 Constructor: `Viper.Game3D.SurfaceTable3D.New`
 
@@ -1705,8 +1589,8 @@ Constructor: `Viper.Game3D.SurfaceTable3D.New`
 Provides Perception 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.Perception3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetSight`, `SetHearing`, `SetTargetMask`, `SetLosMask`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetSight`, `SetHearing`, `SetTargetMask`, `SetLosMask`.
 
 Constructor: `Viper.Game3D.Perception3D.New`
 
@@ -1733,8 +1617,8 @@ Constructor: `Viper.Game3D.Perception3D.New`
 Provides Behavior Tree 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.BehaviorTree3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`Sequence`, `Selector`, `Inverter`, `TargetVisible`.
+returned object with the instance members below. Its public surface exposes operations
+including `Sequence`, `Selector`, `Inverter`, `TargetVisible`.
 
 Constructor: `Viper.Game3D.BehaviorTree3D.New`
 
@@ -1760,8 +1644,8 @@ Constructor: `Viper.Game3D.BehaviorTree3D.New`
 Provides Behavior Tree Instance 3D functionality for Game3D worlds and gameplay systems.
 
 Create `Viper.Game3D.BehaviorTreeInstance3D` values through its registered constructor and use
-the returned object with the instance members below. Its public surface exposes a property such
-as `PendingCustom` and operations including `SetTarget`, `Resolve`.
+the returned object with the instance members below. Its public surface exposes properties
+such as `PendingCustom` and operations including `SetTarget`, `Resolve`.
 
 Constructor: `Viper.Game3D.BehaviorTreeInstance3D.New`
 
@@ -1797,7 +1681,7 @@ Constructor: `Viper.Game3D.Interactable3D.New`
 | <a id="viper-game3d-interactable3d-prompt"></a>`Prompt` | `str` | read-only |
 | <a id="viper-game3d-interactable3d-kind"></a>`Kind` | `i64` | read-only |
 | <a id="viper-game3d-interactable3d-radius"></a>`Radius` | `f64` | read-only |
-| <a id="viper-game3d-interactable3d-enabled"></a>`Enabled` | `i1` | read/write |
+| <a id="viper-game3d-interactable3d-isenabled"></a>`IsEnabled` | `i1` | read/write |
 | <a id="viper-game3d-interactable3d-focuspriority"></a>`FocusPriority` | `f64` | read/write |
 
 #### Methods
@@ -1874,8 +1758,8 @@ Constructor: `Viper.Game3D.Footsteps3D.New`
 Provides Surfaces constants and static operations for Game3D worlds and gameplay systems.
 
 `Viper.Game3D.Surfaces` is a static runtime surface and does not require an instance. Its public
-surface exposes a property such as `Count` and operations including `Register`, `NameOf`,
-`IdOf`.
+Its public surface exposes properties such as `Count` and operations including `Register`,
+`NameOf`, `IdOf`.
 
 #### Properties
 
@@ -1896,8 +1780,8 @@ surface exposes a property such as `Count` and operations including `Register`, 
 
 Provides Diagnostics 3D constants and static operations for Game3D worlds and gameplay systems.
 
-`Viper.Game3D.Diagnostics3D` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClampedFrames`,
+`Viper.Game3D.Diagnostics3D` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClampedFrames`,
 `CcdClampedBodies` and operations including `Reset`, `Summary`.
 
 #### Properties
@@ -1957,105 +1841,6 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-collisionphase-get-stay"></a>`Viper.Game3D.CollisionPhase.get_Stay` | `i64()` | `rt_game3d_collision_stay` |
 | <a id="viper-game3d-collisionphase-get-exit"></a>`Viper.Game3D.CollisionPhase.get_Exit` | `i64()` | `rt_game3d_collision_exit` |
 | <a id="viper-game3d-collisionphase-get-any"></a>`Viper.Game3D.CollisionPhase.get_Any` | `i64()` | `rt_game3d_collision_any` |
-| <a id="viper-game3d-keys-get-keyw"></a>`Viper.Game3D.Keys.get_KeyW` | `i64()` | `rt_game3d_key_w` |
-| <a id="viper-game3d-keys-get-keya"></a>`Viper.Game3D.Keys.get_KeyA` | `i64()` | `rt_game3d_key_a` |
-| <a id="viper-game3d-keys-get-keys"></a>`Viper.Game3D.Keys.get_KeyS` | `i64()` | `rt_game3d_key_s` |
-| <a id="viper-game3d-keys-get-keyd"></a>`Viper.Game3D.Keys.get_KeyD` | `i64()` | `rt_game3d_key_d` |
-| <a id="viper-game3d-keys-get-space"></a>`Viper.Game3D.Keys.get_Space` | `i64()` | `rt_game3d_key_space` |
-| <a id="viper-game3d-keys-get-escape"></a>`Viper.Game3D.Keys.get_Escape` | `i64()` | `rt_game3d_key_escape` |
-| <a id="viper-game3d-keys-get-shift"></a>`Viper.Game3D.Keys.get_Shift` | `i64()` | `rt_game3d_key_shift` |
-| <a id="viper-game3d-keys-get-ctrl"></a>`Viper.Game3D.Keys.get_Ctrl` | `i64()` | `rt_game3d_key_ctrl` |
-| <a id="viper-game3d-keys-get-up"></a>`Viper.Game3D.Keys.get_Up` | `i64()` | `rt_game3d_key_up` |
-| <a id="viper-game3d-keys-get-down"></a>`Viper.Game3D.Keys.get_Down` | `i64()` | `rt_game3d_key_down` |
-| <a id="viper-game3d-keys-get-left"></a>`Viper.Game3D.Keys.get_Left` | `i64()` | `rt_game3d_key_left` |
-| <a id="viper-game3d-keys-get-right"></a>`Viper.Game3D.Keys.get_Right` | `i64()` | `rt_game3d_key_right` |
-| <a id="viper-game3d-keys-get-keyf11"></a>`Viper.Game3D.Keys.get_KeyF11` | `i64()` | `rt_game3d_key_f11` |
-| <a id="viper-game3d-keys-get-keyb"></a>`Viper.Game3D.Keys.get_KeyB` | `i64()` | `rt_game3d_key_b` |
-| <a id="viper-game3d-keys-get-keyc"></a>`Viper.Game3D.Keys.get_KeyC` | `i64()` | `rt_game3d_key_c` |
-| <a id="viper-game3d-keys-get-keye"></a>`Viper.Game3D.Keys.get_KeyE` | `i64()` | `rt_game3d_key_e` |
-| <a id="viper-game3d-keys-get-keyf"></a>`Viper.Game3D.Keys.get_KeyF` | `i64()` | `rt_game3d_key_f` |
-| <a id="viper-game3d-keys-get-keyg"></a>`Viper.Game3D.Keys.get_KeyG` | `i64()` | `rt_game3d_key_g` |
-| <a id="viper-game3d-keys-get-keyh"></a>`Viper.Game3D.Keys.get_KeyH` | `i64()` | `rt_game3d_key_h` |
-| <a id="viper-game3d-keys-get-keyi"></a>`Viper.Game3D.Keys.get_KeyI` | `i64()` | `rt_game3d_key_i` |
-| <a id="viper-game3d-keys-get-keyj"></a>`Viper.Game3D.Keys.get_KeyJ` | `i64()` | `rt_game3d_key_j` |
-| <a id="viper-game3d-keys-get-keyk"></a>`Viper.Game3D.Keys.get_KeyK` | `i64()` | `rt_game3d_key_k` |
-| <a id="viper-game3d-keys-get-keyl"></a>`Viper.Game3D.Keys.get_KeyL` | `i64()` | `rt_game3d_key_l` |
-| <a id="viper-game3d-keys-get-keym"></a>`Viper.Game3D.Keys.get_KeyM` | `i64()` | `rt_game3d_key_m` |
-| <a id="viper-game3d-keys-get-keyn"></a>`Viper.Game3D.Keys.get_KeyN` | `i64()` | `rt_game3d_key_n` |
-| <a id="viper-game3d-keys-get-keyo"></a>`Viper.Game3D.Keys.get_KeyO` | `i64()` | `rt_game3d_key_o` |
-| <a id="viper-game3d-keys-get-keyp"></a>`Viper.Game3D.Keys.get_KeyP` | `i64()` | `rt_game3d_key_p` |
-| <a id="viper-game3d-keys-get-keyq"></a>`Viper.Game3D.Keys.get_KeyQ` | `i64()` | `rt_game3d_key_q` |
-| <a id="viper-game3d-keys-get-keyr"></a>`Viper.Game3D.Keys.get_KeyR` | `i64()` | `rt_game3d_key_r` |
-| <a id="viper-game3d-keys-get-keyt"></a>`Viper.Game3D.Keys.get_KeyT` | `i64()` | `rt_game3d_key_t` |
-| <a id="viper-game3d-keys-get-keyu"></a>`Viper.Game3D.Keys.get_KeyU` | `i64()` | `rt_game3d_key_u` |
-| <a id="viper-game3d-keys-get-keyv"></a>`Viper.Game3D.Keys.get_KeyV` | `i64()` | `rt_game3d_key_v` |
-| <a id="viper-game3d-keys-get-keyx"></a>`Viper.Game3D.Keys.get_KeyX` | `i64()` | `rt_game3d_key_x` |
-| <a id="viper-game3d-keys-get-keyy"></a>`Viper.Game3D.Keys.get_KeyY` | `i64()` | `rt_game3d_key_y` |
-| <a id="viper-game3d-keys-get-keyz"></a>`Viper.Game3D.Keys.get_KeyZ` | `i64()` | `rt_game3d_key_z` |
-| <a id="viper-game3d-keys-get-key0"></a>`Viper.Game3D.Keys.get_Key0` | `i64()` | `rt_game3d_key_0` |
-| <a id="viper-game3d-keys-get-key1"></a>`Viper.Game3D.Keys.get_Key1` | `i64()` | `rt_game3d_key_1` |
-| <a id="viper-game3d-keys-get-key2"></a>`Viper.Game3D.Keys.get_Key2` | `i64()` | `rt_game3d_key_2` |
-| <a id="viper-game3d-keys-get-key3"></a>`Viper.Game3D.Keys.get_Key3` | `i64()` | `rt_game3d_key_3` |
-| <a id="viper-game3d-keys-get-key4"></a>`Viper.Game3D.Keys.get_Key4` | `i64()` | `rt_game3d_key_4` |
-| <a id="viper-game3d-keys-get-key5"></a>`Viper.Game3D.Keys.get_Key5` | `i64()` | `rt_game3d_key_5` |
-| <a id="viper-game3d-keys-get-key6"></a>`Viper.Game3D.Keys.get_Key6` | `i64()` | `rt_game3d_key_6` |
-| <a id="viper-game3d-keys-get-key7"></a>`Viper.Game3D.Keys.get_Key7` | `i64()` | `rt_game3d_key_7` |
-| <a id="viper-game3d-keys-get-key8"></a>`Viper.Game3D.Keys.get_Key8` | `i64()` | `rt_game3d_key_8` |
-| <a id="viper-game3d-keys-get-key9"></a>`Viper.Game3D.Keys.get_Key9` | `i64()` | `rt_game3d_key_9` |
-| <a id="viper-game3d-keys-get-keyf1"></a>`Viper.Game3D.Keys.get_KeyF1` | `i64()` | `rt_game3d_key_f1` |
-| <a id="viper-game3d-keys-get-keyf2"></a>`Viper.Game3D.Keys.get_KeyF2` | `i64()` | `rt_game3d_key_f2` |
-| <a id="viper-game3d-keys-get-keyf3"></a>`Viper.Game3D.Keys.get_KeyF3` | `i64()` | `rt_game3d_key_f3` |
-| <a id="viper-game3d-keys-get-keyf4"></a>`Viper.Game3D.Keys.get_KeyF4` | `i64()` | `rt_game3d_key_f4` |
-| <a id="viper-game3d-keys-get-keyf5"></a>`Viper.Game3D.Keys.get_KeyF5` | `i64()` | `rt_game3d_key_f5` |
-| <a id="viper-game3d-keys-get-keyf6"></a>`Viper.Game3D.Keys.get_KeyF6` | `i64()` | `rt_game3d_key_f6` |
-| <a id="viper-game3d-keys-get-keyf7"></a>`Viper.Game3D.Keys.get_KeyF7` | `i64()` | `rt_game3d_key_f7` |
-| <a id="viper-game3d-keys-get-keyf8"></a>`Viper.Game3D.Keys.get_KeyF8` | `i64()` | `rt_game3d_key_f8` |
-| <a id="viper-game3d-keys-get-keyf9"></a>`Viper.Game3D.Keys.get_KeyF9` | `i64()` | `rt_game3d_key_f9` |
-| <a id="viper-game3d-keys-get-keyf10"></a>`Viper.Game3D.Keys.get_KeyF10` | `i64()` | `rt_game3d_key_f10` |
-| <a id="viper-game3d-keys-get-keyf12"></a>`Viper.Game3D.Keys.get_KeyF12` | `i64()` | `rt_game3d_key_f12` |
-| <a id="viper-game3d-keys-get-enter"></a>`Viper.Game3D.Keys.get_Enter` | `i64()` | `rt_game3d_key_enter` |
-| <a id="viper-game3d-keys-get-tab"></a>`Viper.Game3D.Keys.get_Tab` | `i64()` | `rt_game3d_key_tab` |
-| <a id="viper-game3d-keys-get-backspace"></a>`Viper.Game3D.Keys.get_Backspace` | `i64()` | `rt_game3d_key_backspace` |
-| <a id="viper-game3d-keys-get-insert"></a>`Viper.Game3D.Keys.get_Insert` | `i64()` | `rt_game3d_key_insert` |
-| <a id="viper-game3d-keys-get-delete"></a>`Viper.Game3D.Keys.get_Delete` | `i64()` | `rt_game3d_key_delete` |
-| <a id="viper-game3d-keys-get-home"></a>`Viper.Game3D.Keys.get_Home` | `i64()` | `rt_game3d_key_home` |
-| <a id="viper-game3d-keys-get-end"></a>`Viper.Game3D.Keys.get_End` | `i64()` | `rt_game3d_key_end` |
-| <a id="viper-game3d-keys-get-pageup"></a>`Viper.Game3D.Keys.get_PageUp` | `i64()` | `rt_game3d_key_pageup` |
-| <a id="viper-game3d-keys-get-pagedown"></a>`Viper.Game3D.Keys.get_PageDown` | `i64()` | `rt_game3d_key_pagedown` |
-| <a id="viper-game3d-keys-get-alt"></a>`Viper.Game3D.Keys.get_Alt` | `i64()` | `rt_game3d_key_alt` |
-| <a id="viper-game3d-keys-get-lshift"></a>`Viper.Game3D.Keys.get_LShift` | `i64()` | `rt_game3d_key_lshift` |
-| <a id="viper-game3d-keys-get-rshift"></a>`Viper.Game3D.Keys.get_RShift` | `i64()` | `rt_game3d_key_rshift` |
-| <a id="viper-game3d-keys-get-lctrl"></a>`Viper.Game3D.Keys.get_LCtrl` | `i64()` | `rt_game3d_key_lctrl` |
-| <a id="viper-game3d-keys-get-rctrl"></a>`Viper.Game3D.Keys.get_RCtrl` | `i64()` | `rt_game3d_key_rctrl` |
-| <a id="viper-game3d-keys-get-lalt"></a>`Viper.Game3D.Keys.get_LAlt` | `i64()` | `rt_game3d_key_lalt` |
-| <a id="viper-game3d-keys-get-ralt"></a>`Viper.Game3D.Keys.get_RAlt` | `i64()` | `rt_game3d_key_ralt` |
-| <a id="viper-game3d-keys-get-quote"></a>`Viper.Game3D.Keys.get_Quote` | `i64()` | `rt_game3d_key_quote` |
-| <a id="viper-game3d-keys-get-comma"></a>`Viper.Game3D.Keys.get_Comma` | `i64()` | `rt_game3d_key_comma` |
-| <a id="viper-game3d-keys-get-minus"></a>`Viper.Game3D.Keys.get_Minus` | `i64()` | `rt_game3d_key_minus` |
-| <a id="viper-game3d-keys-get-period"></a>`Viper.Game3D.Keys.get_Period` | `i64()` | `rt_game3d_key_period` |
-| <a id="viper-game3d-keys-get-slash"></a>`Viper.Game3D.Keys.get_Slash` | `i64()` | `rt_game3d_key_slash` |
-| <a id="viper-game3d-keys-get-semicolon"></a>`Viper.Game3D.Keys.get_Semicolon` | `i64()` | `rt_game3d_key_semicolon` |
-| <a id="viper-game3d-keys-get-equals"></a>`Viper.Game3D.Keys.get_Equals` | `i64()` | `rt_game3d_key_equals` |
-| <a id="viper-game3d-keys-get-lbracket"></a>`Viper.Game3D.Keys.get_LBracket` | `i64()` | `rt_game3d_key_lbracket` |
-| <a id="viper-game3d-keys-get-backslash"></a>`Viper.Game3D.Keys.get_Backslash` | `i64()` | `rt_game3d_key_backslash` |
-| <a id="viper-game3d-keys-get-rbracket"></a>`Viper.Game3D.Keys.get_RBracket` | `i64()` | `rt_game3d_key_rbracket` |
-| <a id="viper-game3d-keys-get-grave"></a>`Viper.Game3D.Keys.get_Grave` | `i64()` | `rt_game3d_key_grave` |
-| <a id="viper-game3d-keys-get-num0"></a>`Viper.Game3D.Keys.get_Num0` | `i64()` | `rt_game3d_key_num0` |
-| <a id="viper-game3d-keys-get-num1"></a>`Viper.Game3D.Keys.get_Num1` | `i64()` | `rt_game3d_key_num1` |
-| <a id="viper-game3d-keys-get-num2"></a>`Viper.Game3D.Keys.get_Num2` | `i64()` | `rt_game3d_key_num2` |
-| <a id="viper-game3d-keys-get-num3"></a>`Viper.Game3D.Keys.get_Num3` | `i64()` | `rt_game3d_key_num3` |
-| <a id="viper-game3d-keys-get-num4"></a>`Viper.Game3D.Keys.get_Num4` | `i64()` | `rt_game3d_key_num4` |
-| <a id="viper-game3d-keys-get-num5"></a>`Viper.Game3D.Keys.get_Num5` | `i64()` | `rt_game3d_key_num5` |
-| <a id="viper-game3d-keys-get-num6"></a>`Viper.Game3D.Keys.get_Num6` | `i64()` | `rt_game3d_key_num6` |
-| <a id="viper-game3d-keys-get-num7"></a>`Viper.Game3D.Keys.get_Num7` | `i64()` | `rt_game3d_key_num7` |
-| <a id="viper-game3d-keys-get-num8"></a>`Viper.Game3D.Keys.get_Num8` | `i64()` | `rt_game3d_key_num8` |
-| <a id="viper-game3d-keys-get-num9"></a>`Viper.Game3D.Keys.get_Num9` | `i64()` | `rt_game3d_key_num9` |
-| <a id="viper-game3d-keys-get-numdot"></a>`Viper.Game3D.Keys.get_NumDot` | `i64()` | `rt_game3d_key_numdot` |
-| <a id="viper-game3d-keys-get-numdiv"></a>`Viper.Game3D.Keys.get_NumDiv` | `i64()` | `rt_game3d_key_numdiv` |
-| <a id="viper-game3d-keys-get-nummul"></a>`Viper.Game3D.Keys.get_NumMul` | `i64()` | `rt_game3d_key_nummul` |
-| <a id="viper-game3d-keys-get-numsub"></a>`Viper.Game3D.Keys.get_NumSub` | `i64()` | `rt_game3d_key_numsub` |
-| <a id="viper-game3d-keys-get-numadd"></a>`Viper.Game3D.Keys.get_NumAdd` | `i64()` | `rt_game3d_key_numadd` |
-| <a id="viper-game3d-keys-get-numenter"></a>`Viper.Game3D.Keys.get_NumEnter` | `i64()` | `rt_game3d_key_numenter` |
 | <a id="viper-game3d-mousebuttons-get-left"></a>`Viper.Game3D.MouseButtons.get_Left` | `i64()` | `rt_game3d_mouse_left` |
 | <a id="viper-game3d-mousebuttons-get-right"></a>`Viper.Game3D.MouseButtons.get_Right` | `i64()` | `rt_game3d_mouse_right` |
 | <a id="viper-game3d-mousebuttons-get-middle"></a>`Viper.Game3D.MouseButtons.get_Middle` | `i64()` | `rt_game3d_mouse_middle` |
@@ -2172,7 +1957,7 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.Entity3D.IsDestroyed` | `i1(obj)` | `rt_game3d_entity_is_destroyed` |
 | <a id="viper-game3d-sound3d-get-listener"></a>`Viper.Game3D.Sound3D.get_Listener` | `obj<Viper.Graphics3D.SoundListener3D>(obj)` | `rt_game3d_audio_get_listener` |
 | <a id="viper-game3d-sound3d-get-listenerfollowscamera"></a>`Viper.Game3D.Sound3D.get_ListenerFollowsCamera` | `i1(obj)` | `rt_game3d_audio_get_listener_follows_camera` |
-| <a id="viper-game3d-sound3d-get-refdistance"></a>`Viper.Game3D.Sound3D.get_RefDistance` | `f64(obj)` | `rt_game3d_audio_get_ref_distance` |
+| <a id="viper-game3d-sound3d-get-referencedistance"></a>`Viper.Game3D.Sound3D.get_ReferenceDistance` | `f64(obj)` | `rt_game3d_audio_get_ref_distance` |
 | <a id="viper-game3d-sound3d-get-maxdistance"></a>`Viper.Game3D.Sound3D.get_MaxDistance` | `f64(obj)` | `rt_game3d_audio_get_max_distance` |
 | <a id="viper-game3d-sound3d-get-volume"></a>`Viper.Game3D.Sound3D.get_Volume` | `i64(obj)` | `rt_game3d_audio_get_volume` |
 | <a id="viper-game3d-sound3d-set-volume"></a>`Viper.Game3D.Sound3D.set_Volume` | `void(obj,i64)` | `rt_game3d_audio_set_volume` |
@@ -2180,8 +1965,8 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.Sound3D.ListenerFollowCamera` | `void(obj,i1)` | `rt_game3d_audio_listener_follow_camera` |
 | `Viper.Game3D.Sound3D.SetListenerPose` | `void(obj,obj,obj,obj)` | `rt_game3d_audio_set_listener_pose` |
 | `Viper.Game3D.Sound3D.SetAttenuation` | `void(obj,f64,f64)` | `rt_game3d_audio_set_attenuation` |
-| `Viper.Game3D.Sound3D.Load` | `obj<Viper.Sound.Sound>(obj,str)` | `rt_game3d_audio_load` |
-| `Viper.Game3D.Sound3D.LoadAsset` | `obj<Viper.Sound.Sound>(obj,str)` | `rt_game3d_audio_load_asset` |
+| `Viper.Game3D.Sound3D.Load` | `obj<Viper.Audio.Sound>(obj,str)` | `rt_game3d_audio_load` |
+| `Viper.Game3D.Sound3D.LoadAsset` | `obj<Viper.Audio.Sound>(obj,str)` | `rt_game3d_audio_load_asset` |
 | `Viper.Game3D.Sound3D.PlayAt` | `obj<Viper.Graphics3D.SoundSource3D>(obj,obj,obj)` | `rt_game3d_audio_play_at` |
 | `Viper.Game3D.Sound3D.PlayAttached` | `obj<Viper.Graphics3D.SoundSource3D>(obj,obj,obj)` | `rt_game3d_audio_play_attached` |
 | `Viper.Game3D.Sound3D.Play2D` | `i64(obj,obj)` | `rt_game3d_audio_play2d` |
@@ -2216,8 +2001,8 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-reverbzone3d-get-priority"></a>`Viper.Game3D.ReverbZone3D.get_Priority` | `i64(obj)` | `rt_game3d_reverbzone_get_priority` |
 | <a id="viper-game3d-reverbzone3d-set-priority"></a>`Viper.Game3D.ReverbZone3D.set_Priority` | `void(obj,i64)` | `rt_game3d_reverbzone_set_priority` |
 | `Viper.Game3D.AmbientBed3D.New` | `obj(obj<Viper.Game3D.World3D>)` | `rt_game3d_ambientbed_new` |
-| `Viper.Game3D.AmbientBed3D.AddZone` | `obj(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Sound.Sound>,i64)` | `rt_game3d_ambientbed_add_zone` |
-| `Viper.Game3D.AmbientBed3D.SetDefault` | `obj(obj,obj<Viper.Sound.Sound>,i64)` | `rt_game3d_ambientbed_set_default` |
+| `Viper.Game3D.AmbientBed3D.AddZone` | `obj(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Audio.Sound>,i64)` | `rt_game3d_ambientbed_add_zone` |
+| `Viper.Game3D.AmbientBed3D.SetDefault` | `obj(obj,obj<Viper.Audio.Sound>,i64)` | `rt_game3d_ambientbed_set_default` |
 | <a id="viper-game3d-ambientbed3d-get-crossfadeseconds"></a>`Viper.Game3D.AmbientBed3D.get_CrossfadeSeconds` | `f64(obj)` | `rt_game3d_ambientbed_get_crossfade` |
 | <a id="viper-game3d-ambientbed3d-set-crossfadeseconds"></a>`Viper.Game3D.AmbientBed3D.set_CrossfadeSeconds` | `void(obj,f64)` | `rt_game3d_ambientbed_set_crossfade` |
 | <a id="viper-game3d-ambientbed3d-get-activezone"></a>`Viper.Game3D.AmbientBed3D.get_ActiveZone` | `i64(obj)` | `rt_game3d_ambientbed_get_active_zone` |
@@ -2246,7 +2031,7 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-charactercontroller3d-set-gravity"></a>`Viper.Game3D.CharacterController3D.set_Gravity` | `void(obj,f64)` | `rt_game3d_character_controller_set_gravity` |
 | `Viper.Game3D.CharacterController3D.Update` | `void(obj,obj,obj,f64)` | `rt_game3d_character_controller_update` |
 | `Viper.Game3D.CharacterController3D.Teleport` | `void(obj,f64,f64,f64)` | `rt_game3d_character_controller_teleport` |
-| `Viper.Game3D.CharacterController3D.Grounded` | `i1(obj)` | `rt_game3d_character_controller_grounded` |
+| `Viper.Game3D.CharacterController3D.IsGrounded` | `i1(obj)` | `rt_game3d_character_controller_grounded` |
 | <a id="viper-game3d-charactercontroller3d-get-crouchheight"></a>`Viper.Game3D.CharacterController3D.get_CrouchHeight` | `f64(obj)` | `rt_game3d_character_controller_get_crouch_height` |
 | <a id="viper-game3d-charactercontroller3d-set-crouchheight"></a>`Viper.Game3D.CharacterController3D.set_CrouchHeight` | `void(obj,f64)` | `rt_game3d_character_controller_set_crouch_height` |
 | `Viper.Game3D.CharacterController3D.SetCrouching` | `i1(obj,i1)` | `rt_game3d_character_controller_set_crouching` |
@@ -2387,8 +2172,8 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.Timeline3D.AddMarker` | `obj(obj,f64,i64)` | `rt_game3d_timeline_add_marker` |
 | <a id="viper-game3d-timeline3d-get-duration"></a>`Viper.Game3D.Timeline3D.get_Duration` | `f64(obj)` | `rt_game3d_timeline_get_duration` |
 | <a id="viper-game3d-timeline3d-get-time"></a>`Viper.Game3D.Timeline3D.get_Time` | `f64(obj)` | `rt_game3d_timeline_get_time` |
-| <a id="viper-game3d-timeline3d-get-playing"></a>`Viper.Game3D.Timeline3D.get_Playing` | `i1(obj)` | `rt_game3d_timeline_get_playing` |
-| <a id="viper-game3d-timeline3d-get-finished"></a>`Viper.Game3D.Timeline3D.get_Finished` | `i1(obj)` | `rt_game3d_timeline_get_finished` |
+| <a id="viper-game3d-timeline3d-get-isplaying"></a>`Viper.Game3D.Timeline3D.get_IsPlaying` | `i1(obj)` | `rt_game3d_timeline_get_playing` |
+| <a id="viper-game3d-timeline3d-get-isfinished"></a>`Viper.Game3D.Timeline3D.get_IsFinished` | `i1(obj)` | `rt_game3d_timeline_get_finished` |
 | <a id="viper-game3d-timeline3d-get-skippable"></a>`Viper.Game3D.Timeline3D.get_Skippable` | `i1(obj)` | `rt_game3d_timeline_get_skippable` |
 | <a id="viper-game3d-timeline3d-set-skippable"></a>`Viper.Game3D.Timeline3D.set_Skippable` | `void(obj,i1)` | `rt_game3d_timeline_set_skippable` |
 | `Viper.Game3D.Timeline3D.JustFinished` | `i1(obj)` | `rt_game3d_timeline_just_finished` |
@@ -2407,7 +2192,7 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.Dialogue3D.SkipReveal` | `void(obj)` | `rt_game3d_dialogue_skip_reveal` |
 | `Viper.Game3D.Dialogue3D.MoveChoice` | `void(obj,i64)` | `rt_game3d_dialogue_move_choice` |
 | `Viper.Game3D.Dialogue3D.ConfirmChoice` | `void(obj)` | `rt_game3d_dialogue_confirm_choice` |
-| <a id="viper-game3d-dialogue3d-get-active"></a>`Viper.Game3D.Dialogue3D.get_Active` | `i1(obj)` | `rt_game3d_dialogue_get_active` |
+| <a id="viper-game3d-dialogue3d-get-isactive"></a>`Viper.Game3D.Dialogue3D.get_IsActive` | `i1(obj)` | `rt_game3d_dialogue_get_active` |
 | <a id="viper-game3d-dialogue3d-get-linecount"></a>`Viper.Game3D.Dialogue3D.get_LineCount` | `i64(obj)` | `rt_game3d_dialogue_get_line_count` |
 | <a id="viper-game3d-dialogue3d-get-choicepending"></a>`Viper.Game3D.Dialogue3D.get_ChoicePending` | `i1(obj)` | `rt_game3d_dialogue_get_choice_pending` |
 | `Viper.Game3D.Dialogue3D.ChoiceMade` | `i1(obj)` | `rt_game3d_dialogue_choice_made` |
@@ -2428,7 +2213,7 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.LipSync3D.Stop` | `void(obj)` | `rt_game3d_lipsync_stop` |
 | `Viper.Game3D.LipSync3D.SetBlink` | `void(obj,i1,str,f64,f64)` | `rt_game3d_lipsync_set_blink` |
 | `Viper.Game3D.LipSync3D.SetGaze` | `void(obj,obj)` | `rt_game3d_lipsync_set_gaze` |
-| <a id="viper-game3d-lipsync3d-get-driving"></a>`Viper.Game3D.LipSync3D.get_Driving` | `i1(obj)` | `rt_game3d_lipsync_get_driving` |
+| <a id="viper-game3d-lipsync3d-get-isdriving"></a>`Viper.Game3D.LipSync3D.get_IsDriving` | `i1(obj)` | `rt_game3d_lipsync_get_driving` |
 | <a id="viper-game3d-lipsync3d-get-level"></a>`Viper.Game3D.LipSync3D.get_Level` | `f64(obj)` | `rt_game3d_lipsync_get_level` |
 | `Viper.Game3D.Hitbox3D.New` | `obj(obj,obj<Viper.Graphics3D.Collider3D>)` | `rt_game3d_hitbox_new` |
 | `Viper.Game3D.Hitbox3D.NewOnBone` | `obj(obj,str,obj<Viper.Graphics3D.Collider3D>)` | `rt_game3d_hitbox_new_on_bone` |
@@ -2438,8 +2223,8 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-hitbox3d-set-team"></a>`Viper.Game3D.Hitbox3D.set_Team` | `void(obj,i64)` | `rt_game3d_hitbox_set_team` |
 | <a id="viper-game3d-hitbox3d-get-channel"></a>`Viper.Game3D.Hitbox3D.get_Channel` | `i64(obj)` | `rt_game3d_hitbox_get_channel` |
 | <a id="viper-game3d-hitbox3d-set-channel"></a>`Viper.Game3D.Hitbox3D.set_Channel` | `void(obj,i64)` | `rt_game3d_hitbox_set_channel` |
-| <a id="viper-game3d-hitbox3d-get-active"></a>`Viper.Game3D.Hitbox3D.get_Active` | `i1(obj)` | `rt_game3d_hitbox_get_active` |
-| <a id="viper-game3d-hitbox3d-set-active"></a>`Viper.Game3D.Hitbox3D.set_Active` | `void(obj,i1)` | `rt_game3d_hitbox_set_active` |
+| <a id="viper-game3d-hitbox3d-get-isactive"></a>`Viper.Game3D.Hitbox3D.get_IsActive` | `i1(obj)` | `rt_game3d_hitbox_get_active` |
+| <a id="viper-game3d-hitbox3d-set-isactive"></a>`Viper.Game3D.Hitbox3D.set_IsActive` | `void(obj,i1)` | `rt_game3d_hitbox_set_active` |
 | <a id="viper-game3d-hitbox3d-get-friendlyfire"></a>`Viper.Game3D.Hitbox3D.get_FriendlyFire` | `i1(obj)` | `rt_game3d_hitbox_get_friendly_fire` |
 | <a id="viper-game3d-hitbox3d-set-friendlyfire"></a>`Viper.Game3D.Hitbox3D.set_FriendlyFire` | `void(obj,i1)` | `rt_game3d_hitbox_set_friendly_fire` |
 | `Viper.Game3D.Hitbox3D.BindWindow` | `obj(obj,str,f64,f64)` | `rt_game3d_hitbox_bind_window` |
@@ -2457,9 +2242,9 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-health3d-get-max"></a>`Viper.Game3D.Health3D.get_Max` | `f64(obj)` | `rt_game3d_health_get_max` |
 | <a id="viper-game3d-health3d-set-max"></a>`Viper.Game3D.Health3D.set_Max` | `void(obj,f64)` | `rt_game3d_health_set_max` |
 | <a id="viper-game3d-health3d-get-isdead"></a>`Viper.Game3D.Health3D.get_IsDead` | `i1(obj)` | `rt_game3d_health_is_dead` |
-| <a id="viper-game3d-health3d-get-invulnseconds"></a>`Viper.Game3D.Health3D.get_InvulnSeconds` | `f64(obj)` | `rt_game3d_health_get_invuln_seconds` |
-| <a id="viper-game3d-health3d-set-invulnseconds"></a>`Viper.Game3D.Health3D.set_InvulnSeconds` | `void(obj,f64)` | `rt_game3d_health_set_invuln_seconds` |
-| <a id="viper-game3d-health3d-get-invulnerable"></a>`Viper.Game3D.Health3D.get_Invulnerable` | `i1(obj)` | `rt_game3d_health_get_invulnerable` |
+| <a id="viper-game3d-health3d-get-invulnerabilityseconds"></a>`Viper.Game3D.Health3D.get_InvulnerabilitySeconds` | `f64(obj)` | `rt_game3d_health_get_invuln_seconds` |
+| <a id="viper-game3d-health3d-set-invulnerabilityseconds"></a>`Viper.Game3D.Health3D.set_InvulnerabilitySeconds` | `void(obj,f64)` | `rt_game3d_health_set_invuln_seconds` |
+| <a id="viper-game3d-health3d-get-isinvulnerable"></a>`Viper.Game3D.Health3D.get_IsInvulnerable` | `i1(obj)` | `rt_game3d_health_get_invulnerable` |
 | `Viper.Game3D.Health3D.Damage` | `f64(obj,f64,obj,i64)` | `rt_game3d_health_damage` |
 | `Viper.Game3D.Health3D.Heal` | `void(obj,f64)` | `rt_game3d_health_heal` |
 | `Viper.Game3D.Health3D.Revive` | `void(obj,f64)` | `rt_game3d_health_revive` |
@@ -2483,10 +2268,10 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.World3D.Destroy` | `void(obj)` | `rt_game3d_world_destroy` |
 | <a id="viper-game3d-world3d-get-timescale"></a>`Viper.Game3D.World3D.get_TimeScale` | `f64(obj)` | `rt_game3d_world_get_time_scale` |
 | <a id="viper-game3d-world3d-set-timescale"></a>`Viper.Game3D.World3D.set_TimeScale` | `void(obj,f64)` | `rt_game3d_world_set_time_scale` |
-| <a id="viper-game3d-world3d-get-paused"></a>`Viper.Game3D.World3D.get_Paused` | `i1(obj)` | `rt_game3d_world_get_paused` |
-| <a id="viper-game3d-world3d-set-paused"></a>`Viper.Game3D.World3D.set_Paused` | `void(obj,i1)` | `rt_game3d_world_set_paused` |
+| <a id="viper-game3d-world3d-get-ispaused"></a>`Viper.Game3D.World3D.get_IsPaused` | `i1(obj)` | `rt_game3d_world_get_paused` |
+| <a id="viper-game3d-world3d-set-ispaused"></a>`Viper.Game3D.World3D.set_IsPaused` | `void(obj,i1)` | `rt_game3d_world_set_paused` |
 | `Viper.Game3D.World3D.HitStop` | `void(obj,f64)` | `rt_game3d_world_hit_stop` |
-| <a id="viper-game3d-world3d-get-unscaleddt"></a>`Viper.Game3D.World3D.get_UnscaledDt` | `f64(obj)` | `rt_game3d_world_get_unscaled_dt` |
+| <a id="viper-game3d-world3d-get-unscaleddeltatime"></a>`Viper.Game3D.World3D.get_UnscaledDeltaTime` | `f64(obj)` | `rt_game3d_world_get_unscaled_dt` |
 | <a id="viper-game3d-world3d-get-unscaledelapsed"></a>`Viper.Game3D.World3D.get_UnscaledElapsed` | `f64(obj)` | `rt_game3d_world_get_unscaled_elapsed` |
 | `Viper.Game3D.World3D.SetDofFocus` | `i1(obj,f64)` | `rt_game3d_world_set_dof_focus` |
 | `Viper.Game3D.World3D.PlayTimeline` | `void(obj,obj<Viper.Game3D.Timeline3D>)` | `rt_game3d_world_play_timeline` |
@@ -2501,12 +2286,12 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-world3d-get-canvas"></a>`Viper.Game3D.World3D.get_Canvas` | `obj<Viper.Graphics3D.Canvas3D>(obj)` | `rt_game3d_world_get_canvas` |
 | <a id="viper-game3d-world3d-get-camera"></a>`Viper.Game3D.World3D.get_Camera` | `obj<Viper.Graphics3D.Camera3D>(obj)` | `rt_game3d_world_get_camera` |
 | <a id="viper-game3d-world3d-get-scene"></a>`Viper.Game3D.World3D.get_Scene` | `obj<Viper.Graphics3D.SceneGraph>(obj)` | `rt_game3d_world_get_scene` |
-| <a id="viper-game3d-world3d-get-physics"></a>`Viper.Game3D.World3D.get_Physics` | `obj<Viper.Graphics3D.Physics3DWorld>(obj)` | `rt_game3d_world_get_physics` |
+| <a id="viper-game3d-world3d-get-physics"></a>`Viper.Game3D.World3D.get_Physics` | `obj<Viper.Graphics3D.PhysicsWorld3D>(obj)` | `rt_game3d_world_get_physics` |
 | <a id="viper-game3d-world3d-get-input"></a>`Viper.Game3D.World3D.get_Input` | `obj<Viper.Game3D.Input3D>(obj)` | `rt_game3d_world_get_input` |
 | <a id="viper-game3d-world3d-get-audio"></a>`Viper.Game3D.World3D.get_Audio` | `obj<Viper.Game3D.Sound3D>(obj)` | `rt_game3d_world_get_audio` |
 | <a id="viper-game3d-world3d-get-effects"></a>`Viper.Game3D.World3D.get_Effects` | `obj<Viper.Game3D.EffectRegistry3D>(obj)` | `rt_game3d_world_get_effects` |
 | <a id="viper-game3d-world3d-get-stream"></a>`Viper.Game3D.World3D.get_Stream` | `obj<Viper.Game3D.WorldStream3D>(obj)` | `rt_game3d_world_get_stream` |
-| <a id="viper-game3d-world3d-get-dt"></a>`Viper.Game3D.World3D.get_Dt` | `f64(obj)` | `rt_game3d_world_get_dt` |
+| <a id="viper-game3d-world3d-get-deltatime"></a>`Viper.Game3D.World3D.get_DeltaTime` | `f64(obj)` | `rt_game3d_world_get_dt` |
 | <a id="viper-game3d-world3d-get-elapsed"></a>`Viper.Game3D.World3D.get_Elapsed` | `f64(obj)` | `rt_game3d_world_get_elapsed` |
 | <a id="viper-game3d-world3d-get-frame"></a>`Viper.Game3D.World3D.get_Frame` | `i64(obj)` | `rt_game3d_world_get_frame` |
 | <a id="viper-game3d-world3d-get-droppedfixedsteps"></a>`Viper.Game3D.World3D.get_DroppedFixedSteps` | `i64(obj)` | `rt_game3d_world_get_dropped_fixed_steps` |
@@ -2532,10 +2317,8 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.World3D.Spawn` | `obj(obj,obj)` | `rt_game3d_world_spawn` |
 | `Viper.Game3D.World3D.SpawnHeightfieldCollider` | `obj(obj,obj,f64,f64,f64,f64,f64,f64)` | `rt_game3d_world_spawn_heightfield_collider` |
 | `Viper.Game3D.World3D.Despawn` | `void(obj,obj)` | `rt_game3d_world_despawn` |
-| `Viper.Game3D.World3D.FindNode` | `obj<Viper.Graphics3D.SceneNode>(obj,str)` | `rt_game3d_world_find_node` |
-| `Viper.Game3D.World3D.FindNodeOption` | `obj<Viper.Option>(obj,str)` | `rt_game3d_world_find_node_option` |
-| `Viper.Game3D.World3D.FindEntity` | `obj<Viper.Game3D.Entity3D>(obj,str)` | `rt_game3d_world_find_entity` |
-| `Viper.Game3D.World3D.FindEntityOption` | `obj<Viper.Option>(obj,str)` | `rt_game3d_world_find_entity_option` |
+| `Viper.Game3D.World3D.FindNode` | `obj<Viper.Option>(obj,str)` | `rt_game3d_world_find_node_option` |
+| `Viper.Game3D.World3D.FindEntity` | `obj<Viper.Option>(obj,str)` | `rt_game3d_world_find_entity_option` |
 | `Viper.Game3D.World3D.SetCameraController` | `void(obj,obj)` | `rt_game3d_world_set_camera_controller` |
 | `Viper.Game3D.World3D.LookAt` | `void(obj,obj)` | `rt_game3d_world_look_at` |
 | `Viper.Game3D.World3D.OnResize` | `void(obj,i64,i64)` | `rt_game3d_world_on_resize` |
@@ -2561,7 +2344,7 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.World3D.RunFixedWithOverlay` | `void(obj,f64,obj,obj)` | `rt_game3d_world_run_fixed_with_overlay` |
 | `Viper.Game3D.World3D.RunFrames` | `void(obj,i64,f64,obj)` | `rt_game3d_world_run_frames` |
 | `Viper.Game3D.World3D.RunFramesOnly` | `void(obj,i64,f64)` | `rt_game3d_world_run_frames_only` |
-| `Viper.Game3D.World3D.Tick` | `i1(obj)` | `rt_game3d_world_tick` |
+| `Viper.Game3D.World3D.Update` | `i1(obj)` | `rt_game3d_world_tick` |
 | `Viper.Game3D.World3D.StepSimulation` | `void(obj,f64)` | `rt_game3d_world_step_simulation` |
 | `Viper.Game3D.World3D.BeginFrame` | `void(obj)` | `rt_game3d_world_begin_frame` |
 | `Viper.Game3D.World3D.DrawScene` | `void(obj)` | `rt_game3d_world_draw_scene` |
@@ -2698,16 +2481,8 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.Assets3D.LoadAnimationAsset` | `obj<Viper.Graphics3D.Animation3D>(str,i64)` | `rt_game3d_assets_load_animation_asset` |
 | `Viper.Game3D.Assets3D.LoadNodeAnimation` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `rt_game3d_assets_load_node_animation` |
 | `Viper.Game3D.Assets3D.LoadNodeAnimationAsset` | `obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)` | `rt_game3d_assets_load_node_animation_asset` |
-| `Viper.Game3D.Assets3D.LoadTemplate` | `obj(str)` | `rt_game3d_assets_load_model_template` |
-| `Viper.Game3D.Assets3D.LoadTemplateAsset` | `obj(str)` | `rt_game3d_assets_load_model_template_asset` |
-| `Viper.Game3D.Assets3D.LoadPrefab` | `obj<Viper.Game3D.SceneTemplate>(str)` | `rt_game3d_assets_load_model_template` |
-| `Viper.Game3D.Assets3D.LoadPrefabAsset` | `obj<Viper.Game3D.SceneTemplate>(str)` | `rt_game3d_assets_load_model_template_asset` |
 | `Viper.Game3D.Assets3D.LoadEntityAsync` | `obj<Viper.Game3D.AssetHandle3D>(str)` | `rt_game3d_assets_load_model_async` |
 | `Viper.Game3D.Assets3D.LoadEntityAssetAsync` | `obj<Viper.Game3D.AssetHandle3D>(str)` | `rt_game3d_assets_load_model_asset_async` |
-| `Viper.Game3D.Assets3D.LoadTemplateAsync` | `obj<Viper.Game3D.AssetHandle3D>(str)` | `rt_game3d_assets_load_model_template_async` |
-| `Viper.Game3D.Assets3D.LoadTemplateAssetAsync` | `obj<Viper.Game3D.AssetHandle3D>(str)` | `rt_game3d_assets_load_model_template_asset_async` |
-| `Viper.Game3D.Assets3D.LoadPrefabAsync` | `obj<Viper.Game3D.AssetHandle3D>(str)` | `rt_game3d_assets_load_model_template_async` |
-| `Viper.Game3D.Assets3D.LoadPrefabAssetAsync` | `obj<Viper.Game3D.AssetHandle3D>(str)` | `rt_game3d_assets_load_model_template_asset_async` |
 | `Viper.Game3D.Assets3D.SetResidencyBudget` | `void(i64)` | `rt_game3d_assets_set_residency_budget` |
 | `Viper.Game3D.Assets3D.GetResidentBytes` | `i64()` | `rt_game3d_assets_get_resident_bytes` |
 | `Viper.Game3D.Assets3D.SetResidencyHint` | `void(obj,f64,f64)` | `rt_game3d_assets_set_residency_hint` |
@@ -2716,12 +2491,11 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | `Viper.Game3D.Assets3D.Preload` | `void(str)` | `rt_game3d_assets_preload` |
 | `Viper.Game3D.Assets3D.PreloadAsset` | `void(str)` | `rt_game3d_assets_preload_asset` |
 | `Viper.Game3D.Assets3D.ClearCache` | `void()` | `rt_game3d_assets_clear_cache` |
-| <a id="viper-game3d-assethandle3d-get-ready"></a>`Viper.Game3D.AssetHandle3D.get_Ready` | `i1(obj)` | `rt_game3d_asset_handle_get_ready` |
+| <a id="viper-game3d-assethandle3d-get-isready"></a>`Viper.Game3D.AssetHandle3D.get_IsReady` | `i1(obj)` | `rt_game3d_asset_handle_get_ready` |
 | <a id="viper-game3d-assethandle3d-get-progress"></a>`Viper.Game3D.AssetHandle3D.get_Progress` | `f64(obj)` | `rt_game3d_asset_handle_get_progress` |
 | <a id="viper-game3d-assethandle3d-get-error"></a>`Viper.Game3D.AssetHandle3D.get_Error` | `str(obj)` | `rt_game3d_asset_handle_get_error` |
 | `Viper.Game3D.AssetHandle3D.Cancel` | `void(obj)` | `rt_game3d_asset_handle_cancel` |
 | `Viper.Game3D.AssetHandle3D.GetEntity` | `obj<Viper.Game3D.Entity3D>(obj)` | `rt_game3d_asset_handle_get_entity` |
-| `Viper.Game3D.AssetHandle3D.GetTemplate` | `obj<Viper.Game3D.SceneTemplate>(obj)` | `rt_game3d_asset_handle_get_template` |
 | `Viper.Game3D.AssetHandle3D.GetPrefab` | `obj<Viper.Game3D.SceneTemplate>(obj)` | `rt_game3d_asset_handle_get_template` |
 | <a id="viper-game3d-scenetemplate-get-model"></a>`Viper.Game3D.SceneTemplate.get_Model` | `obj<Viper.Graphics3D.SceneAsset>(obj)` | `rt_game3d_model_template_get_model` |
 | <a id="viper-game3d-scenetemplate-get-path"></a>`Viper.Game3D.SceneTemplate.get_Path` | `str(obj)` | `rt_game3d_model_template_get_path` |
@@ -2820,8 +2594,8 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-interactable3d-get-kind"></a>`Viper.Game3D.Interactable3D.get_Kind` | `i64(obj)` | `rt_game3d_interactable_get_kind` |
 | `Viper.Game3D.Interactable3D.WithRadius` | `obj(obj,f64)` | `rt_game3d_interactable_with_radius` |
 | <a id="viper-game3d-interactable3d-get-radius"></a>`Viper.Game3D.Interactable3D.get_Radius` | `f64(obj)` | `rt_game3d_interactable_get_radius` |
-| <a id="viper-game3d-interactable3d-set-enabled"></a>`Viper.Game3D.Interactable3D.set_Enabled` | `void(obj,i1)` | `rt_game3d_interactable_set_enabled` |
-| <a id="viper-game3d-interactable3d-get-enabled"></a>`Viper.Game3D.Interactable3D.get_Enabled` | `i1(obj)` | `rt_game3d_interactable_get_enabled` |
+| <a id="viper-game3d-interactable3d-set-isenabled"></a>`Viper.Game3D.Interactable3D.set_IsEnabled` | `void(obj,i1)` | `rt_game3d_interactable_set_enabled` |
+| <a id="viper-game3d-interactable3d-get-isenabled"></a>`Viper.Game3D.Interactable3D.get_IsEnabled` | `i1(obj)` | `rt_game3d_interactable_get_enabled` |
 | <a id="viper-game3d-interactable3d-set-focuspriority"></a>`Viper.Game3D.Interactable3D.set_FocusPriority` | `void(obj,f64)` | `rt_game3d_interactable_set_focus_priority` |
 | <a id="viper-game3d-interactable3d-get-focuspriority"></a>`Viper.Game3D.Interactable3D.get_FocusPriority` | `f64(obj)` | `rt_game3d_interactable_get_focus_priority` |
 | `Viper.Game3D.Interactor3D.New` | `obj(obj)` | `rt_game3d_interactor_new` |

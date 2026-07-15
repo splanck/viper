@@ -24,7 +24,7 @@ bind Time = Viper.Time;
 /// @return True when `name` can be joined under a selected parent directory.
 expose func IsPlainChildName(name: String) -> Boolean {
     if name == "" or name == "." or name == ".." { return false; }
-    if Str.IndexOf(name, Path.Sep()) != 0 { return false; }
+    if Str.IndexOf(name, Path.Separator()) != 0 { return false; }
     if Str.IndexOf(name, "/") != 0 { return false; }
     if Str.IndexOf(name, "\\") != 0 { return false; }
     if Str.IndexOf(name, ":") != 0 { return false; }
@@ -35,7 +35,7 @@ expose func IsPlainChildName(name: String) -> Boolean {
 /// @param path File path to classify.
 /// @return True when the path extension is `.zia`, case-insensitive.
 expose func IsZiaFile(path: String) -> Boolean {
-    return Str.ToLower(Path.Ext(path)) == ".zia";
+    return Str.ToLower(Path.Extension(path)) == ".zia";
 }
 
 /// @brief Test whether a path is inside a workspace root.
@@ -46,8 +46,8 @@ expose func IsWithinRoot(fullPath: String, rootPath: String) -> Boolean {
     if fullPath == "" or rootPath == "" { return false; }
     if fullPath == rootPath { return true; }
     var prefix = rootPath;
-    if Str.EndsWith(prefix, Path.Sep()) == false {
-        prefix = prefix + Path.Sep();
+    if Str.EndsWith(prefix, Path.Separator()) == false {
+        prefix = prefix + Path.Separator();
     }
     return Str.StartsWith(fullPath, prefix);
 }
@@ -65,7 +65,7 @@ expose func TrashPathFor(projectRoot: String, sourcePath: String) -> String {
     var trashRoot = Path.Join(projectRoot, ".viperide-trash");
     var base = Path.Name(sourcePath);
     if base == "" { return ""; }
-    var stem = base + "." + Viper.Time.Clock.Ticks();
+    var stem = base + "." + Viper.Time.Clock.NowMs();
     var attempt = 0;
     while attempt < 128 {
         var name = stem;

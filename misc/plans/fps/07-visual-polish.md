@@ -50,9 +50,9 @@ at arbitrary scale** plus 9-slice image draws for HUD chrome.
 Viper.Graphics3D.PostFX3D.AddAutoExposure(f64,f64,f64)   void(obj,f64,f64,f64)
     — (minEv, maxEv, adaptSpeed): log-luminance histogram → target exposure, smoothed.
       Composes with AddTonemap (auto term multiplies the fixed exposure).
-Viper.Graphics3D.PostFX3D.AddColorLUT(obj,f64)           void(obj,obj,f64)
+Viper.Graphics3D.PostFX3D.AddColorLut(obj,f64)           void(obj,obj,f64)
     — (lutPixels, blend): 16³ LUT baked as a 256×16 PNG strip (Pixels), trilinear sampled,
-      blend 0..1 with ungraded. Identity strip generator: PostFX3D.MakeIdentityLUT() obj().
+      blend 0..1 with ungraded. Identity strip generator: PostFX3D.MakeIdentityLut() obj().
 Viper.Graphics3D.Canvas3D.SetHeightFog(f64,f64,f64,i64,f64) void(obj,f64,f64,f64,i64,f64)
     — (baseHeight, falloff, density, colorRGBA, blendWithDistanceFog 0..1). Exponential-height
       term multiplies the existing linear distance fog; ClearFog clears both.

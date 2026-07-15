@@ -17,7 +17,7 @@ module savegame;
 bind Viper.IO.File as File;
 bind Viper.IO.Dir as Dir;
 bind Viper.IO.Path as Path;
-bind Viper.Text.Json as Json;
+bind Viper.Data.Json as Json;
 bind Viper.Collections.Map as Map;
 bind "../config" as config;
 

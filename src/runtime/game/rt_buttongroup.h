@@ -9,14 +9,15 @@
 //
 // Key invariants:
 //   - At most one button is selected at any time; selecting a new button deselects the previous.
-//   - Button IDs within a group are unique; duplicate IDs cause assertion failure.
+//   - Button IDs within a group are unique; Add returns false for duplicates
+//     while below capacity.
 //   - Maximum group size is RT_BUTTONGROUP_MAX (256) buttons.
 //   - An empty group has no selected button. Selected() returns -1 for no selection,
 //     so use HasSelection when -1 is also a registered button ID.
 //
 // Ownership/Lifetime:
-//   - Caller owns the group handle; must destroy with rt_buttongroup_destroy.
-//   - Button label strings are copied into the group; caller retains ownership of inputs.
+//   - ButtonGroup handles are reference-counted GC objects. IDs are stored in
+//     an inline array; rt_buttongroup_destroy releases the caller's reference.
 //
 // Links: src/runtime/game/rt_buttongroup.c (implementation)
 //
@@ -98,10 +99,9 @@ int8_t rt_buttongroup_is_selected(rt_buttongroup group, int64_t button_id);
 /// @return 1 if any button is selected, 0 if the selection is empty.
 int8_t rt_buttongroup_has_selection(rt_buttongroup group);
 
-/// @brief Check if the selection changed since the last frame.
-/// @details Returns true once after select() changes the selection, then
-///          resets. Use rt_buttongroup_clear_changed_flag() to manually
-///          reset at end of frame.
+/// @brief Check if the selection changed since the last clear operation.
+/// @details Reading does not consume the flag. Use
+///          rt_buttongroup_clear_changed_flag() to reset it explicitly.
 /// @param group The button group.
 /// @return 1 if the selection just changed, 0 otherwise.
 int8_t rt_buttongroup_selection_changed(rt_buttongroup group);

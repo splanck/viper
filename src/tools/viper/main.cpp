@@ -462,7 +462,7 @@ std::vector<std::string> inferRuntimeCapabilities(std::string_view name) {
         caps.push_back("crypto");
     if (startsWith(name, "Viper.IO.") || startsWith(name, "Viper.Assets."))
         caps.push_back("filesystem");
-    if (startsWith(name, "Viper.Sound."))
+    if (startsWith(name, "Viper.Audio."))
         caps.push_back("audio");
     if (startsWith(name, "Viper.Threads."))
         caps.push_back("threads");
@@ -483,335 +483,13 @@ std::vector<std::string> inferRuntimeCapabilities(std::string_view name) {
 ///          direct one-for-one replacement exists.
 /// @param name Public runtime name or class name.
 /// @return Preferred replacement runtime name, or empty string.
-std::string inferRuntimeMigrationTarget(std::string_view name) {
-    const std::string_view leaf = lastRuntimeNameSegment(name);
-
-    if (name == "Viper.Math.Bits.LeadZ")
-        return "Viper.Math.Bits.CountLeadingZeros";
-    if (name == "Viper.Math.Bits.TrailZ")
-        return "Viper.Math.Bits.CountTrailingZeros";
-    if (name == "Viper.Math.Bits.Rotl")
-        return "Viper.Math.Bits.RotateLeft";
-    if (name == "Viper.Math.Bits.Rotr")
-        return "Viper.Math.Bits.RotateRight";
-    if (name == "Viper.Math.Bits.Ushr")
-        return "Viper.Math.Bits.ShiftRightLogical";
-    if (name == "Viper.Collections.BloomFilter.Fpr")
-        return "Viper.Collections.BloomFilter.FalsePositiveRate";
-    if (name == "Viper.Core.Convert.ToString_Int")
-        return "Viper.Core.Convert.ToStringInt";
-    if (name == "Viper.Core.Convert.ToString_Double")
-        return "Viper.Core.Convert.ToStringDouble";
-    if (name == "Viper.Core.Parse.TryNum")
-        return "Viper.Core.Parse.TryDouble";
-    if (name == "Viper.Core.Parse.NumOr")
-        return "Viper.Core.Parse.DoubleOr";
-    if (name == "Viper.Text.Fmt.NumSci")
-        return "Viper.Text.Fmt.Scientific";
-    if (name == "Viper.Text.Fmt.NumPct")
-        return "Viper.Text.Fmt.Percent";
-    if (name == "Viper.Text.Fmt.BoolYN")
-        return "Viper.Text.Fmt.YesNo";
-
-    if (name == "Viper.Terminal.ReadLine" || name == "Viper.Terminal.InputLine")
-        return "Viper.Terminal.TryReadLine";
-    if (name == "Viper.Terminal.Ask")
-        return "Viper.Terminal.TryAsk";
-
-    if (name == "Viper.Collections.LruCache.get_Cap")
-        return "Viper.Collections.LruCache.get_Capacity";
-    if (name == "Viper.Collections.Ring.get_Cap")
-        return "Viper.Collections.Ring.get_Capacity";
-    if (name == "Viper.Collections.Seq.get_Cap")
-        return "Viper.Collections.Seq.get_Capacity";
-    if (name == "Viper.Collections.Deque.get_Cap")
-        return "Viper.Collections.Deque.get_Capacity";
-    if (name == "Viper.Threads.Channel.get_Cap")
-        return "Viper.Threads.Channel.get_Capacity";
-    if (name == "Viper.IO.BinaryBuffer.NewCap")
-        return "Viper.IO.BinaryBuffer.NewCapacity";
-
-    if (name == "Viper.Collections.LruCache.Put")
-        return "Viper.Collections.LruCache.Set";
-    if (name == "Viper.Collections.BiMap.Put")
-        return "Viper.Collections.BiMap.Set";
-    if (name == "Viper.Collections.MultiMap.Put")
-        return "Viper.Collections.MultiMap.Add";
-
-    if (name == "Viper.Graphics.Canvas.SetDTMax")
-        return "Viper.Graphics.Canvas.SetMaxDeltaTime";
-    if (name == "Viper.Graphics3D.Canvas3D.SetDTMax")
-        return "Viper.Graphics3D.Canvas3D.SetMaxDeltaTime";
-
-    if (name == "Viper.Graphics3D.Mesh3D.NewBox")
-        return "Viper.Graphics3D.Mesh3D.Box";
-    if (name == "Viper.Graphics3D.Mesh3D.NewSphere")
-        return "Viper.Graphics3D.Mesh3D.Sphere";
-    if (name == "Viper.Graphics3D.Mesh3D.NewPlane")
-        return "Viper.Graphics3D.Mesh3D.Plane";
-    if (name == "Viper.Graphics3D.Mesh3D.NewCylinder")
-        return "Viper.Graphics3D.Mesh3D.Cylinder";
-    if (name == "Viper.Graphics3D.Material3D.NewColor")
-        return "Viper.Graphics3D.Material3D.FromColor";
-    if (name == "Viper.Graphics3D.Material3D.NewTextured")
-        return "Viper.Graphics3D.Material3D.Textured";
-    if (name == "Viper.Graphics3D.Material3D.NewPBR")
-        return "Viper.Graphics3D.Material3D.PBR";
-    if (name == "Viper.Graphics3D.Light3D.NewDirectional")
-        return "Viper.Graphics3D.Light3D.Directional";
-    if (name == "Viper.Graphics3D.Light3D.NewPoint")
-        return "Viper.Graphics3D.Light3D.Point";
-    if (name == "Viper.Graphics3D.Light3D.NewAmbient")
-        return "Viper.Graphics3D.Light3D.Ambient";
-    if (name == "Viper.Graphics3D.Light3D.NewSpot")
-        return "Viper.Graphics3D.Light3D.Spot";
-    if (name == "Viper.Graphics3D.Collider3D.NewBox")
-        return "Viper.Graphics3D.Collider3D.Box";
-    if (name == "Viper.Graphics3D.Collider3D.NewSphere")
-        return "Viper.Graphics3D.Collider3D.Sphere";
-    if (name == "Viper.Graphics3D.Collider3D.NewCapsule")
-        return "Viper.Graphics3D.Collider3D.Capsule";
-    if (name == "Viper.Graphics3D.World3D.NewWithCamera")
-        return "Viper.Graphics3D.World3D.WithCamera";
-    if (name == "Viper.Graphics3D.World3D.NewWithHorizontalCamera")
-        return "Viper.Graphics3D.World3D.WithHorizontalCamera";
-
-    if (startsWith(name, "Viper.Game3D.Keys"))
-        return "Viper.Input.Key";
-    if (name == "Viper.Game3D.Assets3D.LoadTemplate")
-        return "Viper.Game3D.Prefab.Load";
-    if (name == "Viper.Game3D.Assets3D.LoadTemplateAsset")
-        return "Viper.Game3D.Prefab.LoadAsset";
-    if (name == "Viper.Game3D.Assets3D.LoadTemplateAsync")
-        return "Viper.Game3D.Prefab.LoadAsync";
-    if (name == "Viper.Game3D.Assets3D.LoadTemplateAssetAsync")
-        return "Viper.Game3D.Prefab.LoadAssetAsync";
-    if (name == "Viper.Game3D.AssetHandle3D.GetTemplate")
-        return "Viper.Game3D.AssetHandle3D.GetPrefab";
-
-    if (name == "Viper.Crypto.Hash.CRC32")
-        return "Viper.Crypto.Legacy.Hash.CRC32";
-    if (name == "Viper.Crypto.Hash.CRC32Bytes")
-        return "Viper.Crypto.Legacy.Hash.CRC32Bytes";
-    if (name == "Viper.Crypto.Hash.MD5")
-        return "Viper.Crypto.Legacy.Hash.MD5";
-    if (name == "Viper.Crypto.Hash.MD5Bytes")
-        return "Viper.Crypto.Legacy.Hash.MD5Bytes";
-    if (name == "Viper.Crypto.Hash.SHA1")
-        return "Viper.Crypto.Legacy.Hash.SHA1";
-    if (name == "Viper.Crypto.Hash.SHA1Bytes")
-        return "Viper.Crypto.Legacy.Hash.SHA1Bytes";
-    if (name == "Viper.Crypto.Hash.HmacMD5")
-        return "Viper.Crypto.Legacy.Hash.HmacMD5";
-    if (name == "Viper.Crypto.Hash.HmacMD5Bytes")
-        return "Viper.Crypto.Legacy.Hash.HmacMD5Bytes";
-    if (name == "Viper.Crypto.Hash.HmacSHA1")
-        return "Viper.Crypto.Legacy.Hash.HmacSHA1";
-    if (name == "Viper.Crypto.Hash.HmacSHA1Bytes")
-        return "Viper.Crypto.Legacy.Hash.HmacSHA1Bytes";
-
-    if (name == "Viper.Crypto.Aes.Encrypt")
-        return "Viper.Crypto.Legacy.Aes.EncryptCBC";
-    if (name == "Viper.Crypto.Aes.Decrypt")
-        return "Viper.Crypto.Legacy.Aes.DecryptCBC";
-    if (name == "Viper.Crypto.Aes.DecryptResult")
-        return "Viper.Crypto.Legacy.Aes.DecryptCBCResult";
-    if (name == "Viper.Crypto.Aes.TryDecrypt")
-        return "Viper.Crypto.Legacy.Aes.TryDecryptCBC";
-
-    if (name == "Viper.Math.Random.ChanceInt")
-        return "Viper.Math.Random.Chance";
-
-    if (name == "Viper.Collections.Queue.TryPop")
-        return "Viper.Collections.Queue.TryPopOption";
-    if (name == "Viper.Collections.Bytes.Find")
-        return "Viper.Collections.Bytes.FindOption";
-    if (name == "Viper.Collections.List.Find")
-        return "Viper.Collections.List.FindOption";
-    if (name == "Viper.Collections.Seq.Find")
-        return "Viper.Collections.Seq.FindOption";
-    if (name == "Viper.Collections.Seq.FindWhere")
-        return "Viper.Collections.Seq.FindWhereOption";
-    if (name == "Viper.Collections.UnionFind.Find")
-        return "Viper.Collections.UnionFind.FindRootOption";
-    if (name == "Viper.Collections.Heap.TryPeek")
-        return "Viper.Collections.Heap.TryPeekOption";
-    if (name == "Viper.Collections.Heap.TryPop")
-        return "Viper.Collections.Heap.TryPopOption";
-    if (name == "Viper.Collections.Stack.TryPop")
-        return "Viper.Collections.Stack.TryPopOption";
-    if (name == "Viper.Collections.Deque.TryPopFront")
-        return "Viper.Collections.Deque.TryPopFrontOption";
-    if (name == "Viper.Collections.Deque.TryPopBack")
-        return "Viper.Collections.Deque.TryPopBackOption";
-    if (name == "Viper.Threads.Channel.TryRecv")
-        return "Viper.Threads.Channel.TryRecvOption";
-    if (name == "Viper.Threads.ConcurrentQueue.TryDequeue")
-        return "Viper.Threads.ConcurrentQueue.TryDequeueOption";
-    if (name == "Viper.Threads.Future.TryGet")
-        return "Viper.Threads.Future.TryGetOption";
-    if (name == "Viper.Time.DateTime.TryParse")
-        return "Viper.Time.DateTime.TryParseOption";
-    if (name == "Viper.Localization.Locale.TryParse")
-        return "Viper.Localization.Locale.TryParseOption";
-    if (name == "Viper.Localization.MessageBundle.TryGet")
-        return "Viper.Localization.MessageBundle.TryGetOption";
-    if (name == "Viper.Functional.LazySeq.Find")
-        return "Viper.Functional.LazySeq.FindOption";
-
-    if (name == "Viper.Data.Xml.Find")
-        return "Viper.Data.Xml.FindOption";
-    if (name == "Viper.Text.Pattern.Find")
-        return "Viper.Text.Pattern.FindOption";
-    if (name == "Viper.Text.Pattern.FindFrom")
-        return "Viper.Text.Pattern.FindFromOption";
-    if (name == "Viper.Text.Pattern.FindPos")
-        return "Viper.Text.Pattern.FindPosOption";
-    if (name == "Viper.Text.CompiledPattern.Find")
-        return "Viper.Text.CompiledPattern.FindOption";
-    if (name == "Viper.Text.CompiledPattern.FindFrom")
-        return "Viper.Text.CompiledPattern.FindFromOption";
-    if (name == "Viper.Text.CompiledPattern.FindPos")
-        return "Viper.Text.CompiledPattern.FindPosOption";
-
-    if (name == "Viper.Game2D.SceneDocument.FindObject")
-        return "Viper.Game2D.SceneDocument.FindObjectOption";
-    if (name == "Viper.Graphics2D.SceneNode.Find")
-        return "Viper.Graphics2D.SceneNode.FindOption";
-    if (name == "Viper.Graphics2D.SceneGraph.Find")
-        return "Viper.Graphics2D.SceneGraph.FindOption";
-    if (name == "Viper.Sound.Audio.FindGroup")
-        return "Viper.Sound.Audio.FindGroupOption";
-    if (name == "Viper.Graphics3D.SceneGraph.Find")
-        return "Viper.Graphics3D.SceneGraph.FindOption";
-    if (name == "Viper.Graphics3D.SceneNode.Find")
-        return "Viper.Graphics3D.SceneNode.FindOption";
-    if (name == "Viper.Graphics3D.Skeleton3D.FindBone")
-        return "Viper.Graphics3D.Skeleton3D.FindBoneOption";
-    if (name == "Viper.Graphics3D.SceneAsset.FindNode")
-        return "Viper.Graphics3D.SceneAsset.FindNodeOption";
-    if (name == "Viper.Game3D.World3D.FindNode")
-        return "Viper.Game3D.World3D.FindNodeOption";
-    if (name == "Viper.Game3D.World3D.FindEntity")
-        return "Viper.Game3D.World3D.FindEntityOption";
-    if (name == "Viper.Graphics3D.NavMesh3D.FindPath")
-        return "Viper.Graphics3D.NavMesh3D.FindPathOption";
-    if (name == "Viper.Graphics3D.SceneAsset.Load" ||
-        name == "Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadError" ||
-        name == "Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadErrorCode")
-        return "Viper.Graphics3D.SceneAsset.LoadResult";
-    if (name == "Viper.Graphics3D.SceneAsset.LoadAsset")
-        return "Viper.Graphics3D.SceneAsset.LoadAssetResult";
-    if (name == "Viper.Graphics3D.SceneAsset.LoadAnimation")
-        return "Viper.Graphics3D.SceneAsset.LoadAnimationResult";
-    if (name == "Viper.Graphics3D.SceneAsset.LoadAnimationAsset")
-        return "Viper.Graphics3D.SceneAsset.LoadAnimationAssetResult";
-    if (name == "Viper.Graphics3D.SceneAsset.LoadNodeAnimation")
-        return "Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult";
-    if (name == "Viper.Graphics3D.SceneAsset.LoadNodeAnimationAsset")
-        return "Viper.Graphics3D.SceneAsset.LoadNodeAnimationAssetResult";
-    if (name == "Viper.Zia.SemanticJob.Error")
-        return "Viper.Zia.SemanticJob.ErrorOption";
-
-    if (name == "Viper.Crypto.Module.EnableApprovedMode")
-        return "Viper.Crypto.Module.EnableApprovedModeForProcess";
-    if (name == "Viper.Crypto.Module.DisableApprovedMode")
-        return "Viper.Crypto.Module.DisableApprovedModeForProcess";
-    if (name == "Viper.Crypto.Module.IsApprovedMode")
-        return "Viper.Crypto.Module.IsApprovedModeForProcess";
-
-    if (name == "Viper.Core.Box.ValueType")
-        return "Viper.Runtime.Unsafe.ValueType";
-    if (name == "Viper.Core.Box.ValueTypeAddField" || name == "Viper.Core.ValueType.AddField")
-        return "Viper.Runtime.Unsafe.ValueTypeAddField";
-
-    if (name == "Viper.Network.HttpReq.SetTlsVerify")
-        return "Viper.Network.HttpReq.AllowInsecureCertificatesForTesting";
-    if (name == "Viper.Network.RestClient.LastStatus" ||
-        name == "Viper.Network.RestClient.LastResponse" ||
-        name == "Viper.Network.RestClient.LastOk")
-        return "Viper.Network.RestClient.GetResult";
-    if (name == "Viper.System.Exec.ShellFull" || name == "Viper.System.Exec.LastExitCode")
-        return "Viper.System.Exec.ShellResult";
-    if (name == "Viper.Network.SmtpClient.Send" || name == "Viper.Network.SmtpClient.get_LastError")
-        return "Viper.Network.SmtpClient.SendResult";
-    if (name == "Viper.Network.SmtpClient.SendHtml")
-        return "Viper.Network.SmtpClient.SendHtmlResult";
-    if (name == "Viper.Game.UI.Table.HandleClick" || name == "Viper.Game.UI.Table.LastHeaderClick")
-        return "Viper.Game.UI.Table.HandleClickResult";
-    if (name == "Viper.GUI.FindBar.FindNext")
-        return "Viper.GUI.FindBar.FindNextOption";
-    if (name == "Viper.GUI.FindBar.FindPrev")
-        return "Viper.GUI.FindBar.FindPrevOption";
-    if (name == "Viper.GUI.TestHarness.FindById")
-        return "Viper.GUI.TestHarness.FindByIdOption";
-    if (name == "Viper.GUI.TestHarness.FindByName")
-        return "Viper.GUI.TestHarness.FindByNameOption";
-    if (name == "Viper.GUI.TestHarness.FindByType")
-        return "Viper.GUI.TestHarness.FindByTypeOption";
-    if (name == "Viper.GUI.CommandRegistry.Find")
-        return "Viper.GUI.CommandRegistry.FindOption";
-
-    if (name == "Viper.Game.Pathfinder.get_LastFound" ||
-        name == "Viper.Game.Pathfinder.get_LastSteps")
-        return "Viper.Game.Pathfinder.FindPathResult";
-    if (name == "Viper.Game.Pathfinder.FindPath" || name == "Viper.Game.Pathfinder.FindPathLength")
-        return "Viper.Game.Pathfinder.FindPathResult";
-    if (name == "Viper.Game.Pathfinder.FindNearest")
-        return "Viper.Game.Pathfinder.FindNearestResult";
-    if (name == "Viper.Game.PathResult.get_Length" || name == "Viper.Game.PathResult.Length")
-        return "Viper.Game.PathResult.get_StepCount";
-    if (name == "Viper.Game.Quadtree.GetResult" || name == "Viper.Game.Quadtree.get_ResultCount" ||
-        name == "Viper.Game.Quadtree.QueryWasTruncated")
-        return "Viper.Game.Quadtree.QueryRectResult";
-    if (name == "Viper.Game.Quadtree.GetPairs" || name == "Viper.Game.Quadtree.PairFirst" ||
-        name == "Viper.Game.Quadtree.PairSecond" || name == "Viper.Game.Quadtree.PairsWasTruncated")
-        return "Viper.Game.Quadtree.QueryPairs";
-    if (name == "Viper.Game.AnimStateMachine.EventsFiredCount" ||
-        name == "Viper.Game.AnimStateMachine.EventFiredId" ||
-        name == "Viper.Game.AnimStateMachine.get_EventFired")
-        return "Viper.Game.AnimStateMachine.PollEvents";
-    if (name == "Viper.Game.AnimTimeline.EventsFiredCount" ||
-        name == "Viper.Game.AnimTimeline.EventFiredId")
-        return "Viper.Game.AnimTimeline.PollEvents";
-
-    if (name == "Viper.Text.JsonStream.Error")
-        return "Viper.Text.JsonStream.NextResult";
-    if (name == "Viper.Data.Xml.Error")
-        return "Viper.Data.Xml.ParseResult";
-    if (name == "Viper.Data.Yaml.Error")
-        return "Viper.Data.Yaml.ParseResult";
-    if (name == "Viper.Data.Serialize.Error")
-        return "Viper.Data.Serialize.ParseResult";
-
-    if (name == "Viper.Crypto.Tls.Error")
-        return "Viper.Crypto.Tls.ConnectResult";
-    if (name == "Viper.System.Pty.LastError")
-        return "Viper.System.Pty.OpenResult";
-    if (name == "Viper.Game2D.SceneDocument.LastError")
-        return "Viper.Game2D.SceneDocument.LoadResult";
-
-    if (name == "Viper.Memory.Retain")
-        return "Viper.Runtime.Unsafe.Retain";
-    if (name == "Viper.Memory.Release")
-        return "Viper.Runtime.Unsafe.Release";
-    if (name == "Viper.Memory.RetainStr")
-        return "Viper.Runtime.Unsafe.RetainStr";
-    if (name == "Viper.Memory.ReleaseStr")
-        return "Viper.Runtime.Unsafe.ReleaseStr";
-
-    if (name == "Viper.Error.SetThrowMsg")
-        return "Viper.Runtime.Unsafe.SetThrowMsg";
-    if (name == "Viper.Error.ClearThrowMsg")
-        return "Viper.Runtime.Unsafe.ClearThrowMsg";
-    if (name == "Viper.Error.SetTrapFields")
-        return "Viper.Runtime.Unsafe.SetTrapFields";
-    if (name == "Viper.Error.RaiseKind")
-        return "Viper.Runtime.Unsafe.RaiseKind";
-    if (startsWith(name, "Viper.Error.GetTrap") || name == "Viper.Error.GetThrowMsg")
-        return "Viper.Diagnostics.CurrentTrap";
-
-    (void)leaf;
+std::string inferRuntimeMigrationTarget(std::string_view name)
+{
+    // The pre-alpha compatibility sweep removed every alias and legacy
+    // spelling from the public catalog, so no row currently carries a
+    // migration target. Future deprecations should add entries here so
+    // tools regain machine-readable pointers to modern spellings.
+    (void)name;
     return {};
 }
 
@@ -822,21 +500,14 @@ std::string inferRuntimeMigrationTarget(std::string_view name) {
 /// @return Stability tier string.
 std::string inferRuntimeStability(std::string_view name) {
     const std::string_view leaf = lastRuntimeNameSegment(name);
-    if (leaf == "AllowInsecureCertificatesForTesting" || leaf == "EnableApprovedMode" ||
-        leaf == "DisableApprovedMode" || leaf == "EnableApprovedModeForProcess" ||
-        leaf == "DisableApprovedModeForProcess" || name == "Viper.Core.Box.ValueType" ||
-        name == "Viper.Core.Box.ValueTypeAddField" || name == "Viper.Core.ValueType.AddField" ||
-        name == "Viper.Network.HttpReq.SetTlsVerify" || startsWith(name, "Viper.Runtime.Unsafe.") ||
-        startsWith(name, "Viper.Memory.Retain") || startsWith(name, "Viper.Memory.Release") ||
-        startsWith(name, "Viper.Error.Set") || startsWith(name, "Viper.Error.Clear") ||
-        startsWith(name, "Viper.Error.Raise"))
+    if (leaf == "AllowInsecureCertificatesForTesting" ||
+        leaf == "EnableApprovedModeForProcess" || leaf == "DisableApprovedModeForProcess" ||
+        name == "Viper.Network.HttpReq.SetTlsVerify" ||
+        startsWith(name, "Viper.Runtime.Unsafe."))
         return "unsafe";
     if (!inferRuntimeMigrationTarget(name).empty())
         return "legacy";
     if (startsWith(name, "Viper.Crypto.Legacy."))
-        return "legacy";
-    if (leaf == "MD5" || leaf == "SHA1" || leaf == "HmacMD5" || leaf == "HmacSHA1" ||
-        leaf == "LastError" || leaf == "LastStatus" || leaf == "LastResponse" || leaf == "LastOk")
         return "legacy";
     if (startsWith(name, "Viper.Zia.") || startsWith(name, "Viper.Basic.") ||
         startsWith(name, "Viper.Project.") || startsWith(name, "Viper.Workspace.") ||
@@ -855,20 +526,11 @@ std::string inferRuntimeStability(std::string_view name) {
 /// @param leaf Last dotted segment of @p name.
 /// @return True when the row is side-channel diagnostic state.
 bool isRuntimeSideChannelDiagnostic(std::string_view name, std::string_view leaf) {
-    if (name == "Viper.Crypto.Tls.Error" || name == "Viper.Text.JsonStream.Error" ||
-        name == "Viper.Data.Xml.Error" || name == "Viper.Data.Yaml.Error" ||
-        name == "Viper.Data.Serialize.Error" || name == "Viper.Game2D.SceneDocument.LastError" ||
-        name == "Viper.System.Pty.LastError" || name == "Viper.System.Exec.LastExitCode" ||
-        name == "Viper.Game.UI.Table.LastHeaderClick" ||
-        name == "Viper.Network.RestClient.LastStatus" ||
-        name == "Viper.Network.RestClient.LastResponse" ||
-        name == "Viper.Network.RestClient.LastOk" ||
-        name == "Viper.Network.SmtpClient.get_LastError" ||
-        name == "Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadError" ||
-        name == "Viper.Graphics3D.AssetDiagnostics3D.get_LastLoadErrorCode" ||
-        name == "Viper.Zia.SemanticJob.Error")
-        return true;
-    if (leaf == "get_LastError")
+    // The compatibility sweep removed every named side-channel row
+    // (Tls.Error, RestClient.Last*, SceneDocument.LastError, ...). The leaf
+    // rule remains so any future regression is classified immediately.
+    (void)name;
+    if (leaf == "get_LastError" || leaf == "get_LastStatus" || leaf == "get_LastResponse")
         return true;
     return false;
 }
@@ -890,9 +552,6 @@ std::string inferRuntimeFallibility(std::string_view name, std::string_view sign
         if (runtimeReturnNullable(name, signature).value_or(false))
             return "nullable";
     }
-    if (name == "Viper.Terminal.Ask" || name == "Viper.Terminal.ReadLine" ||
-        name == "Viper.Terminal.InputLine")
-        return "option";
     if (sig.valid) {
         if (endsWith(sig.returnType, "?"))
             return "option";
@@ -914,6 +573,14 @@ std::string inferRuntimeFallibility(std::string_view name, std::string_view sign
             return "infallible";
         return "sentinel";
     }
+    if (startsWith(leaf, "Unwrap") || startsWith(leaf, "Expect"))
+        return "traps";
+    if ((startsWith(leaf, "Save") || startsWith(leaf, "Load")) && sig.valid &&
+        sig.returnType == "i1")
+        return "status";
+    if ((startsWith(name, "Viper.IO.") || startsWith(name, "Viper.System.")) &&
+        (startsWith(leaf, "Read") || startsWith(leaf, "Write")))
+        return "traps";
     if (leaf == "Parse" || startsWith(leaf, "Parse") || startsWith(leaf, "Load") ||
         startsWith(leaf, "Open") || startsWith(leaf, "Connect") || startsWith(leaf, "Decrypt"))
         return "traps";

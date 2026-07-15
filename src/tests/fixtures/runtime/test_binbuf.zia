@@ -32,7 +32,7 @@ func testNewBuffer() {
     setTest("NewBuffer");
 
     var buf = Viper.IO.BinaryBuffer.New();
-    var pos = Viper.IO.BinaryBuffer.get_Pos(buf);
+    var pos = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos, 0, "new buffer pos is 0");
 
     var len = Viper.IO.BinaryBuffer.get_Length(buf);
@@ -46,11 +46,11 @@ func testWriteReadByte() {
     Viper.IO.BinaryBuffer.WriteByte(buf, 0x41);   // 'A'
     Viper.IO.BinaryBuffer.WriteByte(buf, 0xFF);
 
-    var pos = Viper.IO.BinaryBuffer.get_Pos(buf);
+    var pos = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos, 2, "pos after writing 2 bytes");
 
     // Reset position to read back
-    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+    Viper.IO.BinaryBuffer.set_Position(buf, 0);
 
     var b1 = Viper.IO.BinaryBuffer.ReadByte(buf);
     assertEqInt(b1, 0x41, "read byte 1");
@@ -65,22 +65,22 @@ func testWriteReadI16() {
     var buf = Viper.IO.BinaryBuffer.New();
 
     // Write i16 little-endian
-    Viper.IO.BinaryBuffer.WriteI16LE(buf, 0x1234);
-    var pos1 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    Viper.IO.BinaryBuffer.WriteI16LittleEndian(buf, 0x1234);
+    var pos1 = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos1, 2, "pos after WriteI16LE");
 
     // Write i16 big-endian
-    Viper.IO.BinaryBuffer.WriteI16BE(buf, 0x5678);
-    var pos2 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    Viper.IO.BinaryBuffer.WriteI16BigEndian(buf, 0x5678);
+    var pos2 = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos2, 4, "pos after WriteI16BE");
 
     // Read back
-    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+    Viper.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var v1 = Viper.IO.BinaryBuffer.ReadI16LE(buf);
+    var v1 = Viper.IO.BinaryBuffer.ReadI16LittleEndian(buf);
     assertEqInt(v1, 0x1234, "read i16le");
 
-    var v2 = Viper.IO.BinaryBuffer.ReadI16BE(buf);
+    var v2 = Viper.IO.BinaryBuffer.ReadI16BigEndian(buf);
     assertEqInt(v2, 0x5678, "read i16be");
 }
 
@@ -89,20 +89,20 @@ func testWriteReadI32() {
 
     var buf = Viper.IO.BinaryBuffer.New();
 
-    Viper.IO.BinaryBuffer.WriteI32LE(buf, 0x12345678);
-    var pos1 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 0x12345678);
+    var pos1 = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos1, 4, "pos after WriteI32LE");
 
-    Viper.IO.BinaryBuffer.WriteU32BE(buf, 0xDEADBEEF);
-    var pos2 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    Viper.IO.BinaryBuffer.WriteU32BigEndian(buf, 0xDEADBEEF);
+    var pos2 = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos2, 8, "pos after WriteI32BE");
 
-    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+    Viper.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var v1 = Viper.IO.BinaryBuffer.ReadI32LE(buf);
+    var v1 = Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf);
     assertEqInt(v1, 0x12345678, "read i32le");
 
-    var v2 = Viper.IO.BinaryBuffer.ReadU32BE(buf);
+    var v2 = Viper.IO.BinaryBuffer.ReadU32BigEndian(buf);
     assertEqInt(v2, 0xDEADBEEF, "read u32be");
 }
 
@@ -111,20 +111,20 @@ func testWriteReadI64() {
 
     var buf = Viper.IO.BinaryBuffer.New();
 
-    Viper.IO.BinaryBuffer.WriteI64LE(buf, 1234567890123);
-    var pos1 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    Viper.IO.BinaryBuffer.WriteI64LittleEndian(buf, 1234567890123);
+    var pos1 = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos1, 8, "pos after WriteI64LE");
 
-    Viper.IO.BinaryBuffer.WriteI64BE(buf, 9876543210987);
-    var pos2 = Viper.IO.BinaryBuffer.get_Pos(buf);
+    Viper.IO.BinaryBuffer.WriteI64BigEndian(buf, 9876543210987);
+    var pos2 = Viper.IO.BinaryBuffer.get_Position(buf);
     assertEqInt(pos2, 16, "pos after WriteI64BE");
 
-    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+    Viper.IO.BinaryBuffer.set_Position(buf, 0);
 
-    var v1 = Viper.IO.BinaryBuffer.ReadI64LE(buf);
+    var v1 = Viper.IO.BinaryBuffer.ReadI64LittleEndian(buf);
     assertEqInt(v1, 1234567890123, "read i64le");
 
-    var v2 = Viper.IO.BinaryBuffer.ReadI64BE(buf);
+    var v2 = Viper.IO.BinaryBuffer.ReadI64BigEndian(buf);
     assertEqInt(v2, 9876543210987, "read i64be");
 }
 
@@ -133,21 +133,21 @@ func testSignedIntegerRoundTrips() {
 
     var buf = Viper.IO.BinaryBuffer.New();
 
-    Viper.IO.BinaryBuffer.WriteI16LE(buf, -1);
-    Viper.IO.BinaryBuffer.WriteI16BE(buf, -2);
-    Viper.IO.BinaryBuffer.WriteI32LE(buf, -1);
-    Viper.IO.BinaryBuffer.WriteI32BE(buf, -2);
-    Viper.IO.BinaryBuffer.WriteI64LE(buf, -1);
-    Viper.IO.BinaryBuffer.WriteI64BE(buf, -2);
+    Viper.IO.BinaryBuffer.WriteI16LittleEndian(buf, -1);
+    Viper.IO.BinaryBuffer.WriteI16BigEndian(buf, -2);
+    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, -1);
+    Viper.IO.BinaryBuffer.WriteI32BigEndian(buf, -2);
+    Viper.IO.BinaryBuffer.WriteI64LittleEndian(buf, -1);
+    Viper.IO.BinaryBuffer.WriteI64BigEndian(buf, -2);
 
-    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+    Viper.IO.BinaryBuffer.set_Position(buf, 0);
 
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI16LE(buf), -1, "read signed i16le");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI16BE(buf), -2, "read signed i16be");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI32LE(buf), -1, "read signed i32le");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI32BE(buf), -2, "read signed i32be");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI64LE(buf), -1, "read signed i64le");
-    assertEqInt(Viper.IO.BinaryBuffer.ReadI64BE(buf), -2, "read signed i64be");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI16LittleEndian(buf), -1, "read signed i16le");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI16BigEndian(buf), -2, "read signed i16be");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf), -1, "read signed i32le");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI32BigEndian(buf), -2, "read signed i32be");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI64LittleEndian(buf), -1, "read signed i64le");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI64BigEndian(buf), -2, "read signed i64be");
 }
 
 func testWriteReadStr() {
@@ -158,7 +158,7 @@ func testWriteReadStr() {
     Viper.IO.BinaryBuffer.WriteStr(buf, "Hello");
     Viper.IO.BinaryBuffer.WriteStr(buf, "World");
 
-    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+    Viper.IO.BinaryBuffer.set_Position(buf, 0);
 
     var s1 = Viper.IO.BinaryBuffer.ReadStr(buf);
     assertEqStr(s1, "Hello", "read str 1");
@@ -211,11 +211,11 @@ func testReset() {
     Viper.IO.BinaryBuffer.WriteByte(buf, 2);
     Viper.IO.BinaryBuffer.WriteByte(buf, 3);
 
-    assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 3, "pos before reset");
+    assertEqInt(Viper.IO.BinaryBuffer.get_Position(buf), 3, "pos before reset");
 
     Viper.IO.BinaryBuffer.Reset(buf);
 
-    assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 0, "pos after reset");
+    assertEqInt(Viper.IO.BinaryBuffer.get_Position(buf), 0, "pos after reset");
     assertEqInt(Viper.IO.BinaryBuffer.get_Length(buf), 0, "len after reset");
 }
 
@@ -223,22 +223,22 @@ func testPositionManagement() {
     setTest("PositionManagement");
 
     var buf = Viper.IO.BinaryBuffer.New();
-    Viper.IO.BinaryBuffer.WriteI32LE(buf, 100);
-    Viper.IO.BinaryBuffer.WriteI32LE(buf, 200);
-    Viper.IO.BinaryBuffer.WriteI32LE(buf, 300);
+    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 100);
+    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 200);
+    Viper.IO.BinaryBuffer.WriteI32LittleEndian(buf, 300);
 
     // Position should be at 12
-    assertEqInt(Viper.IO.BinaryBuffer.get_Pos(buf), 12, "pos after 3 i32 writes");
+    assertEqInt(Viper.IO.BinaryBuffer.get_Position(buf), 12, "pos after 3 i32 writes");
     assertEqInt(Viper.IO.BinaryBuffer.get_Length(buf), 12, "len is 12");
 
     // Seek to second i32
-    Viper.IO.BinaryBuffer.set_Pos(buf, 4);
-    var v = Viper.IO.BinaryBuffer.ReadI32LE(buf);
+    Viper.IO.BinaryBuffer.set_Position(buf, 4);
+    var v = Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf);
     assertEqInt(v, 200, "seek and read second i32");
 
     // Seek back to start
-    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
-    var v0 = Viper.IO.BinaryBuffer.ReadI32LE(buf);
+    Viper.IO.BinaryBuffer.set_Position(buf, 0);
+    var v0 = Viper.IO.BinaryBuffer.ReadI32LittleEndian(buf);
     assertEqInt(v0, 100, "seek to start and read first i32");
 }
 

@@ -193,12 +193,12 @@ coverage where applicable. BUG-E13/E14 were found while building the game on the
 - **Found:** 2026-07-07 (ASHFALL Track G, save system: `readMap` returns `Json.ParseObject(text)`)
 - **Severity:** P2 API usability (same family as BUG-E9)
 - **Symptom:** assigning `Json.ParseObject(...)` to a `Map`-typed binding failed sema
-  (`expected Map[String, ?], got Viper.Text.Json`), and the parsed value could not reach the
+  (`expected Map[String, ?], got Viper.Data.Json`), and the parsed value could not reach the
   `Map.GetIntOr`/`GetFloatOr` default-supplying accessors that graceful save recovery needs —
   even though `ParseObject` returns a `Map` at runtime (its impl shares `rt_map_*`, and the
   sibling `Json.NewObject` is literally `rt_map_new`).
 - **Root cause:** the `ParseObject` RT_FUNC and RT_METHOD were annotated `obj(str)`; the untyped
-  return got sema-typed as the declaring class `Viper.Text.Json`, not `Map`.
+  return got sema-typed as the declaring class `Viper.Data.Json`, not `Map`.
 - **Fix:** typed both to `obj<Viper.Collections.Map>(str)`, matching runtime reality and the
   already-typed `NewObject`. Verified the apiaudit `json_demo` (passes the result to
   `Json.TypeOf(obj)`) still checks clean. `ParseArray`/`Parse` left polymorphic intentionally.
@@ -210,7 +210,7 @@ coverage where applicable. BUG-E13/E14 were found while building the game on the
   get_Point/get_Normal`, and `PhysicsHitList3D.Get` all returned bare `obj`. A weapon system
   that stores a `Physics3DBody` (for reference-equality target resolution) or reads a hit
   `Vec3` point/normal could not: the values typed as `Any` and failed to bind to typed
-  parameters (`expected Viper.Graphics3D.Physics3DBody, got Any`), even though the runtime
+  parameters (`expected Viper.Graphics3D.PhysicsBody3D, got Any`), even though the runtime
   hands back exactly those object types.
 - **Root cause:** the RT_FUNC/RT_METHOD/RT_PROP signatures were untyped `obj` (same gap as
   BUG-E9/E13).

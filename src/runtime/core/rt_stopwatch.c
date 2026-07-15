@@ -12,8 +12,9 @@
 //          in milliseconds, microseconds, and nanoseconds.
 //
 // Key invariants:
-//   - Uses CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter (Windows) for
-//     nanosecond-resolution timing; the clock is not affected by NTP or DST.
+//   - Prefers CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter (Windows).
+//     POSIX falls back to CLOCK_REALTIME when the monotonic query fails, so that
+//     failure path can move with wall-clock adjustments (VDOC-223).
 //   - Elapsed time accumulates correctly across multiple Start/Stop cycles;
 //     total elapsed = accumulated_ns + (current interval if running).
 //   - Stopwatch objects are not thread-safe; external synchronization is
@@ -155,8 +156,8 @@ static ViperStopwatch *require_stopwatch(void *obj) {
 /// @return Nanoseconds since unspecified epoch.
 static int64_t get_timestamp_ns(void) {
 #if defined(_WIN32)
-    // Benign race: concurrent first calls may both query frequency, but QPC
-    // frequency is constant so duplicate init produces identical results.
+    // QPC frequency is constant and duplicate queries should agree, but this
+    // unsynchronized shared write is still a C data race (VDOC-224).
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
         return stopwatch_tick_count_ns();
@@ -403,9 +404,9 @@ void rt_stopwatch_reset(void *obj) {
 
 /// @brief Resets the stopwatch to zero and immediately starts it.
 ///
-/// Atomically clears all accumulated time and starts timing from zero. This
-/// is equivalent to Reset() followed by Start(), but done in a single call
-/// for convenience and to avoid race conditions.
+/// Clears all accumulated time and starts timing from zero in one convenience
+/// call. The object remains non-thread-safe; this operation provides no
+/// cross-thread atomicity.
 ///
 /// **Usage example:**
 /// ```

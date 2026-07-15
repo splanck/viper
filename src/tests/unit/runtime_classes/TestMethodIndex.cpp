@@ -143,13 +143,17 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
 TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
     runtimeMethodIndex().seed();
 
-    auto retain = runtimeMethodIndex().find("Viper.Memory", "Retain", 1);
+    // Refcount mutation now lives only under Viper.Runtime.Unsafe; the
+    // Viper.Memory mirrors were removed in the pre-alpha sweep.
+    auto retain = runtimeMethodIndex().find("Viper.Runtime.Unsafe", "Retain", 1);
     ASSERT_TRUE(retain.has_value());
-    EXPECT_EQ(retain->target, std::string("Viper.Memory.Retain"));
+    EXPECT_EQ(retain->target, std::string("Viper.Runtime.Unsafe.Retain"));
+    auto oldRetain = runtimeMethodIndex().find("Viper.Memory", "Retain", 1);
+    EXPECT_FALSE(oldRetain.has_value());
 
-    auto releaseStr = runtimeMethodIndex().find("Viper.Memory", "ReleaseStr", 1);
+    auto releaseStr = runtimeMethodIndex().find("Viper.Runtime.Unsafe", "ReleaseStr", 1);
     ASSERT_TRUE(releaseStr.has_value());
-    EXPECT_EQ(releaseStr->target, std::string("Viper.Memory.ReleaseStr"));
+    EXPECT_EQ(releaseStr->target, std::string("Viper.Runtime.Unsafe.ReleaseStr"));
     EXPECT_EQ(releaseStr->ret, BasicType::Int);
 
     auto oldDoubleOpt = runtimeMethodIndex().find("Viper.Core.Parse", "DoubleOption", 1);
@@ -157,11 +161,13 @@ TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
     auto oldIntOpt = runtimeMethodIndex().find("Viper.Core.Parse", "Int64Option", 1);
     EXPECT_FALSE(oldIntOpt.has_value());
 
-    auto tryNum = runtimeMethodIndex().find("Viper.Core.Parse", "TryNum", 1);
+    auto tryNum = runtimeMethodIndex().find("Viper.Core.Parse", "TryDouble", 1);
     ASSERT_TRUE(tryNum.has_value());
-    EXPECT_EQ(tryNum->target, std::string("Viper.Core.Parse.TryNum"));
+    EXPECT_EQ(tryNum->target, std::string("Viper.Core.Parse.TryDouble"));
     EXPECT_EQ(tryNum->ret, BasicType::Object);
     EXPECT_EQ(tryNum->returnClassQName, std::string("Viper.Option"));
+    // The legacy TryNum spelling is gone.
+    EXPECT_FALSE(runtimeMethodIndex().find("Viper.Core.Parse", "TryNum", 1).has_value());
 
     auto tryInt = runtimeMethodIndex().find("Viper.Core.Parse", "TryInt", 1);
     ASSERT_TRUE(tryInt.has_value());
@@ -200,10 +206,9 @@ TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
     EXPECT_EQ(msgSubscribe->target, std::string("Viper.Core.MessageBus.Subscribe"));
     EXPECT_TRUE(msgSubscribe->hasReceiver);
 
-    auto addField = runtimeMethodIndex().find("Viper.Core.ValueType", "AddField", 3);
-    ASSERT_TRUE(addField.has_value());
-    EXPECT_EQ(addField->target, std::string("Viper.Core.Box.ValueTypeAddField"));
-    EXPECT_EQ(addField->ret, BasicType::Void);
+    // Viper.Core.ValueType was removed; value-type registration lives only
+    // under Viper.Runtime.Unsafe.
+    EXPECT_FALSE(runtimeMethodIndex().find("Viper.Core.ValueType", "AddField", 3).has_value());
 }
 
 TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
@@ -239,7 +244,7 @@ TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
     EXPECT_EQ(toList->ret, BasicType::Object);
     EXPECT_EQ(toList->returnClassQName, std::string("Viper.Collections.List"));
 
-    auto lazyToSeqN = runtimeMethodIndex().find("Viper.Functional.LazySeq", "ToSeqN", 1);
+    auto lazyToSeqN = runtimeMethodIndex().find("Viper.Functional.LazySeq", "ToSeq", 1);
     ASSERT_TRUE(lazyToSeqN.has_value());
     EXPECT_EQ(lazyToSeqN->ret, BasicType::Object);
     EXPECT_EQ(lazyToSeqN->returnClassQName, std::string("Viper.Collections.Seq"));
@@ -248,41 +253,41 @@ TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
 TEST(RuntimeMethodIndexBasic, SoundFactoriesPreserveConcreteReturnClass) {
     runtimeMethodIndex().seed();
 
-    auto tone = runtimeMethodIndex().find("Viper.Sound.Synth", "Tone", 3);
+    auto tone = runtimeMethodIndex().find("Viper.Audio.Synth", "Tone", 3);
     ASSERT_TRUE(tone.has_value());
-    EXPECT_EQ(tone->target, std::string("Viper.Sound.Synth.Tone"));
+    EXPECT_EQ(tone->target, std::string("Viper.Audio.Synth.Tone"));
     EXPECT_EQ(tone->ret, BasicType::Object);
-    EXPECT_EQ(tone->returnClassQName, std::string("Viper.Sound.Sound"));
+    EXPECT_EQ(tone->returnClassQName, std::string("Viper.Audio.Sound"));
 
-    auto sweep = runtimeMethodIndex().find("Viper.Sound.Synth", "Sweep", 4);
+    auto sweep = runtimeMethodIndex().find("Viper.Audio.Synth", "Sweep", 4);
     ASSERT_TRUE(sweep.has_value());
     EXPECT_EQ(sweep->ret, BasicType::Object);
-    EXPECT_EQ(sweep->returnClassQName, std::string("Viper.Sound.Sound"));
+    EXPECT_EQ(sweep->returnClassQName, std::string("Viper.Audio.Sound"));
 
-    auto noise = runtimeMethodIndex().find("Viper.Sound.Synth", "Noise", 2);
+    auto noise = runtimeMethodIndex().find("Viper.Audio.Synth", "Noise", 2);
     ASSERT_TRUE(noise.has_value());
     EXPECT_EQ(noise->ret, BasicType::Object);
-    EXPECT_EQ(noise->returnClassQName, std::string("Viper.Sound.Sound"));
+    EXPECT_EQ(noise->returnClassQName, std::string("Viper.Audio.Sound"));
 
-    auto sfx = runtimeMethodIndex().find("Viper.Sound.Synth", "Sfx", 1);
+    auto sfx = runtimeMethodIndex().find("Viper.Audio.Synth", "Sfx", 1);
     ASSERT_TRUE(sfx.has_value());
     EXPECT_EQ(sfx->ret, BasicType::Object);
-    EXPECT_EQ(sfx->returnClassQName, std::string("Viper.Sound.Sound"));
+    EXPECT_EQ(sfx->returnClassQName, std::string("Viper.Audio.Sound"));
 
-    auto build = runtimeMethodIndex().find("Viper.Sound.MusicGen", "Build", 0);
+    auto build = runtimeMethodIndex().find("Viper.Audio.MusicGen", "Build", 0);
     ASSERT_TRUE(build.has_value());
-    EXPECT_EQ(build->target, std::string("Viper.Sound.MusicGen.Build"));
+    EXPECT_EQ(build->target, std::string("Viper.Audio.MusicGen.Build"));
     EXPECT_EQ(build->ret, BasicType::Object);
-    EXPECT_EQ(build->returnClassQName, std::string("Viper.Sound.Sound"));
+    EXPECT_EQ(build->returnClassQName, std::string("Viper.Audio.Sound"));
 }
 
 TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
     runtimeMethodIndex().seed();
 
-    auto spriteFontBdf = runtimeMethodIndex().find("Viper.Graphics.SpriteFont", "LoadBDF", 1);
+    auto spriteFontBdf = runtimeMethodIndex().find("Viper.Graphics.BitmapFont", "LoadBDF", 1);
     ASSERT_TRUE(spriteFontBdf.has_value());
     EXPECT_EQ(spriteFontBdf->ret, BasicType::Object);
-    EXPECT_EQ(spriteFontBdf->returnClassQName, std::string("Viper.Graphics.SpriteFont"));
+    EXPECT_EQ(spriteFontBdf->returnClassQName, std::string("Viper.Graphics.BitmapFont"));
     EXPECT_FALSE(spriteFontBdf->hasReceiver);
 
     auto pixelsFromBytes = runtimeMethodIndex().find("Viper.Graphics.Pixels", "FromBytes", 3);
@@ -317,8 +322,8 @@ TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
         runtimeMethodIndex().find("Viper.Graphics2D.Tilemap", "ResolveAnimTile", 1).has_value());
 
     EXPECT_TRUE(
-        runtimeMethodIndex().find("Viper.Graphics.ParticleSystem2D", "Destroy", 0).has_value());
-    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Emitter2D", "Destroy", 0).has_value());
+        runtimeMethodIndex().find("Viper.Game.ParticleEmitter", "Destroy", 0).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Game.ParticleEmitter", "Destroy", 0).has_value());
     EXPECT_TRUE(runtimeMethodIndex().find("Viper.Game.Lighting2D", "Destroy", 0).has_value());
 
     EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Canvas", "GetWindowX", 0).has_value());
@@ -333,15 +338,15 @@ TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
 TEST(RuntimeMethodIndexBasic, JsonStreamInstanceMethodsDoNotRequireExplicitReceiver) {
     runtimeMethodIndex().seed();
 
-    auto next = runtimeMethodIndex().find("Viper.Text.JsonStream", "Next", 0);
+    auto next = runtimeMethodIndex().find("Viper.Data.JsonStream", "Next", 0);
     ASSERT_TRUE(next.has_value());
     EXPECT_EQ(next->ret, BasicType::Int);
 
-    auto hasNext = runtimeMethodIndex().find("Viper.Text.JsonStream", "HasNext", 0);
+    auto hasNext = runtimeMethodIndex().find("Viper.Data.JsonStream", "HasNext", 0);
     ASSERT_TRUE(hasNext.has_value());
     EXPECT_EQ(hasNext->ret, BasicType::Bool);
 
-    auto wrongArity = runtimeMethodIndex().find("Viper.Text.JsonStream", "Next", 1);
+    auto wrongArity = runtimeMethodIndex().find("Viper.Data.JsonStream", "Next", 1);
     EXPECT_FALSE(wrongArity.has_value());
 }
 

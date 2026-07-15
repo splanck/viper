@@ -8,7 +8,7 @@ bind "./_support";
 // COVER: Viper.Collections.Stack
 // COVER: Viper.Collections.Queue
 // COVER: Viper.Collections.Ring
-// COVER: Viper.Collections.Bag
+// COVER: Viper.Collections.StringSet
 
 func testListWithValues() {
     setTest("ListWithValues");
@@ -112,17 +112,17 @@ func testRuntimeCollections() {
     assertEqInt(queue.Count, 1, "queue pop length");
 
     var ring = new Viper.Collections.Ring();
-    assertGtInt(ring.Cap, 0, "ring default cap");
+    assertGtInt(ring.Capacity, 0, "ring default cap");
     ring.Push("a");
     ring.Push("b");
     assertEqInt(ring.Count, 2, "ring length");
 
-    var bag = new Viper.Collections.Bag();
+    var bag = new Viper.Collections.StringSet();
     bag.Add("apple");
     bag.Add("banana");
     assertEqInt(bag.Count, 2, "bag length");
     assertTrue(bag.Has("apple"), "bag has item");
-    assertEqInt(bag.Items().Count, 2, "bag items length");
+    assertEqInt(bag.ToSeq().Count, 2, "bag items length");
 
     var map = new Viper.Collections.Map();
     map.SetStr("name", "zia");

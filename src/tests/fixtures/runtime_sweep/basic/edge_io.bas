@@ -10,7 +10,7 @@ PRINT "=== Non-existent File Tests ==="
 flag = Viper.IO.File.Exists("/nonexistent/path/file.txt")
 PRINT "Exists('/nonexistent/path/file.txt'): "; flag
 
-num = Viper.IO.File.Size("/nonexistent/file.txt")
+num = Viper.IO.File.SizeBytes("/nonexistent/file.txt")
 PRINT "Size('/nonexistent/file.txt'): "; num
 
 flag = Viper.IO.Dir.Exists("/nonexistent/dir")
@@ -28,7 +28,7 @@ DIM emptyFile AS STRING
 emptyFile = "/tmp/viper_test_empty.txt"
 Viper.IO.File.WriteAllText(emptyFile, "")
 PRINT "Created empty file"
-PRINT "Size: "; Viper.IO.File.Size(emptyFile)
+PRINT "Size: "; Viper.IO.File.SizeBytes(emptyFile)
 result = Viper.IO.File.ReadAllText(emptyFile)
 PRINT "ReadAllText length: "; Viper.String.get_Length(result)
 Viper.IO.File.Delete(emptyFile)
@@ -40,11 +40,11 @@ PRINT "=== Path Edge Cases ==="
 result = Viper.IO.Path.Name("")
 PRINT "Path.Name(''): '"; result; "'"
 
-result = Viper.IO.Path.Dir("")
-PRINT "Path.Dir(''): '"; result; "'"
+result = Viper.IO.Path.Directory("")
+PRINT "Path.Directory(''): '"; result; "'"
 
-result = Viper.IO.Path.Ext("")
-PRINT "Path.Ext(''): '"; result; "'"
+result = Viper.IO.Path.Extension("")
+PRINT "Path.Extension(''): '"; result; "'"
 
 result = Viper.IO.Path.Join("", "")
 PRINT "Path.Join('', ''): '"; result; "'"
@@ -55,14 +55,14 @@ PRINT "Path.Join('/', ''): '"; result; "'"
 result = Viper.IO.Path.Join("", "file.txt")
 PRINT "Path.Join('', 'file.txt'): '"; result; "'"
 
-flag = Viper.IO.Path.IsAbs("")
-PRINT "Path.IsAbs(''): "; flag
+flag = Viper.IO.Path.IsAbsolute("")
+PRINT "Path.IsAbsolute(''): "; flag
 
-flag = Viper.IO.Path.IsAbs("relative/path")
-PRINT "Path.IsAbs('relative/path'): "; flag
+flag = Viper.IO.Path.IsAbsolute("relative/path")
+PRINT "Path.IsAbsolute('relative/path'): "; flag
 
-flag = Viper.IO.Path.IsAbs("/absolute/path")
-PRINT "Path.IsAbs('/absolute/path'): "; flag
+flag = Viper.IO.Path.IsAbsolute("/absolute/path")
+PRINT "Path.IsAbsolute('/absolute/path'): "; flag
 PRINT ""
 
 ' === Special filenames ===
@@ -91,7 +91,7 @@ DIM largeContent AS STRING
 largeContent = Viper.String.Repeat("x", 100000)
 Viper.IO.File.WriteAllText(largeFile, largeContent)
 PRINT "Wrote 100KB file"
-PRINT "Size: "; Viper.IO.File.Size(largeFile)
+PRINT "Size: "; Viper.IO.File.SizeBytes(largeFile)
 result = Viper.IO.File.ReadAllText(largeFile)
 PRINT "Read back length: "; Viper.String.get_Length(result)
 Viper.IO.File.Delete(largeFile)

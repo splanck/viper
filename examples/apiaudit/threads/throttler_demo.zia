@@ -31,13 +31,13 @@ func start() {
 
     // --- Try (first call should succeed) ---
     Say("--- Try (first) ---");
-    var ok1 = t.Try();
+    var ok1 = t.TryAcquire();
     Say("Try: " + Fmt.Bool(ok1));
     Say("Count after first Try: " + Fmt.Int(t.get_Count()));
 
     // --- Try (second call, within interval, should fail) ---
     Say("--- Try (second, throttled) ---");
-    var ok2 = t.Try();
+    var ok2 = t.TryAcquire();
     Say("Try: " + Fmt.Bool(ok2));
     Say("Count after second Try: " + Fmt.Int(t.get_Count()));
 
@@ -54,16 +54,16 @@ func start() {
     Say("--- Reset ---");
     t.Reset();
     Say("CanProceed after Reset: " + Fmt.Bool(t.get_CanProceed()));
-    var ok3 = t.Try();
+    var ok3 = t.TryAcquire();
     Say("Try after Reset: " + Fmt.Bool(ok3));
 
     // --- New with 0 interval ---
     Say("--- New with 0 interval ---");
     var t2 = Throttler.New(0);
     Say("Interval: " + Fmt.Int(t2.get_Interval()));
-    var a = t2.Try();
-    var b = t2.Try();
-    var c = t2.Try();
+    var a = t2.TryAcquire();
+    var b = t2.TryAcquire();
+    var c = t2.TryAcquire();
     Say("Three consecutive Try results: " + Fmt.Bool(a) + ", " + Fmt.Bool(b) + ", " + Fmt.Bool(c));
     Say("Count: " + Fmt.Int(t2.get_Count()));
 

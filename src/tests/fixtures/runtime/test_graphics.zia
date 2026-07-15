@@ -34,23 +34,23 @@ func testColorRGB() {
 
     // Create color from RGB
     var red = Viper.Graphics.Color.RGB(255, 0, 0);
-    assertEqInt(Viper.Graphics.Color.GetR(red), 255, "red R");
-    assertEqInt(Viper.Graphics.Color.GetG(red), 0, "red G");
-    assertEqInt(Viper.Graphics.Color.GetB(red), 0, "red B");
+    assertEqInt(Viper.Graphics.Color.GetRed(red), 255, "red R");
+    assertEqInt(Viper.Graphics.Color.GetGreen(red), 0, "red G");
+    assertEqInt(Viper.Graphics.Color.GetBlue(red), 0, "red B");
 
     var green = Viper.Graphics.Color.RGB(0, 255, 0);
-    assertEqInt(Viper.Graphics.Color.GetR(green), 0, "green R");
-    assertEqInt(Viper.Graphics.Color.GetG(green), 255, "green G");
-    assertEqInt(Viper.Graphics.Color.GetB(green), 0, "green B");
+    assertEqInt(Viper.Graphics.Color.GetRed(green), 0, "green R");
+    assertEqInt(Viper.Graphics.Color.GetGreen(green), 255, "green G");
+    assertEqInt(Viper.Graphics.Color.GetBlue(green), 0, "green B");
 
     var blue = Viper.Graphics.Color.RGB(0, 0, 255);
-    assertEqInt(Viper.Graphics.Color.GetB(blue), 255, "blue B");
+    assertEqInt(Viper.Graphics.Color.GetBlue(blue), 255, "blue B");
 
     // White
     var white = Viper.Graphics.Color.RGB(255, 255, 255);
-    assertEqInt(Viper.Graphics.Color.GetR(white), 255, "white R");
-    assertEqInt(Viper.Graphics.Color.GetG(white), 255, "white G");
-    assertEqInt(Viper.Graphics.Color.GetB(white), 255, "white B");
+    assertEqInt(Viper.Graphics.Color.GetRed(white), 255, "white R");
+    assertEqInt(Viper.Graphics.Color.GetGreen(white), 255, "white G");
+    assertEqInt(Viper.Graphics.Color.GetBlue(white), 255, "white B");
 }
 
 func testColorRGBA() {
@@ -58,28 +58,28 @@ func testColorRGBA() {
 
     // Create color with alpha
     var color = Viper.Graphics.Color.RGBA(128, 64, 32, 200);
-    assertEqInt(Viper.Graphics.Color.GetR(color), 128, "RGBA R");
-    assertEqInt(Viper.Graphics.Color.GetG(color), 64, "RGBA G");
-    assertEqInt(Viper.Graphics.Color.GetB(color), 32, "RGBA B");
-    assertEqInt(Viper.Graphics.Color.GetA(color), 200, "RGBA A");
+    assertEqInt(Viper.Graphics.Color.GetRed(color), 128, "RGBA R");
+    assertEqInt(Viper.Graphics.Color.GetGreen(color), 64, "RGBA G");
+    assertEqInt(Viper.Graphics.Color.GetBlue(color), 32, "RGBA B");
+    assertEqInt(Viper.Graphics.Color.GetAlpha(color), 200, "RGBA A");
 
     // Fully transparent
     var transparent = Viper.Graphics.Color.RGBA(255, 255, 255, 0);
-    assertEqInt(Viper.Graphics.Color.GetA(transparent), 0, "transparent A");
+    assertEqInt(Viper.Graphics.Color.GetAlpha(transparent), 0, "transparent A");
 }
 
 func testColorHSL() {
     setTest("ColorHSL");
 
     // Create from HSL
-    var red = Viper.Graphics.Color.FromHSL(0, 100, 50);  // Red
-    assertGteInt(Viper.Graphics.Color.GetR(red), 200, "HSL red R >= 200");
+    var red = Viper.Graphics.Color.FromHsl(0, 100, 50);  // Red
+    assertGteInt(Viper.Graphics.Color.GetRed(red), 200, "HSL red R >= 200");
 
     // Get HSL components
     var color = Viper.Graphics.Color.RGB(255, 0, 0);
-    var h = Viper.Graphics.Color.GetH(color);
-    var s = Viper.Graphics.Color.GetS(color);
-    var l = Viper.Graphics.Color.GetL(color);
+    var h = Viper.Graphics.Color.GetHue(color);
+    var s = Viper.Graphics.Color.GetSaturation(color);
+    var l = Viper.Graphics.Color.GetLightness(color);
 
     assertGteInt(h, 0, "H >= 0");
     assertLteInt(h, 360, "H <= 360");
@@ -97,16 +97,16 @@ func testColorLerp() {
 
     // Lerp at 0 = black
     var c0 = Viper.Graphics.Color.Lerp(black, white, 0);
-    assertEqInt(Viper.Graphics.Color.GetR(c0), 0, "lerp 0 R");
+    assertEqInt(Viper.Graphics.Color.GetRed(c0), 0, "lerp 0 R");
 
     // Lerp at 100 = white
     var c100 = Viper.Graphics.Color.Lerp(black, white, 100);
-    assertEqInt(Viper.Graphics.Color.GetR(c100), 255, "lerp 100 R");
+    assertEqInt(Viper.Graphics.Color.GetRed(c100), 255, "lerp 100 R");
 
     // Lerp at 50 = gray
     var c50 = Viper.Graphics.Color.Lerp(black, white, 50);
-    assertGteInt(Viper.Graphics.Color.GetR(c50), 100, "lerp 50 R >= 100");
-    assertLteInt(Viper.Graphics.Color.GetR(c50), 155, "lerp 50 R <= 155");
+    assertGteInt(Viper.Graphics.Color.GetRed(c50), 100, "lerp 50 R >= 100");
+    assertLteInt(Viper.Graphics.Color.GetRed(c50), 155, "lerp 50 R <= 155");
 }
 
 func testColorBrightenDarken() {
@@ -116,11 +116,11 @@ func testColorBrightenDarken() {
 
     // Brighten
     var brighter = Viper.Graphics.Color.Brighten(gray, 50);
-    assertGtInt(Viper.Graphics.Color.GetR(brighter), 128, "brighten increases R");
+    assertGtInt(Viper.Graphics.Color.GetRed(brighter), 128, "brighten increases R");
 
     // Darken
     var darker = Viper.Graphics.Color.Darken(gray, 50);
-    assertLtInt(Viper.Graphics.Color.GetR(darker), 128, "darken decreases R");
+    assertLtInt(Viper.Graphics.Color.GetRed(darker), 128, "darken decreases R");
 }
 
 func testPixelsBasic() {
@@ -137,8 +137,8 @@ func testPixelsBasic() {
 
     // Get pixel
     var color = Viper.Graphics.Pixels.Get(pix, 10, 20);
-    assertEqInt(Viper.Graphics.Color.GetR(color), 255, "pixel R");
-    assertEqInt(Viper.Graphics.Color.GetG(color), 0, "pixel G");
+    assertEqInt(Viper.Graphics.Color.GetRed(color), 255, "pixel R");
+    assertEqInt(Viper.Graphics.Color.GetGreen(color), 0, "pixel G");
 }
 
 func testPixelsFill() {
@@ -154,9 +154,9 @@ func testPixelsFill() {
     var c2 = Viper.Graphics.Pixels.Get(pix, 5, 5);
     var c3 = Viper.Graphics.Pixels.Get(pix, 9, 9);
 
-    assertEqInt(Viper.Graphics.Color.GetB(c1), 255, "fill c1 B");
-    assertEqInt(Viper.Graphics.Color.GetB(c2), 255, "fill c2 B");
-    assertEqInt(Viper.Graphics.Color.GetB(c3), 255, "fill c3 B");
+    assertEqInt(Viper.Graphics.Color.GetBlue(c1), 255, "fill c1 B");
+    assertEqInt(Viper.Graphics.Color.GetBlue(c2), 255, "fill c2 B");
+    assertEqInt(Viper.Graphics.Color.GetBlue(c3), 255, "fill c3 B");
 }
 
 func testPixelsClear() {
@@ -170,9 +170,9 @@ func testPixelsClear() {
     Viper.Graphics.Pixels.Clear(pix);
 
     var c = Viper.Graphics.Pixels.Get(pix, 5, 5);
-    assertEqInt(Viper.Graphics.Color.GetR(c), 0, "cleared R");
-    assertEqInt(Viper.Graphics.Color.GetG(c), 0, "cleared G");
-    assertEqInt(Viper.Graphics.Color.GetB(c), 0, "cleared B");
+    assertEqInt(Viper.Graphics.Color.GetRed(c), 0, "cleared R");
+    assertEqInt(Viper.Graphics.Color.GetGreen(c), 0, "cleared G");
+    assertEqInt(Viper.Graphics.Color.GetBlue(c), 0, "cleared B");
 }
 
 func testPixelsClone() {
@@ -188,12 +188,12 @@ func testPixelsClone() {
 
     // Verify pixel was cloned
     var c = Viper.Graphics.Pixels.GetColor(clone, 10, 10);
-    assertEqInt(Viper.Graphics.Color.GetG(c), 255, "cloned pixel G");
+    assertEqInt(Viper.Graphics.Color.GetGreen(c), 255, "cloned pixel G");
 
     // Modifying clone shouldn't affect original
     Viper.Graphics.Pixels.SetColor(clone, 10, 10, Viper.Graphics.Color.RGB(255, 0, 0));
     var origC = Viper.Graphics.Pixels.GetColor(pix, 10, 10);
-    assertEqInt(Viper.Graphics.Color.GetG(origC), 255, "original unchanged");
+    assertEqInt(Viper.Graphics.Color.GetGreen(origC), 255, "original unchanged");
 }
 
 func testTextMetrics() {

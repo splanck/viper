@@ -304,7 +304,7 @@ class LayerStack {
         while i < layerList.count() {
             var layer = layerList.get(i);
             if layer != null {
-                layer.setPixels(layer.getPixels().RotateCW());
+                layer.setPixels(layer.getPixels().RotateClockwise());
             }
             i = i + 1;
         }
@@ -320,7 +320,7 @@ class LayerStack {
         while i < layerList.count() {
             var layer = layerList.get(i);
             if layer != null {
-                layer.setPixels(layer.getPixels().RotateCCW());
+                layer.setPixels(layer.getPixels().RotateCounterClockwise());
             }
             i = i + 1;
         }
@@ -502,9 +502,9 @@ class LayerStack {
 
 /// @brief Blend a source RGB over a destination RGB per the given mode.
 func applyBlend(src: Integer, dst: Integer, mode: Integer) -> Integer {
-    var r = blendChannel(Color.GetR(src), Color.GetR(dst), mode);
-    var g = blendChannel(Color.GetG(src), Color.GetG(dst), mode);
-    var b = blendChannel(Color.GetB(src), Color.GetB(dst), mode);
+    var r = blendChannel(Color.GetRed(src), Color.GetRed(dst), mode);
+    var g = blendChannel(Color.GetGreen(src), Color.GetGreen(dst), mode);
+    var b = blendChannel(Color.GetBlue(src), Color.GetBlue(dst), mode);
     return Color.RGB(r, g, b);
 }
 

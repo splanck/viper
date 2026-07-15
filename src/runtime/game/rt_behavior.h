@@ -42,7 +42,8 @@ void rt_behavior_add_edge_reverse(void *bhv);
 void rt_behavior_add_wall_reverse(void *bhv);
 /// @brief Enable periodic shooting with @p cooldown_ms between shots (use ShootReady to query).
 void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms);
-/// @brief Enable sine-wave vertical hover with the given amplitude (pixels) and speed (deg/sec).
+/// @brief Enable sine-wave vertical velocity; amplitude is a centipixel/base-frame velocity and
+/// speed advances centidegrees by (speed * dt) / 16 (VDOC-240).
 void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed);
 /// @brief Enable looping sprite animation with @p frame_count frames at @p ms_per_frame each.
 void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_frame);

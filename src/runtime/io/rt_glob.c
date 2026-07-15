@@ -11,7 +11,8 @@
 //          cross-directory '**', '?' wildcards, and character classes '[...]'.
 //
 // Key invariants:
-//   - '*' matches any characters within a single path component (no '/').
+//   - '*' is intended to stay within one component; after a preceding '**',
+//     the current matcher incorrectly lets later wildcards cross separators.
 //   - '**' matches any sequence of characters including directory separators.
 //   - '?' matches exactly one character but not '/'.
 //   - '[...]' character classes follow POSIX semantics including negation '[!'.
@@ -310,10 +311,10 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
 
 /// @brief `Glob.Match(path, pattern)` — bool test of a single path against a pattern.
 ///
-/// Does not touch the filesystem — pure string pattern match. `*`
-/// matches within a component, `**` spans directories, `?` matches
-/// one non-slash character, `[...]` is a character class. See the
-/// file header for the full supported subset.
+/// Does not touch the filesystem — pure string pattern match. `**` spans
+/// directories. `*`, `?`, and classes normally stay within one component,
+/// but the current state machine leaks the separator permission from an earlier
+/// `**` into later tokens (VDOC-186). See the file header for the supported subset.
 int8_t rt_glob_match(rt_string path, rt_string pattern) {
     if (!path || !pattern)
         return 0;

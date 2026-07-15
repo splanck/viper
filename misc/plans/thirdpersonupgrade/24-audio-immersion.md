@@ -55,7 +55,7 @@ World3D/Sound3D: addReverbZone(zone), setReverbRouting(i1), setReverbBlendSecond
     playDialogue(clip)->i64
 "Viper.Game3D.AmbientBed3D": New(world); addZone(min,max,clip,f64) fluent; setDefault(clip,f64);
     crossfadeSeconds prop
-Viper.Sound.Audio: DuckGroup(i64,f64,f64,f64)->i64, RemoveDuck(i64),
+Viper.Audio.Mixer: DuckGroup(i64,f64,f64,f64)->i64, RemoveDuck(i64),
     SetVoiceTag(i64,i64) (trigger tagging escape hatch)
 ```
 

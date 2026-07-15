@@ -9,15 +9,16 @@
 // milliseconds.
 //
 // Key invariants:
-//   - Accumulated time is monotonic; it never decreases across start/stop cycles.
+//   - Accumulated time normally uses a monotonic clock. The POSIX realtime
+//     failure fallback can move backward or forward (VDOC-223).
 //   - Nanosecond resolution is used where the platform clock permits.
 //   - Elapsed queries while running include time since the last start call.
 //   - rt_stopwatch_restart resets elapsed to zero and immediately starts timing.
 //   - Instance methods trap when passed a NULL stopwatch pointer.
 //
 // Ownership/Lifetime:
-//   - Stopwatch objects are heap-allocated; caller is responsible for lifetime management.
-//   - No reference counting; caller must explicitly free the object when done.
+//   - Stopwatch objects are heap-allocated runtime objects managed through Viper's
+//     reference-counting/GC lifetime; source callers do not free them explicitly.
 //
 // Links: src/runtime/core/rt_stopwatch.c (implementation)
 //
@@ -54,7 +55,8 @@ void rt_stopwatch_reset(void *obj);
 
 /// @brief Reset and immediately start the stopwatch.
 /// @param obj Stopwatch pointer.
-/// @details Equivalent to Reset() followed by Start() but atomic.
+/// @details Equivalent to Reset() followed by Start() as one convenience call;
+/// it is not atomic across threads.
 void rt_stopwatch_restart(void *obj);
 
 /// @brief Get elapsed time in nanoseconds.

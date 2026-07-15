@@ -3887,7 +3887,7 @@ var deleted = Http.Delete(&quot;https://api.example.com/users/123&quot;);
 <p>Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. JSON is a text format for structured data that&#x27;s easy for both humans and computers to read.</p>
 <pre><code data-lang="rust">
 bind Viper.Network;
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind Viper.Terminal;
 
 struct Weather {
@@ -5109,7 +5109,7 @@ Terminal.Say(&quot;Body: &quot; + body);
 module WeatherDashboard;
 
 bind Viper.Network;
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind Viper.Time;
 bind Viper.Terminal;
 
@@ -5561,10 +5561,10 @@ null
 <li>The <code>guild</code> is null, indicating the player is not in a guild</li>
 </ul>
 <h3 id="parsing-json-in-zia">Parsing JSON in Zia</h3>
-<blockquote><p>**Note:** The examples in this chapter use <code>bind Json = Viper.Text.Json;</code> for JSON operations. For value extraction, use <code>Viper.Unbox.Str()</code> / <code>Viper.Unbox.I64()</code> / <code>Viper.Unbox.F64()</code>. See Appendix D for the complete runtime reference.</p></blockquote>
+<blockquote><p>**Note:** The examples in this chapter use <code>bind Json = Viper.Data.Json;</code> for JSON operations. For value extraction, use <code>Viper.Unbox.Str()</code> / <code>Viper.Unbox.I64()</code> / <code>Viper.Unbox.F64()</code>. See Appendix D for the complete runtime reference.</p></blockquote>
 <p>Parsing means reading JSON text and creating program data structures from it:</p>
 <pre><code data-lang="rust">
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind Viper.Terminal;
 
 func start() {
@@ -5604,7 +5604,7 @@ func start() {
 <h3 id="creating-json-in-zia">Creating JSON in Zia</h3>
 <p>To save program data as JSON, you build a JSON structure programmatically:</p>
 <pre><code data-lang="rust">
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind Viper.Terminal;
 
 func start() {
@@ -5782,7 +5782,7 @@ Warrior,7,120.0,80.0,220.0
 <p><strong>Escaping is tricky</strong>: What if a value contains a comma? What if it contains a newline? The rules for escaping exist but vary between implementations.</p>
 <h3 id="reading-csv">Reading CSV</h3>
 <pre><code data-lang="rust">
-bind Csv = Viper.Text.Csv;
+bind Csv = Viper.Data.Csv;
 bind Viper.Terminal;
 bind Convert = Viper.Core.Convert;
 
@@ -5807,7 +5807,7 @@ func start() {
 </ul>
 <h3 id="writing-csv">Writing CSV</h3>
 <pre><code data-lang="rust">
-bind Csv = Viper.Text.Csv;
+bind Csv = Viper.Data.Csv;
 
 func start() {
     // Create a CSV with column headers
@@ -6115,7 +6115,7 @@ player.y = 200.0
 <pre><code data-lang="rust">
 module ContactManager;
 
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 
@@ -6642,7 +6642,7 @@ func start() {
 <h2 id="the-two-languages">The Two Languages</h2>
 <p><strong>Zia</strong></p>
 <pre><code data-lang="rust">
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 
 var data = Json.Parse(&#x27;{&quot;name&quot;: &quot;test&quot;, &quot;value&quot;: 42}&#x27;);
 var name = data[&quot;name&quot;].asString();
@@ -6773,7 +6773,7 @@ func loadBinary(filename: String) -&gt; GameSave? {
 <pre><code data-lang="rust">
 module ConfigSystem;
 
-bind Json = Viper.Text.Json;
+bind Json = Viper.Data.Json;
 bind File = Viper.IO.File;
 bind Viper.Terminal;
 

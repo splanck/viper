@@ -5,7 +5,7 @@ last-verified: 2026-07-14
 ---
 
 # Maps & Sets
-> Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, TreeMap
+> Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, SortedMap
 
 **Part of [Viper Runtime Library](../README.md) › [Collections](README.md)**
 
@@ -163,7 +163,7 @@ PRINT scores.IsEmpty  ' Output: True
 ## Viper.Collections.Set
 
 A generic set data structure for storing unique objects. Efficiently handles membership testing, set operations (union,
-intersection, difference), and subset/superset queries. Unlike `Bag` which stores strings, `Set` stores arbitrary objects.
+intersection, difference), and subset/superset queries. Unlike `StringSet` which stores strings, `Set` stores arbitrary objects.
 
 **Type:** Instance (obj)
 **Constructor:** `Viper.Collections.Set.New()`
@@ -299,9 +299,9 @@ disjoint.Add(w)
 PRINT setA.IsDisjoint(disjoint) ' Output: 1 (true - no common elements)
 ```
 
-### Set vs Bag
+### Set vs StringSet
 
-| Feature          | Set                        | Bag                     |
+| Feature          | Set                        | StringSet                     |
 |------------------|----------------------------|-------------------------|
 | Element type     | Any object                 | Strings only            |
 | Comparison       | Boxed-scalar value; otherwise identity | String value   |
@@ -454,9 +454,9 @@ om.Clear()
 PRINT om.IsEmpty          ' 1
 ```
 
-### OrderedMap vs Map vs TreeMap
+### OrderedMap vs Map vs SortedMap
 
-| Feature           | OrderedMap       | Map              | TreeMap          |
+| Feature           | OrderedMap       | Map              | SortedMap          |
 |-------------------|------------------|------------------|------------------|
 | Key order         | Insertion order  | Unordered        | Sorted order     |
 | Lookup            | O(1) average     | O(1) average     | O(log n)         |
@@ -474,7 +474,7 @@ PRINT om.IsEmpty          ' 1
 
 ## Viper.Collections.SortedSet
 
-A sorted set of unique strings maintained in sorted order. Unlike `Bag` which uses hash-based storage, `SortedSet`
+A sorted set of unique strings maintained in sorted order. Unlike `StringSet` which uses hash-based storage, `SortedSet`
 keeps elements sorted, enabling efficient range queries, ordered iteration, and floor/ceiling operations.
 
 **Type:** Instance (obj)
@@ -616,9 +616,9 @@ subset.Add("c")
 PRINT subset.IsSubset(set1)  ' Output: 1 (true)
 ```
 
-### SortedSet vs Bag vs Set
+### SortedSet vs StringSet vs Set
 
-| Feature          | SortedSet        | Bag              | Set              |
+| Feature          | SortedSet        | StringSet              | Set              |
 |------------------|------------------|------------------|------------------|
 | Element type     | Strings          | Strings          | Objects          |
 | Order            | Sorted           | Unordered        | Unordered        |
@@ -947,13 +947,13 @@ PRINT fs.Equals(fs3)        ' 1 (same elements)
 
 ---
 
-## Viper.Collections.TreeMap
+## Viper.Collections.SortedMap
 
 A sorted key-value map that maintains keys in sorted order. Uses a sorted array with binary search for O(log n) lookups.
 Supports range queries via Floor/Ceil operations.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.TreeMap()`
+**Constructor:** `NEW Viper.Collections.SortedMap()`
 
 ### Properties
 
@@ -988,7 +988,7 @@ Supports range queries via Floor/Ceil operations.
   no matching key exists.
 - `Keys()` and `Values()` are independent retained snapshots in the same key-sorted order. Key
   strings are copied and values are shared, not deep-cloned.
-- TreeMap is not thread-safe; synchronize externally around concurrent access.
+- SortedMap is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -1000,7 +1000,7 @@ bind Viper.Collections;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var tm = new TreeMap();
+    var tm = new SortedMap();
 
     // Insert in any order — stored sorted
     tm.Set("cherry", Viper.Core.Box.Str("red"));
@@ -1020,8 +1020,8 @@ func start() {
 ### BASIC Example
 
 ```basic
-DIM tm AS Viper.Collections.TreeMap
-tm = NEW Viper.Collections.TreeMap()
+DIM tm AS Viper.Collections.SortedMap
+tm = NEW Viper.Collections.SortedMap()
 
 ' Insert in any order - stored sorted
 tm.Set("cherry", "red")
@@ -1043,9 +1043,9 @@ PRINT tm.Floor("blueberry")  ' Output: "banana" (largest key <= "blueberry")
 PRINT tm.Ceil("blueberry")   ' Output: "cherry" (smallest key >= "blueberry")
 ```
 
-### TreeMap vs Map
+### SortedMap vs Map
 
-| Feature    | TreeMap  | Map           |
+| Feature    | SortedMap  | Map           |
 |------------|----------|---------------|
 | Key order  | Sorted   | Unordered     |
 | Lookup     | O(log n) | O(1) average  |

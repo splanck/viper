@@ -20,7 +20,7 @@ bind "./ballistics" as ballistics;
 bind "./targets" as targets;
 
 class Projectiles {
-    hide G3D.Physics3DWorld phys;
+    hide G3D.PhysicsWorld3D phys;
     hide events.EventBus bus;
     hide ballistics.Ballistics ball;
     hide targets.TargetRegistry reg;
@@ -52,7 +52,7 @@ class Projectiles {
         dotAppliedCount = 0;
     }
 
-    expose func setup(p: G3D.Physics3DWorld, b: events.EventBus,
+    expose func setup(p: G3D.PhysicsWorld3D, b: events.EventBus,
                       bl: ballistics.Ballistics, r: targets.TargetRegistry) {
         phys = p; bus = b; ball = bl; reg = r;
         orbMesh = G3D.Mesh3D.Sphere(0.11, 8);
@@ -74,7 +74,7 @@ class Projectiles {
     }
 
     hide func addMaterial(r: Float, g: Float, b: Float) {
-        var m = G3D.Material3D.NewColor(r, g, b);
+        var m = G3D.Material3D.FromColor(r, g, b);
         G3D.Material3D.SetEmissiveColor(m, r, g, b);
         m.EmissiveIntensity = 3.4;
         visualMat.Add(m);

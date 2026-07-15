@@ -63,13 +63,13 @@ func runOrder(reverse: Boolean) -> Integer {
 
     // Score remains physical: only the selected sustained topples count, even
     // though other pins were eligible for impact feedback in this batch.
-    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var world = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var pins = new PinManager();
     pins.initPins(world);
     var physicalCandidates = (1 << 0) | (1 << 3);
     for (var pin: Integer = 0; pin < config.PIN_COUNT; pin = pin + 1) {
         if ((impactedMask & physicalCandidates & (1 << pin)) != 0) {
-            Physics3DBody.SetOrientation(pins.getPinBody(pin),
+            PhysicsBody3D.SetOrientation(pins.getPinBody(pin),
                 Quat.FromAxisAngle(new Vec3(1.0, 0.0, 0.0), 1.20));
         }
     }

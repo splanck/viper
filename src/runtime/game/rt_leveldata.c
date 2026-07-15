@@ -100,7 +100,8 @@ static void leveldata_finalizer(void *obj) {
 /// @details Parses a JSON level file with "width", "height", "tileWidth", "tileHeight",
 ///          "layers" (tile data), "objects" (entity spawn points), and "properties"
 ///          (playerStartX/Y, theme). Creates a tilemap from tile layer data and stores
-///          up to 256 named objects with type, id, and position.
+///          up to 512 named objects with type, id, and position. All tile layers
+///          currently overwrite the same base Tilemap in input order (VDOC-239).
 void *rt_leveldata_load(void *path) {
     if (!path)
         return NULL;

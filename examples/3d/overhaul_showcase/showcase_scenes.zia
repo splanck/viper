@@ -8,9 +8,10 @@ bind "../../games/lib/gamebase3d";
 bind "../../games/lib/iscene3d";
 
 bind Viper.Game3D;
+bind Viper.Input.Key as Key;
 bind Viper.Graphics3D;
-bind Viper.Game.UI.Panel as Panel;
-bind Viper.Game.UI.Bar as Bar;
+bind Viper.Game.UI.HudPanel as Panel;
+bind Viper.Game.UI.HudBar as Bar;
 bind Viper.Game.UI.HudLabel as HudLabel;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
@@ -45,7 +46,7 @@ class MenuScene implements IScene3D {
             marquee = 0;
         }
         var input: Input3D = world.Input;
-        if input.Pressed(Keys.Enter) {
+        if input.Pressed(Key.Enter) {
             game.startPlay();
         }
     }
@@ -107,9 +108,9 @@ class PlayScene implements IScene3D {
         fx.AddBloom(0.72, 0.3, 5);
         fx.AddTonemap(2, 1.05);
         if Canvas3D.BackendSupports(canvas, "taa") {
-            fx.AddTAA(0.9);
+            fx.AddTaa(0.9);
         } else {
-            fx.AddFXAA();
+            fx.AddFxaa();
         }
         Canvas3D.SetPostFX(canvas, fx);
         if fx.LastError != "" {
@@ -170,7 +171,7 @@ class PlayScene implements IScene3D {
         }
         energy.SetValue(35 + ramp, 100);
         var input: Input3D = world.Input;
-        if input.Pressed(Keys.Escape) {
+        if input.Pressed(Key.Escape) {
             game.backToMenu();
         }
     }

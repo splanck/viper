@@ -51,7 +51,7 @@ New C `src/runtime/graphics/3d/rt_game3d_facial.c`:
 ## 5. Public API changes (runtime.def)
 
 ```
-Viper.Sound.Voice (existing class): RT_METHOD("EnableMetering","void(i64,i1)"), RT_METHOD("GetLevel","f64(i64)")
+Viper.Audio.Voice (existing class): RT_METHOD("EnableMetering","void(i64,i1)"), RT_METHOD("GetLevel","f64(i64)")
 RT_CLASS_BEGIN("Viper.Game3D.LipSync3D", Game3DLipSync3D, "obj", Game3DLipSyncNew)   /* New(entity) */
     RT_METHOD("bindMouthShape","obj(obj,str,f64)",…)   RT_METHOD("bindJawBone","obj(obj,str,i64,f64)",…)
     RT_METHOD("bindHeadBone","obj(obj,str)",…)

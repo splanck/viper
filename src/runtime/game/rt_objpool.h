@@ -14,7 +14,8 @@
 //   - Released slots are immediately available for reacquisition.
 //
 // Ownership/Lifetime:
-//   - Caller owns the pool handle; destroy with rt_objpool_destroy.
+//   - The pool is GC-managed. rt_objpool_destroy releases an explicit handle
+//     reference when manual lifetime control is needed.
 //   - Slots are logically owned by the caller while acquired; releasing returns them to the pool.
 //
 // Links: src/runtime/game/rt_objpool.c (implementation)
@@ -38,7 +39,7 @@ extern "C" {
 typedef struct rt_objpool_impl *rt_objpool;
 
 /// @brief Create a new ObjectPool.
-/// @param capacity Maximum number of objects (up to RT_OBJPOOL_MAX).
+/// @param capacity Requested number of objects, clamped to 1..RT_OBJPOOL_MAX.
 /// @return A new ObjectPool instance.
 rt_objpool rt_objpool_new(int64_t capacity);
 

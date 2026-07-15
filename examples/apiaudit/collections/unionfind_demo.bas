@@ -14,10 +14,10 @@ PRINT "--- Find ---"
 PRINT uf.Find(0)     ' 0
 PRINT uf.Find(3)     ' 3
 DIM root AS OBJECT
-root = uf.FindRootOption(0)
+root = uf.FindRoot(0)
 PRINT root.IsSome
 PRINT root.UnwrapI64()  ' 0
-PRINT uf.FindRootOption(99).IsNone
+PRINT uf.FindRoot(99).IsNone
 
 ' --- Union ---
 PRINT "--- Union ---"

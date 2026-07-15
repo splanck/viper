@@ -3,7 +3,7 @@ module test_game3d_sound_probe;
 bind Viper.Game3D as Game3D;
 bind Viper.Graphics3D as G3D;
 bind Viper.Math as Math;
-bind Viper.Sound as Sound;
+bind Viper.Audio as Sound;
 bind Viper.Terminal as Terminal;
 
 func fail(message: String) {

@@ -369,7 +369,6 @@ one slot.
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
 | `Count`   | Integer | Number of elements in the deque           |
-| `Cap`     | Integer | Compatibility alias for `Capacity`        |
 | `Capacity` | Integer | Current allocated capacity              |
 | `IsEmpty` | Boolean | Returns true if the deque has no elements |
 
@@ -399,7 +398,6 @@ one slot.
 ### Notes
 
 - Deque retains stored objects and releases them when removed, overwritten, cleared, or finalized.
-- `Cap` remains available as a compatibility alias for `Capacity`.
 - `Get()`, `PeekFront()`, `PeekBack()`, `PopFront()`, `PopBack()`, `TryPopFront()`, and `TryPopBack()` return owned object references.
 - Prefer `TryPopFrontOption()` and `TryPopBackOption()` for new code. They distinguish an empty deque from a stored null object.
 - `Clone()`, `ToSeq()`, and `ToList()` return independent collections that retain their elements.
@@ -503,7 +501,7 @@ elements.
 
 **Constructors:**
 - `NEW Viper.Collections.Ring(capacity)` — fixed capacity ring buffer
-- `Viper.Collections.Ring.NewDefault()` — ring buffer with default capacity (implementation-defined)
+- `Viper.Collections.Ring.New()` — ring buffer with default capacity (implementation-defined)
 
 `capacity = 0` creates a one-slot ring. Negative capacities trap.
 
@@ -517,10 +515,7 @@ elements.
 | `IsFull`  | `Boolean` | True if ring is at capacity          |
 | `OwnsElements` | `Boolean` | True when the ring retains/releases stored runtime objects |
 | `First`   | `Object`  | Oldest element, or null when empty        |
-| `Last`    | `Object`  | Newest element, or null when empty        |
-
-`Cap` remains available as a compatibility alias for `Capacity`.
-
+| `Last`    | `Object`  | Newest element, or null when empty        
 ### Methods
 
 | Method       | Returns | Description                                         |

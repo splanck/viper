@@ -745,9 +745,10 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents) {
 /// What: Append @p text and a newline to @p path (creating it when missing).
 /// Why:  Provide a convenient "append line" helper for Viper.IO.File.
 /// How:  Opens with O_APPEND and writes the UTF-8 bytes followed by '\n'.
-/// @brief Append `text` (with auto-added LF) to the end of a file. Open with O_APPEND so
-/// concurrent appends from multiple processes don't interleave (POSIX guarantees atomicity for
-/// writes < PIPE_BUF). Creates the file if it doesn't exist.
+/// @brief Append `text` and then an LF to the end of a file, creating it if absent.
+/// @details Uses O_APPEND, but the text write can require multiple system calls and the LF is a
+///          separate write. A complete logical line is therefore not atomic against concurrent
+///          writers and can interleave with them.
 void rt_io_file_append_line(rt_string path, rt_string text) {
     const char *cpath =
         rt_io_file_require_path(path, "Viper.IO.File.AppendLine: invalid file path");
@@ -909,8 +910,8 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
 
 /// What: Read a text file and return a Seq of lines.
 /// Why:  Provide convenient line-based file input for Viper.IO.File.ReadAllLines.
-/// How:  Reads the file and splits on '\n' and '\r\n', stripping line terminators.
-/// @brief Read a file, split on LF/CRLF, return a Seq of UTF-8 rt_strings (one per line, no
+/// How:  Reads the file and splits on LF, CR, and CRLF, stripping line terminators.
+/// @brief Read a file, split on LF/CR/CRLF, return a Seq of rt_strings (one per line, no
 /// trailing newline). Empty trailing lines are preserved (a file ending in `\n\n` yields a
 /// trailing empty string).
 void *rt_io_file_read_all_lines(rt_string path) {

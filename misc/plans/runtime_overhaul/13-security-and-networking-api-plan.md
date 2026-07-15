@@ -63,7 +63,7 @@ Decision:
 
 ### Deterministic versus cryptographic random
 
-`Viper.Math.Random` and `Viper.Crypto.Rand` serve different users.
+`Viper.Math.Random` and `Viper.Crypto.SecureRandom` serve different users.
 
 Decision:
 

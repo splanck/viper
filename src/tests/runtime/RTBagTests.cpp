@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTBagTests.cpp
-// Purpose: Validate Viper.Collections.Bag runtime functions for string sets.
+// Purpose: Validate Viper.Collections.StringSet runtime functions for string sets.
 // Key invariants: Bags store unique strings; set operations work correctly.
 // Links: docs/viperlib.md
 

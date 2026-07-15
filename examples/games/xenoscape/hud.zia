@@ -24,7 +24,7 @@
 // without being glanced *at*.  In code, that means:
 //
 //   * Don't hand-roll graphics for HP bars.  Use the runtime's
-//     widget classes (`Viper.Game.UI.Bar`, `.HudLabel`, `.Panel`).
+//     widget classes (`Viper.Game.UI.HudBar`, `.HudLabel`, `.HudPanel`).
 //     They know about colour thresholds, alignment, and
 //     re-rendering efficiently.
 //
@@ -44,11 +44,11 @@
 //
 // RUNTIME WIDGETS REFERENCED
 // --------------------------
-//   Panel(x, y, w, h, color, alpha)
+//   HudPanel(x, y, w, h, color, alpha)
 //     Semi-transparent rectangle.  Backs the HUD so text is
 //     legible over busy scenes.
-//   Bar(x, y, w, h, fillColor, emptyColor)
-//     Horizontal fill bar with `Bar.Value` in 0..1 range.  Used
+//   HudBar(x, y, w, h, fillColor, emptyColor)
+//     Horizontal fill bar with `HudBar.Value` in 0..1 range.  Used
 //     for HP and boss health.
 //   HudLabel(x, y, text, color)
 //     Positioned text.  `HudLabel.Text` can be mutated each
@@ -69,7 +69,7 @@
 //
 // HOW TO READ THIS FILE
 // ---------------------
-//   1. Widget handles (Panel/Bar/HudLabel fields).
+//   1. Widget handles (HudPanel/HudBar/HudLabel fields).
 //   2. `init` — construct each widget with layout constants
 //      from `config.zia`.
 //   3. `update(...)` — copy game state into widget state;
@@ -100,9 +100,9 @@ bind "./palette";
 class HUD {
     // --- UI Widget instances ---
     hide Palette pal;
-    hide Panel hudPanel;
-    hide Bar healthBar;
-    hide Bar bossBarWidget;
+    hide HudPanel hudPanel;
+    hide HudBar healthBar;
+    hide HudBar bossBarWidget;
     hide HudLabel scoreLabel;
     hide HudLabel coinLabel;
     hide HudLabel expeditionLabel;
@@ -156,17 +156,17 @@ class HUD {
         }
 
         // HUD background panel — full width, semi-transparent
-        hudPanel = Panel.New(0, 0, SCREEN_W, 48, pal.panelBg, 190);
+        hudPanel = HudPanel.New(0, 0, SCREEN_W, 48, pal.panelBg, 190);
         hudPanel.SetBorder(pal.panelBorder, 1);
         hudPanel.set_CornerRadius(0);
 
         // Health bar — left side
-        healthBar = Bar.New(12, 10, 140, 16, pal.hpBarFull, pal.hpBarEmpty);
+        healthBar = HudBar.New(12, 10, 140, 16, pal.hpBarFull, pal.hpBarEmpty);
         healthBar.set_Border(1);
 
         // Boss health bar — center, wider (hidden until boss fight)
         var bossX = (SCREEN_W - 400) / 2;
-        bossBarWidget = Bar.New(bossX, 56, 400, 18, pal.bossBarFill, pal.bossBarEmpty);
+        bossBarWidget = HudBar.New(bossX, 56, 400, 18, pal.bossBarFill, pal.bossBarEmpty);
         bossBarWidget.set_Border(1);
         bossBarTween = Tween.New();
         bossBarDisplay = 0;

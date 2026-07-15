@@ -23,7 +23,8 @@ extern "C" {
 /// Runtime class ID used to validate LevelData handles.
 #define RT_LEVELDATA_CLASS_ID INT64_C(-0x510214)
 
-/// @brief Load level from JSON file. Returns LevelData object.
+/// @brief Load level from JSON file. Returns a nullable LevelData object after parsing failures,
+/// but the underlying file reader traps on ordinary I/O failures (VDOC-238).
 void *rt_leveldata_load(void *path);
 
 /// @brief Get the tilemap from a loaded level.

@@ -142,8 +142,8 @@ static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target
 static std::string saferRuntimePointerAlternative(std::string_view target) {
     if (target == "Viper.Core.Parse.TryInt")
         return "Viper.Core.Parse.IntOr";
-    if (target == "Viper.Core.Parse.TryNum")
-        return "Viper.Core.Parse.NumOr";
+    if (target == "Viper.Core.Parse.TryDouble")
+        return "Viper.Core.Parse.DoubleOr";
     if (target == "Viper.Core.Parse.TryBool")
         return "Viper.Core.Parse.BoolOr";
     return {};

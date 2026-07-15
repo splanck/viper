@@ -57,14 +57,14 @@ func start() {
 
     var canvas = Canvas3D.New("Vegetation Demo", 1280, 720);
     var camera = Camera3D.New(65.0, 1280.0 / 720.0, 0.1, 300.0);
-    Camera3D.FPSInit(camera);
+    Camera3D.FirstPersonInit(camera);
 
     // Terrain
     var pn = PerlinNoise.New(555);
     var terrain = Terrain3D.New(128, 128);
     Terrain3D.GeneratePerlin(terrain, pn, 3.0, 5, 0.5);
     Terrain3D.SetScale(terrain, 2.0, 15.0, 2.0);
-    var tMat = Material3D.NewColor(0.25, 0.4, 0.15);
+    var tMat = Material3D.FromColor(0.25, 0.4, 0.15);
     Material3D.SetShininess(tMat, 4.0);
     Terrain3D.SetMaterial(terrain, tMat);
 
@@ -74,7 +74,7 @@ func start() {
     var veg = Vegetation3D.New(grassTex);
     Vegetation3D.SetBladeSize(veg, 0.5, 1.5, 0.4);
     Vegetation3D.SetWindParams(veg, 2.5, 0.2, 0.6);
-    Vegetation3D.SetLODDistances(veg, 30.0, 80.0);
+    Vegetation3D.SetLodDistances(veg, 30.0, 80.0);
 
     // Populate 5000 grass blades on terrain
     Say("Populating 5000 grass blades...");
@@ -82,7 +82,7 @@ func start() {
 
     // Lighting
     var sunDir = new Vec3(-0.3, -1.0, -0.5);
-    var sun = Light3D.NewDirectional(sunDir, 1.0, 0.95, 0.85);
+    var sun = Light3D.Directional(sunDir, 1.0, 0.95, 0.85);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.3, 0.35, 0.25);
 
@@ -122,7 +122,7 @@ func start() {
         if (Keyboard.IsDown(Key.Space)) { updown = 1.0; }
         if (Keyboard.IsDown(Key.LeftShift)) { updown = -1.0; }
 
-        Camera3D.FPSUpdate(camera, mdx * 0.12, 0.0 - mdy * 0.12,
+        Camera3D.FirstPersonUpdate(camera, mdx * 0.12, 0.0 - mdy * 0.12,
                            fwd, right, updown, 12.0, dt);
 
         // Update vegetation wind

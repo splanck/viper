@@ -14,8 +14,8 @@
 //
 // Key invariants:
 //   - Bit positions are numbered 0 (LSB) through 63 (MSB).
-//   - Shift counts are taken modulo 64 to avoid undefined behaviour; callers
-//     should pass values in [0, 63] for defined BASIC semantics.
+//   - Ordinary shifts define explicit out-of-range results; only rotation counts
+//     are normalized modulo 64.
 //   - Logical right shift treats the operand as unsigned (zero-fill from MSB).
 //   - Arithmetic right shift preserves the sign bit (sign-extends).
 //   - All functions are pure with no side effects; safe for concurrent use.

@@ -208,7 +208,7 @@ func dateToTimestamp(dateEpoch: Integer) -> Integer {
     var y = DateTime.Year(dateEpoch);
     var m = DateTime.Month(dateEpoch);
     var d = DateTime.Day(dateEpoch);
-    return DateTime.Create(y, m, d, 0, 0, 0);
+    return DateTime.FromParts(y, m, d, 0, 0, 0);
 }
 
 /// @brief Inverse of `dateToTimestamp`: drop the time-of-day portion of
@@ -217,7 +217,7 @@ func timestampToDate(tsEpoch: Integer) -> Integer {
     var y = DateTime.Year(tsEpoch);
     var m = DateTime.Month(tsEpoch);
     var d = DateTime.Day(tsEpoch);
-    return DateTime.Create(y, m, d, 12, 0, 0);
+    return DateTime.FromParts(y, m, d, 12, 0, 0);
 }
 
 /// @brief Parse "YYYY-MM-DD" text into a DATE epoch (noon-of-day).
@@ -232,7 +232,7 @@ func parseDateText(text: String) -> Integer {
     var yr = stringToInt(String.Substring(text, 0, 4));
     var mo = stringToInt(String.Substring(text, 5, 2));
     var dy = stringToInt(String.Substring(text, 8, 2));
-    return DateTime.Create(yr, mo, dy, 12, 0, 0);
+    return DateTime.FromParts(yr, mo, dy, 12, 0, 0);
 }
 
 /// @brief Parse "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS" into epoch
@@ -242,7 +242,7 @@ func parseDateText(text: String) -> Integer {
 /// ISO forms (date, date+time, date+time+Z).  Returns 0 on parse failure
 /// for the same "stay out of the way" reason as `parseDateText`.
 func parseDateTimeText(text: String) -> Integer {
-    return DateTime.TryParse(text);
+    return DateTime.TryParse(text).UnwrapOrI64(0);
 }
 
 //=============================================================================
@@ -437,7 +437,7 @@ class SqlValue {
             return fmtDateParts(y, m, d);
         }
         if (kind == SQL_TIMESTAMP) {
-            return DateTime.ToLocal(intValue);
+            return DateTime.FormatLocal(intValue);
         }
         if (kind == SQL_JSON) { return textValue; }
         if (kind == SQL_ARRAY) { return textValue; }
@@ -470,7 +470,7 @@ class SqlValue {
             return "'" + fmtDateParts(y, m, d) + "'";
         }
         if (kind == SQL_TIMESTAMP) {
-            var s = DateTime.ToLocal(intValue);
+            var s = DateTime.FormatLocal(intValue);
             return "'" + s + "'";
         }
         if (kind == SQL_JSON) {

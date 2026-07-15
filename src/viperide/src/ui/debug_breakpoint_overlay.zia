@@ -146,7 +146,7 @@ class DebugBreakpointOverlay {
     expose func Pump(shell: app_shell.AppShell) -> Integer {
         if visible == false { return DEBUG_BP_ACTION_NONE; }
         Layout(shell);
-        if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
+        if Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
             Cancel();
             return DEBUG_BP_ACTION_CANCEL;
         }
@@ -155,7 +155,7 @@ class DebugBreakpointOverlay {
             return DEBUG_BP_ACTION_CANCEL;
         }
         if applyButton.WasClicked()
-           or Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter()) {
+           or Input.Keyboard.WasPressed(Viper.Input.Key.Enter) {
             value = Str.Trim(input.Text);
             visible = false;
             panel.SetVisible(false);

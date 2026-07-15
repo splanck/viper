@@ -68,7 +68,7 @@ class DrawingCanvas {
 
     // Get pixel color at position (returns 0x00RRGGBB format)
     expose func getPixel(x: Integer, y: Integer) -> Integer {
-        return layerStack.getActivePixels().GetRGB(x, y);
+        return layerStack.getActivePixels().GetRgb(x, y);
     }
 
     // Sample the composited color at a position for the eyedropper.
@@ -84,14 +84,14 @@ class DrawingCanvas {
 
     // Set pixel color at position (expects 0x00RRGGBB format)
     expose func setPixel(x: Integer, y: Integer, color: Integer) {
-        layerStack.getActivePixels().SetRGB(x, y, color);
+        layerStack.getActivePixels().SetRgb(x, y, color);
         markChanged();
     }
 
     // Set pixel with opacity blending (expects 0x00RRGGBB format, opacity 0-100)
     expose func setPixelBlend(x: Integer, y: Integer, color: Integer, opacity: Integer) {
         if opacity >= 100 {
-            layerStack.getActivePixels().SetRGB(x, y, color);
+            layerStack.getActivePixels().SetRgb(x, y, color);
             markChanged();
         } else if opacity > 0 {
             layerStack.getActivePixels().BlendPixel(x, y, color, opacity * 255 / 100);
@@ -105,7 +105,7 @@ class DrawingCanvas {
     // and the checkerboard show through. Uses the raw Pixels.Set primitive.
     expose func erasePixel(x: Integer, y: Integer) {
         if layerStack.activeIndex == 0 {
-            layerStack.getActivePixels().SetRGB(x, y, backgroundColor);
+            layerStack.getActivePixels().SetRgb(x, y, backgroundColor);
         } else {
             layerStack.getActivePixels().Set(x, y, 0);
         }
@@ -197,7 +197,7 @@ class DrawingCanvas {
                 var t = rel * 100 / lenSq;
                 if t < 0 { t = 0; }
                 if t > 100 { t = 100; }
-                px.SetRGB(xx, yy, Color.Lerp(c1, c2, t));
+                px.SetRgb(xx, yy, Color.Lerp(c1, c2, t));
                 xx = xx + 1;
             }
             yy = yy + 1;
@@ -219,7 +219,7 @@ class DrawingCanvas {
             while xx < rx + rw {
                 if xx >= 0 and yy >= 0 and xx < width and yy < height {
                     if onBase == 1 {
-                        px.SetRGB(xx, yy, backgroundColor);
+                        px.SetRgb(xx, yy, backgroundColor);
                     } else {
                         px.Set(xx, yy, 0);
                     }

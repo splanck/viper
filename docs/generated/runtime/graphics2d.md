@@ -89,7 +89,8 @@ Provides node in scene graph hierarchy.
 
 Create `Viper.Graphics2D.SceneNode` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`X`, `Y`, `WorldX` and operations including `FromSprite`, `AddChild`, `RemoveChild`, `GetChild`.
+`X`, `Y`, `WorldX` and operations including `FromSprite`, `AddChild`, `RemoveChild`,
+`GetChild`.
 
 Constructor: `Viper.Graphics2D.SceneNode.New`
 
@@ -122,8 +123,7 @@ Constructor: `Viper.Graphics2D.SceneNode.New`
 | <a id="viper-graphics2d-scenenode-addchild"></a>`AddChild` | `void(obj)` | `Viper.Graphics2D.SceneNode.AddChild` |
 | <a id="viper-graphics2d-scenenode-removechild"></a>`RemoveChild` | `void(obj)` | `Viper.Graphics2D.SceneNode.RemoveChild` |
 | <a id="viper-graphics2d-scenenode-getchild"></a>`GetChild` | `obj(i64)` | `Viper.Graphics2D.SceneNode.GetChild` |
-| <a id="viper-graphics2d-scenenode-find"></a>`Find` | `obj(str)` | `Viper.Graphics2D.SceneNode.Find` |
-| <a id="viper-graphics2d-scenenode-findoption"></a>`FindOption` | `obj<Viper.Option>(str)` | `Viper.Graphics2D.SceneNode.FindOption` |
+| <a id="viper-graphics2d-scenenode-find"></a>`Find` | `obj<Viper.Option>(str)` | `Viper.Graphics2D.SceneNode.Find` |
 | <a id="viper-graphics2d-scenenode-detach"></a>`Detach` | `void()` | `Viper.Graphics2D.SceneNode.Detach` |
 | <a id="viper-graphics2d-scenenode-draw"></a>`Draw` | `void(obj)` | `Viper.Graphics2D.SceneNode.Draw` |
 | <a id="viper-graphics2d-scenenode-drawwithcamera"></a>`DrawWithCamera` | `void(obj,obj)` | `Viper.Graphics2D.SceneNode.DrawWithCamera` |
@@ -140,7 +140,7 @@ Provides root container for scene graph.
 
 Create `Viper.Graphics2D.SceneGraph` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Root`, `NodeCount` and operations including `Add`, `Remove`, `Find`, `FindOption`.
+`Root`, `NodeCount` and operations including `Add`, `Remove`, `Find`, `Draw`.
 
 Constructor: `Viper.Graphics2D.SceneGraph.New`
 
@@ -157,8 +157,7 @@ Constructor: `Viper.Graphics2D.SceneGraph.New`
 |---|---|---|
 | <a id="viper-graphics2d-scenegraph-add"></a>`Add` | `void(obj)` | `Viper.Graphics2D.SceneGraph.Add` |
 | <a id="viper-graphics2d-scenegraph-remove"></a>`Remove` | `void(obj)` | `Viper.Graphics2D.SceneGraph.Remove` |
-| <a id="viper-graphics2d-scenegraph-find"></a>`Find` | `obj(str)` | `Viper.Graphics2D.SceneGraph.Find` |
-| <a id="viper-graphics2d-scenegraph-findoption"></a>`FindOption` | `obj<Viper.Option>(str)` | `Viper.Graphics2D.SceneGraph.FindOption` |
+| <a id="viper-graphics2d-scenegraph-find"></a>`Find` | `obj<Viper.Option>(str)` | `Viper.Graphics2D.SceneGraph.Find` |
 | <a id="viper-graphics2d-scenegraph-draw"></a>`Draw` | `void(obj)` | `Viper.Graphics2D.SceneGraph.Draw` |
 | <a id="viper-graphics2d-scenegraph-drawwithcamera"></a>`DrawWithCamera` | `void(obj,obj)` | `Viper.Graphics2D.SceneGraph.DrawWithCamera` |
 | <a id="viper-graphics2d-scenegraph-update"></a>`Update` | `void()` | `Viper.Graphics2D.SceneGraph.Update` |
@@ -171,8 +170,8 @@ Constructor: `Viper.Graphics2D.SceneGraph.New`
 Provides Tilemap Renderer 2D functionality for retained 2D graphics applications.
 
 Create `Viper.Graphics2D.TilemapRenderer2D` values through its registered constructor and use
-the returned object with the instance members below. Its public surface exposes a property such
-as `DrawCount` and operations including `SetChunkCache`, `Draw`, `DrawRegion`.
+the returned object with the instance members below. Its public surface exposes properties
+such as `DrawCount` and operations including `SetChunkCache`, `Draw`, `DrawRegion`.
 
 Constructor: `Viper.Graphics2D.TilemapRenderer2D.New`
 
@@ -281,8 +280,7 @@ Constructor: `Viper.Graphics2D.TilemapRenderer2D.New`
 | `Viper.Graphics2D.SceneNode.AddChild` | `void(obj,obj)` | `rt_scene_node_add_child` |
 | `Viper.Graphics2D.SceneNode.RemoveChild` | `void(obj,obj)` | `rt_scene_node_remove_child` |
 | `Viper.Graphics2D.SceneNode.GetChild` | `obj(obj,i64)` | `rt_scene_node_get_child` |
-| `Viper.Graphics2D.SceneNode.Find` | `obj(obj,str)` | `rt_scene_node_find` |
-| `Viper.Graphics2D.SceneNode.FindOption` | `obj<Viper.Option>(obj,str)` | `rt_scene_node_find_option` |
+| `Viper.Graphics2D.SceneNode.Find` | `obj<Viper.Option>(obj,str)` | `rt_scene_node_find_option` |
 | `Viper.Graphics2D.SceneNode.Detach` | `void(obj)` | `rt_scene_node_detach` |
 | `Viper.Graphics2D.SceneNode.Draw` | `void(obj,obj)` | `rt_scene_node_draw` |
 | `Viper.Graphics2D.SceneNode.DrawWithCamera` | `void(obj,obj,obj)` | `rt_scene_node_draw_with_camera` |
@@ -295,8 +293,7 @@ Constructor: `Viper.Graphics2D.TilemapRenderer2D.New`
 | <a id="viper-graphics2d-scenegraph-get-nodecount"></a>`Viper.Graphics2D.SceneGraph.get_NodeCount` | `i64(obj)` | `rt_scene_node_count` |
 | `Viper.Graphics2D.SceneGraph.Add` | `void(obj,obj)` | `rt_scene_add` |
 | `Viper.Graphics2D.SceneGraph.Remove` | `void(obj,obj)` | `rt_scene_remove` |
-| `Viper.Graphics2D.SceneGraph.Find` | `obj(obj,str)` | `rt_scene_find` |
-| `Viper.Graphics2D.SceneGraph.FindOption` | `obj<Viper.Option>(obj,str)` | `rt_scene_find_option` |
+| `Viper.Graphics2D.SceneGraph.Find` | `obj<Viper.Option>(obj,str)` | `rt_scene_find_option` |
 | `Viper.Graphics2D.SceneGraph.Draw` | `void(obj,obj)` | `rt_scene_draw` |
 | `Viper.Graphics2D.SceneGraph.DrawWithCamera` | `void(obj,obj,obj)` | `rt_scene_draw_with_camera` |
 | `Viper.Graphics2D.SceneGraph.Update` | `void(obj)` | `rt_scene_update` |

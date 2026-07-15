@@ -45,7 +45,7 @@ func start() {
         return;
     }
     // Disable the door: focus drops next tick.
-    doorUse.Enabled = false;
+    doorUse.IsEnabled = false;
     world.StepSimulation(1.0 / 60.0);
     if (scanner.Focused != null) {
         Terminal.Say("FAIL: disabling the target should clear focus");

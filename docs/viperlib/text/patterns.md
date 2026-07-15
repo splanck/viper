@@ -149,7 +149,7 @@ IF word.IsSome THEN
 END IF
 
 ' Find position
-DIM pos AS OBJECT = Viper.Text.Pattern.FindPosOption(text, "World")
+DIM pos AS OBJECT = Viper.Text.Pattern.FindPos(text, "World")
 IF pos.IsSome THEN
     PRINT pos.UnwrapI64()  ' Output: 7
 END IF
@@ -368,7 +368,7 @@ DIM all AS Viper.Collections.Seq = commaPattern.Split("a,b,c,d,e")
 PRINT all.Count  ' Output: 5
 
 ' Split with limit (max 3 parts)
-DIM limited AS Viper.Collections.Seq = commaPattern.SplitN("a,b,c,d,e", 3)
+DIM limited AS Viper.Collections.Seq = commaPattern.Split("a,b,c,d,e", 3)
 PRINT limited.Count        ' Output: 3
 PRINT Viper.Collections.Seq.GetStr(limited, 0) ' Output: a
 PRINT Viper.Collections.Seq.GetStr(limited, 1) ' Output: b
@@ -661,7 +661,7 @@ SQL-style LIKE pattern matching on strings. These are methods available on any S
 | Method              | Signature            | Description                                        |
 |---------------------|----------------------|----------------------------------------------------|
 | `Like(pattern)`     | `Boolean(String)`    | Case-sensitive SQL LIKE pattern matching            |
-| `LikeCI(pattern)`   | `Boolean(String)`    | Case-insensitive SQL LIKE pattern matching          |
+| `LikeIgnoreCase(pattern)`   | `Boolean(String)`    | Case-insensitive SQL LIKE pattern matching          |
 
 ### Pattern Syntax
 
@@ -675,7 +675,7 @@ Matching covers the entire string, rather than searching for a matching substrin
 advance according to UTF-8 leading/continuation-byte shape, while literal matching remains
 bytewise. This check accepts some invalid Unicode encodings; see
 [VDOC-060](../../documentation-review-findings.md#vdoc-060--stringlike-accepts-malformed-utf-8-as-code-points).
-`LikeCI` folds bytes with the process C character locale rather than a Unicode case algorithm; see
+`LikeIgnoreCase` folds bytes with the process C character locale rather than a Unicode case algorithm; see
 [VDOC-063](../../documentation-review-findings.md#vdoc-063--case-insensitive-pattern-helpers-depend-on-the-process-c-locale).
 A null receiver or pattern is treated as an empty string. A backslash quotes any following pattern
 byte; a final backslash matches a literal backslash.
@@ -696,9 +696,9 @@ func start() {
     Say(Fmt.Bool("hello".Like("world")));         // false
 
     // Case-insensitive matching
-    Say(Fmt.Bool("Hello".LikeCI("hello")));      // true
-    Say(Fmt.Bool("Hello".LikeCI("HELLO")));      // true
-    Say(Fmt.Bool("Hello".LikeCI("h%")));         // true
+    Say(Fmt.Bool("Hello".LikeIgnoreCase("hello")));      // true
+    Say(Fmt.Bool("Hello".LikeIgnoreCase("HELLO")));      // true
+    Say(Fmt.Bool("Hello".LikeIgnoreCase("h%")));         // true
 }
 ```
 
@@ -714,9 +714,9 @@ PRINT "hello".Like("h__lo")      ' Output: 1 (__ matches el)
 PRINT "hello".Like("world")      ' Output: 0 (no match)
 
 ' Case-insensitive matching
-PRINT "Hello World".LikeCI("hello%")  ' Output: 1
-PRINT "Hello World".LikeCI("HELLO%")  ' Output: 1
-PRINT "Hello World".LikeCI("%WORLD")  ' Output: 1
+PRINT "Hello World".LikeIgnoreCase("hello%")  ' Output: 1
+PRINT "Hello World".LikeIgnoreCase("HELLO%")  ' Output: 1
+PRINT "Hello World".LikeIgnoreCase("%WORLD")  ' Output: 1
 
 ' Escape special characters
 PRINT "100%".Like("100\%")       ' Output: 1 (literal %)

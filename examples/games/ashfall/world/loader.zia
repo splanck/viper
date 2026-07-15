@@ -11,7 +11,7 @@
 // =============================================================================
 module loader;
 
-bind Viper.Text.Json as Json;
+bind Viper.Data.Json as Json;
 bind Viper.Collections.Map as Map;
 bind Viper.String as Str;
 bind Viper.Core.Convert as Convert;

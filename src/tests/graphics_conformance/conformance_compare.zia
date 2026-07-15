@@ -24,7 +24,7 @@ bind Viper.System.Environment as Env;
 bind Viper.Terminal as Terminal;
 
 func intStr(i: Integer) -> String {
-    return Convert.ToString_Int(i);
+    return Convert.ToStringInt(i);
 }
 
 func channel(px: Integer, shift: Integer) -> Integer {

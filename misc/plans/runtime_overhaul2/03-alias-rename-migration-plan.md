@@ -44,7 +44,7 @@ Add an audit that fails on:
 |---|---|
 | `Viper.Memory.Retain/Release` and `Viper.Runtime.Unsafe.Retain/Release` | Canonical under `Runtime.Unsafe`; make `Memory` names legacy or remove. |
 | `Viper.Error.SetThrowMsg/ClearThrowMsg/SetTrapFields/RaiseKind` and `Runtime.Unsafe.*` | Canonical mutation under `Runtime.Unsafe`; user-facing read-only diagnostics under `Diagnostics`. |
-| `Viper.Memory.GC.*` and `Viper.Runtime.GC.*` | Pick one root. Prefer `Runtime.GC` for runtime machinery; keep `Memory.GC` only if docs position it as user memory tooling. |
+| `Viper.Runtime.GC.*` and `Viper.Runtime.GC.*` | Pick one root. Prefer `Runtime.GC` for runtime machinery; keep `Memory.GC` only if docs position it as user memory tooling. |
 
 ### P0: Clear Full-Word Names
 

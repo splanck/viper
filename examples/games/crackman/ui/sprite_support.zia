@@ -13,7 +13,7 @@ bind "../config";
 
 /// @brief Pack an RGB (0xRRGGBB) with a separate alpha (0..255).
 expose func rgba(rgb: Integer, a: Integer) -> Integer {
-    return Color.RGBA(Color.GetR(rgb), Color.GetG(rgb), Color.GetB(rgb), a);
+    return Color.RGBA(Color.GetRed(rgb), Color.GetGreen(rgb), Color.GetBlue(rgb), a);
 }
 
 /// @brief Integer absolute value helper.

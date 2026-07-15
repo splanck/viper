@@ -22,7 +22,7 @@ func testTextFileRoundtrip() {
     Viper.IO.File.WriteAllText(path, "alpha");
     assertTrue(Viper.IO.File.Exists(path), "created file exists");
     assertEqStr(Viper.IO.File.ReadAllText(path), "alpha", "read all text");
-    assertGtInt(Viper.IO.File.Size(path), 0, "file size after write");
+    assertGtInt(Viper.IO.File.SizeBytes(path), 0, "file size after write");
 
     Viper.IO.File.Append(path, " beta");
     assertEqStr(Viper.IO.File.ReadAllText(path), "alpha beta", "append text");

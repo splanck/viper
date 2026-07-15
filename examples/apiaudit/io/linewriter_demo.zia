@@ -29,7 +29,7 @@ func start() {
 
     // --- WriteLn ---
     Say("--- WriteLn ---");
-    LW.WriteLn(writer, "World");
+    LW.WriteLine(writer, "World");
     Say("WriteLn('World') done");
 
     // --- WriteChar ---
@@ -54,8 +54,8 @@ func start() {
     Say("Restored to LF");
 
     // --- WriteLn after more content ---
-    LW.WriteLn(writer, "");
-    LW.WriteLn(writer, "Final line");
+    LW.WriteLine(writer, "");
+    LW.WriteLine(writer, "Final line");
     Say("More lines written");
 
     // --- Flush ---
@@ -76,7 +76,7 @@ func start() {
     // --- Append ---
     Say("--- Append ---");
     var appWriter = LW.Append(testPath);
-    LW.WriteLn(appWriter, "Appended line");
+    LW.WriteLine(appWriter, "Appended line");
     LW.Close(appWriter);
     Say("Append done");
     Say("Content after append:");

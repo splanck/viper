@@ -20,70 +20,57 @@
 // CRYPTO - HASH
 //=============================================================================
 
-RT_FUNC(HashCRC32,      rt_hash_crc32,       "Viper.Crypto.Hash.CRC32",      "i64(str)")
-RT_FUNC(HashCRC32Bytes, rt_hash_crc32_bytes, "Viper.Crypto.Hash.CRC32Bytes", "i64(obj)")
-RT_FUNC(HashMD5,        rt_hash_md5,         "Viper.Crypto.Hash.MD5",        "str(str)")
-RT_FUNC(HashMD5Bytes,   rt_hash_md5_bytes,   "Viper.Crypto.Hash.MD5Bytes",   "str(obj)")
-RT_FUNC(HashSHA1,       rt_hash_sha1,        "Viper.Crypto.Hash.SHA1",       "str(str)")
-RT_FUNC(HashSHA1Bytes,  rt_hash_sha1_bytes,  "Viper.Crypto.Hash.SHA1Bytes",  "str(obj)")
-RT_FUNC(HashSHA256,     rt_hash_sha256,      "Viper.Crypto.Hash.SHA256",     "str(str)")
-RT_FUNC(HashSHA256Bytes,rt_hash_sha256_bytes,"Viper.Crypto.Hash.SHA256Bytes","str(obj)")
+RT_FUNC(HashSHA256,     rt_hash_sha256,      "Viper.Crypto.Hash.Sha256",     "str(str)")
+RT_FUNC(HashSHA256Bytes,rt_hash_sha256_bytes,"Viper.Crypto.Hash.Sha256Bytes","str(obj)")
 
 // HMAC functions
-RT_FUNC(HashHmacMD5,        rt_hash_hmac_md5,         "Viper.Crypto.Hash.HmacMD5",        "str(str,str)")
-RT_FUNC(HashHmacMD5Bytes,   rt_hash_hmac_md5_bytes,   "Viper.Crypto.Hash.HmacMD5Bytes",   "str(obj,obj)")
-RT_FUNC(HashHmacSHA1,       rt_hash_hmac_sha1,        "Viper.Crypto.Hash.HmacSHA1",       "str(str,str)")
-RT_FUNC(HashHmacSHA1Bytes,  rt_hash_hmac_sha1_bytes,  "Viper.Crypto.Hash.HmacSHA1Bytes",  "str(obj,obj)")
-RT_FUNC(HashHmacSHA256,     rt_hash_hmac_sha256,      "Viper.Crypto.Hash.HmacSHA256",     "str(str,str)")
-RT_FUNC(HashHmacSHA256Bytes,rt_hash_hmac_sha256_bytes,"Viper.Crypto.Hash.HmacSHA256Bytes","str(obj,obj)")
+RT_FUNC(HashHmacSHA256,     rt_hash_hmac_sha256,      "Viper.Crypto.Hash.HmacSha256",     "str(str,str)")
+RT_FUNC(HashHmacSHA256Bytes,rt_hash_hmac_sha256_bytes,"Viper.Crypto.Hash.HmacSha256Bytes","str(obj,obj)")
 RT_FUNC(HashConstantTimeEquals,      rt_hash_constant_time_equals,       "Viper.Crypto.Hash.ConstantTimeEquals",      "i1(str,str)")
 RT_FUNC(HashConstantTimeEqualsBytes, rt_hash_constant_time_equals_bytes, "Viper.Crypto.Hash.ConstantTimeEqualsBytes", "i1(obj,obj)")
 
 // Legacy/checksum hash compatibility aliases. New security-sensitive code
 // should prefer SHA256/HMAC-SHA256 in Viper.Crypto.Hash.
-RT_FUNC(LegacyHashCRC32,      rt_hash_crc32,       "Viper.Crypto.Legacy.Hash.CRC32",      "i64(str)")
-RT_FUNC(LegacyHashCRC32Bytes, rt_hash_crc32_bytes, "Viper.Crypto.Legacy.Hash.CRC32Bytes", "i64(obj)")
-RT_FUNC(LegacyHashMD5,        rt_hash_md5,         "Viper.Crypto.Legacy.Hash.MD5",        "str(str)")
-RT_FUNC(LegacyHashMD5Bytes,   rt_hash_md5_bytes,   "Viper.Crypto.Legacy.Hash.MD5Bytes",   "str(obj)")
-RT_FUNC(LegacyHashSHA1,       rt_hash_sha1,        "Viper.Crypto.Legacy.Hash.SHA1",       "str(str)")
-RT_FUNC(LegacyHashSHA1Bytes,  rt_hash_sha1_bytes,  "Viper.Crypto.Legacy.Hash.SHA1Bytes",  "str(obj)")
-RT_FUNC(LegacyHashHmacMD5,    rt_hash_hmac_md5,    "Viper.Crypto.Legacy.Hash.HmacMD5",    "str(str,str)")
-RT_FUNC(LegacyHashHmacMD5Bytes, rt_hash_hmac_md5_bytes, "Viper.Crypto.Legacy.Hash.HmacMD5Bytes", "str(obj,obj)")
-RT_FUNC(LegacyHashHmacSHA1,   rt_hash_hmac_sha1,   "Viper.Crypto.Legacy.Hash.HmacSHA1",   "str(str,str)")
-RT_FUNC(LegacyHashHmacSHA1Bytes, rt_hash_hmac_sha1_bytes, "Viper.Crypto.Legacy.Hash.HmacSHA1Bytes", "str(obj,obj)")
+RT_FUNC(LegacyHashCRC32,      rt_hash_crc32,       "Viper.Crypto.Legacy.Hash.Crc32",      "i64(str)")
+RT_FUNC(LegacyHashCRC32Bytes, rt_hash_crc32_bytes, "Viper.Crypto.Legacy.Hash.Crc32Bytes", "i64(obj)")
+RT_FUNC(LegacyHashMD5,        rt_hash_md5,         "Viper.Crypto.Legacy.Hash.Md5",        "str(str)")
+RT_FUNC(LegacyHashMD5Bytes,   rt_hash_md5_bytes,   "Viper.Crypto.Legacy.Hash.Md5Bytes",   "str(obj)")
+RT_FUNC(LegacyHashSHA1,       rt_hash_sha1,        "Viper.Crypto.Legacy.Hash.Sha1",       "str(str)")
+RT_FUNC(LegacyHashSHA1Bytes,  rt_hash_sha1_bytes,  "Viper.Crypto.Legacy.Hash.Sha1Bytes",  "str(obj)")
+RT_FUNC(LegacyHashHmacMD5,    rt_hash_hmac_md5,    "Viper.Crypto.Legacy.Hash.HmacMd5",    "str(str,str)")
+RT_FUNC(LegacyHashHmacMD5Bytes, rt_hash_hmac_md5_bytes, "Viper.Crypto.Legacy.Hash.HmacMd5Bytes", "str(obj,obj)")
+RT_FUNC(LegacyHashHmacSHA1,   rt_hash_hmac_sha1,   "Viper.Crypto.Legacy.Hash.HmacSha1",   "str(str,str)")
+RT_FUNC(LegacyHashHmacSHA1Bytes, rt_hash_hmac_sha1_bytes, "Viper.Crypto.Legacy.Hash.HmacSha1Bytes", "str(obj,obj)")
 
 // Fast keyed non-cryptographic hash functions
-RT_FUNC(HashFast,      rt_hash_fast,       "Viper.Crypto.Hash.Fast",      "i64(str)")
-RT_FUNC(HashFastBytes, rt_hash_fast_bytes, "Viper.Crypto.Hash.FastBytes", "i64(obj)")
-RT_FUNC(HashFastInt,   rt_hash_fast_int,   "Viper.Crypto.Hash.FastInt",   "i64(i64)")
+RT_FUNC(HashFast,      rt_hash_fast,       "Viper.Crypto.Hash.NonCryptoFast",      "i64(str)")
+RT_FUNC(HashFastBytes, rt_hash_fast_bytes, "Viper.Crypto.Hash.NonCryptoFastBytes", "i64(obj)")
+RT_FUNC(HashFastInt,   rt_hash_fast_int,   "Viper.Crypto.Hash.NonCryptoFastInt",   "i64(i64)")
 
 //=============================================================================
 // CRYPTO - KEY DERIVATION
 //=============================================================================
 
-RT_FUNC(KeyDerivePbkdf2SHA256,    rt_keyderive_pbkdf2_sha256,     "Viper.Crypto.KeyDerive.Pbkdf2SHA256",    "obj(str,obj,i64,i64)")
-RT_FUNC(KeyDerivePbkdf2SHA256Str, rt_keyderive_pbkdf2_sha256_str, "Viper.Crypto.KeyDerive.Pbkdf2SHA256Str", "str(str,obj,i64,i64)")
-RT_FUNC(KeyDeriveScryptSHA256,    rt_keyderive_scrypt_sha256,     "Viper.Crypto.KeyDerive.ScryptSHA256",    "obj(str,obj,i64,i64,i64,i64)")
-RT_FUNC(KeyDeriveScryptSHA256Str, rt_keyderive_scrypt_sha256_str, "Viper.Crypto.KeyDerive.ScryptSHA256Str", "str(str,obj,i64,i64,i64,i64)")
+RT_FUNC(KeyDerivePbkdf2SHA256,    rt_keyderive_pbkdf2_sha256,     "Viper.Crypto.KeyDerive.Pbkdf2Sha256",    "obj(str,obj,i64,i64)")
+RT_FUNC(KeyDerivePbkdf2SHA256Str, rt_keyderive_pbkdf2_sha256_str, "Viper.Crypto.KeyDerive.Pbkdf2Sha256Encoded", "str(str,obj,i64,i64)")
+RT_FUNC(KeyDeriveScryptSHA256,    rt_keyderive_scrypt_sha256,     "Viper.Crypto.KeyDerive.Scrypt",    "obj(str,obj,i64,i64,i64,i64)")
+RT_FUNC(KeyDeriveScryptSHA256Str, rt_keyderive_scrypt_sha256_str, "Viper.Crypto.KeyDerive.ScryptEncoded", "str(str,obj,i64,i64,i64,i64)")
 
 //=============================================================================
 // CRYPTO - SECURE RANDOM
 //=============================================================================
 
-RT_FUNC(CryptoRandBytes, rt_crypto_rand_bytes, "Viper.Crypto.Rand.Bytes", "obj<Viper.Collections.Bytes>(i64)")
-RT_FUNC(CryptoRandInt,   rt_crypto_rand_int,   "Viper.Crypto.Rand.Int",   "i64(i64,i64)")
+RT_FUNC(CryptoRandBytes, rt_crypto_rand_bytes, "Viper.Crypto.SecureRandom.Bytes", "obj<Viper.Collections.Bytes>(i64)")
+RT_FUNC(CryptoRandInt,   rt_crypto_rand_int,   "Viper.Crypto.SecureRandom.Int",   "i64(i64,i64)")
 
 //=============================================================================
 // CRYPTO - MODULE / APPROVED MODE
 //=============================================================================
 
-RT_FUNC(CryptoModuleEnableApprovedMode, rt_crypto_module_enable_approved_mode, "Viper.Crypto.Module.EnableApprovedMode", "i1()")
-RT_FUNC(CryptoModuleDisableApprovedMode, rt_crypto_module_disable_approved_mode, "Viper.Crypto.Module.DisableApprovedMode", "void()")
-RT_FUNC(CryptoModuleIsApprovedMode, rt_crypto_module_is_approved_mode_viper, "Viper.Crypto.Module.IsApprovedMode", "i1()")
-RT_FUNC(CryptoModuleEnableApprovedModeForProcess, rt_crypto_module_enable_approved_mode, "Viper.Crypto.Module.EnableApprovedModeForProcess", "i1()")
-RT_FUNC(CryptoModuleDisableApprovedModeForProcess, rt_crypto_module_disable_approved_mode, "Viper.Crypto.Module.DisableApprovedModeForProcess", "void()")
-RT_FUNC(CryptoModuleIsApprovedModeForProcess, rt_crypto_module_is_approved_mode_viper, "Viper.Crypto.Module.IsApprovedModeForProcess", "i1()")
-RT_FUNC(CryptoModuleStatus, rt_crypto_module_status_text, "Viper.Crypto.Module.Status", "str()")
+RT_FUNC(CryptoModuleEnableApprovedModeForProcess, rt_crypto_module_enable_approved_mode, "Viper.Crypto.Compliance.EnableApprovedModeForProcess", "i1()")
+RT_FUNC(CryptoModuleDisableApprovedModeForProcess, rt_crypto_module_disable_approved_mode, "Viper.Crypto.Compliance.DisableApprovedModeForProcess", "void()")
+RT_FUNC(CryptoModuleIsApprovedModeForProcess, rt_crypto_module_is_approved_mode_viper, "Viper.Crypto.Compliance.IsApprovedModeForProcess", "i1()")
+RT_FUNC(CryptoModuleStatus, rt_crypto_module_status_text, "Viper.Crypto.Compliance.Status", "str()")
 
 //=============================================================================
 // CRYPTO - CIPHER (HIGH-LEVEL ENCRYPTION)
@@ -93,18 +80,18 @@ RT_FUNC(CipherEncrypt,        rt_cipher_encrypt,          "Viper.Crypto.Cipher.E
 RT_FUNC(CipherDecrypt,        rt_cipher_decrypt,          "Viper.Crypto.Cipher.Decrypt",        "obj(obj,str)")
 RT_FUNC(CipherDecryptResult,  rt_cipher_decrypt_result,   "Viper.Crypto.Cipher.DecryptResult",  "obj<Viper.Result>(obj,str)")
 RT_FUNC(CipherTryDecrypt,     rt_cipher_try_decrypt,      "Viper.Crypto.Cipher.TryDecrypt",     "obj<Viper.Option>(obj,str)")
-RT_FUNC(CipherEncryptAAD,     rt_cipher_encrypt_aad,      "Viper.Crypto.Cipher.EncryptAAD",     "obj(obj,str,obj)")
-RT_FUNC(CipherDecryptAAD,     rt_cipher_decrypt_aad,      "Viper.Crypto.Cipher.DecryptAAD",     "obj(obj,str,obj)")
-RT_FUNC(CipherDecryptAADResult, rt_cipher_decrypt_aad_result, "Viper.Crypto.Cipher.DecryptAADResult", "obj<Viper.Result>(obj,str,obj)")
-RT_FUNC(CipherTryDecryptAAD,  rt_cipher_try_decrypt_aad,  "Viper.Crypto.Cipher.TryDecryptAAD",  "obj<Viper.Option>(obj,str,obj)")
+RT_FUNC(CipherEncryptAAD,     rt_cipher_encrypt_aad,      "Viper.Crypto.Cipher.EncryptAad",     "obj(obj,str,obj)")
+RT_FUNC(CipherDecryptAAD,     rt_cipher_decrypt_aad,      "Viper.Crypto.Cipher.DecryptAad",     "obj(obj,str,obj)")
+RT_FUNC(CipherDecryptAADResult, rt_cipher_decrypt_aad_result, "Viper.Crypto.Cipher.DecryptAadResult", "obj<Viper.Result>(obj,str,obj)")
+RT_FUNC(CipherTryDecryptAAD,  rt_cipher_try_decrypt_aad,  "Viper.Crypto.Cipher.TryDecryptAad",  "obj<Viper.Option>(obj,str,obj)")
 RT_FUNC(CipherEncryptWithKey, rt_cipher_encrypt_with_key, "Viper.Crypto.Cipher.EncryptWithKey", "obj(obj,obj)")
 RT_FUNC(CipherDecryptWithKey, rt_cipher_decrypt_with_key, "Viper.Crypto.Cipher.DecryptWithKey", "obj(obj,obj)")
 RT_FUNC(CipherDecryptWithKeyResult, rt_cipher_decrypt_with_key_result, "Viper.Crypto.Cipher.DecryptWithKeyResult", "obj<Viper.Result>(obj,obj)")
 RT_FUNC(CipherTryDecryptWithKey, rt_cipher_try_decrypt_with_key, "Viper.Crypto.Cipher.TryDecryptWithKey", "obj<Viper.Option>(obj,obj)")
-RT_FUNC(CipherEncryptWithKeyAAD, rt_cipher_encrypt_with_key_aad, "Viper.Crypto.Cipher.EncryptWithKeyAAD", "obj(obj,obj,obj)")
-RT_FUNC(CipherDecryptWithKeyAAD, rt_cipher_decrypt_with_key_aad, "Viper.Crypto.Cipher.DecryptWithKeyAAD", "obj(obj,obj,obj)")
-RT_FUNC(CipherDecryptWithKeyAADResult, rt_cipher_decrypt_with_key_aad_result, "Viper.Crypto.Cipher.DecryptWithKeyAADResult", "obj<Viper.Result>(obj,obj,obj)")
-RT_FUNC(CipherTryDecryptWithKeyAAD, rt_cipher_try_decrypt_with_key_aad, "Viper.Crypto.Cipher.TryDecryptWithKeyAAD", "obj<Viper.Option>(obj,obj,obj)")
+RT_FUNC(CipherEncryptWithKeyAAD, rt_cipher_encrypt_with_key_aad, "Viper.Crypto.Cipher.EncryptWithKeyAad", "obj(obj,obj,obj)")
+RT_FUNC(CipherDecryptWithKeyAAD, rt_cipher_decrypt_with_key_aad, "Viper.Crypto.Cipher.DecryptWithKeyAad", "obj(obj,obj,obj)")
+RT_FUNC(CipherDecryptWithKeyAADResult, rt_cipher_decrypt_with_key_aad_result, "Viper.Crypto.Cipher.DecryptWithKeyAadResult", "obj<Viper.Result>(obj,obj,obj)")
+RT_FUNC(CipherTryDecryptWithKeyAAD, rt_cipher_try_decrypt_with_key_aad, "Viper.Crypto.Cipher.TryDecryptWithKeyAad", "obj<Viper.Option>(obj,obj,obj)")
 RT_FUNC(CipherGenerateKey,    rt_cipher_generate_key,     "Viper.Crypto.Cipher.GenerateKey",    "obj()")
 RT_FUNC(CipherDeriveKey,      rt_cipher_derive_key,       "Viper.Crypto.Cipher.DeriveKey",      "obj(str,obj)")
 
@@ -112,14 +99,10 @@ RT_FUNC(CipherDeriveKey,      rt_cipher_derive_key,       "Viper.Crypto.Cipher.D
 // CRYPTO - AES ENCRYPTION
 //=============================================================================
 
-RT_FUNC(AesEncrypt,    rt_aes_encrypt,     "Viper.Crypto.Aes.Encrypt",    "obj(obj,obj,obj)")
-RT_FUNC(AesDecrypt,    rt_aes_decrypt,     "Viper.Crypto.Aes.Decrypt",    "obj(obj,obj,obj)")
-RT_FUNC(AesDecryptResult, rt_aes_decrypt_result, "Viper.Crypto.Aes.DecryptResult", "obj<Viper.Result>(obj,obj,obj)")
-RT_FUNC(AesTryDecrypt, rt_aes_try_decrypt, "Viper.Crypto.Aes.TryDecrypt", "obj<Viper.Option>(obj,obj,obj)")
-RT_FUNC(LegacyAesEncryptCBC, rt_aes_encrypt, "Viper.Crypto.Legacy.Aes.EncryptCBC", "obj(obj,obj,obj)")
-RT_FUNC(LegacyAesDecryptCBC, rt_aes_decrypt, "Viper.Crypto.Legacy.Aes.DecryptCBC", "obj(obj,obj,obj)")
-RT_FUNC(LegacyAesDecryptCBCResult, rt_aes_decrypt_result, "Viper.Crypto.Legacy.Aes.DecryptCBCResult", "obj<Viper.Result>(obj,obj,obj)")
-RT_FUNC(LegacyAesTryDecryptCBC, rt_aes_try_decrypt, "Viper.Crypto.Legacy.Aes.TryDecryptCBC", "obj<Viper.Option>(obj,obj,obj)")
+RT_FUNC(LegacyAesEncryptCBC, rt_aes_encrypt, "Viper.Crypto.Legacy.Aes.EncryptCbc", "obj(obj,obj,obj)")
+RT_FUNC(LegacyAesDecryptCBC, rt_aes_decrypt, "Viper.Crypto.Legacy.Aes.DecryptCbc", "obj(obj,obj,obj)")
+RT_FUNC(LegacyAesDecryptCBCResult, rt_aes_decrypt_result, "Viper.Crypto.Legacy.Aes.DecryptCbcResult", "obj<Viper.Result>(obj,obj,obj)")
+RT_FUNC(LegacyAesTryDecryptCBC, rt_aes_try_decrypt, "Viper.Crypto.Legacy.Aes.TryDecryptCbc", "obj<Viper.Option>(obj,obj,obj)")
 RT_FUNC(AesEncryptAuth, rt_aes_encrypt_auth, "Viper.Crypto.Aes.EncryptAuth", "obj(obj,obj,obj)")
 RT_FUNC(AesDecryptAuth, rt_aes_decrypt_auth, "Viper.Crypto.Aes.DecryptAuth", "obj(obj,obj,obj)")
 RT_FUNC(AesDecryptAuthResult, rt_aes_decrypt_auth_result, "Viper.Crypto.Aes.DecryptAuthResult", "obj<Viper.Result>(obj,obj,obj)")
@@ -132,12 +115,9 @@ RT_FUNC(AesTryDecryptStr, rt_aes_try_decrypt_str, "Viper.Crypto.Aes.TryDecryptSt
 /// @summary Provides Aes constants and static operations for cryptographic workflows.
 /// @details
 /// `Viper.Crypto.Aes` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `Encrypt`, `Decrypt`, `DecryptResult`, `TryDecrypt`.
+/// Its public surface exposes operations including `EncryptAuth`, `DecryptAuth`,
+/// `DecryptAuthResult`, `TryDecryptAuth`.
 RT_CLASS_BEGIN("Viper.Crypto.Aes", CryptoAes, "none", none)
-    RT_METHOD("Encrypt",    "obj(obj,obj,obj)", AesEncrypt)
-    RT_METHOD("Decrypt",    "obj(obj,obj,obj)", AesDecrypt)
-    RT_METHOD("DecryptResult", "obj<Viper.Result>(obj,obj,obj)", AesDecryptResult)
-    RT_METHOD("TryDecrypt", "obj<Viper.Option>(obj,obj,obj)", AesTryDecrypt)
     RT_METHOD("EncryptAuth", "obj(obj,obj,obj)", AesEncryptAuth)
     RT_METHOD("DecryptAuth", "obj(obj,obj,obj)", AesDecryptAuth)
     RT_METHOD("DecryptAuthResult", "obj<Viper.Result>(obj,obj,obj)", AesDecryptAuthResult)
@@ -150,14 +130,14 @@ RT_CLASS_END()
 
 /// @summary Provides Aes constants and static operations for cryptographic workflows.
 /// @details
-/// `Viper.Crypto.Legacy.Aes` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `EncryptCBC`, `DecryptCBC`, `DecryptCBCResult`,
-/// `TryDecryptCBC`.
+/// `Viper.Crypto.Legacy.Aes` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `EncryptCbc`, `DecryptCbc`,
+/// `DecryptCbcResult`, `TryDecryptCbc`.
 RT_CLASS_BEGIN("Viper.Crypto.Legacy.Aes", LegacyCryptoAes, "none", none)
-    RT_METHOD("EncryptCBC", "obj(obj,obj,obj)", LegacyAesEncryptCBC)
-    RT_METHOD("DecryptCBC", "obj(obj,obj,obj)", LegacyAesDecryptCBC)
-    RT_METHOD("DecryptCBCResult", "obj<Viper.Result>(obj,obj,obj)", LegacyAesDecryptCBCResult)
-    RT_METHOD("TryDecryptCBC", "obj<Viper.Option>(obj,obj,obj)", LegacyAesTryDecryptCBC)
+    RT_METHOD("EncryptCbc", "obj(obj,obj,obj)", LegacyAesEncryptCBC)
+    RT_METHOD("DecryptCbc", "obj(obj,obj,obj)", LegacyAesDecryptCBC)
+    RT_METHOD("DecryptCbcResult", "obj<Viper.Result>(obj,obj,obj)", LegacyAesDecryptCBCResult)
+    RT_METHOD("TryDecryptCbc", "obj<Viper.Option>(obj,obj,obj)", LegacyAesTryDecryptCBC)
 RT_CLASS_END()
 
 //=============================================================================
@@ -191,7 +171,6 @@ RT_FUNC(TlsRecv,       rt_viper_tls_recv,        "Viper.Crypto.Tls.Recv",       
 RT_FUNC(TlsRecvStr,    rt_viper_tls_recv_str,    "Viper.Crypto.Tls.RecvStr",    "str(obj,i64)")
 RT_FUNC(TlsClose,      rt_viper_tls_close,       "Viper.Crypto.Tls.Close",      "void(obj)")
 RT_FUNC(TlsRecvLine,   rt_viper_tls_recv_line,   "Viper.Crypto.Tls.RecvLine",   "str(obj)")
-RT_FUNC(TlsError,      rt_viper_tls_error,       "Viper.Crypto.Tls.Error",      "str(obj)")
 
 //=============================================================================
 // DATETIME
@@ -199,7 +178,7 @@ RT_FUNC(TlsError,      rt_viper_tls_error,       "Viper.Crypto.Tls.Error",      
 
 RT_FUNC(DateTimeAddDays,    rt_datetime_add_days,    "Viper.Time.DateTime.AddDays",    "i64(i64,i64)")
 RT_FUNC(DateTimeAddSeconds, rt_datetime_add_seconds, "Viper.Time.DateTime.AddSeconds", "i64(i64,i64)")
-RT_FUNC(DateTimeCreate,     rt_datetime_create,      "Viper.Time.DateTime.Create",     "i64(i64,i64,i64,i64,i64,i64)")
+RT_FUNC(DateTimeCreate,     rt_datetime_create,      "Viper.Time.DateTime.FromParts",     "i64(i64,i64,i64,i64,i64,i64)")
 RT_FUNC(DateTimeDay,        rt_datetime_day,         "Viper.Time.DateTime.Day",        "i64(i64)")
 RT_FUNC(DateTimeDayOfWeek,  rt_datetime_day_of_week, "Viper.Time.DateTime.DayOfWeek",  "i64(i64)")
 RT_FUNC(DateTimeDiff,       rt_datetime_diff,        "Viper.Time.DateTime.Diff",       "i64(i64,i64)")
@@ -211,15 +190,14 @@ RT_FUNC(DateTimeMonth,      rt_datetime_month,       "Viper.Time.DateTime.Month"
 RT_FUNC(DateTimeNow,        rt_datetime_now,         "Viper.Time.DateTime.Now",        "i64()")
 RT_FUNC(DateTimeNowMs,      rt_datetime_now_ms,      "Viper.Time.DateTime.NowMs",      "i64()")
 RT_FUNC(DateTimeSecond,     rt_datetime_second,      "Viper.Time.DateTime.Second",     "i64(i64)")
-RT_FUNC(DateTimeToISO,      rt_datetime_to_iso,      "Viper.Time.DateTime.ToISO",      "str(i64)")
-RT_FUNC(DateTimeToLocal,    rt_datetime_to_local,    "Viper.Time.DateTime.ToLocal",    "str(i64)")
+RT_FUNC(DateTimeToISO,      rt_datetime_to_iso,      "Viper.Time.DateTime.ToIso8601",      "str(i64)")
+RT_FUNC(DateTimeToLocal,    rt_datetime_to_local,    "Viper.Time.DateTime.FormatLocal",    "str(i64)")
 RT_FUNC(DateTimeToZone,     rt_datetime_to_zone,     "Viper.Time.DateTime.ToZone",     "str(i64,obj)")
 RT_FUNC(DateTimeYear,       rt_datetime_year,        "Viper.Time.DateTime.Year",       "i64(i64)")
-RT_FUNC(DateTimeParseISO,   rt_datetime_parse_iso,   "Viper.Time.DateTime.ParseISO",   "i64(str)")
+RT_FUNC(DateTimeParseISO,   rt_datetime_parse_iso,   "Viper.Time.DateTime.ParseIso8601",   "i64(str)")
 RT_FUNC(DateTimeParseDate,  rt_datetime_parse_date,  "Viper.Time.DateTime.ParseDate",  "i64(str)")
 RT_FUNC(DateTimeParseTime,  rt_datetime_parse_time,  "Viper.Time.DateTime.ParseTime",  "i64(str)")
-RT_FUNC(DateTimeTryParse,   rt_datetime_try_parse,   "Viper.Time.DateTime.TryParse",   "i64(str)")
-RT_FUNC(DateTimeTryParseOption, rt_datetime_try_parse_option, "Viper.Time.DateTime.TryParseOption", "obj<Viper.Option>(str)")
+RT_FUNC(DateTimeTryParseOption, rt_datetime_try_parse_option, "Viper.Time.DateTime.TryParse", "obj<Viper.Option>(str)")
 RT_FUNC(TimeZoneFind,       rt_tz_find,              "Viper.Time.TimeZone.Find",       "obj(str)")
 RT_FUNC(TimeZoneName,       rt_tz_name,              "Viper.Time.TimeZone.get_Name",   "str(obj)")
 RT_FUNC(TimeZoneOffsetAt,   rt_tz_offset_at,         "Viper.Time.TimeZone.OffsetAt",   "i64(obj,i64)")
@@ -235,7 +213,7 @@ RT_FUNC(DurationFromSeconds, rt_duration_from_seconds,  "Viper.Time.Duration.Fro
 RT_FUNC(DurationFromMinutes, rt_duration_from_minutes,  "Viper.Time.Duration.FromMinutes", "i64(i64)")
 RT_FUNC(DurationFromHours,   rt_duration_from_hours,    "Viper.Time.Duration.FromHours",   "i64(i64)")
 RT_FUNC(DurationFromDays,    rt_duration_from_days,     "Viper.Time.Duration.FromDays",    "i64(i64)")
-RT_FUNC(DurationCreate,      rt_duration_create,        "Viper.Time.Duration.Create",      "i64(i64,i64,i64,i64,i64)")
+RT_FUNC(DurationCreate,      rt_duration_create,        "Viper.Time.Duration.FromParts",      "i64(i64,i64,i64,i64,i64)")
 RT_FUNC(DurationZero,        rt_duration_zero,          "Viper.Time.Duration.Zero",        "i64()")
 
 // Total conversions
@@ -260,12 +238,12 @@ RT_FUNC(DurationSub, rt_duration_sub, "Viper.Time.Duration.Sub", "i64(i64,i64)")
 RT_FUNC(DurationMul, rt_duration_mul, "Viper.Time.Duration.Mul", "i64(i64,i64)")
 RT_FUNC(DurationDiv, rt_duration_div, "Viper.Time.Duration.Div", "i64(i64,i64)")
 RT_FUNC(DurationAbs, rt_duration_abs, "Viper.Time.Duration.Abs", "i64(i64)")
-RT_FUNC(DurationNeg, rt_duration_neg, "Viper.Time.Duration.Neg", "i64(i64)")
-RT_FUNC(DurationCmp, rt_duration_cmp, "Viper.Time.Duration.Cmp", "i64(i64,i64)")
+RT_FUNC(DurationNeg, rt_duration_neg, "Viper.Time.Duration.Negate", "i64(i64)")
+RT_FUNC(DurationCmp, rt_duration_cmp, "Viper.Time.Duration.Compare", "i64(i64,i64)")
 
 // Formatting
 RT_FUNC(DurationToString, rt_duration_to_string, "Viper.Time.Duration.ToString", "str(i64)")
-RT_FUNC(DurationToISO,    rt_duration_to_iso,    "Viper.Time.Duration.ToISO",    "str(i64)")
+RT_FUNC(DurationToISO,    rt_duration_to_iso,    "Viper.Time.Duration.ToIso8601",    "str(i64)")
 
 //=============================================================================
 // RELATIVE TIME
@@ -293,7 +271,7 @@ RT_FUNC(DateRangeDuration,     rt_daterange_duration,     "Viper.Time.DateRange.
 RT_FUNC(DateRangeToString,     rt_daterange_to_string,    "Viper.Time.DateRange.ToString",     "str(obj)")
 
 RT_FUNC(DateOnlyToday,         rt_dateonly_today,         "Viper.Time.DateOnly.Today",         "obj()")
-RT_FUNC(DateOnlyCreate,        rt_dateonly_create,        "Viper.Time.DateOnly.Create",        "obj(i64,i64,i64)")
+RT_FUNC(DateOnlyCreate,        rt_dateonly_create,        "Viper.Time.DateOnly.FromParts",        "obj(i64,i64,i64)")
 RT_FUNC(DateOnlyParse,         rt_dateonly_parse,         "Viper.Time.DateOnly.Parse",         "obj(str)")
 RT_FUNC(DateOnlyFromDays,      rt_dateonly_from_days,     "Viper.Time.DateOnly.FromDays",      "obj(i64)")
 RT_FUNC(DateOnlyYear,          rt_dateonly_year,          "Viper.Time.DateOnly.get_Year",      "i64(obj)")
@@ -312,7 +290,7 @@ RT_FUNC(DateOnlyStartOfMonth,  rt_dateonly_start_of_month,"Viper.Time.DateOnly.S
 RT_FUNC(DateOnlyEndOfMonth,    rt_dateonly_end_of_month,  "Viper.Time.DateOnly.EndOfMonth",    "obj(obj)")
 RT_FUNC(DateOnlyStartOfYear,   rt_dateonly_start_of_year, "Viper.Time.DateOnly.StartOfYear",   "obj(obj)")
 RT_FUNC(DateOnlyEndOfYear,     rt_dateonly_end_of_year,   "Viper.Time.DateOnly.EndOfYear",     "obj(obj)")
-RT_FUNC(DateOnlyCmp,           rt_dateonly_cmp,           "Viper.Time.DateOnly.Cmp",           "i64(obj,obj)")
+RT_FUNC(DateOnlyCmp,           rt_dateonly_cmp,           "Viper.Time.DateOnly.Compare",           "i64(obj,obj)")
 RT_FUNC(DateOnlyEquals,        rt_dateonly_equals,        "Viper.Time.DateOnly.Equals",        "i1(obj,obj)")
 RT_FUNC(DateOnlyToString,      rt_dateonly_to_string,     "Viper.Time.DateOnly.ToString",      "str(obj)")
 RT_FUNC(DateOnlyFormat,        rt_dateonly_format,        "Viper.Time.DateOnly.Format",        "str(obj,str)")
@@ -468,7 +446,7 @@ RT_CLASS_END()
 RT_FUNC(EnvArgCount, rt_args_count,    "Viper.System.Environment.GetArgumentCount", "i64()")
 RT_FUNC(EnvArgGet,   rt_args_get,      "Viper.System.Environment.GetArgument",      "str(i64)")
 RT_FUNC(EnvCmdLine,  rt_cmdline,       "Viper.System.Environment.GetCommandLine",   "str()")
-RT_FUNC(EnvExit,     rt_env_exit,      "Viper.System.Environment.EndProgram",       "void(i64)")
+RT_FUNC(EnvExit,     rt_env_exit,      "Viper.System.Environment.Exit",       "void(i64)")
 RT_FUNC(EnvGetVar,   rt_env_get_var,   "Viper.System.Environment.GetVariable",      "str(str)")
 RT_FUNC(EnvHasVar,   rt_env_has_var,   "Viper.System.Environment.HasVariable",      "i1(str)")
 RT_FUNC(EnvIsNative, rt_env_is_native, "Viper.System.Environment.IsNative",         "i1()")
@@ -487,12 +465,10 @@ RT_FUNC(ExecRun,         rt_exec_run,          "Viper.System.Exec.Run",         
 RT_FUNC(ExecRunArgs,     rt_exec_run_args,     "Viper.System.Exec.RunArgs",      "i64(str,obj)")
 RT_FUNC(ExecShell,       rt_exec_shell,        "Viper.System.Exec.Shell",        "i64(str)")
 RT_FUNC(ExecShellCapture,rt_exec_shell_capture,"Viper.System.Exec.ShellCapture", "str(str)")
-RT_FUNC(ExecShellFull,   rt_exec_shell_full,   "Viper.System.Exec.ShellFull",    "str(str)")
 RT_FUNC(ExecShellResult, rt_exec_shell_result, "Viper.System.Exec.ShellResult",  "obj<Viper.System.CommandResult>(str)")
-RT_FUNC(ExecLastExitCode,rt_exec_last_exit_code,"Viper.System.Exec.LastExitCode", "i64()")
 RT_FUNC(ExecCommandResultOutput, rt_exec_command_result_output, "Viper.System.CommandResult.get_Output", "str(obj)")
 RT_FUNC(ExecCommandResultExitCode, rt_exec_command_result_exit_code, "Viper.System.CommandResult.get_ExitCode", "i64(obj)")
-RT_FUNC(ExecCommandResultSucceeded, rt_exec_command_result_succeeded, "Viper.System.CommandResult.get_Succeeded", "i1(obj)")
+RT_FUNC(ExecCommandResultSucceeded, rt_exec_command_result_succeeded, "Viper.System.CommandResult.get_IsSuccess", "i1(obj)")
 
 RT_FUNC(ProcessStart,        rt_process_start,         "Viper.System.Process.Start",                 "obj<Viper.System.Process.ProcessHandle>(str,obj)")
 RT_FUNC(ProcessStartIn,      rt_process_start_in,      "Viper.System.Process.StartIn",               "obj<Viper.System.Process.ProcessHandle>(str,obj,str)")
@@ -515,7 +491,6 @@ RT_FUNC(ProcessDestroy,      rt_process_destroy,       "Viper.System.Process.Pro
 RT_FUNC(PtyOpen,        rt_pty_open,         "Viper.System.Pty.Open",                 "obj<Viper.System.Pty.PtySession>(str,obj,str,obj,i64,i64)")
 RT_FUNC(PtyOpenResult,  rt_pty_open_result,  "Viper.System.Pty.OpenResult",           "obj<Viper.Result>(str,obj,str,obj,i64,i64)")
 RT_FUNC(PtyIsSupported, rt_pty_is_supported, "Viper.System.Pty.IsSupported",          "i1()")
-RT_FUNC(PtyLastError,   rt_pty_last_error,   "Viper.System.Pty.LastError",            "str()")
 RT_FUNC(PtyIsValid,     rt_pty_is_valid,     "Viper.System.Pty.PtySession.IsValid",   "i1(obj)")
 RT_FUNC(PtyPoll,        rt_pty_poll,         "Viper.System.Pty.PtySession.Poll",      "i1(obj)")
 RT_FUNC(PtyIsRunning,   rt_pty_is_running,   "Viper.System.Pty.PtySession.IsRunning", "i1(obj)")
@@ -530,7 +505,7 @@ RT_FUNC(PtyDestroy,     rt_pty_destroy,      "Viper.System.Pty.PtySession.Destro
 
 RT_FUNC(ShutdownRequest,   rt_shutdown_request,         "Viper.System.Shutdown.Request",       "void(i64)")
 RT_FUNC(ShutdownPoll,      rt_shutdown_poll,            "Viper.System.Shutdown.Poll",          "i64()")
-RT_FUNC(ShutdownPending,   rt_shutdown_pending,         "Viper.System.Shutdown.Pending",       "i1()")
+RT_FUNC(ShutdownPending,   rt_shutdown_pending,         "Viper.System.Shutdown.IsPending",       "i1()")
 RT_FUNC(ShutdownClear,     rt_shutdown_clear,           "Viper.System.Shutdown.Clear",         "void()")
 RT_FUNC(ShutdownNone,      rt_shutdown_const_none,      "Viper.System.Shutdown.get_None",      "i64()")
 RT_FUNC(ShutdownInterrupt, rt_shutdown_const_interrupt, "Viper.System.Shutdown.get_Interrupt", "i64()")

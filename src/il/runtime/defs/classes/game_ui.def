@@ -94,7 +94,6 @@ RT_CLASS_BEGIN("Viper.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_METHOD("LoadResult", "obj<Viper.Result>(str)", GameSceneLoadFileResult)
     RT_METHOD("ToJson", "str()", GameSceneToJson)
     RT_METHOD("Save", "i1(str)", GameSceneSaveFile)
-    RT_METHOD("LastError", "str()", GameSceneLastError)
     RT_METHOD("Diagnostics", "obj<Viper.Collections.Seq>()", GameSceneDiagnostics)
     RT_METHOD("DiagnosticRecords", "obj<Viper.Collections.Seq>()", GameSceneDiagnosticRecords)
     RT_METHOD("HasErrors", "i1()", GameSceneHasErrors)
@@ -136,7 +135,6 @@ RT_CLASS_BEGIN("Viper.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_METHOD("ObjectRemove", "void(i64,str)", GameSceneObjectRemove)
     RT_METHOD("CountOfType", "i64(str)", GameSceneCountOfType)
     RT_METHOD("ObjectOfType", "i64(str,i64)", GameSceneObjectOfType)
-    RT_METHOD("FindObject", "i64(str)", GameSceneFindObject)
     RT_METHOD("FindObjectOption", "obj<Viper.Option>(str)", GameSceneFindObjectOption)
     RT_METHOD("MoveObject", "void(i64,i64)", GameSceneMoveObject)
     RT_METHOD("SetProperty", "void(str,str)", GameSceneSetProperty)
@@ -184,8 +182,8 @@ RT_CLASS_BEGIN("Viper.Game.Dialogue", Dialogue, "obj", DialogueNew)
     RT_METHOD("Update", "void(i64)", DialogueUpdate)
     RT_METHOD("Advance", "void()", DialogueAdvance)
     RT_METHOD("Skip", "void()", DialogueSkip)
-    RT_METHOD("SetBgColor", "void(i64,i64)", DialogueSetBgColor)
-    RT_METHOD("SetPos", "void(i64,i64)", DialogueSetPos)
+    RT_METHOD("SetBackgroundColor", "void(i64,i64)", DialogueSetBgColor)
+    RT_METHOD("SetPosition", "void(i64,i64)", DialogueSetPos)
     RT_METHOD("SetSize", "void(i64,i64)", DialogueSetSize)
     RT_METHOD("Draw", "void(obj)", DialogueDraw)
 RT_CLASS_END()
@@ -275,8 +273,8 @@ RT_FUNC(GameQuestEvQuestFailed,  rt_quests_event_quest_failed, "Viper.Game.Quest
 /// @summary Provides Quests functionality for game applications.
 /// @details
 /// Create `Viper.Game.Quests` values through its registered constructor and use the returned object
-/// with the instance members below. Its public surface exposes a property such as `ActiveCount` and
-/// operations including `AddQuest`, `AddStage`, `AddFlag`, `AddCounter`.
+/// with the instance members below. Its public surface exposes properties such as `ActiveCount`
+/// and operations including `AddQuest`, `AddStage`, `AddFlag`, `AddCounter`.
 RT_CLASS_BEGIN("Viper.Game.Quests", GameQuests, "obj", GameQuestsNew)
     RT_METHOD("AddQuest", "obj(str,str)", GameQuestsAddQuest)
     RT_METHOD("AddStage", "obj(str,str,str)", GameQuestsAddStage)
@@ -308,7 +306,7 @@ RT_CLASS_END()
 /// @summary Provides Quest State constants and static operations for game applications.
 /// @details
 /// `Viper.Game.QuestState` is a static runtime surface and does not require an instance. Its public
-/// surface exposes properties such as `Hidden`, `Active`, `Complete`.
+/// Its public surface exposes properties such as `Hidden`, `Active`, `Complete`.
 RT_CLASS_BEGIN("Viper.Game.QuestState", GameQuestState, "none", none)
     RT_PROP("Hidden", "i64", GameQuestStateHidden, none)
     RT_PROP("Active", "i64", GameQuestStateActive, none)
@@ -318,8 +316,9 @@ RT_CLASS_END()
 
 /// @summary Provides Quest Event Kind constants and static operations for game applications.
 /// @details
-/// `Viper.Game.QuestEventKind` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Activated`, `ObjectiveProgress`, `ObjectiveComplete`.
+/// `Viper.Game.QuestEventKind` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Activated`, `ObjectiveProgress`,
+/// `ObjectiveComplete`.
 RT_CLASS_BEGIN("Viper.Game.QuestEventKind", GameQuestEventKind, "none", none)
     RT_PROP("Activated", "i64", GameQuestEvActivated, none)
     RT_PROP("ObjectiveProgress", "i64", GameQuestEvObjProgress, none)
@@ -356,7 +355,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Game.Typewriter` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `VisibleText`, `FullText`, `IsActive` and operations including `Say`, `Update`, `Skip`, `Reset`.
+/// `VisibleText`, `FullText`, `IsActive` and operations including `Say`, `Update`, `Skip`,
+/// `Reset`.
 RT_CLASS_BEGIN("Viper.Game.Typewriter", Typewriter, "obj", TypewriterNew)
     RT_PROP("VisibleText", "str", TypewriterVisibleText, none)
     RT_PROP("FullText", "str", TypewriterFullText, none)
@@ -375,8 +375,8 @@ RT_CLASS_END()
 /// @summary Provides positioned text widget.
 /// @details
 /// Create `Viper.Game.UI.HudLabel` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-/// `Color` and operations including `SetText`, `SetPos`, `Draw`.
+/// object with the instance members below. Its public surface exposes properties such as `X`,
+/// `Y`, `Color` and operations including `SetText`, `SetPosition`, `Draw`.
 RT_CLASS_BEGIN("Viper.Game.UI.HudLabel", UIHudLabel, "obj", UILabelNew)
     RT_PROP("X", "i64", UILabelGetX, none)
     RT_PROP("Y", "i64", UILabelGetY, none)
@@ -385,7 +385,7 @@ RT_CLASS_BEGIN("Viper.Game.UI.HudLabel", UIHudLabel, "obj", UILabelNew)
     RT_PROP("Scale", "i64", none, UILabelSetScale)
     RT_PROP("Visible", "i1", none, UILabelSetVisible)
     RT_METHOD("SetText", "void(str)", UILabelSetText)
-    RT_METHOD("SetPos", "void(i64,i64)", UILabelSetPos)
+    RT_METHOD("SetPosition", "void(i64,i64)", UILabelSetPos)
     RT_METHOD("Draw", "void(obj)", UILabelDraw)
 RT_CLASS_END()
 
@@ -394,15 +394,15 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Game.UI.Bar` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value`, `Max`,
-/// `Border` and operations including `SetValue`, `SetPos`, `SetSize`, `SetColors`.
-RT_CLASS_BEGIN("Viper.Game.UI.Bar", UIBar, "obj", UIBarNew)
+/// `Border` and operations including `SetValue`, `SetPosition`, `SetSize`, `SetColors`.
+RT_CLASS_BEGIN("Viper.Game.UI.HudBar", UIBar, "obj", UIBarNew)
     RT_PROP("Value", "i64", UIBarGetValue, none)
     RT_PROP("Max", "i64", UIBarGetMax, none)
     RT_PROP("Border", "i64", none, UIBarSetBorder)
     RT_PROP("Direction", "i64", none, UIBarSetDir)
     RT_PROP("Visible", "i1", none, UIBarSetVisible)
     RT_METHOD("SetValue", "void(i64,i64)", UIBarSetValue)
-    RT_METHOD("SetPos", "void(i64,i64)", UIBarSetPos)
+    RT_METHOD("SetPosition", "void(i64,i64)", UIBarSetPos)
     RT_METHOD("SetSize", "void(i64,i64)", UIBarSetSize)
     RT_METHOD("SetColors", "void(i64,i64)", UIBarSetColors)
     RT_METHOD("Draw", "void(obj)", UIBarDraw)
@@ -413,11 +413,12 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Game.UI.Panel` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `CornerRadius`, `Visible` and operations including `SetPos`, `SetSize`, `SetColor`, `SetBorder`.
-RT_CLASS_BEGIN("Viper.Game.UI.Panel", UIPanel, "obj", UIPanelNew)
+/// `CornerRadius`, `Visible` and operations including `SetPosition`, `SetSize`, `SetColor`,
+/// `SetBorder`.
+RT_CLASS_BEGIN("Viper.Game.UI.HudPanel", UIPanel, "obj", UIPanelNew)
     RT_PROP("CornerRadius", "i64", none, UIPanelSetCorner)
     RT_PROP("Visible", "i1", none, UIPanelSetVisible)
-    RT_METHOD("SetPos", "void(i64,i64)", UIPanelSetPos)
+    RT_METHOD("SetPosition", "void(i64,i64)", UIPanelSetPos)
     RT_METHOD("SetSize", "void(i64,i64)", UIPanelSetSize)
     RT_METHOD("SetColor", "void(i64,i64)", UIPanelSetColor)
     RT_METHOD("SetBorder", "void(i64,i64)", UIPanelSetBorder)
@@ -428,9 +429,9 @@ RT_CLASS_END()
 /// @summary Provides scalable bordered UI element.
 /// @details
 /// Create `Viper.Game.UI.NineSlice` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as `Tint` and
-/// operations including `Draw`.
-RT_CLASS_BEGIN("Viper.Game.UI.NineSlice", UINineSlice, "obj", UINineSliceNew)
+/// object with the instance members below. Its public surface exposes properties such as `Tint`
+/// and operations including `Draw`.
+RT_CLASS_BEGIN("Viper.Game.UI.HudNineSlice", UINineSlice, "obj", UINineSliceNew)
     RT_PROP("Tint", "i64", none, UINineSliceTint)
     RT_METHOD("Draw", "void(obj,i64,i64,i64,i64)", UINineSliceDraw)
 RT_CLASS_END()
@@ -441,7 +442,7 @@ RT_CLASS_END()
 /// Create `Viper.Game.UI.MenuList` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Selected`, `Count`, `Font` and operations including `AddItem`, `Clear`, `MoveUp`, `MoveDown`.
-RT_CLASS_BEGIN("Viper.Game.UI.MenuList", UIMenuList, "obj", UIMenuListNew)
+RT_CLASS_BEGIN("Viper.Game.UI.HudMenuList", UIMenuList, "obj", UIMenuListNew)
     RT_PROP("Selected", "i64", UIMenuListGetSel, UIMenuListSetSel)
     RT_PROP("Count", "i64", UIMenuListGetCount, none)
     RT_PROP("Font", "obj", none, UIMenuListSetFont)
@@ -460,12 +461,12 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Game.UI.HudTextInput` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Text`, `Visible`, `Enabled` and operations including `TextLength`, `GetCursor`, `SetCursor`,
-/// `SelectAll`.
+/// `Text`, `Visible`, `IsEnabled` and operations including `TextLength`, `GetCursor`,
+/// `SetCursor`, `SelectAll`.
 RT_CLASS_BEGIN("Viper.Game.UI.HudTextInput", UIHudTextInput, "obj", UITextInputNew)
     RT_PROP("Text", "str", UITextInputGetText, UITextInputSetText)
     RT_PROP("Visible", "i1", UITextInputGetVisible, UITextInputSetVisible)
-    RT_PROP("Enabled", "i1", UITextInputGetEnabled, UITextInputSetEnabled)
+    RT_PROP("IsEnabled", "i1", UITextInputGetEnabled, UITextInputSetEnabled)
     RT_PROP("Focused", "i1", UITextInputGetFocused, UITextInputSetFocused)
     RT_PROP("TextColor", "i64", UITextInputGetTextColor, UITextInputSetTextColor)
     RT_PROP("BackgroundColor", "i64", UITextInputGetBgColor, UITextInputSetBgColor)
@@ -500,7 +501,7 @@ RT_CLASS_END()
 /// object with the instance members below. Its public surface exposes properties such as
 /// `ColumnCount`, `RowCount`, `SortColumn` and operations including `AddColumn`,
 /// `SetColumnSortable`, `AddRow`, `SetCell`.
-RT_CLASS_BEGIN("Viper.Game.UI.Table", UITable, "obj", UITableNew)
+RT_CLASS_BEGIN("Viper.Game.UI.HudTable", UITable, "obj", UITableNew)
     RT_PROP("ColumnCount", "i64", UITableColumnCount, none)
     RT_PROP("RowCount", "i64", UITableRowCount, none)
     RT_PROP("SortColumn", "i64", UITableGetSortColumn, none)
@@ -515,9 +516,7 @@ RT_CLASS_BEGIN("Viper.Game.UI.Table", UITable, "obj", UITableNew)
     RT_METHOD("RemoveRow", "void(i64)", UITableRemoveRow)
     RT_METHOD("ClearRows", "void()", UITableClearRows)
     RT_METHOD("SortBy", "void(i64,i1)", UITableSortBy)
-    RT_METHOD("HandleClick", "i64(i64,i64)", UITableHandleClick)
-    RT_METHOD("HandleClickResult", "obj<Viper.Game.UI.TableClickResult>(i64,i64)", UITableHandleClickResult)
-    RT_METHOD("LastHeaderClick", "i64()", UITableLastHeader)
+    RT_METHOD("HandleClick", "obj<Viper.Game.UI.HudTableClickResult>(i64,i64)", UITableHandleClickResult)
     RT_METHOD("HandleScroll", "void(i64)", UITableHandleScroll)
     RT_METHOD("HandleKey", "void(i64)", UITableHandleKey)
     RT_METHOD("Draw", "void(obj)", UITableDraw)
@@ -529,7 +528,7 @@ RT_CLASS_END()
 /// `Viper.Game.UI.TableClickResult` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as `Kind`,
 /// `IsNone`, `IsRow` and operations including `RowOption`, `ColumnOption`.
-RT_CLASS_BEGIN("Viper.Game.UI.TableClickResult", UITableClickResult, "obj", none)
+RT_CLASS_BEGIN("Viper.Game.UI.HudTableClickResult", UITableClickResult, "obj", none)
     RT_PROP("Kind", "i64", UITableClickResultKind, none)
     RT_PROP("IsNone", "i1", UITableClickResultIsNone, none)
     RT_PROP("IsRow", "i1", UITableClickResultIsRow, none)
@@ -542,9 +541,9 @@ RT_CLASS_END()
 /// @summary Provides modal dialog with buttons and child widgets.
 /// @details
 /// Create `Viper.Game.UI.Modal` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsOpen`,
-/// `Result` and operations including `NewAt`, `SetTitle`, `SetContent`, `AddButton`.
-RT_CLASS_BEGIN("Viper.Game.UI.Modal", UIModal, "obj", UIModalNew)
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsOpen`, `Result` and operations including `NewAt`, `SetTitle`, `SetContent`, `AddButton`.
+RT_CLASS_BEGIN("Viper.Game.UI.HudModal", UIModal, "obj", UIModalNew)
     RT_PROP("IsOpen", "i1", UIModalIsOpen, none)
     RT_PROP("Result", "i64", UIModalResult, none)
     RT_METHOD("NewAt", "obj(i64,i64,i64,i64)", UIModalNewAt)
@@ -565,7 +564,7 @@ RT_CLASS_END()
 /// @summary Provides integer slider control.
 /// @details
 /// Create `Viper.Game.UI.HudSlider` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as `Value`
+/// object with the instance members below. Its public surface exposes properties such as `Value`
 /// and operations including `SetStep`, `SetLabel`, `HandleKey`, `HandleMouseDown`.
 RT_CLASS_BEGIN("Viper.Game.UI.HudSlider", UIHudSlider, "obj", UISliderNew)
     RT_PROP("Value", "i64", UISliderGetValue, UISliderSetValue)
@@ -615,9 +614,9 @@ RT_CLASS_END()
 /// @summary Provides styled button for game menus and custom HUDs.
 /// @details
 /// Create `Viper.Game.UI.GameButton` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-/// `Width` and operations including `SetText`, `SetSize`, `SetColors`, `SetTextColors`.
-RT_CLASS_BEGIN("Viper.Game.UI.GameButton", GameButton, "obj", GameButtonNew)
+/// object with the instance members below. Its public surface exposes properties such as `X`,
+/// `Y`, `Width` and operations including `SetText`, `SetSize`, `SetColors`, `SetTextColors`.
+RT_CLASS_BEGIN("Viper.Game.UI.HudButton", GameButton, "obj", GameButtonNew)
     RT_PROP("X", "i64", GameButtonGetX, GameButtonSetX)
     RT_PROP("Y", "i64", GameButtonGetY, GameButtonSetY)
     RT_PROP("Width", "i64", GameButtonGetWidth, none)
@@ -642,7 +641,6 @@ RT_CLASS_BEGIN("Viper.Game.PathResult", PathResult, "obj", none)
     RT_PROP("Steps", "i64", PathResultSteps, none)
     RT_PROP("Cost", "i64", PathResultCost, none)
     RT_PROP("StepCount", "i64", PathResultStepCount, none)
-    RT_PROP("Length", "i64", PathResultLength, none)
     RT_PROP("Path", "obj", PathResultPath, none)
 RT_CLASS_END()
 
@@ -651,23 +649,19 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Game.Pathfinder` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Width`,
-/// `Height`, `Diagonal` and operations including `SetWalkable`, `IsWalkable`, `SetCost`, `GetCost`.
+/// `Height`, `Diagonal` and operations including `SetWalkable`, `IsWalkable`, `SetCost`,
+/// `GetCost`.
 RT_CLASS_BEGIN("Viper.Game.Pathfinder", Pathfinder, "obj", PathfinderNew)
     RT_PROP("Width", "i64", PathfinderGetWidth, none)
     RT_PROP("Height", "i64", PathfinderGetHeight, none)
     RT_PROP("Diagonal", "i1", none, PathfinderSetDiagonal)
     RT_PROP("MaxSteps", "i64", none, PathfinderSetMaxSteps)
-    RT_PROP("LastSteps", "i64", PathfinderLastSteps, none)
-    RT_PROP("LastFound", "i1", PathfinderLastFound, none)
     RT_METHOD("SetWalkable", "void(i64,i64,i1)", PathfinderSetWalkable)
     RT_METHOD("IsWalkable", "i1(i64,i64)", PathfinderIsWalkable)
     RT_METHOD("SetCost", "void(i64,i64,i64)", PathfinderSetCost)
     RT_METHOD("GetCost", "i64(i64,i64)", PathfinderGetCost)
-    RT_METHOD("FindPath", "obj(i64,i64,i64,i64)", PathfinderFindPath)
-    RT_METHOD("FindPathResult", "obj<Viper.Game.PathResult>(i64,i64,i64,i64)", PathfinderFindPathResult)
-    RT_METHOD("FindPathLength", "i64(i64,i64,i64,i64)", PathfinderFindPathLen)
-    RT_METHOD("FindNearest", "obj(i64,i64,i64)", PathfinderFindNearest)
-    RT_METHOD("FindNearestResult", "obj<Viper.Game.PathResult>(i64,i64,i64)", PathfinderFindNearestResult)
+    RT_METHOD("FindPath", "obj<Viper.Game.PathResult>(i64,i64,i64,i64)", PathfinderFindPathResult)
+    RT_METHOD("FindNearest", "obj<Viper.Game.PathResult>(i64,i64,i64)", PathfinderFindNearestResult)
     RT_METHOD("Destroy", "void()", PathfinderDestroy)
 RT_CLASS_END()
 
@@ -699,8 +693,8 @@ RT_CLASS_END()
 /// @summary Provides Query Result functionality for game applications.
 /// @details
 /// `Viper.Game.QueryResult` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes properties such as `Count`, `Truncated`
-/// and operations including `GetId`, `Contains`, `Ids`.
+/// construct the class directly. Its public surface exposes properties such as `Count`,
+/// `Truncated` and operations including `GetId`, `Contains`, `Ids`.
 RT_CLASS_BEGIN("Viper.Game.QueryResult", GameQueryResult, "obj", none)
     RT_PROP("Count", "i64", GameQueryResultCount, none)
     RT_PROP("Truncated", "i1", GameQueryResultTruncated, none)
@@ -712,8 +706,8 @@ RT_CLASS_END()
 /// @summary Provides Quadtree Pair Result functionality for game applications.
 /// @details
 /// `Viper.Game.QuadtreePairResult` exposes a registry-backed runtime surface without requiring
-/// callers to construct the class directly. Its public surface exposes properties such as `Count`,
-/// `Truncated` and operations including `First`, `Second`.
+/// callers to construct the class directly. Its public surface exposes properties such as
+/// `Count`, `Truncated` and operations including `First`, `Second`.
 RT_CLASS_BEGIN("Viper.Game.QuadtreePairResult", QuadtreePairResult, "obj", none)
     RT_PROP("Count", "i64", QuadtreePairResultCount, none)
     RT_PROP("Truncated", "i1", QuadtreePairResultTruncated, none)
@@ -726,25 +720,16 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Game.Quadtree` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `ItemCount`, `ResultCount` and operations including `Clear`, `Insert`, `Remove`, `Update`.
+/// `ItemCount` and operations including `Clear`, `Insert`, `Remove`, `Update`.
 RT_CLASS_BEGIN("Viper.Game.Quadtree", Quadtree, "obj", QuadtreeNew)
     RT_PROP("ItemCount", "i64", QuadtreeItemCount, none)
-    RT_PROP("ResultCount", "i64", QuadtreeResultCount, none)
     RT_METHOD("Clear", "void()", QuadtreeClear)
     RT_METHOD("Insert", "i1(i64,i64,i64,i64,i64)", QuadtreeInsert)
     RT_METHOD("Remove", "i1(i64)", QuadtreeRemove)
     RT_METHOD("Update", "i1(i64,i64,i64,i64,i64)", QuadtreeUpdate)
-    RT_METHOD("QueryRect", "i64(i64,i64,i64,i64)", QuadtreeQueryRect)
-    RT_METHOD("QueryPoint", "i64(i64,i64,i64)", QuadtreeQueryPoint)
-    RT_METHOD("QueryRectResult", "obj<Viper.Game.QueryResult>(i64,i64,i64,i64)", QuadtreeQueryRectResult)
-    RT_METHOD("QueryPointResult", "obj<Viper.Game.QueryResult>(i64,i64,i64)", QuadtreeQueryPointResult)
-    RT_METHOD("GetResult", "i64(i64)", QuadtreeGetResult)
-    RT_METHOD("GetPairs", "i64()", QuadtreeGetPairs)
+    RT_METHOD("QueryRect", "obj<Viper.Game.QueryResult>(i64,i64,i64,i64)", QuadtreeQueryRectResult)
+    RT_METHOD("QueryPoint", "obj<Viper.Game.QueryResult>(i64,i64,i64)", QuadtreeQueryPointResult)
     RT_METHOD("QueryPairs", "obj<Viper.Game.QuadtreePairResult>()", QuadtreeQueryPairs)
-    RT_METHOD("PairFirst", "i64(i64)", QuadtreePairFirst)
-    RT_METHOD("PairSecond", "i64(i64)", QuadtreePairSecond)
-    RT_METHOD("QueryWasTruncated", "i1()", QuadtreeQueryWasTruncated)
-    RT_METHOD("PairsWasTruncated", "i1()", QuadtreePairsWasTruncated)
 RT_CLASS_END()
 
 // Viper.DebugOverlay - Development debug overlay
@@ -789,8 +774,6 @@ RT_FUNC(ResultUnwrapOrI64,  rt_result_unwrap_or_i64,   "Viper.Result.UnwrapOrI64
 RT_FUNC(ResultUnwrapOrF64,  rt_result_unwrap_or_f64,   "Viper.Result.UnwrapOrF64",  "f64(obj,f64)")
 RT_FUNC(ResultUnwrapErr,    rt_result_unwrap_err,      "Viper.Result.UnwrapErr",    "obj(obj)")
 RT_FUNC(ResultUnwrapErrStr, rt_result_unwrap_err_str,  "Viper.Result.UnwrapErrStr", "str(obj)")
-RT_FUNC(ResultOkValue,      rt_result_ok_value,        "Viper.Result.OkValue",      "obj(obj)")
-RT_FUNC(ResultErrValue,     rt_result_err_value,       "Viper.Result.ErrValue",     "obj(obj)")
 RT_FUNC(ResultExpect,       rt_result_expect,          "Viper.Result.Expect",       "obj(obj,str)")
 RT_FUNC(ResultExpectErr,    rt_result_expect_err,      "Viper.Result.ExpectErr",    "obj(obj,str)")
 RT_FUNC(ResultToString,     rt_result_to_string,       "Viper.Result.ToString",     "str(obj)")
@@ -802,8 +785,8 @@ RT_FUNC(ResultOrElse,       rt_result_or_else_wrapper, "Viper.Result.OrElse",   
 /// @summary Represents either a successful value or a structured runtime failure.
 /// @details
 /// `Viper.Result` exposes a registry-backed runtime surface without requiring callers to construct
-/// the class directly. Its public surface exposes properties such as `IsOk`, `IsErr` and operations
-/// including `Ok`, `OkStr`, `OkI64`, `OkF64`.
+/// the class directly. Its public surface exposes properties such as `IsOk`, `IsErr` and
+/// operations including `Ok`, `OkStr`, `OkI64`, `OkF64`.
 RT_CLASS_BEGIN("Viper.Result", Result, "obj", none)
     RT_METHOD("Ok", "obj(obj)", ResultOk)
     RT_METHOD("OkStr", "obj(str)", ResultOkStr)
@@ -823,8 +806,6 @@ RT_CLASS_BEGIN("Viper.Result", Result, "obj", none)
     RT_METHOD("UnwrapOrF64", "f64(f64)", ResultUnwrapOrF64)
     RT_METHOD("UnwrapErr", "obj()", ResultUnwrapErr)
     RT_METHOD("UnwrapErrStr", "str()", ResultUnwrapErrStr)
-    RT_METHOD("OkValue", "obj()", ResultOkValue)
-    RT_METHOD("ErrValue", "obj()", ResultErrValue)
     RT_METHOD("Expect", "obj(str)", ResultExpect)
     RT_METHOD("ExpectErr", "obj(str)", ResultExpectErr)
     RT_METHOD("ToString", "str()", ResultToString)
@@ -854,7 +835,6 @@ RT_FUNC(OptionUnwrapOrStr, rt_option_unwrap_or_str,  "Viper.Option.UnwrapOrStr",
 RT_FUNC(OptionUnwrapOrI64, rt_option_unwrap_or_i64,  "Viper.Option.UnwrapOrI64",  "i64(obj,i64)")
 RT_FUNC(OptionUnwrapOrI1,  rt_option_unwrap_or_i1,   "Viper.Option.UnwrapOrI1",   "i1(obj,i1)")
 RT_FUNC(OptionUnwrapOrF64, rt_option_unwrap_or_f64,  "Viper.Option.UnwrapOrF64",  "f64(obj,f64)")
-RT_FUNC(OptionValue,       rt_option_value,          "Viper.Option.Value",        "obj(obj)")
 RT_FUNC(OptionExpect,      rt_option_expect,         "Viper.Option.Expect",       "obj(obj,str)")
 RT_FUNC(OptionOkOr,        rt_option_ok_or,          "Viper.Option.OkOr",         "obj(obj,obj)")
 RT_FUNC(OptionOkOrStr,     rt_option_ok_or_str,      "Viper.Option.OkOrStr",      "obj(obj,str)")
@@ -888,7 +868,6 @@ RT_CLASS_BEGIN("Viper.Option", Option, "obj", none)
     RT_METHOD("UnwrapOrI64", "i64(i64)", OptionUnwrapOrI64)
     RT_METHOD("UnwrapOrI1", "i1(i1)", OptionUnwrapOrI1)
     RT_METHOD("UnwrapOrF64", "f64(f64)", OptionUnwrapOrF64)
-    RT_METHOD("Value", "obj()", OptionValue)
     RT_METHOD("Expect", "obj(str)", OptionExpect)
     RT_METHOD("OkOr", "obj(obj)", OptionOkOr)
     RT_METHOD("OkOrStr", "obj(str)", OptionOkOrStr)

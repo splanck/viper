@@ -12,35 +12,29 @@
 Provides Environment functionality for host-system integration.
 
 `Viper.System.Environment` exposes a registry-backed runtime surface without requiring callers
-to construct the class directly. Its public surface exposes operations including `EndProgram`,
+to construct the class directly. Its public surface exposes operations including `Exit`,
 `GetArgument`, `GetArgumentCount`, `GetCommandLine`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-system-environment-endprogram"></a>`EndProgram` | `void(i64)` | `Viper.System.Environment.EndProgram` |
+| <a id="viper-system-environment-exit"></a>`Exit` | `void(i64)` | `Viper.System.Environment.Exit` |
 | <a id="viper-system-environment-getargument"></a>`GetArgument` | `str(i64)` | `Viper.System.Environment.GetArgument` |
 | <a id="viper-system-environment-getargumentcount"></a>`GetArgumentCount` | `i64()` | `Viper.System.Environment.GetArgumentCount` |
 | <a id="viper-system-environment-getcommandline"></a>`GetCommandLine` | `str()` | `Viper.System.Environment.GetCommandLine` |
 | <a id="viper-system-environment-getvariable"></a>`GetVariable` | `str(str)` | `Viper.System.Environment.GetVariable` |
 | <a id="viper-system-environment-hasvariable"></a>`HasVariable` | `i1(str)` | `Viper.System.Environment.HasVariable` |
-| <a id="viper-system-environment-platform"></a>`Platform` | `str()` | `Viper.System.Machine.get_Os` |
-| <a id="viper-system-environment-platformversion"></a>`PlatformVersion` | `str()` | `Viper.System.Machine.get_OsVer` |
-| <a id="viper-system-environment-username"></a>`UserName` | `str()` | `Viper.System.Machine.get_User` |
-| <a id="viper-system-environment-homedir"></a>`HomeDir` | `str()` | `Viper.System.Machine.get_Home` |
-| <a id="viper-system-environment-cpucount"></a>`CpuCount` | `i64()` | `Viper.System.Machine.get_Cores` |
-| <a id="viper-system-environment-cwd"></a>`Cwd` | `str()` | `Viper.IO.Dir.Current` |
 | <a id="viper-system-environment-isnative"></a>`IsNative` | `i1()` | `Viper.System.Environment.IsNative` |
 | <a id="viper-system-environment-setvariable"></a>`SetVariable` | `void(str,str)` | `Viper.System.Environment.SetVariable` |
 
 <a id="viper-system-clipboard"></a>
 ### `Viper.System.Clipboard`
 
-Provides uTF-8 system clipboard.
+Provides UTF-8 system clipboard.
 
-`Viper.System.Clipboard` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `Get`, `Set`, `HasText`.
+`Viper.System.Clipboard` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `Get`, `Set`, `HasText`.
 
 #### Methods
 
@@ -69,9 +63,7 @@ construct the class directly. Its public surface exposes operations including `C
 | <a id="viper-system-exec-runargs"></a>`RunArgs` | `i64(str,obj)` | `Viper.System.Exec.RunArgs` |
 | <a id="viper-system-exec-shell"></a>`Shell` | `i64(str)` | `Viper.System.Exec.Shell` |
 | <a id="viper-system-exec-shellcapture"></a>`ShellCapture` | `str(str)` | `Viper.System.Exec.ShellCapture` |
-| <a id="viper-system-exec-shellfull"></a>`ShellFull` | `str(str)` | `Viper.System.Exec.ShellFull` |
 | <a id="viper-system-exec-shellresult"></a>`ShellResult` | `obj<Viper.System.CommandResult>(str)` | `Viper.System.Exec.ShellResult` |
-| <a id="viper-system-exec-lastexitcode"></a>`LastExitCode` | `i64()` | `Viper.System.Exec.LastExitCode` |
 
 <a id="viper-system-commandresult"></a>
 ### `Viper.System.CommandResult`
@@ -80,7 +72,7 @@ Provides immutable shell command result snapshot.
 
 `Viper.System.CommandResult` exposes a registry-backed runtime surface without requiring callers
 to construct the class directly. Its public surface exposes properties such as `Output`,
-`ExitCode`, `Succeeded`.
+`ExitCode`, `IsSuccess`.
 
 #### Properties
 
@@ -88,7 +80,7 @@ to construct the class directly. Its public surface exposes properties such as `
 |---|---|---|
 | <a id="viper-system-commandresult-output"></a>`Output` | `str` | read-only |
 | <a id="viper-system-commandresult-exitcode"></a>`ExitCode` | `i64` | read-only |
-| <a id="viper-system-commandresult-succeeded"></a>`Succeeded` | `i1` | read-only |
+| <a id="viper-system-commandresult-issuccess"></a>`IsSuccess` | `i1` | read-only |
 
 <a id="viper-system-process"></a>
 ### `Viper.System.Process`
@@ -140,7 +132,7 @@ Provides factory for PTY-backed interactive child sessions (ADR 0016).
 
 `Viper.System.Pty` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Open`,
-`OpenResult`, `IsSupported`, `LastError`.
+`OpenResult`, `IsSupported`.
 
 #### Methods
 
@@ -149,7 +141,6 @@ construct the class directly. Its public surface exposes operations including `O
 | <a id="viper-system-pty-open"></a>`Open` | `obj<Viper.System.Pty.PtySession>(str,obj,str,obj,i64,i64)` | `Viper.System.Pty.Open` |
 | <a id="viper-system-pty-openresult"></a>`OpenResult` | `obj<Viper.Result>(str,obj,str,obj,i64,i64)` | `Viper.System.Pty.OpenResult` |
 | <a id="viper-system-pty-issupported"></a>`IsSupported` | `i1()` | `Viper.System.Pty.IsSupported` |
-| <a id="viper-system-pty-lasterror"></a>`LastError` | `str()` | `Viper.System.Pty.LastError` |
 
 <a id="viper-system-pty-ptysession"></a>
 ### `Viper.System.Pty.PtySession`
@@ -182,8 +173,8 @@ callers to construct the class directly. Its public surface exposes operations i
 Provides poll-based graceful shutdown requests.
 
 `Viper.System.Shutdown` is a static runtime surface and does not require an instance. Its public
-surface exposes properties such as `None`, `Interrupt`, `Terminate` and operations including
-`Request`, `Poll`, `Pending`, `Clear`.
+Its public surface exposes properties such as `None`, `Interrupt`, `Terminate` and operations
+including `Request`, `Poll`, `IsPending`, `Clear`.
 
 #### Properties
 
@@ -199,7 +190,7 @@ surface exposes properties such as `None`, `Interrupt`, `Terminate` and operatio
 |---|---|---|
 | <a id="viper-system-shutdown-request"></a>`Request` | `void(i64)` | `Viper.System.Shutdown.Request` |
 | <a id="viper-system-shutdown-poll"></a>`Poll` | `i64()` | `Viper.System.Shutdown.Poll` |
-| <a id="viper-system-shutdown-pending"></a>`Pending` | `i1()` | `Viper.System.Shutdown.Pending` |
+| <a id="viper-system-shutdown-ispending"></a>`IsPending` | `i1()` | `Viper.System.Shutdown.IsPending` |
 | <a id="viper-system-shutdown-clear"></a>`Clear` | `void()` | `Viper.System.Shutdown.Clear` |
 
 <a id="viper-system-machine"></a>
@@ -220,13 +211,13 @@ construct the class directly. Its public surface exposes properties such as `Arc
 | <a id="viper-system-machine-endian"></a>`Endian` | `str` | read-only |
 | <a id="viper-system-machine-home"></a>`Home` | `str` | read-only |
 | <a id="viper-system-machine-host"></a>`Host` | `str` | read-only |
-| <a id="viper-system-machine-memfree"></a>`MemFree` | `i64` | read-only |
-| <a id="viper-system-machine-memtotal"></a>`MemTotal` | `i64` | read-only |
+| <a id="viper-system-machine-memoryfree"></a>`MemoryFree` | `i64` | read-only |
+| <a id="viper-system-machine-memorytotal"></a>`MemoryTotal` | `i64` | read-only |
 | <a id="viper-system-machine-os"></a>`Os` | `str` | read-only |
-| <a id="viper-system-machine-osver"></a>`OsVer` | `str` | read-only |
+| <a id="viper-system-machine-osversion"></a>`OsVersion` | `str` | read-only |
 | <a id="viper-system-machine-pagesize"></a>`PageSize` | `i64` | read-only |
 | <a id="viper-system-machine-pointersize"></a>`PointerSize` | `i64` | read-only |
-| <a id="viper-system-machine-temp"></a>`Temp` | `str` | read-only |
+| <a id="viper-system-machine-tempdir"></a>`TempDir` | `str` | read-only |
 | <a id="viper-system-machine-user"></a>`User` | `str` | read-only |
 
 ## Functions
@@ -236,7 +227,7 @@ construct the class directly. Its public surface exposes properties such as `Arc
 | `Viper.System.Environment.GetArgumentCount` | `i64()` | `rt_args_count` |
 | `Viper.System.Environment.GetArgument` | `str(i64)` | `rt_args_get` |
 | `Viper.System.Environment.GetCommandLine` | `str()` | `rt_cmdline` |
-| `Viper.System.Environment.EndProgram` | `void(i64)` | `rt_env_exit` |
+| `Viper.System.Environment.Exit` | `void(i64)` | `rt_env_exit` |
 | `Viper.System.Environment.GetVariable` | `str(str)` | `rt_env_get_var` |
 | `Viper.System.Environment.HasVariable` | `i1(str)` | `rt_env_has_var` |
 | `Viper.System.Environment.IsNative` | `i1()` | `rt_env_is_native` |
@@ -250,12 +241,10 @@ construct the class directly. Its public surface exposes properties such as `Arc
 | `Viper.System.Exec.RunArgs` | `i64(str,obj)` | `rt_exec_run_args` |
 | `Viper.System.Exec.Shell` | `i64(str)` | `rt_exec_shell` |
 | `Viper.System.Exec.ShellCapture` | `str(str)` | `rt_exec_shell_capture` |
-| `Viper.System.Exec.ShellFull` | `str(str)` | `rt_exec_shell_full` |
 | `Viper.System.Exec.ShellResult` | `obj<Viper.System.CommandResult>(str)` | `rt_exec_shell_result` |
-| `Viper.System.Exec.LastExitCode` | `i64()` | `rt_exec_last_exit_code` |
 | <a id="viper-system-commandresult-get-output"></a>`Viper.System.CommandResult.get_Output` | `str(obj)` | `rt_exec_command_result_output` |
 | <a id="viper-system-commandresult-get-exitcode"></a>`Viper.System.CommandResult.get_ExitCode` | `i64(obj)` | `rt_exec_command_result_exit_code` |
-| <a id="viper-system-commandresult-get-succeeded"></a>`Viper.System.CommandResult.get_Succeeded` | `i1(obj)` | `rt_exec_command_result_succeeded` |
+| <a id="viper-system-commandresult-get-issuccess"></a>`Viper.System.CommandResult.get_IsSuccess` | `i1(obj)` | `rt_exec_command_result_succeeded` |
 | `Viper.System.Process.Start` | `obj<Viper.System.Process.ProcessHandle>(str,obj)` | `rt_process_start` |
 | `Viper.System.Process.StartIn` | `obj<Viper.System.Process.ProcessHandle>(str,obj,str)` | `rt_process_start_in` |
 | `Viper.System.Process.StartWithEnv` | `obj<Viper.System.Process.ProcessHandle>(str,obj,str,obj)` | `rt_process_start_with_env` |
@@ -274,7 +263,6 @@ construct the class directly. Its public surface exposes properties such as `Arc
 | `Viper.System.Pty.Open` | `obj<Viper.System.Pty.PtySession>(str,obj,str,obj,i64,i64)` | `rt_pty_open` |
 | `Viper.System.Pty.OpenResult` | `obj<Viper.Result>(str,obj,str,obj,i64,i64)` | `rt_pty_open_result` |
 | `Viper.System.Pty.IsSupported` | `i1()` | `rt_pty_is_supported` |
-| `Viper.System.Pty.LastError` | `str()` | `rt_pty_last_error` |
 | `Viper.System.Pty.PtySession.IsValid` | `i1(obj)` | `rt_pty_is_valid` |
 | `Viper.System.Pty.PtySession.Poll` | `i1(obj)` | `rt_pty_poll` |
 | `Viper.System.Pty.PtySession.IsRunning` | `i1(obj)` | `rt_pty_is_running` |
@@ -288,7 +276,7 @@ construct the class directly. Its public surface exposes properties such as `Arc
 | `Viper.System.Pty.PtySession.Destroy` | `void(obj)` | `rt_pty_destroy` |
 | `Viper.System.Shutdown.Request` | `void(i64)` | `rt_shutdown_request` |
 | `Viper.System.Shutdown.Poll` | `i64()` | `rt_shutdown_poll` |
-| `Viper.System.Shutdown.Pending` | `i1()` | `rt_shutdown_pending` |
+| `Viper.System.Shutdown.IsPending` | `i1()` | `rt_shutdown_pending` |
 | `Viper.System.Shutdown.Clear` | `void()` | `rt_shutdown_clear` |
 | <a id="viper-system-shutdown-get-none"></a>`Viper.System.Shutdown.get_None` | `i64()` | `rt_shutdown_const_none` |
 | <a id="viper-system-shutdown-get-interrupt"></a>`Viper.System.Shutdown.get_Interrupt` | `i64()` | `rt_shutdown_const_interrupt` |
@@ -298,12 +286,12 @@ construct the class directly. Its public surface exposes properties such as `Arc
 | <a id="viper-system-machine-get-endian"></a>`Viper.System.Machine.get_Endian` | `str()` | `rt_machine_endian` |
 | <a id="viper-system-machine-get-home"></a>`Viper.System.Machine.get_Home` | `str()` | `rt_machine_home` |
 | <a id="viper-system-machine-get-host"></a>`Viper.System.Machine.get_Host` | `str()` | `rt_machine_host` |
-| <a id="viper-system-machine-get-memfree"></a>`Viper.System.Machine.get_MemFree` | `i64()` | `rt_machine_mem_free` |
-| <a id="viper-system-machine-get-memtotal"></a>`Viper.System.Machine.get_MemTotal` | `i64()` | `rt_machine_mem_total` |
+| <a id="viper-system-machine-get-memoryfree"></a>`Viper.System.Machine.get_MemoryFree` | `i64()` | `rt_machine_mem_free` |
+| <a id="viper-system-machine-get-memorytotal"></a>`Viper.System.Machine.get_MemoryTotal` | `i64()` | `rt_machine_mem_total` |
 | <a id="viper-system-machine-get-os"></a>`Viper.System.Machine.get_Os` | `str()` | `rt_machine_os` |
-| <a id="viper-system-machine-get-osver"></a>`Viper.System.Machine.get_OsVer` | `str()` | `rt_machine_os_ver` |
+| <a id="viper-system-machine-get-osversion"></a>`Viper.System.Machine.get_OsVersion` | `str()` | `rt_machine_os_ver` |
 | <a id="viper-system-machine-get-pagesize"></a>`Viper.System.Machine.get_PageSize` | `i64()` | `rt_machine_page_size` |
 | <a id="viper-system-machine-get-pointersize"></a>`Viper.System.Machine.get_PointerSize` | `i64()` | `rt_machine_pointer_size` |
-| <a id="viper-system-machine-get-temp"></a>`Viper.System.Machine.get_Temp` | `str()` | `rt_machine_temp` |
+| <a id="viper-system-machine-get-tempdir"></a>`Viper.System.Machine.get_TempDir` | `str()` | `rt_machine_temp` |
 | <a id="viper-system-machine-get-user"></a>`Viper.System.Machine.get_User` | `str()` | `rt_machine_user` |
 

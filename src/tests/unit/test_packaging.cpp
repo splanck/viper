@@ -778,8 +778,17 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
 static void normalizeMockStageForWindowsToolchain(const std::filesystem::path &stage) {
 #if !defined(_WIN32)
     namespace fs = std::filesystem;
-    fs::copy_file(stage / "bin" / "viper", stage / "bin" / "viper.exe");
-    fs::remove(stage / "bin" / "viper");
+    std::vector<fs::path> extensionless;
+    for (const auto &entry : fs::directory_iterator(stage / "bin")) {
+        if (entry.is_regular_file() && entry.path().extension().empty())
+            extensionless.push_back(entry.path());
+    }
+    for (const auto &path : extensionless) {
+        fs::path renamed = path;
+        renamed += ".exe";
+        fs::copy_file(path, renamed);
+        fs::remove(path);
+    }
 #else
     (void)stage;
 #endif

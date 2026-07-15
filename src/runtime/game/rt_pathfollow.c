@@ -9,8 +9,8 @@
 // Purpose: Waypoint-based path follower for Viper games. Stores an ordered list
 //   of 2D waypoints and advances an entity along the path at a configurable
 //   speed. The follower interpolates linearly between consecutive waypoints,
-//   computing the entity's exact world-space position and direction at any
-//   point along the route. Typical uses: enemy patrol routes, projectile
+//   computing a per-mille-quantized world-space position and eight-direction
+//   heading along the route. Typical uses: enemy patrol routes, projectile
 //   trajectories, cutscene camera paths, and conveyor belts.
 //
 // Key invariants:
@@ -19,19 +19,18 @@
 //     a screen position of (320, 240) is stored as (320000, 240000). Failing
 //     to scale results in the follower appearing to advance by a factor of 1000
 //     too quickly.
-//   - Speed is also in the same fixed-point scale (units × 1000 per frame).
-//   - Progress is tracked as a floating-point accumulator of distance traveled.
-//     Segment lengths are computed from the Euclidean distance between adjacent
-//     waypoints (in fixed-point units).
+//   - Speed uses the same fixed-point scale per second. Update() accepts elapsed
+//     milliseconds and truncates sub-unit distance; no remainder accumulates.
+//   - Segment progress is an integer from 0 through 1000. Segment lengths are
+//     Euclidean distances between adjacent fixed-point waypoints.
 //   - When the follower reaches the last waypoint it either stops (one-shot) or
 //     wraps back to the first waypoint (looping), depending on the loop flag.
-//   - Waypoints are stored in a malloc'd array that grows (realloc) when the
-//     capacity is exceeded, doubling each time.
+//   - Up to 64 waypoints are stored inline. A lazily built malloc'd array holds
+//     their segment lengths.
 //
 // Ownership/Lifetime:
-//   - PathFollower objects are GC-managed (rt_obj_new_i64). The waypoint array
-//     is malloc'd and freed by the GC finalizer. rt_pathfollow_destroy() is a
-//     documented no-op for API symmetry.
+//   - PathFollower objects are reference-counted GC objects. The finalizer frees
+//     the segment-length cache; rt_pathfollow_destroy() releases a reference.
 //
 // Links: src/runtime/game/rt_pathfollow.h (public API),
 //        docs/viperlib/game.md (PathFollower section — coordinate scale note)
@@ -188,8 +187,8 @@ static void rt_pathfollow_advance_segment_boundary(rt_pathfollow path) {
 }
 
 /// @brief Rebuild the cached `segment_lengths` array and `total_length` from the waypoint list.
-/// Called after every `add_point`. Frees and re-mallocs the array (no in-place realloc), so the
-/// per-add cost is O(n). For paths with fewer than 2 points the cache is cleared.
+/// Called lazily by ensure_lengths() after one or more points are added. Frees and re-mallocs the
+/// array (no in-place realloc). For paths with fewer than 2 points the cache is cleared.
 static void recalculate_lengths(rt_pathfollow path) {
     if (!path)
         return;
@@ -262,7 +261,7 @@ rt_pathfollow rt_pathfollow_new(void) {
 }
 
 /// @brief Release the PathFollower; frees the segment-length cache via the finalizer when the
-/// refcount reaches zero. Documented as a no-op for API symmetry — GC handles cleanup.
+/// reference count reaches zero.
 void rt_pathfollow_destroy(rt_pathfollow path) {
     path = checked_pathfollow(path, "PathFollower.Destroy: expected Viper.Game.PathFollower");
     if (!path)
@@ -297,7 +296,7 @@ void rt_pathfollow_clear(rt_pathfollow path) {
 
 /// @brief Append a waypoint at fixed-point world coords (x, y). The first added point also becomes
 /// the follower's starting position. Returns 0 if the cap (`RT_PATHFOLLOW_MAX_POINTS`) is hit.
-/// Triggers a full `recalculate_lengths` (O(n)) so the segment cache stays in sync.
+/// Marks the segment cache dirty; the next length-dependent operation rebuilds it in O(n).
 int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
     path = checked_pathfollow(path, "PathFollower.AddPoint: expected Viper.Game.PathFollower");
     if (!path)
