@@ -23,6 +23,7 @@
 #include "rt_gltf.h"
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 extern "C" void vm_trap(const char *msg) {
