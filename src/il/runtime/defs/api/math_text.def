@@ -420,8 +420,8 @@ RT_FUNC(CodecUrlEncode, rt_codec_url_encode, "Viper.Text.Codec.UrlEncode", "str(
 
 RT_FUNC(CsvParseLine,       rt_csv_parse_line,        "Viper.Data.Csv.ParseLine",       "seq<str>(str)")
 RT_FUNC(CsvParseLineWith,   rt_csv_parse_line_with,   "Viper.Data.Csv.ParseLineWith",   "seq<str>(str,str)")
-RT_FUNC(CsvParse,           rt_csv_parse,             "Viper.Data.Csv.Parse",           "obj(str)")
-RT_FUNC(CsvParseWith,       rt_csv_parse_with,        "Viper.Data.Csv.ParseWith",       "obj(str,str)")
+RT_FUNC(CsvParse,           rt_csv_parse,             "Viper.Data.Csv.Parse",           "seq<obj>(str)")
+RT_FUNC(CsvParseWith,       rt_csv_parse_with,        "Viper.Data.Csv.ParseWith",       "seq<obj>(str,str)")
 RT_FUNC(CsvFormatLine,      rt_csv_format_line,       "Viper.Data.Csv.FormatLine",      "str(obj)")
 RT_FUNC(CsvFormatLineWith,  rt_csv_format_line_with,  "Viper.Data.Csv.FormatLineWith",  "str(obj,str)")
 RT_FUNC(CsvFormat,          rt_csv_format,            "Viper.Data.Csv.Format",          "str(obj)")
@@ -444,7 +444,7 @@ RT_FUNC(IniFormat,         rt_ini_format,            "Viper.Data.Ini.Format",   
 RT_FUNC(IniGet,            rt_ini_get,               "Viper.Data.Ini.Get",             "str(obj,str,str)")
 RT_FUNC(IniSet,            rt_ini_set,               "Viper.Data.Ini.Set",             "void(obj,str,str,str)")
 RT_FUNC(IniHasSection,     rt_ini_has_section,       "Viper.Data.Ini.HasSection",      "i1(obj,str)")
-RT_FUNC(IniSections,       rt_ini_sections,          "Viper.Data.Ini.Sections",        "obj(obj)")
+RT_FUNC(IniSections,       rt_ini_sections,          "Viper.Data.Ini.Sections",        "seq<str>(obj)")
 RT_FUNC(IniRemove,         rt_ini_remove,            "Viper.Data.Ini.Remove",          "i1(obj,str,str)")
 
 //=============================================================================
@@ -453,7 +453,7 @@ RT_FUNC(IniRemove,         rt_ini_remove,            "Viper.Data.Ini.Remove",   
 
 RT_FUNC(JsonParse,          rt_json_parse,            "Viper.Data.Json.Parse",          "obj(str)")
 RT_FUNC(JsonParseObject,    rt_json_parse_object,     "Viper.Data.Json.ParseObject",    "obj<Viper.Collections.Map>(str)")
-RT_FUNC(JsonParseArray,     rt_json_parse_array,      "Viper.Data.Json.ParseArray",     "obj(str)")
+RT_FUNC(JsonParseArray,     rt_json_parse_array,      "Viper.Data.Json.ParseArray",     "seq<obj>(str)")
 RT_FUNC(JsonFormat,         rt_json_format,           "Viper.Data.Json.Format",         "str(obj)")
 RT_FUNC(JsonFormatPretty,   rt_json_format_pretty,    "Viper.Data.Json.FormatPretty",   "str(obj,i64)")
 RT_FUNC(JsonIsValid,        rt_json_is_valid,         "Viper.Data.Json.IsValid",        "i1(str)")
@@ -501,14 +501,14 @@ RT_FUNC(XmlAttr,            rt_xml_attr,              "Viper.Data.Xml.Attr",    
 RT_FUNC(XmlHasAttr,         rt_xml_has_attr,          "Viper.Data.Xml.HasAttr",         "i1(obj,str)")
 RT_FUNC(XmlSetAttr,         rt_xml_set_attr,          "Viper.Data.Xml.SetAttr",         "void(obj,str,str)")
 RT_FUNC(XmlRemoveAttr,      rt_xml_remove_attr,       "Viper.Data.Xml.RemoveAttr",      "i1(obj,str)")
-RT_FUNC(XmlAttrNames,       rt_xml_attr_names,        "Viper.Data.Xml.AttrNames",       "obj(obj)")
+RT_FUNC(XmlAttrNames,       rt_xml_attr_names,        "Viper.Data.Xml.AttrNames",       "seq<str>(obj)")
 
 // Children
-RT_FUNC(XmlChildren,        rt_xml_children,          "Viper.Data.Xml.Children",        "obj(obj)")
+RT_FUNC(XmlChildren,        rt_xml_children,          "Viper.Data.Xml.Children",        "seq<obj>(obj)")
 RT_FUNC(XmlChildCount,      rt_xml_child_count,       "Viper.Data.Xml.ChildCount",      "i64(obj)")
 RT_FUNC(XmlChildAt,         rt_xml_child_at,          "Viper.Data.Xml.ChildAt",         "obj(obj,i64)")
 RT_FUNC(XmlChild,           rt_xml_child,             "Viper.Data.Xml.Child",           "obj(obj,str)")
-RT_FUNC(XmlChildrenByTag,   rt_xml_children_by_tag,   "Viper.Data.Xml.ChildrenByTag",   "obj(obj,str)")
+RT_FUNC(XmlChildrenByTag,   rt_xml_children_by_tag,   "Viper.Data.Xml.ChildrenByTag",   "seq<obj>(obj,str)")
 RT_FUNC(XmlAppend,          rt_xml_append,            "Viper.Data.Xml.Append",          "void(obj,obj)")
 RT_FUNC(XmlInsert,          rt_xml_insert,            "Viper.Data.Xml.Insert",          "void(obj,i64,obj)")
 RT_FUNC(XmlRemove,          rt_xml_remove,            "Viper.Data.Xml.Remove",          "i1(obj,obj)")
@@ -518,7 +518,7 @@ RT_FUNC(XmlSetText,         rt_xml_set_text,          "Viper.Data.Xml.SetText", 
 // Navigation
 RT_FUNC(XmlParent,          rt_xml_parent,            "Viper.Data.Xml.Parent",          "obj(obj)")
 RT_FUNC(XmlRoot,            rt_xml_root,              "Viper.Data.Xml.Root",            "obj(obj)")
-RT_FUNC(XmlFindAll,         rt_xml_find_all,          "Viper.Data.Xml.FindAll",         "obj(obj,str)")
+RT_FUNC(XmlFindAll,         rt_xml_find_all,          "Viper.Data.Xml.FindAll",         "seq<obj>(obj,str)")
 RT_FUNC(XmlFindOption,      rt_xml_find_option,       "Viper.Data.Xml.Find",      "obj<Viper.Option>(obj,str)")
 
 // Formatting
@@ -550,12 +550,12 @@ RT_CLASS_BEGIN("Viper.Data.Xml", DataXml, "obj", none)
     RT_METHOD("HasAttr",        "i1(obj,str)",      XmlHasAttr)
     RT_METHOD("SetAttr",        "void(obj,str,str)",XmlSetAttr)
     RT_METHOD("RemoveAttr",     "i1(obj,str)",      XmlRemoveAttr)
-    RT_METHOD("AttrNames",      "obj(obj)",         XmlAttrNames)
-    RT_METHOD("Children",       "obj(obj)",         XmlChildren)
+    RT_METHOD("AttrNames",      "seq<str>(obj)",         XmlAttrNames)
+    RT_METHOD("Children",       "seq<obj>(obj)",         XmlChildren)
     RT_METHOD("ChildCount",     "i64(obj)",         XmlChildCount)
     RT_METHOD("ChildAt",        "obj(obj,i64)",     XmlChildAt)
     RT_METHOD("Child",          "obj(obj,str)",     XmlChild)
-    RT_METHOD("ChildrenByTag",  "obj(obj,str)",     XmlChildrenByTag)
+    RT_METHOD("ChildrenByTag",  "seq<obj>(obj,str)",     XmlChildrenByTag)
     RT_METHOD("Append",         "void(obj,obj)",    XmlAppend)
     RT_METHOD("Insert",         "void(obj,i64,obj)",XmlInsert)
     RT_METHOD("Remove",         "i1(obj,obj)",      XmlRemove)
@@ -563,7 +563,7 @@ RT_CLASS_BEGIN("Viper.Data.Xml", DataXml, "obj", none)
     RT_METHOD("SetText",        "void(obj,str)",    XmlSetText)
     RT_METHOD("Parent",         "obj(obj)",         XmlParent)
     RT_METHOD("Root",           "obj(obj)",         XmlRoot)
-    RT_METHOD("FindAll",        "obj(obj,str)",     XmlFindAll)
+    RT_METHOD("FindAll",        "seq<obj>(obj,str)",     XmlFindAll)
     RT_METHOD("Find",     "obj<Viper.Option>(obj,str)", XmlFindOption)
     RT_METHOD("Format",         "str(obj)",         XmlFormat)
     RT_METHOD("FormatPretty",   "str(obj,i64)",     XmlFormatPretty)
@@ -665,7 +665,7 @@ RT_FUNC(MarkdownExtractHeadings,rt_markdown_extract_headings, "Viper.Text.Markdo
 RT_FUNC(JsonPathGet,             rt_jsonpath_get,              "Viper.Data.JsonPath.Get",             "obj(obj,str)")
 RT_FUNC(JsonPathGetOr,           rt_jsonpath_get_or,           "Viper.Data.JsonPath.GetOr",           "obj(obj,str,obj)")
 RT_FUNC(JsonPathHas,             rt_jsonpath_has,              "Viper.Data.JsonPath.Has",             "i1(obj,str)")
-RT_FUNC(JsonPathQuery,           rt_jsonpath_query,            "Viper.Data.JsonPath.Query",           "obj(obj,str)")
+RT_FUNC(JsonPathQuery,           rt_jsonpath_query,            "Viper.Data.JsonPath.Query",           "seq<obj>(obj,str)")
 RT_FUNC(JsonPathGetStr,          rt_jsonpath_get_str,          "Viper.Data.JsonPath.GetStr",          "str(obj,str)")
 RT_FUNC(JsonPathGetInt,          rt_jsonpath_get_int,          "Viper.Data.JsonPath.GetInt",          "i64(obj,str)")
 
@@ -673,13 +673,13 @@ RT_FUNC(JsonPathGetInt,          rt_jsonpath_get_int,          "Viper.Data.JsonP
 // TEXT - HTML
 //=============================================================================
 
-RT_FUNC(HtmlParse,               rt_html_parse,            "Viper.Text.Html.Parse",           "obj(str)")
+RT_FUNC(HtmlParse,               rt_html_parse,            "Viper.Text.Html.Parse",           "obj<Viper.Collections.Map>(str)")
 RT_FUNC(HtmlToText,              rt_html_to_text,          "Viper.Text.Html.ToText",          "str(str)")
 RT_FUNC(HtmlEscape,              rt_html_escape,           "Viper.Text.Html.Escape",          "str(str)")
 RT_FUNC(HtmlUnescape,            rt_html_unescape,         "Viper.Text.Html.Unescape",        "str(str)")
 RT_FUNC(HtmlStripTags,           rt_html_strip_tags,       "Viper.Text.Html.StripTags",       "str(str)")
-RT_FUNC(HtmlExtractLinks,        rt_html_extract_links,    "Viper.Text.Html.ExtractLinks",    "obj(str)")
-RT_FUNC(HtmlExtractText,         rt_html_extract_text,     "Viper.Text.Html.ExtractText",     "obj(str,str)")
+RT_FUNC(HtmlExtractLinks,        rt_html_extract_links,    "Viper.Text.Html.ExtractLinks",    "seq<str>(str)")
+RT_FUNC(HtmlExtractText,         rt_html_extract_text,     "Viper.Text.Html.ExtractText",     "seq<str>(str,str)")
 
 //=============================================================================
 // TEXT - GUID

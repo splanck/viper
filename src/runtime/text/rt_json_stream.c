@@ -33,6 +33,7 @@
 #include "rt_json_stream.h"
 
 #include "rt_internal.h"
+#include "rt_json_internal.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_result.h"
@@ -310,6 +311,20 @@ static int parse_string_content(rt_json_stream_impl *s) {
             if ((unsigned char)c < 0x20) {
                 set_error(s, "control character in string");
                 return 0;
+            }
+            if ((unsigned char)c >= 0x80) {
+                // Match Json.Parse/IsValid: raw non-ASCII bytes must form
+                // valid UTF-8 (VDOC-034).
+                size_t extra = 0;
+                if (!json_raw_utf8_sequence_valid(
+                        (unsigned char)c, s->input + s->pos, s->len - s->pos, &extra)) {
+                    set_error(s, "invalid UTF-8 sequence in string");
+                    return 0;
+                }
+                str_buf_push(s, c);
+                for (size_t k = 0; k < extra; k++)
+                    str_buf_push(s, s->input[s->pos++]);
+                continue;
             }
             str_buf_push(s, c);
         }
@@ -707,7 +722,7 @@ int64_t rt_json_stream_token_type(void *parser) {
 }
 
 /// @brief Read the string value at the current STRING / KEY token. Returns the unescaped
-/// string content. Trap if called when the current token isn't a string-typed one.
+/// string content, or an empty string when the current token is not string-typed.
 rt_string rt_json_stream_string_value(void *parser) {
     if (!parser)
         return rt_const_cstr("");

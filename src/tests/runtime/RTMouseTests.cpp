@@ -124,6 +124,36 @@ static void test_position_updates() {
 }
 
 // ============================================================================
+// Frame Finalization (same-frame deltas)
+// ============================================================================
+
+static void test_finalize_frame_same_frame_delta() {
+    rt_mouse_init();
+
+    // Establish a known baseline regardless of state left by earlier tests.
+    rt_mouse_begin_frame();
+    rt_mouse_update_pos(1000, 2000);
+    rt_mouse_finalize_frame();
+
+    // A poll that pumps motion must expose that motion in the SAME frame:
+    // finalize recomputes the delta after events instead of lagging one poll.
+    rt_mouse_begin_frame();
+    rt_mouse_update_pos(1030, 2060);
+    rt_mouse_finalize_frame();
+    assert(rt_mouse_x() == 1030);
+    assert(rt_mouse_delta_x() == 30);
+    assert(rt_mouse_delta_y() == 60);
+
+    // A poll with no motion yields a zero delta for this frame.
+    rt_mouse_begin_frame();
+    rt_mouse_finalize_frame();
+    assert(rt_mouse_delta_x() == 0);
+    assert(rt_mouse_delta_y() == 0);
+
+    printf("test_finalize_frame_same_frame_delta: PASSED\n");
+}
+
+// ============================================================================
 // Button State
 // ============================================================================
 
@@ -332,6 +362,7 @@ int main() {
     test_button_constants();
     test_initial_state();
     test_position_updates();
+    test_finalize_frame_same_frame_delta();
     test_button_state();
     test_click_detection();
     test_scroll_wheel();

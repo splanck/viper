@@ -41,6 +41,7 @@
 #include "rt_internal.h"
 #include "rt_option.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <locale.h>
@@ -174,9 +175,10 @@ static const char *scan_decimal_float(const char *cursor) {
 }
 
 /// @brief Recognize canonical non-finite floating literals.
-/// @details Accepts the formatter's `NaN`, `Inf`, and `-Inf` spellings plus a
-///          leading `+` and case-insensitive input so Convert.ToString_Double
-///          and Parse/Convert.ToDouble round-trip through the public APIs.
+/// @details Accepts the formatter's `NaN`, `Inf`, and `-Inf` spellings, the long
+///          `Infinity`/`-Infinity` form emitted by `Fmt.Num`, a leading `+`, and
+///          case-insensitive input so Convert.ToString_Double, Fmt.Num, and
+///          Parse/Convert.ToDouble round-trip through the public APIs.
 static int scan_nonfinite_float(const char *cursor, double *out_value, const char **out_end) {
     if (!cursor || !out_value || !out_end)
         return 0;
@@ -194,8 +196,23 @@ static int scan_nonfinite_float(const char *cursor, double *out_value, const cha
     }
     if ((p[0] == 'i' || p[0] == 'I') && (p[1] == 'n' || p[1] == 'N') &&
         (p[2] == 'f' || p[2] == 'F')) {
+        const char *end = p + 3;
+        // Consume the long "Infinity" spelling when present (case-insensitive).
+        static const char kInityLower[] = "inity";
+        const char *tail = p + 3;
+        int matchesLong = 1;
+        for (int i = 0; i < 5; ++i) {
+            const char ch = tail[i];
+            if (ch == '\0' ||
+                (char)tolower((unsigned char)ch) != kInityLower[i]) {
+                matchesLong = 0;
+                break;
+            }
+        }
+        if (matchesLong)
+            end = p + 8;
         *out_value = negative ? -INFINITY : INFINITY;
-        *out_end = p + 3;
+        *out_end = end;
         return 1;
     }
     return 0;

@@ -28,6 +28,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_serialize.h"
+#include "rt_format.h"
 
 #include "rt_box.h"
 #include "rt_csv.h"
@@ -180,7 +181,8 @@ static rt_string scalar_to_string(void *obj) {
             return make_cstr(".nan");
         if (isinf(v))
             return make_cstr(v > 0 ? ".inf" : "-.inf");
-        snprintf(buf, sizeof(buf), "%.17g", v);
+        // Locale-independent exact formatting (VDOC-041).
+        rt_format_f64_roundtrip(v, buf, sizeof(buf));
         return rt_string_from_bytes(buf, strlen(buf));
     }
     if (box_type == RT_BOX_STR)

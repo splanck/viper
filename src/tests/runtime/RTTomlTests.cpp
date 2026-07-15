@@ -296,7 +296,115 @@ static void test_get_path_preserves_embedded_nul_segments() {
 }
 
 /// @brief Main.
+static void test_dotted_assignment_keys_build_nested_tables() {
+    // VDOC-024: `a.b = v` must construct nested tables so the paired dotted
+    // getter can retrieve the value; quoted keys keep their literal dots.
+    rt_string src = make_str("a.b = \"ok\"\nc.d.e = \"deep\"");
+    void *root = rt_toml_parse(src);
+    rt_string_unref(src);
+    assert(root != NULL);
+
+    rt_string pab = make_str("a.b");
+    rt_string pcde = make_str("c.d.e");
+    rt_string vab = rt_toml_get_str(root, pab);
+    rt_string vcde = rt_toml_get_str(root, pcde);
+    assert(vab && strcmp(rt_string_cstr(vab), "ok") == 0);
+    assert(vcde && strcmp(rt_string_cstr(vcde), "deep") == 0);
+    rt_string_unref(vab);
+    rt_string_unref(vcde);
+    rt_string_unref(pab);
+    rt_string_unref(pcde);
+
+    // Quoted key: literal spelling with the dot, stored at the top level.
+    rt_string qsrc = make_str("\"x.y\" = \"lit\"");
+    void *qroot = rt_toml_parse(qsrc);
+    rt_string_unref(qsrc);
+    assert(qroot != NULL);
+    rt_string litkey = make_str("x.y");
+    void *lit = rt_map_get(qroot, litkey);
+    assert(lit && strcmp(rt_string_cstr((rt_string)lit), "lit") == 0);
+    rt_string_unref(litkey);
+
+    // Malformed dotted keys (leading/trailing dot) invalidate the document.
+    rt_string bad = make_str("a. = 1");
+    assert(rt_toml_parse(bad) == NULL);
+    rt_string_unref(bad);
+
+    // Duplicate dotted assignments are rejected like plain duplicates.
+    rt_string dup = make_str("a.b = \"1\"\na.b = \"2\"");
+    assert(rt_toml_parse(dup) == NULL);
+    rt_string_unref(dup);
+}
+
+static void test_format_emits_nested_tables_recursively() {
+    // VDOC-025: Format must emit nested tables as dotted [a.b.c] sections and
+    // maps inside arrays as inline tables, so Format(Parse(text)) round-trips.
+    rt_string src = make_str("[a.b.c]\nvalue = \"ok\"");
+    void *root = rt_toml_parse(src);
+    rt_string_unref(src);
+    assert(root != NULL);
+
+    rt_string formatted = rt_toml_format(root);
+    assert(formatted != NULL);
+    const char *out = rt_string_cstr(formatted);
+    assert(strstr(out, "[a.b.c]") != NULL);
+    assert(strstr(out, "value = \"ok\"") != NULL);
+
+    void *round = rt_toml_parse(formatted);
+    assert(round != NULL);
+    rt_string path = make_str("a.b.c.value");
+    rt_string v = rt_toml_get_str(round, path);
+    assert(v && strcmp(rt_string_cstr(v), "ok") == 0);
+    rt_string_unref(v);
+    rt_string_unref(path);
+    rt_string_unref(formatted);
+
+    // Maps inside arrays emit as inline tables instead of empty strings.
+    void *arr_root = rt_map_new();
+    void *seq = rt_seq_new();
+    void *inner = rt_map_new();
+    rt_string ik = make_str("k");
+    rt_string iv = make_str("v");
+    rt_map_set(inner, ik, iv);
+    rt_seq_push(seq, inner);
+    rt_string ak = make_str("items");
+    rt_map_set(arr_root, ak, seq);
+    rt_string arr_out = rt_toml_format(arr_root);
+    assert(arr_out != NULL);
+    assert(strstr(rt_string_cstr(arr_out), "{k = \"v\"}") != NULL);
+    rt_string_unref(arr_out);
+    rt_string_unref(ak);
+    rt_string_unref(ik);
+    rt_string_unref(iv);
+}
+
+static void test_parse_rejects_embedded_nul() {
+    // VDOC-031: a runtime String with an embedded NUL is invalid TOML input and
+    // must be rejected outright rather than silently parsing only the prefix.
+    rt_string nul_src = rt_string_from_bytes("a = \"1\"\0b = \"2\"", 15);
+    assert(rt_toml_parse(nul_src) == NULL);
+    rt_string_unref(nul_src);
+}
+
+static void test_format_keeps_float_token() {
+    // VDOC-035: whole-valued doubles must emit with a float marker (1.0), not
+    // as the TOML integer token 1.
+    void *root = rt_map_new();
+    rt_string key = make_str("value");
+    void *boxed = rt_box_f64(1.0);
+    rt_map_set(root, key, boxed);
+    rt_string out = rt_toml_format(root);
+    assert(out != NULL);
+    assert(strstr(rt_string_cstr(out), "value = 1.0") != NULL);
+    rt_string_unref(out);
+    rt_string_unref(key);
+}
+
 int main() {
+    test_format_keeps_float_token();
+    test_parse_rejects_embedded_nul();
+    test_format_emits_nested_tables_recursively();
+    test_dotted_assignment_keys_build_nested_tables();
     test_parse_simple();
     test_parse_section();
     test_parse_comments();

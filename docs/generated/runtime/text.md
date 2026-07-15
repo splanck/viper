@@ -203,7 +203,7 @@ construct the class directly. Its public surface exposes operations including `C
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-text-diff-countchanges"></a>`CountChanges` | `i64(str,str)` | `Viper.Text.Diff.CountChanges` |
-| <a id="viper-text-diff-lines"></a>`Lines` | `obj(str,str)` | `Viper.Text.Diff.Lines` |
+| <a id="viper-text-diff-lines"></a>`Lines` | `seq<str>(str,str)` | `Viper.Text.Diff.Lines` |
 | <a id="viper-text-diff-patch"></a>`Patch` | `str(str,obj)` | `Viper.Text.Diff.Patch` |
 | <a id="viper-text-diff-unified"></a>`Unified` | `str(str,str,i64)` | `Viper.Text.Diff.Unified` |
 
@@ -418,13 +418,13 @@ construct the class directly. Its public surface exposes operations including `P
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-text-html-parse"></a>`Parse` | `obj(str)` | `Viper.Text.Html.Parse` |
+| <a id="viper-text-html-parse"></a>`Parse` | `obj<Viper.Collections.Map>(str)` | `Viper.Text.Html.Parse` |
 | <a id="viper-text-html-totext"></a>`ToText` | `str(str)` | `Viper.Text.Html.ToText` |
 | <a id="viper-text-html-escape"></a>`Escape` | `str(str)` | `Viper.Text.Html.Escape` |
 | <a id="viper-text-html-unescape"></a>`Unescape` | `str(str)` | `Viper.Text.Html.Unescape` |
 | <a id="viper-text-html-striptags"></a>`StripTags` | `str(str)` | `Viper.Text.Html.StripTags` |
-| <a id="viper-text-html-extractlinks"></a>`ExtractLinks` | `obj(str)` | `Viper.Text.Html.ExtractLinks` |
-| <a id="viper-text-html-extracttext"></a>`ExtractText` | `obj(str,str)` | `Viper.Text.Html.ExtractText` |
+| <a id="viper-text-html-extractlinks"></a>`ExtractLinks` | `seq<str>(str)` | `Viper.Text.Html.ExtractLinks` |
+| <a id="viper-text-html-extracttext"></a>`ExtractText` | `seq<str>(str,str)` | `Viper.Text.Html.ExtractText` |
 
 ## Functions
 
@@ -438,7 +438,7 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.InvariantNumberFormat.ToWords` | `str(i64)` | `rt_numfmt_to_words` |
 | `Viper.Text.InvariantNumberFormat.Bytes` | `str(i64)` | `rt_numfmt_bytes` |
 | `Viper.Text.InvariantNumberFormat.Pad` | `str(i64,i64)` | `rt_numfmt_pad` |
-| `Viper.Text.Diff.Lines` | `obj(str,str)` | `rt_diff_lines` |
+| `Viper.Text.Diff.Lines` | `seq<str>(str,str)` | `rt_diff_lines` |
 | `Viper.Text.Diff.Unified` | `str(str,str,i64)` | `rt_diff_unified` |
 | `Viper.Text.Diff.CountChanges` | `i64(str,str)` | `rt_diff_count_changes` |
 | `Viper.Text.Diff.Patch` | `str(str,obj)` | `rt_diff_patch` |
@@ -477,13 +477,13 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.Markdown.ToText` | `str(str)` | `rt_markdown_to_text` |
 | `Viper.Text.Markdown.ExtractLinks` | `seq<str>(str)` | `rt_markdown_extract_links` |
 | `Viper.Text.Markdown.ExtractHeadings` | `seq<str>(str)` | `rt_markdown_extract_headings` |
-| `Viper.Text.Html.Parse` | `obj(str)` | `rt_html_parse` |
+| `Viper.Text.Html.Parse` | `obj<Viper.Collections.Map>(str)` | `rt_html_parse` |
 | `Viper.Text.Html.ToText` | `str(str)` | `rt_html_to_text` |
 | `Viper.Text.Html.Escape` | `str(str)` | `rt_html_escape` |
 | `Viper.Text.Html.Unescape` | `str(str)` | `rt_html_unescape` |
 | `Viper.Text.Html.StripTags` | `str(str)` | `rt_html_strip_tags` |
-| `Viper.Text.Html.ExtractLinks` | `obj(str)` | `rt_html_extract_links` |
-| `Viper.Text.Html.ExtractText` | `obj(str,str)` | `rt_html_extract_text` |
+| `Viper.Text.Html.ExtractLinks` | `seq<str>(str)` | `rt_html_extract_links` |
+| `Viper.Text.Html.ExtractText` | `seq<str>(str,str)` | `rt_html_extract_text` |
 | <a id="viper-text-uuid-get-empty"></a>`Viper.Text.Uuid.get_Empty` | `str()` | `rt_guid_empty` |
 | `Viper.Text.Uuid.FromBytes` | `str(obj)` | `rt_guid_from_bytes` |
 | `Viper.Text.Uuid.IsValid` | `i1(str)` | `rt_guid_is_valid` |

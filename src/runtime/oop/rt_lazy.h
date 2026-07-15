@@ -38,6 +38,24 @@ extern "C" {
 /// @return Opaque Lazy object pointer.
 void *rt_lazy_new(void *(*supplier)(void));
 
+/// @brief Create a deferred Lazy backed by an opaque managed-function handle.
+/// @details VM-bridge only: the handle is not C-callable. The bridge intercepts
+///          accessors, runs the handle itself, and publishes the result through
+///          @ref rt_lazy_complete_obj. C-side evaluation of a handle-kind Lazy traps.
+/// @param handle Opaque managed-function handle (e.g. an IL function address).
+/// @return Opaque Lazy object pointer.
+void *rt_lazy_new_handle(void *handle);
+
+/// @brief Fetch the pending managed-function handle of an unevaluated handle-kind Lazy.
+/// @param obj Opaque Lazy object pointer.
+/// @return The handle, or NULL when evaluated or not handle-kind.
+void *rt_lazy_pending_handle(void *obj);
+
+/// @brief Publish the computed object payload for a handle-kind Lazy.
+/// @param obj Opaque Lazy object pointer.
+/// @param value Computed object payload to cache.
+void rt_lazy_complete_obj(void *obj, void *value);
+
 /// @brief Create an already-evaluated Lazy with a value.
 /// @param value The already-computed value.
 /// @return Opaque Lazy object pointer.
@@ -100,6 +118,10 @@ void *rt_lazy_map(void *obj, void *(*fn)(void *));
 /// @param fn Function that returns a new Lazy.
 /// @return New Lazy that will unwrap the result.
 void *rt_lazy_flat_map(void *obj, void *(*fn)(void *));
+
+/// @brief IL-compatible wrapper for @ref rt_lazy_new accepting an opaque supplier pointer.
+/// @details Backs `Viper.Functional.Lazy.New`, the public deferred-evaluation factory.
+void *rt_lazy_new_wrapper(void *supplier);
 
 /// @brief IL-compatible wrapper for @ref rt_lazy_map accepting an opaque callback pointer.
 void *rt_lazy_map_wrapper(void *obj, void *fn);

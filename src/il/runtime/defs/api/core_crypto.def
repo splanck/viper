@@ -76,23 +76,23 @@ RT_FUNC(CryptoModuleStatus, rt_crypto_module_status_text, "Viper.Crypto.Complian
 // CRYPTO - CIPHER (HIGH-LEVEL ENCRYPTION)
 //=============================================================================
 
-RT_FUNC(CipherEncrypt,        rt_cipher_encrypt,          "Viper.Crypto.Cipher.Encrypt",        "obj(obj,str)")
+RT_FUNC(CipherEncrypt,        rt_cipher_encrypt,          "Viper.Crypto.Cipher.Encrypt",        "obj<Viper.Collections.Bytes>(obj,str)")
 RT_FUNC(CipherDecrypt,        rt_cipher_decrypt,          "Viper.Crypto.Cipher.Decrypt",        "obj(obj,str)")
 RT_FUNC(CipherDecryptResult,  rt_cipher_decrypt_result,   "Viper.Crypto.Cipher.DecryptResult",  "obj<Viper.Result>(obj,str)")
 RT_FUNC(CipherTryDecrypt,     rt_cipher_try_decrypt,      "Viper.Crypto.Cipher.TryDecrypt",     "obj<Viper.Option>(obj,str)")
-RT_FUNC(CipherEncryptAAD,     rt_cipher_encrypt_aad,      "Viper.Crypto.Cipher.EncryptAad",     "obj(obj,str,obj)")
+RT_FUNC(CipherEncryptAAD,     rt_cipher_encrypt_aad,      "Viper.Crypto.Cipher.EncryptAad",     "obj<Viper.Collections.Bytes>(obj,str,obj)")
 RT_FUNC(CipherDecryptAAD,     rt_cipher_decrypt_aad,      "Viper.Crypto.Cipher.DecryptAad",     "obj(obj,str,obj)")
 RT_FUNC(CipherDecryptAADResult, rt_cipher_decrypt_aad_result, "Viper.Crypto.Cipher.DecryptAadResult", "obj<Viper.Result>(obj,str,obj)")
 RT_FUNC(CipherTryDecryptAAD,  rt_cipher_try_decrypt_aad,  "Viper.Crypto.Cipher.TryDecryptAad",  "obj<Viper.Option>(obj,str,obj)")
-RT_FUNC(CipherEncryptWithKey, rt_cipher_encrypt_with_key, "Viper.Crypto.Cipher.EncryptWithKey", "obj(obj,obj)")
+RT_FUNC(CipherEncryptWithKey, rt_cipher_encrypt_with_key, "Viper.Crypto.Cipher.EncryptWithKey", "obj<Viper.Collections.Bytes>(obj,obj)")
 RT_FUNC(CipherDecryptWithKey, rt_cipher_decrypt_with_key, "Viper.Crypto.Cipher.DecryptWithKey", "obj(obj,obj)")
 RT_FUNC(CipherDecryptWithKeyResult, rt_cipher_decrypt_with_key_result, "Viper.Crypto.Cipher.DecryptWithKeyResult", "obj<Viper.Result>(obj,obj)")
 RT_FUNC(CipherTryDecryptWithKey, rt_cipher_try_decrypt_with_key, "Viper.Crypto.Cipher.TryDecryptWithKey", "obj<Viper.Option>(obj,obj)")
-RT_FUNC(CipherEncryptWithKeyAAD, rt_cipher_encrypt_with_key_aad, "Viper.Crypto.Cipher.EncryptWithKeyAad", "obj(obj,obj,obj)")
+RT_FUNC(CipherEncryptWithKeyAAD, rt_cipher_encrypt_with_key_aad, "Viper.Crypto.Cipher.EncryptWithKeyAad", "obj<Viper.Collections.Bytes>(obj,obj,obj)")
 RT_FUNC(CipherDecryptWithKeyAAD, rt_cipher_decrypt_with_key_aad, "Viper.Crypto.Cipher.DecryptWithKeyAad", "obj(obj,obj,obj)")
 RT_FUNC(CipherDecryptWithKeyAADResult, rt_cipher_decrypt_with_key_aad_result, "Viper.Crypto.Cipher.DecryptWithKeyAadResult", "obj<Viper.Result>(obj,obj,obj)")
 RT_FUNC(CipherTryDecryptWithKeyAAD, rt_cipher_try_decrypt_with_key_aad, "Viper.Crypto.Cipher.TryDecryptWithKeyAad", "obj<Viper.Option>(obj,obj,obj)")
-RT_FUNC(CipherGenerateKey,    rt_cipher_generate_key,     "Viper.Crypto.Cipher.GenerateKey",    "obj()")
+RT_FUNC(CipherGenerateKey,    rt_cipher_generate_key,     "Viper.Crypto.Cipher.GenerateKey",    "obj<Viper.Collections.Bytes>()")
 RT_FUNC(CipherDeriveKey,      rt_cipher_derive_key,       "Viper.Crypto.Cipher.DeriveKey",      "obj(str,obj)")
 
 //=============================================================================
@@ -103,11 +103,11 @@ RT_FUNC(LegacyAesEncryptCBC, rt_aes_encrypt, "Viper.Crypto.Legacy.Aes.EncryptCbc
 RT_FUNC(LegacyAesDecryptCBC, rt_aes_decrypt, "Viper.Crypto.Legacy.Aes.DecryptCbc", "obj(obj,obj,obj)")
 RT_FUNC(LegacyAesDecryptCBCResult, rt_aes_decrypt_result, "Viper.Crypto.Legacy.Aes.DecryptCbcResult", "obj<Viper.Result>(obj,obj,obj)")
 RT_FUNC(LegacyAesTryDecryptCBC, rt_aes_try_decrypt, "Viper.Crypto.Legacy.Aes.TryDecryptCbc", "obj<Viper.Option>(obj,obj,obj)")
-RT_FUNC(AesEncryptAuth, rt_aes_encrypt_auth, "Viper.Crypto.Aes.EncryptAuth", "obj(obj,obj,obj)")
+RT_FUNC(AesEncryptAuth, rt_aes_encrypt_auth, "Viper.Crypto.Aes.EncryptAuth", "obj<Viper.Collections.Bytes>(obj,obj,obj)")
 RT_FUNC(AesDecryptAuth, rt_aes_decrypt_auth, "Viper.Crypto.Aes.DecryptAuth", "obj(obj,obj,obj)")
 RT_FUNC(AesDecryptAuthResult, rt_aes_decrypt_auth_result, "Viper.Crypto.Aes.DecryptAuthResult", "obj<Viper.Result>(obj,obj,obj)")
 RT_FUNC(AesTryDecryptAuth, rt_aes_try_decrypt_auth, "Viper.Crypto.Aes.TryDecryptAuth", "obj<Viper.Option>(obj,obj,obj)")
-RT_FUNC(AesEncryptStr, rt_aes_encrypt_str, "Viper.Crypto.Aes.EncryptStr", "obj(str,str)")
+RT_FUNC(AesEncryptStr, rt_aes_encrypt_str, "Viper.Crypto.Aes.EncryptStr", "obj<Viper.Collections.Bytes>(str,str)")
 RT_FUNC(AesDecryptStr, rt_aes_decrypt_str, "Viper.Crypto.Aes.DecryptStr", "str(obj,str)")
 RT_FUNC(AesDecryptStrResult, rt_aes_decrypt_str_result, "Viper.Crypto.Aes.DecryptStrResult", "obj<Viper.Result>(obj,str)")
 RT_FUNC(AesTryDecryptStr, rt_aes_try_decrypt_str, "Viper.Crypto.Aes.TryDecryptStr", "obj<Viper.Option>(obj,str)")
@@ -118,11 +118,11 @@ RT_FUNC(AesTryDecryptStr, rt_aes_try_decrypt_str, "Viper.Crypto.Aes.TryDecryptSt
 /// Its public surface exposes operations including `EncryptAuth`, `DecryptAuth`,
 /// `DecryptAuthResult`, `TryDecryptAuth`.
 RT_CLASS_BEGIN("Viper.Crypto.Aes", CryptoAes, "none", none)
-    RT_METHOD("EncryptAuth", "obj(obj,obj,obj)", AesEncryptAuth)
+    RT_METHOD("EncryptAuth", "obj<Viper.Collections.Bytes>(obj,obj,obj)", AesEncryptAuth)
     RT_METHOD("DecryptAuth", "obj(obj,obj,obj)", AesDecryptAuth)
     RT_METHOD("DecryptAuthResult", "obj<Viper.Result>(obj,obj,obj)", AesDecryptAuthResult)
     RT_METHOD("TryDecryptAuth", "obj<Viper.Option>(obj,obj,obj)", AesTryDecryptAuth)
-    RT_METHOD("EncryptStr", "obj(str,str)",     AesEncryptStr)
+    RT_METHOD("EncryptStr", "obj<Viper.Collections.Bytes>(str,str)",     AesEncryptStr)
     RT_METHOD("DecryptStr", "str(obj,str)",     AesDecryptStr)
     RT_METHOD("DecryptStrResult", "obj<Viper.Result>(obj,str)", AesDecryptStrResult)
     RT_METHOD("TryDecryptStr", "obj<Viper.Option>(obj,str)", AesTryDecryptStr)
@@ -313,7 +313,7 @@ RT_FUNC(NumFmtPad,       rt_numfmt_pad,       "Viper.Text.InvariantNumberFormat.
 // DIFF
 //=============================================================================
 
-RT_FUNC(DiffLines,        rt_diff_lines,         "Viper.Text.Diff.Lines",        "obj(str,str)")
+RT_FUNC(DiffLines,        rt_diff_lines,         "Viper.Text.Diff.Lines",        "seq<str>(str,str)")
 RT_FUNC(DiffUnified,      rt_diff_unified,       "Viper.Text.Diff.Unified",      "str(str,str,i64)")
 RT_FUNC(DiffCountChanges, rt_diff_count_changes, "Viper.Text.Diff.CountChanges", "i64(str,str)")
 RT_FUNC(DiffPatch,        rt_diff_patch,         "Viper.Text.Diff.Patch",        "str(str,obj)")
@@ -344,7 +344,7 @@ RT_FUNC(MsgBusUnsubscribe,      rt_msgbus_unsubscribe,        "Viper.Core.Messag
 RT_FUNC(MsgBusPublish,          rt_msgbus_publish,            "Viper.Core.MessageBus.Publish",          "i64(obj,str,obj)")
 RT_FUNC(MsgBusSubscriberCount,  rt_msgbus_subscriber_count,   "Viper.Core.MessageBus.SubscriberCount",  "i64(obj,str)")
 RT_FUNC(MsgBusTotalSubs,        rt_msgbus_total_subscriptions,"Viper.Core.MessageBus.get_TotalSubscriptions", "i64(obj)")
-RT_FUNC(MsgBusTopics,           rt_msgbus_topics,             "Viper.Core.MessageBus.Topics",           "obj(obj)")
+RT_FUNC(MsgBusTopics,           rt_msgbus_topics,             "Viper.Core.MessageBus.Topics",           "seq<str>(obj)")
 RT_FUNC(MsgBusClearTopic,       rt_msgbus_clear_topic,        "Viper.Core.MessageBus.ClearTopic",       "void(obj,str)")
 RT_FUNC(MsgBusClear,            rt_msgbus_clear,              "Viper.Core.MessageBus.Clear",            "void(obj)")
 

@@ -216,9 +216,9 @@ static TypeRef ziaParamTypeForGeneratedToken(std::string_view token) {
     std::string_view base = runtimeTokenBase(token);
     if (base == "str")
         return types::string();
-    if (base == "i64" || base == "i32" || base == "i16" || base == "i8")
+    if (base == "i64" || base == "i32" || base == "i16")
         return types::integer();
-    if (base == "f64" || base == "f32")
+    if (base == "f64")
         return types::number();
     if (base == "i1" || base == "bool")
         return types::boolean();

@@ -283,6 +283,11 @@ void *rt_result_unwrap(void *obj) {
         trap_with_message("Unwrap called on Err Result");
         return NULL;
     }
+    if (r->value_type != VALUE_PTR) {
+        trap_with_message(
+            "Unwrap called on non-object payload; use UnwrapStr/UnwrapI64/UnwrapF64");
+        return NULL;
+    }
     return r->value.ptr;
 }
 
@@ -398,6 +403,10 @@ void *rt_result_unwrap_err(void *obj) {
         trap_with_message("UnwrapErr called on Ok Result");
         return NULL;
     }
+    if (r->value_type != VALUE_PTR) {
+        trap_with_message("UnwrapErr called on non-object payload; use UnwrapErrStr");
+        return NULL;
+    }
     return r->value.ptr;
 }
 
@@ -427,6 +436,10 @@ void *rt_result_ok_value(void *obj) {
     Result *r = (Result *)obj;
     if (r->variant != RESULT_OK)
         return NULL;
+    // Generic object accessor: typed payloads (str/i64/f64) must not be
+    // reinterpreted as pointers; non-trapping contract returns NULL instead.
+    if (r->value_type != VALUE_PTR)
+        return NULL;
     return r->value.ptr;
 }
 
@@ -436,6 +449,9 @@ void *rt_result_err_value(void *obj) {
         return NULL;
     Result *r = (Result *)obj;
     if (r->variant != RESULT_ERR)
+        return NULL;
+    // See rt_result_ok_value: never expose a typed payload as a pointer.
+    if (r->value_type != VALUE_PTR)
         return NULL;
     return r->value.ptr;
 }
@@ -461,6 +477,14 @@ void *rt_result_expect(void *obj, rt_string msg) {
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
         return NULL;
     }
+    if (r->value_type != VALUE_PTR) {
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "Result expect: %s (payload is not an object; use UnwrapStr/UnwrapI64/UnwrapF64)",
+                 msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
+    }
     return r->value.ptr;
 }
 
@@ -480,6 +504,14 @@ void *rt_result_expect_err(void *obj, rt_string msg) {
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
         return NULL;
     }
+    if (r->value_type != VALUE_PTR) {
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "Result expect_err: %s (payload is not an object; use UnwrapErrStr)",
+                 msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
+    }
     return r->value.ptr;
 }
 
@@ -496,6 +528,13 @@ void *rt_result_expect_err(void *obj, rt_string msg) {
 
 /// @brief Apply `fn` to the Ok value, returning `Ok(fn(val))`. Err passes through unchanged.
 void *rt_result_map(void *obj, void *(*fn)(void *)) {
+    return rt_result_map_invoke(obj, (void *)fn, rt_cb_direct_invoke1, NULL);
+}
+
+/// @brief Combinator core shared by the native wrapper and the VM callback bridges.
+/// The `invoke` strategy abstracts how the user callback runs (direct C call for
+/// native code, interpreter re-entry for the VMs) so the semantics live here once.
+void *rt_result_map_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
@@ -504,7 +543,7 @@ void *rt_result_map(void *obj, void *(*fn)(void *)) {
 
     // For pointer values, apply the function
     if (r->value_type == VALUE_PTR) {
-        void *new_val = fn(r->value.ptr);
+        void *new_val = invoke(ctx, fn, r->value.ptr);
         return rt_result_ok(new_val);
     }
     // For other types, return as-is (can't map non-pointer)
@@ -514,6 +553,11 @@ void *rt_result_map(void *obj, void *(*fn)(void *)) {
 /// @brief Apply `fn` to the Err value, returning `Err(fn(err))`. Ok passes through unchanged.
 /// Useful for translating low-level errors into higher-level error types.
 void *rt_result_map_err(void *obj, void *(*fn)(void *)) {
+    return rt_result_map_err_invoke(obj, (void *)fn, rt_cb_direct_invoke1, NULL);
+}
+
+/// @brief Combinator core; see @ref rt_result_map_invoke for the invoker contract.
+void *rt_result_map_err_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
@@ -521,7 +565,7 @@ void *rt_result_map_err(void *obj, void *(*fn)(void *)) {
         return obj;
 
     if (r->value_type == VALUE_PTR) {
-        void *new_val = fn(r->value.ptr);
+        void *new_val = invoke(ctx, fn, r->value.ptr);
         return rt_result_err(new_val);
     }
     return obj;
@@ -530,6 +574,11 @@ void *rt_result_map_err(void *obj, void *(*fn)(void *)) {
 /// @brief Monadic bind on the Ok side: apply `fn` (returning a Result) to the Ok value, flattening.
 /// Err short-circuits the chain, propagating unchanged. The cornerstone of error pipelines.
 void *rt_result_and_then(void *obj, void *(*fn)(void *)) {
+    return rt_result_and_then_invoke(obj, (void *)fn, rt_cb_direct_invoke1, NULL);
+}
+
+/// @brief Combinator core; see @ref rt_result_map_invoke for the invoker contract.
+void *rt_result_and_then_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
@@ -537,7 +586,7 @@ void *rt_result_and_then(void *obj, void *(*fn)(void *)) {
         return obj;
 
     if (r->value_type == VALUE_PTR) {
-        return fn(r->value.ptr);
+        return invoke(ctx, fn, r->value.ptr);
     }
     return obj;
 }
@@ -545,6 +594,11 @@ void *rt_result_and_then(void *obj, void *(*fn)(void *)) {
 /// @brief Monadic bind on the Err side: apply `fn` (returning a Result) to the Err value to
 /// produce a recovery Result. Ok passes through unchanged. Used for "try recovery" patterns.
 void *rt_result_or_else(void *obj, void *(*fn)(void *)) {
+    return rt_result_or_else_invoke(obj, (void *)fn, rt_cb_direct_invoke1, NULL);
+}
+
+/// @brief Combinator core; see @ref rt_result_map_invoke for the invoker contract.
+void *rt_result_or_else_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
@@ -552,7 +606,7 @@ void *rt_result_or_else(void *obj, void *(*fn)(void *)) {
         return obj;
 
     if (r->value_type == VALUE_PTR) {
-        return fn(r->value.ptr);
+        return invoke(ctx, fn, r->value.ptr);
     }
     return obj;
 }

@@ -186,6 +186,19 @@ class BytecodeVM {
     /// @return True when the callback returned normally; false after a trap.
     bool invokeVoidReentrant(const BytecodeFunction *func, const std::vector<BCSlot> &args = {});
 
+    /// @brief Invoke a value-returning function while another bytecode frame is active.
+    /// @details Counterpart of @ref invokeVoidReentrant for callback bridges that
+    ///          need the callback's result (e.g. Lazy suppliers and Map callbacks).
+    ///          The return value is read from the reentrant frame boundary slot
+    ///          after dispatch stops at the original caller depth.
+    /// @param func Value-returning function to invoke.
+    /// @param args Arguments to pass to the callback.
+    /// @param out Receives the callback's return slot on success.
+    /// @return True when the callback returned normally; false after a trap.
+    bool invokeValueReentrant(const BytecodeFunction *func,
+                              const std::vector<BCSlot> &args,
+                              BCSlot *out);
+
     /// @brief Get the current VM execution state.
     /// @return The current VMState (Ready, Running, Halted, or Trapped).
     VMState state() const {

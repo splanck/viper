@@ -646,10 +646,8 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 - Prefer `TryPopOption()` and `TryPeekOption()` for new code. They distinguish an empty heap from a stored null object; the nullable forms remain for compatibility.
 - `ToSeq()` returns an independent owning snapshot in priority order.
 - Equal-priority entries have no stable FIFO/LIFO guarantee.
-- `ToSeq()` is implemented as a Seq but registered with an unqualified `obj` return. In Zia,
-  annotate the result (`var values: Viper.Collections.Seq = heap.ToSeq()`) or use an explicit Seq
-  receiver. Chaining `heap.ToSeq().Count` currently resolves `Count` as a Heap property and traps
-  on the returned Seq (VDOC-020).
+- `ToSeq()` is registered as a typed sequence return, so chains such as `heap.ToSeq().Count`
+  resolve against the returned Seq.
 
 ### Zia Example
 

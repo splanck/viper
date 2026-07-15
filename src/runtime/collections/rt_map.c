@@ -34,6 +34,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_map.h"
+#include "rt_numeric.h"
 
 #include "rt_gc.h"
 #include "rt_internal.h"
@@ -921,7 +922,9 @@ int64_t rt_map_get_int(void *obj, rt_string key) {
     if (tag == RT_BOX_I64)
         return rt_unbox_i64(val);
     if (tag == RT_BOX_F64)
-        return (int64_t)rt_unbox_f64(val);
+        // Defined saturating conversion (NaN->0, out-of-range clamps): the raw
+        // C cast is undefined for out-of-range doubles (VDOC-037).
+        return (int64_t)rt_f64_to_i64(rt_unbox_f64(val));
     if (tag == RT_BOX_I1)
         return rt_unbox_i1(val) ? 1 : 0;
     rt_trap("Map.GetInt: value is not numeric");
@@ -936,7 +939,9 @@ int64_t rt_map_get_int_or(void *obj, rt_string key, int64_t def) {
     if (tag == RT_BOX_I64)
         return rt_unbox_i64(val);
     if (tag == RT_BOX_F64)
-        return (int64_t)rt_unbox_f64(val);
+        // Defined saturating conversion (NaN->0, out-of-range clamps): the raw
+        // C cast is undefined for out-of-range doubles (VDOC-037).
+        return (int64_t)rt_f64_to_i64(rt_unbox_f64(val));
     if (tag == RT_BOX_I1)
         return rt_unbox_i1(val) ? 1 : 0;
     return def;

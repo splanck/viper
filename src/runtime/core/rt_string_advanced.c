@@ -779,3 +779,47 @@ int64_t rt_str_cmp_nocase(rt_string a, rt_string b) {
         return 1;
     return 0;
 }
+
+/// @brief Validate that a byte span is well-formed UTF-8 (see header contract).
+int rt_utf8_span_valid(const char *data, size_t len) {
+    if (!data)
+        return len == 0;
+    size_t i = 0;
+    while (i < len) {
+        unsigned char lead = (unsigned char)data[i];
+        if (lead < 0x80) {
+            i++;
+            continue;
+        }
+        size_t extra;
+        uint32_t cp;
+        if (lead >= 0xC2 && lead <= 0xDF) {
+            extra = 1;
+            cp = lead & 0x1Fu;
+        } else if (lead >= 0xE0 && lead <= 0xEF) {
+            extra = 2;
+            cp = lead & 0x0Fu;
+        } else if (lead >= 0xF0 && lead <= 0xF4) {
+            extra = 3;
+            cp = lead & 0x07u;
+        } else {
+            return 0; // 0x80-0xC1 (bare continuation / overlong lead) or 0xF5+.
+        }
+        if (len - i - 1 < extra)
+            return 0;
+        for (size_t k = 1; k <= extra; k++) {
+            unsigned char ch = (unsigned char)data[i + k];
+            if ((ch & 0xC0u) != 0x80u)
+                return 0;
+            cp = (cp << 6) | (uint32_t)(ch & 0x3Fu);
+        }
+        if ((extra == 2 && cp < 0x800u) || (extra == 3 && cp < 0x10000u))
+            return 0;
+        if (cp >= 0xD800u && cp <= 0xDFFFu)
+            return 0;
+        if (cp > 0x10FFFFu)
+            return 0;
+        i += extra + 1;
+    }
+    return 1;
+}

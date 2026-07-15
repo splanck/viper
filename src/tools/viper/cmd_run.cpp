@@ -188,7 +188,7 @@ void printRunBuildUsage(RunMode mode, std::ostream &out = std::cerr) {
     if (mode == RunMode::Run) {
         out << "Usage: viper run [target] [options] [-- program-args...]\n"
             << "\n"
-            << "Run a .zia file, .bas file, project directory, or viper.project.\n"
+            << "Run a .zia file, .bas file, .il file, project directory, or viper.project.\n"
             << "\n"
             << "Run options:\n"
             << "  --debug-vm                    Use the standard VM for debugging\n"
@@ -1171,6 +1171,19 @@ int executeRunBuildConfig(RunBuildConfig config) {
 } // namespace
 
 int cmdRun(int argc, char **argv) {
+    // `viper run file.il` executes IL directly: delegate to the IL runner so the
+    // discoverable run subcommand covers the project's normative intermediate
+    // language, not only source-language targets. Any pre-`--` argument ending in
+    // .il selects the IL runner (flag values are indistinguishable from targets
+    // here, and an .il value only occurs for IL runs); all arguments are
+    // forwarded so IL-runner flags keep working.
+    for (int i = 0; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+        if (arg == "--")
+            break;
+        if (arg.size() > 3 && lowerAscii(std::string(arg.substr(arg.size() - 3))) == ".il")
+            return cmdRunIL(argc, argv);
+    }
     return runOrBuild(RunMode::Run, argc, argv);
 }
 

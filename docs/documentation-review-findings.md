@@ -45,6 +45,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** use `obj<Viper.Result>` return types in
   `src/il/runtime/defs/classes/game_ui.def`'s Option block, or correct Zia's propagation of an
   unqualified object return if retaining `obj` is intentional.
+- **Review (2026-07-15):** Verified; recommendation implemented. `Option.OkOr`/`OkOrStr` now
+  declare `obj<Viper.Result>` returns in both the `RT_FUNC` and `RT_METHOD` rows of
+  `game_ui.def` (matching the established `Term.AskResult` precedent), so `failed.IsErr` and
+  chained Result members type-check naturally in Zia. Runtime reference docs regenerated via
+  rtgen; `docs/viperlib/functional.md` updated (signature table + example now uses natural
+  member access). Regression coverage added to
+  `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia` (`testOptionToResultTyping`).
+  **Resolved.**
 
 ### VDOC-002 — BASIC lowers an object-to-integer assignment into invalid IL
 
@@ -65,6 +73,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   output. User code must currently unbox with `Viper.Core.Box.ToI64(pressed.Get(0))`.
 - **Reproduction:** `python3 scripts/audit_bible_examples.py docs/viperlib/input.md` found this in
   the pre-correction “Displaying Pressed Keys” example.
+- **Review (2026-07-15):** Verified (still reproduced) and fixed. Root cause: the BASIC AST
+  `Type` enum cannot express object returns, so runtime helpers returning `obj` were seeded into
+  the procedure registry as INTEGER-returning; `inferCallType` then typed calls like
+  `Viper.Input.Keyboard.GetPressed()` as INTEGER and every object-to-INTEGER flow escaped the
+  existing B2001 assignment checks (a direct `KEY = Viper.Input.Keyboard.GetPressed()` even
+  compiled silently, retyping the declared INTEGER to an object slot). Fix: added
+  `ProcSignature::objectReturn`, seeded from the parsed runtime signature
+  (`ProcRegistry::seedRuntimeBuiltins`), and `inferCallType` now returns OBJECT for such calls,
+  so the existing assignment type checks emit `B2001: operand type mismatch` at the offending
+  line instead of invalid IL. Additionally qualified `Keyboard.GetPressed`/`GetReleased` as
+  `obj<Viper.Collections.Seq>` so member calls on the result resolve against Seq rather than the
+  declaring Keyboard class. Explicit unboxing via `Viper.Core.Box.ToI64` remains the documented
+  way to extract integers. Regression test: `src/tests/golden/basic_errors/obj_to_int_assign.*`
+  (registered as `basic_error_obj_to_int_assign`); full `-L basic` suite (107 tests), goldens,
+  and zia suites pass. **Resolved.**
 
 ### VDOC-003 — `Viper.Functional.Lazy` has no public deferred factory
 
@@ -78,6 +101,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   eager.
 - **Source:** `src/runtime/oop/rt_lazy.c` and the Lazy block in
   `src/il/runtime/defs/classes/extended_tooling.def`.
+- **Review (2026-07-15):** Verified and fixed. Registered `Viper.Functional.Lazy.New(supplier)`
+  as the public deferred factory (new `rt_lazy_new_wrapper` trampoline; RT_FUNC/RT_METHOD rows
+  plus RuntimeSurfacePolicy pins). Because a supplier passed from managed code is an IL/bytecode
+  function value rather than a C-callable pointer, the fix also adds the execution bridges both
+  interpreters were missing: handle-kind suppliers in `rt_lazy.c`
+  (`rt_lazy_new_handle`/`rt_lazy_pending_handle`/`rt_lazy_complete_obj`), a standard-VM bridge
+  (`src/vm/FunctionalRuntime.cpp`) covering New/Get/GetStr/GetI64/Force/Map/AndThen, and
+  bytecode-VM unified handlers (including a new `BytecodeVM::invokeValueReentrant` for
+  value-returning callbacks). Verified deferred-once semantics with identical output on the
+  bytecode VM, the standard VM (`--debug-vm`), and a native `viper build` binary. As a side
+  effect, `Lazy.Map`/`AndThen` callbacks now execute on both VMs instead of crashing (they
+  previously dereferenced the raw function value). `Map`/`AndThen` remain eager-on-force by
+  design; docs updated (`docs/viperlib/functional.md`, including the stale `FlatMap` →
+  `AndThen` name). Regression: `testLazyDeferredFactory` in
+  `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia`. **Resolved.**
 
 ### VDOC-004 — Option/Result combinators silently change semantics for typed payloads
 
@@ -93,6 +131,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** the same public combinator has materially different, mostly silent behavior based on
   which `Some*`/`Ok*`/`Err*` factory created the value.
 - **Source:** `src/runtime/oop/rt_option.c` and `src/runtime/oop/rt_result.c`.
+- **Review (2026-07-15):** Verified, with a worse finding underneath: generic-payload combinator
+  callbacks crashed outright on both interpreters (`Option.Some(x).Map(fn)` segfaulted under
+  `viper run`, because the C runtime called the managed function value as a raw C pointer). Fixed
+  by refactoring all eight combinators (`Option.Map/AndThen/OrElse/Filter`,
+  `Result.Map/MapErr/AndThen/OrElse`) into `*_invoke` cores taking a pluggable callback-invoker
+  strategy (`rt_cb_invoke1/0/pred` in `rt_option.h`), with the native wrappers using a direct-call
+  strategy and new VM bridges (`src/vm/FunctionalRuntime.cpp`, bytecode unified handlers in
+  `BytecodeVM.cpp`) re-entering the interpreter — semantics live in one place, so the engines
+  cannot drift. Verified identical output on bytecode VM, standard VM, and native. The
+  typed-payload pass-through semantics this entry describes are retained deliberately: they are
+  now explicitly documented in `docs/viperlib/functional.md` ("unwrap, transform, and re-wrap
+  explicitly" for typed variants), and changing them to traps or auto-boxing would break the
+  documented contract — treat any semantic redesign as a separate language decision. Regression:
+  `testOptionResultCombinatorCallbacks` in
+  `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia`. **Resolved** (crash fixed;
+  typed-payload behavior retained as documented).
 
 ### VDOC-005 — Object accessors can reinterpret typed Option/Result payloads as pointers
 
@@ -105,6 +159,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   primitive bit pattern as an object pointer. Typed unwrap methods are safe and should be used as a
   workaround.
 - **Source:** `src/runtime/oop/rt_option.c` and `src/runtime/oop/rt_result.c`.
+- **Review (2026-07-15):** Verified and fixed. All generic-object accessors now check
+  `value_type` before returning the pointer union member. Non-trapping accessors
+  (`rt_option_value`, `rt_result_ok_value`, `rt_result_err_value` — no longer publicly
+  registered, guarded as defense-in-depth) return NULL for typed payloads; trapping accessors
+  (`Option.Unwrap`/`Expect`, `Result.Unwrap`/`UnwrapErr`/`Expect`/`ExpectErr`) trap with a
+  message directing to the matching typed accessor (e.g. "Unwrap called on non-object payload;
+  use UnwrapStr/UnwrapI64/UnwrapI1/UnwrapF64"). Verified the trap on both VM engines; typed
+  accessors unaffected. Docs updated in `docs/viperlib/functional.md` (Unwrap/Expect rows and
+  accessor notes). Regression: typed-payload NULL assertions added to
+  `src/tests/runtime/RTOptionTests.cpp` and `RTResultTests.cpp`. **Resolved.**
 
 ### VDOC-006 — Absolute mouse deltas lag one poll behind
 
@@ -118,6 +182,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Mouse.DeltaX/Y` describe the preceding position change.
 - **Source:** `rt_mouse_begin_frame()` in `src/runtime/graphics/input/rt_input.c` and
   `rt_canvas_poll()` in `src/runtime/graphics/2d/rt_canvas.c`.
+- **Review (2026-07-15):** Verified and fixed. Added `rt_mouse_finalize_frame()` which
+  recomputes the absolute delta after the poll pumps this frame's events, and wired it into the
+  three absolute-motion poll paths: `rt_canvas_poll` (after the live-cursor position sync),
+  `rt_canvas3d_poll`'s non-captured branch (captured branches keep their forced relative
+  deltas, which run afterwards and take precedence), and the GUI app poll. The deterministic
+  synthetic-frame path is untouched (it forces deltas explicitly). `Mouse.DeltaX/Y` now
+  describe the same frame as `Mouse.X/Y`. Regression:
+  `test_finalize_frame_same_frame_delta` in `src/tests/runtime/RTMouseTests.cpp` (asserts
+  same-frame delta visibility and zero delta on a motionless poll). **Resolved.**
 
 ### VDOC-008 — `Mouse.Capture()` does not lock or confine the pointer
 
@@ -129,6 +202,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** code using `Capture()` alone for FPS-style motion still receives bounded absolute
   mouse movement. Use Canvas3D relative mode for actual unbounded look input.
 - **Source:** `rt_mouse_capture()` in `src/runtime/graphics/input/rt_input.c`.
+- **Review (2026-07-15):** Verified; documentation-level resolution retained. `Capture()` is by
+  design a state flag plus cursor hide, and `docs/viperlib/input.md` states explicitly that it
+  "is not an operating-system pointer lock or confinement API" and directs FPS-style input to
+  relative mode. With VDOC-009's fix, relative mode now works from both the 2D and 3D canvas
+  polls, so the unbounded-input path `Capture()` users actually need is available everywhere.
+  Turning `Capture()` itself into an OS confine/lock is a cross-platform feature decision (new
+  vgfx surface on three platforms), not a consistency defect — left to a deliberate feature
+  choice. **Resolved** (documented contract accurate; no code change).
 
 ### VDOC-009 — `Mouse.SetRelativeMode()` is applied only by Canvas3D polling
 
@@ -142,6 +223,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   even though `RelativeModeNative` is false and no unbounded fallback is active.
 - **Source:** `src/runtime/graphics/3d/render/rt_canvas3d.c` and
   `src/runtime/graphics/input/rt_input.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_canvas_poll()` (2D Canvas) now reconciles the
+  relative-mouse request exactly like the Canvas3D poll: it applies
+  `vgfx_set_relative_mouse()` on its window, reports `RelativeModeNative`, feeds sub-pixel
+  native raw deltas via `rt_mouse_force_delta_f`, skips absolute move events while captured,
+  and provides the warp-to-center integer fallback when native raw input is unavailable.
+  Teardown restores normal cursor behavior before window destruction (matching the 3D path's
+  macOS cursor-dissociation caveat). The GUI poll intentionally remains record-only (a GUI app
+  has no mouse-look use case); documented as such. Docs updated in `docs/viperlib/input.md`.
+  Isolated contract test stubs extended (`RTCanvasStateContractTests.cpp`); canvas contract and
+  mouse suites pass. Behavior on a live window follows the identical code path proven by the 3D
+  poll. **Resolved.**
 
 ### VDOC-010 — InputManager debounce delay does not implement held-key repeat
 
@@ -154,6 +246,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   for ordinary input it is nearly equivalent to `KeyPressed`.
 - **Source:** `rt_inputmgr_key_pressed_debounced()` in
   `src/runtime/graphics/input/rt_inputmgr.c`.
+- **Review (2026-07-15):** Verified; resolved at the documentation level. The implementation is a
+  per-key *edge gate*: it accepts a `WasPressed` down edge only while the key's timer is zero,
+  which filters OS auto-repeat down edges (repeat KeyDown without an intervening release) while
+  the release-reset keeps genuine re-presses immediate. `docs/viperlib/input.md` now describes
+  exactly this ("Accept a down edge only while that key's timer is zero"; "it does not generate
+  held-key repeat"; "Edge-gate timer in frames"), so no handwritten claim of held-key repeat
+  remains. Implementing actual held-key repeat would be a new API surface (e.g. a
+  `KeyRepeating(key)` query), which is a feature decision rather than a consistency defect —
+  deferred to a deliberate feature choice. **Resolved** (behavior coherent and documented; no
+  code change).
 
 ### VDOC-011 — Runtime signature token documentation and parsers disagree
 
@@ -168,6 +270,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** define one runtime-signature grammar, make both parsers enforce it, and
   correct the grammar comment. Active public definitions currently use the supported widened
   types.
+- **Review (2026-07-15):** Verified and fixed. `i8` and `f32` are not IL types, are rejected by
+  the strict `RuntimeSignatureParser`, and are used by no signature anywhere in the def sources
+  — so the unified grammar is the strict parser's token set. Removed `i8`/`f32` acceptance from
+  the three lenient consumers (`RuntimeClasses.cpp` `mapILToken`, Zia's `Sema_Runtime.cpp`, and
+  `frontends/common/RuntimeRegistry.cpp`), corrected the grammar comment in
+  `src/il/runtime/runtime.def` (now lists the exact accepted token set including qualified
+  `obj<...>`/`seq<...>`/`list<...>` forms and states there are no i8/f32 IL types), and updated
+  the `mapILToken` doc table. All parsers now accept the identical token set; a future stray
+  `i8`/`f32` signature fails uniformly at rtgen/registry validation instead of being accepted by
+  some layers and rejected by others. rtgen validates 6987 functions/504 classes clean.
+  **Resolved.**
 
 ### VDOC-012 — Two x86-64 encoding inventories disagree
 
@@ -178,6 +291,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** readers and tools selecting the YAML inventory may see an incomplete instruction set.
 - **Next check:** establish whether the YAML is intentionally historical, should be generated, or
   should be removed in favor of the active JSON source.
+- **Review (2026-07-15):** Verified and fixed. Nothing in the tree references
+  `docs/specs/x86_64_encodings.yaml`: the codegen build (`src/codegen/x86_64/CMakeLists.txt`),
+  the completeness script (`scripts/check_codegen_opcode_completeness.sh`), and
+  `docs/generated-files.md` all consume `x86_64_encodings.json` exclusively, and the YAML had
+  drifted (48 vs 71 entries, older timestamp). Deleted the stale YAML so the JSON is the single
+  encoding inventory. **Resolved.**
 
 ### VDOC-013 — CLI uses a separate form for running IL
 
@@ -189,6 +308,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   intermediate language, and several man-page examples had drifted into the unsupported form.
 - **Next check:** finish the man-page review and decide whether the fix belongs in docs, argument
   parsing, or both.
+- **Review (2026-07-15):** Verified and fixed in argument parsing plus docs. `viper run` now
+  detects a `.il` argument (any pre-`--` argument with the extension, case-insensitive) and
+  delegates to the IL runner with all arguments forwarded, so `viper run file.il` executes IL
+  on the VM exactly like the legacy `viper -run file.il` (which remains available). Help text
+  (`viper --help` targets note, `viper help run`) and the man page (`docs/man/man1/viper.1`)
+  updated to state `.il` targets are accepted. Regression:
+  `il_quickstart_run_subcommand` golden test runs `quickstart.il` through the `run`
+  subcommand via a new `RUN_CMD` knob in `check_run_output.cmake`. **Resolved.**
 
 ### VDOC-014 — BASIC lowers integer arguments to object parameters without boxing
 
@@ -207,6 +334,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   current workaround is `keys.Push(Viper.Core.Box.I64(Viper.Input.Key.LeftControl))`.
 - **Reproduction:** found while making the `KeyChord` BASIC example independently auditable with
   the existing installed compiler. This is the inverse direction of VDOC-002's failed unboxing.
+- **Review (2026-07-15):** Verified and fixed across all three call shapes. (1) Method
+  expressions: a new `checkObjectParamArgs` in the BASIC method-call analyzer rejects INTEGER,
+  FLOAT, and BOOLEAN arguments bound to runtime object parameters with
+  `B2001: argument N to 'M' expects an OBJECT; box primitives with Viper.Core.Box`. (2) Method
+  *statements* previously bypassed argument analysis entirely ("best-effort" visiting);
+  `analyzeCallStmt` now routes MethodCallExpr statements through full expression analysis while
+  preserving the BUG-120 leniency for late-bound locals. (3) Fully-qualified function calls:
+  `ProcSignature` gained a per-parameter `objectParams` mask (object params are seeded as I64
+  because the AST enum cannot express objects) and `checkCallArgs` enforces it. Strings remain
+  accepted for object parameters (supported managed-reference coercion, e.g. `Seq.Push("x")`),
+  and a literal `0` is permitted as the null-object idiom (e.g. `Thread.Start(cb, 0)`).
+  Regression: `src/tests/golden/basic_errors/obj_param_primitive_arg.*`; full basic (107),
+  runtime-calls, and golden suites pass. **Resolved.**
 
 ### VDOC-015 — Action source comments disagree with the implemented surface
 
@@ -221,6 +361,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   actual five presets and digital-only result.
 - **Source:** `src/runtime/graphics/2d/rt_action.h`, `rt_action.c`, and
   `rt_action_presets.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_action.h`'s `rt_action_load_preset` comment
+  now lists all five presets (including `fps3d`), and both the header and implementation
+  comments for `rt_action_strength` state the digital-only contract (1.0 held / 0.0 otherwise;
+  button actions have no trigger-axis binding — use axis actions for analog input), matching
+  the implementation and the already-corrected public docs. **Resolved.**
 
 ### VDOC-016 — UUID source comments describe obsolete guarantees and entropy providers
 
@@ -235,6 +380,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   guarantee from comments adjacent to the implementation.
 - **Source:** `src/runtime/text/rt_guid.c`, `src/runtime/network/rt_crypto.c`, and the platform
   entropy adapters.
+- **Review (2026-07-15):** Verified and fixed. `rt_guid.c`/`rt_guid.h` comments now describe the
+  actual entropy path (shared crypto RNG via `rt_crypto_random_bytes`: approved-mode DRBG,
+  `BCryptGenRandom` on Windows, `getrandom()` with fallback on Linux, `arc4random_buf()` on
+  macOS), state that UUIDv4 uniqueness is probabilistic (collision odds noted, no "guaranteed
+  different" claim), and cite RFC 9562 (noting it obsoletes RFC 4122) throughout. **Resolved.**
 
 ### VDOC-017 — `Fmt.Num` output does not round-trip through `Parse`
 
@@ -249,6 +399,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   exact value, and its infinity text is incompatible with the paired safe parser.
 - **Workaround:** use `Viper.Core.Convert.ToStringDouble()` for round-trip serialization. The
   public utilities guide now labels `Fmt.Num` as display-only.
+- **Review (2026-07-15):** Verified; partially fixed, remainder documented by design.
+  `Fmt.Num`'s 15-significant-digit display format is intentional and documented as
+  display-only, with `Convert.ToStringDouble` as the round-trip serializer — changing the
+  display format would alter virtually every golden output, so that half stands as documented.
+  The incompatible-infinity half is fixed: `scan_nonfinite_float` in `rt_parse.c` now accepts
+  the long `Infinity`/`-Infinity` spelling emitted by `Fmt.Num` (case-insensitive, plus the
+  existing `Inf`/`NaN` forms), so `Parse.DoubleOr(Fmt.Num(x), d)` round-trips non-finite
+  values. Regression: non-finite spellings added to `test_try_num_valid` in
+  `src/tests/runtime/RTParseTests.cpp`. **Resolved** (parser widened; display format retained
+  as documented).
 
 ### VDOC-018 — Parse/Fmt/String source comments name behavior that is not present
 
@@ -267,6 +427,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   wrong locale, indexing, return, wildcard, casing, and similarity contracts.
 - **Source:** `src/runtime/text/rt_parse.c`, `src/runtime/core/rt_fmt.c`,
   `rt_string_ops.c`, `rt_string_internal.h`, and `rt_string_specialized.c`.
+- **Review (2026-07-15):** Verified the recorded corrections are present (rt_parse.c header now
+  describes the real surface and C-locale isolation; no stale Latin-1/Jaro/LIKE claims remain in
+  the string sources). One residue remained: `rt_fmt_bool_yn`'s `@brief` still said
+  `"Yes"/"No"` while the detail/return/implementation are lowercase — corrected the brief to
+  match. **Resolved.**
 
 ### VDOC-019 — BASIC cannot call the `Json` class aliases
 
@@ -283,6 +448,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** the `Viper.Text.Json` class block in
   `src/il/runtime/defs/classes/io_text.def`, the function registry dump, and the documentation
   audit of `docs/viperlib/text/formats.md`.
+- **Review (2026-07-15):** Verified (class is now `Viper.Data.Json`; the alias rows remain, the
+  `Stringify` alias no longer exists) and fixed at the resolution layer rather than by adding
+  function rows (the API-hardening direction is fewer duplicate rows, not more).
+  `SemanticAnalyzer::resolveCallee` now falls back on a procedure-registry miss for a qualified
+  callee: it resolves the prefix as a runtime class, looks the method up in the class surface,
+  and rewrites the call to the alias target (e.g. `Viper.Data.Json.GetStr` →
+  `Viper.Collections.Map.GetStr`), so argument checking and lowering see the real function.
+  This makes BASIC's callable class surface equal to Zia's for every aliased method, not just
+  Json. `docs/viperlib/text/formats.md` updated (BASIC example now uses the Json aliases; the
+  limitation note replaced). Regression: `JsonClassAliasesResolve` in
+  `src/tests/basic/test_basic_runtime_calls.cpp`; basic (107) and golden (166) suites pass.
+  **Resolved.**
 
 ### VDOC-020 — Untyped concrete-object results break member typing or infer the declaring class
 
@@ -339,6 +516,30 @@ the checked-in generators, documentation audits, and already-existing binaries o
   receiver/local.
 - **Likely repair point:** give these methods typed collection returns (as `ParseLine` already has)
   or stop propagating the declaring utility class through an unqualified `obj` result.
+- **Review (2026-07-15):** Verified and fixed by typing the registry rows (the `ParseLine`
+  approach), covering every API listed here in both the `RT_FUNC` and `RT_METHOD` rows:
+  `Csv.Parse`/`ParseWith` (`seq<obj>`), `Ini.Sections` (`seq<str>`), `Json.ParseArray`,
+  `JsonPath.Query`, `Xml.Children`/`ChildrenByTag`/`FindAll` (`seq<obj>`; `Xml.AttrNames`
+  `seq<str>`), `Html.Parse` (`obj<Map>`), `Html.ExtractLinks`/`ExtractText`, `Diff.Lines`,
+  `SortedSet.Range`/`Take`/`Skip`, `CountMap.MostCommon`, `Scheduler.Poll`, `MessageBus.Topics`,
+  `Dns.ResolveAll`/`LocalAddrs` (all `seq<str>`), `Heap.ToSeq`, `Iterator.ToSeq`,
+  `MultiMap.Get`, `ConcurrentMap.Keys`/`Values` (`seq<obj>`), `Locale.Fallbacks`,
+  `LocaleManager.Available`, `MessageBundle.Keys`, `PluralRules.Categories`
+  (`obj<Viper.Collections.List>`), `Http.GetBytes`/`HttpRes.Body`/`Multipart.Build`/`GetFile`/
+  `Aes.EncryptStr`/`EncryptAuth`/`Cipher.Encrypt*`/`GenerateKey` (`obj<Viper.Collections.Bytes>`),
+  `Http.Head`/`HttpRes.Headers`/`HttpClient.GetCookies` (`obj<Map>`), `HttpReq.Send` and
+  `HttpClient.Get`/`Post`/`Put`/`Delete` (`obj<Viper.Network.HttpRes>`),
+  `HttpRouter.Add`/`Get`/`Post`/`Put`/`Delete` (`obj<HttpRouter>`, they return the router for
+  chaining) and `Match` (`obj<RouteMatch>`), `ConnectionPool.Acquire` (`obj<Tcp>`), and the six
+  Future-producing `AsyncSocket` methods (`obj<Viper.Threads.Future>`). Related resolution-layer
+  fixes: VDOC-002 (declaring-class propagation for INTEGER contexts) and
+  `Keyboard.GetPressed`/`GetReleased` typed there. Generic `Result.Unwrap()` payload typing is
+  inherent to a generic Result and out of scope. Element types verified against each C
+  implementation before qualifying. Docs: rtgen reference regenerated; all seven
+  `docs/viperlib` VDOC-020 workaround notes replaced with the typed-return behavior. Regression:
+  `testTypedConcreteReturns` in
+  `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia` (chained `.Count`/`.Length`/
+  router chaining). **Resolved.**
 
 ### VDOC-021 — JsonPath conflates JSON null with a missing path
 
@@ -351,6 +552,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** callers cannot use `Has` to distinguish a present null member from absence, and
   `GetOr` replaces a real null value with its default.
 - **Source:** `src/runtime/text/rt_jsonpath.c`.
+- **Review (2026-07-15):** Verified and fixed. The traversal now tracks existence separately
+  from the value: `navigate_segment_ex` consults the container (`rt_map_has`, sequence bounds)
+  so a stored JSON null reports found, and `resolve_path_ex` propagates that through the walk
+  (remaining path segments after a null report missing — a JSON null has no children). `Has()`
+  now returns true for a present null member and false for absence; `GetOr()` substitutes its
+  default only when the path is missing, returning the real null otherwise. Docs updated in
+  `docs/viperlib/text/formats.md`. Regression:
+  `test_has_and_get_or_distinguish_null_from_missing` in
+  `src/tests/runtime/RTJsonPathTests.cpp`, plus end-to-end verification on the VM. **Resolved.**
 
 ### VDOC-022 — The JsonPath source contract overstates the implemented syntax
 
@@ -364,6 +574,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** maintainers or generated docs based on implementation comments can advertise query
   forms that silently do something else or return no match.
 - **Source:** the contract comment and resolver in `src/runtime/text/rt_jsonpath.c`.
+- **Review (2026-07-15):** Verified and fixed. The file header now describes exactly the
+  implemented surface (dot segments, bracket indices with negatives, quoted bracket keys,
+  optional `$`, single wildcard in `Query` only), explicitly states recursive descent, slices,
+  filters, and unions are NOT implemented, and replaces the false "invalid expressions trap"
+  claim with the real contract (malformed forms resolve to no match without diagnostics).
+  `rt_jsonpath.h` contained no stale claims. Public docs already describe the correct syntax
+  table. **Resolved.**
 
 ### VDOC-023 — CSV conformance and delimiter contracts disagree with the runtime
 
@@ -377,6 +594,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** strict CSV consumers may reject generated files, and callers following the delimiter
   comment can unexpectedly trap.
 - **Source:** `src/runtime/text/rt_csv.c`, `rt_csv.h`, and RFC 4180 section 2.
+- **Review (2026-07-15):** Verified and fixed at the documentation level (the LF row endings and
+  lenient field counts are long-standing intentional behavior — switching Format to CRLF would
+  change every existing output). Both the `rt_csv.c` and `rt_csv.h` headers now say "RFC 4180
+  quoting rules" and enumerate the deviations explicitly (LF multi-row endings, unequal field
+  counts accepted, LF/CR parse extensions), and all four "first character used" delimiter
+  comments now state the real contract: exactly one byte, empty selects the comma default,
+  longer traps. The public docs note pointing at this finding was replaced with the accurate
+  one-byte-delimiter rule. **Resolved** (contracts corrected; behavior retained as documented).
 
 ### VDOC-024 — The TOML parser is not the v1.0 parser described by its source contract
 
@@ -391,6 +616,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** `IsValid` is not a TOML conformance check, typed data is lost during parsing, and a
   core TOML table-construction feature cannot be retrieved through the paired getter.
 - **Source:** `src/runtime/text/rt_toml.c` and the TOML 1.0/1.1 specifications.
+- **Review (2026-07-15):** Verified; fixed in two parts. (1) The functional defect — dotted
+  assignment keys stored literally and unreachable through the paired getters — is fixed:
+  `a.b = v` now constructs nested tables via `ensure_table_path` (matching section headers),
+  quoted keys keep their literal dots, leading/trailing dots and over-deep keys are rejected,
+  and duplicate dotted assignments invalidate the document like plain duplicates. (2) The
+  contract overstatement is corrected: the `rt_toml.c` header now describes the actual
+  TOML-subset parser (string-typed scalars, lenient bare values, structural rather than
+  conformance validation) instead of claiming v1.0 typed parsing. Upgrading to a conforming
+  typed v1.0 parser would change the runtime type of every parsed scalar (consumers rely on
+  `GetStr` today) — that is a breaking feature decision, not a review fix; public docs already
+  describe the permissive subset accurately. Regression:
+  `test_dotted_assignment_keys_build_nested_tables` in
+  `src/tests/runtime/RTTomlTests.cpp`; docs updated in `docs/viperlib/text/formats.md`.
+  **Resolved** (dotted keys fixed; subset behavior documented).
 
 ### VDOC-025 — Toml.Format drops deeply nested tables
 
@@ -403,6 +642,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** `Format(Parse(text))` can silently discard valid nested configuration data.
 - **Source:** `append_toml_value()` and `rt_toml_format()` in
   `src/runtime/text/rt_toml.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_toml_format` now emits recursively via a new
+  `toml_format_table`: scalar entries first, then subtables as dotted `[a.b.c]` section headers
+  at any depth (path segments escaped/quoted as needed). Maps in value position (e.g. inside
+  arrays) emit as inline tables `{k = v}` instead of empty strings. Recursion is bounded by
+  `TOML_MAX_DEPTH`, which also gives the TOML formatter the cycle protection VDOC-033 asks for
+  (a cyclic container now fails the format instead of recursing forever).
+  `Format(Parse("[a.b.c]\nvalue=\"ok\""))` round-trips. Docs note about lossy nesting replaced.
+  Regression: `test_format_emits_nested_tables_recursively` in
+  `src/tests/runtime/RTTomlTests.cpp`. **Resolved.**
 
 ### VDOC-026 — Xml.IsValid is a subset check, not a full well-formedness check
 
@@ -417,6 +665,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   description and source header. It checks acceptance by Viper's practical subset.
 - **Source:** `decode_entity()`, `skip_doctype()`, and `rt_xml_is_valid()` in
   `src/runtime/text/rt_xml.c`.
+- **Review (2026-07-15):** Verified; resolved at the documentation level. Implementing DTD
+  entity expansion/namespace processing would be a substantial parser feature (and DTD entity
+  expansion is a classic attack surface — billion-laughs — that a from-scratch game runtime has
+  little reason to take on), so the subset behavior is retained deliberately. The
+  `rt_xml_is_valid` comment now states explicitly that it checks acceptance by the practical
+  subset, NOT XML 1.0 well-formedness, and lists the gaps (DTD entities skipped, five predefined
+  entities + numeric references only, no namespace/UTF-8 validation); the `rt_xml.h` invariant
+  says "parses a practical XML subset" instead of "well-formed XML"; the public docs note now
+  states the same without an open-issue link. **Resolved** (subset documented as the contract).
 
 ### VDOC-027 — Yaml.Format can lose double precision and string bytes
 
@@ -429,6 +686,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   input value is otherwise supported.
 - **Source:** `format_value()`, `format_string()`, and `needs_quoting()` in
   `src/runtime/text/rt_yaml_format.c`.
+- **Review (2026-07-15):** Verified and fixed. Finite doubles now format with `%.17g`
+  (round-trip precision; `1.0000000000000002` survives format/reparse). String emission is now
+  length-aware end to end: `needs_quoting` and `format_string` take explicit byte lengths, an
+  embedded NUL forces quoting, the escape loop iterates the full byte length (NUL emits as
+  the `\u0000` escape), and plain scalars/keys append via a new byte-length `buf_append_bytes` — so no
+  string bytes are dropped at a NUL. Regression:
+  `test_format_preserves_double_precision_and_string_bytes` in
+  `src/tests/runtime/RTYamlTests.cpp`. **Resolved.**
 
 ### VDOC-028 — Unsupported YAML anchor syntax is silently misparsed
 
@@ -441,6 +706,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** valid YAML using anchors can be accepted with a materially different data model,
   making silent corruption more likely than an explicit compatibility failure.
 - **Source:** `src/runtime/text/rt_yaml.c` and evaluator probes against the installed binary.
+- **Review (2026-07-15):** Verified and fixed as an explicit compatibility failure (implementing
+  anchor/alias resolution stays out of scope for this YAML subset). A new
+  `reject_anchor_alias` guard fires at every plain-token start site — block mapping keys, block
+  plain scalars, flow values, and flow mapping keys — so `&name`/`*name` syntax now sets a
+  descriptive parse error ("YAML anchors and aliases are not supported") and invalidates the
+  document instead of silently misparsing it. Quoted and mid-token `&`/`*` characters remain
+  ordinary string content. Regression: `test_anchor_alias_syntax_is_rejected` in
+  `src/tests/runtime/RTYamlTests.cpp`. **Resolved.**
 
 ### VDOC-029 — JsonStream is not incremental despite its source-facing contract
 
@@ -454,6 +727,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** callers can correctly expect lower allocation overhead than `Json.Parse`, but cannot
   bound input-buffer memory or stream network/file chunks as the wording suggests.
 - **Source:** `src/runtime/text/rt_json_stream.h` and `rt_json_stream.c`.
+- **Review (2026-07-15):** Verified and fixed at the contract level (a feed/resume chunked-input
+  API would be a new feature). The `rt_json_stream.h` purpose now states it is a SAX-style pull
+  parser over one complete in-memory string — lower allocation than `Json.Parse` but NOT
+  incremental, with no feed/resume API. The `rt_json_stream_string_value` comment now matches
+  the header and implementation (empty string for non-string tokens, no trap claim).
+  **Resolved.**
 
 ### VDOC-030 — Ini.Parse(NULL) and Ini.Parse("") produce different document shapes
 
@@ -466,6 +745,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   inventories, and subsequent formatting/mutation starts from different shapes.
 - **Source:** `rt_ini_parse()` and `test_null_safety()` in
   `src/runtime/text/rt_ini.c` / `src/tests/runtime/RTIniTests.cpp`.
+- **Review (2026-07-15):** Verified and fixed. The default `""` section is now created lazily —
+  only when a key appears before the first named section — so `Parse(NULL)` and `Parse("")`
+  produce the identical empty document, and documents with only named sections no longer carry
+  a phantom empty section in `Sections()`. `test_sections_list` updated to the unified contract;
+  new regression `test_empty_and_null_inputs_share_shape` in
+  `src/tests/runtime/RTIniTests.cpp` (empty/NULL equivalence plus out-of-section keys still
+  landing in `""`). Docs updated in `docs/viperlib/text/formats.md`. **Resolved.**
 
 ### VDOC-031 — TOML parsing truncates raw input at an embedded NUL
 
@@ -478,6 +764,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** validation can accept only a prefix of the supplied runtime String, and parse/format
   do not agree on the library's binary-safe String model.
 - **Source:** `src/runtime/text/rt_toml.c`.
+- **Review (2026-07-15):** Verified and fixed. TOML documents are text, so `rt_toml_parse` now
+  rejects input containing an embedded NUL byte outright (`memchr` over the full runtime byte
+  length before the C-string walker runs) — `Parse` returns NULL and `IsValid` reports false
+  instead of silently accepting only the prefix. This aligns parse-side behavior with the
+  formatter's binary-safe model (which escapes NULs on output). Regression:
+  `test_parse_rejects_embedded_nul` in `src/tests/runtime/RTTomlTests.cpp`. **Resolved.**
 
 ### VDOC-032 — XML name validation stops at an embedded NUL
 
@@ -491,6 +783,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   character/name validation and later be truncated or formatted inconsistently.
 - **Source:** `is_valid_xml_name()` / `is_valid_xml_name_cstr()` in
   `src/runtime/text/rt_xml.c`.
+- **Review (2026-07-15):** Verified and fixed. `is_valid_xml_name` now scans the full runtime
+  byte length (the C-string variant was folded in and removed), so a name like `a NUL bad`
+  fails validation — NUL is not an XML name character — matching the text/comment/CDATA
+  validators that already scan full lengths. Regression:
+  `test_name_validation_scans_full_length` in `src/tests/runtime/RTXmlTests.cpp`. **Resolved.**
 
 ### VDOC-033 — TOML and YAML formatters do not guard cyclic containers
 
@@ -503,6 +800,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   returning an error or trapping with the intentional cycle diagnostic used by JSON.
 - **Source:** `format_value()` in `src/runtime/text/rt_yaml_format.c` and
   `append_toml_value()` in `src/runtime/text/rt_toml.c`.
+- **Review (2026-07-15):** Verified and fixed with bounded-depth guards in both formatters
+  (depth bounds subsume cycle detection: a cycle exceeds the bound and the format fails closed
+  with an empty result instead of exhausting the stack). TOML: `append_toml_value` and the new
+  recursive `toml_format_table` (VDOC-025) carry a depth parameter bounded by `TOML_MAX_DEPTH`.
+  YAML: `format_value` aborts via a `YAML_FORMAT_MAX_DEPTH` (200, matching the parser) flag that
+  `rt_yaml_format_indent` checks before returning. Regression:
+  `test_format_bounds_cyclic_containers` in `src/tests/runtime/RTYamlTests.cpp` (self-referencing
+  map formats to an empty string and the process survives). **Resolved.**
 
 ### VDOC-034 — JSON entry points disagree on raw UTF-8 validation
 
@@ -518,6 +823,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   advertised non-trapping bad-input path is bypassed for this case.
 - **Source:** the string loops in `src/runtime/text/rt_json_parse.c`,
   `rt_json_validate.c`, `rt_json_stream.c`, and `rt_json_format.c`.
+- **Review (2026-07-15):** Verified and fixed. The parser's raw-UTF-8 sequence validator moved
+  into the shared `rt_json_internal.h` (`json_raw_utf8_sequence_valid`) and is now used by all
+  three input paths: `rt_json_parse` (as before), `rt_json_is_valid` (new — IsValid can no
+  longer return true immediately before Parse traps, restoring Serialize's non-trapping
+  bad-input contract), and the JsonStream tokenizer (invalid sequences produce its normal error
+  token). `Format` intentionally keeps emitting stored string bytes unchanged: output-side
+  validation would reject legitimately stored bytes and break the binary-safe runtime String
+  model; documented as such. Regression: `test_is_valid_matches_parse_on_raw_utf8` in
+  `src/tests/runtime/RTJsonTests.cpp` (overlong, bare-continuation, truncated, and valid
+  multibyte cases). **Resolved.**
 
 ### VDOC-035 — `Toml.Format` can emit a float as integer syntax
 
@@ -529,6 +844,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** formatting and reparsing a supported value can silently change its numeric type;
   negative zero and other whole-valued doubles have the same issue.
 - **Source:** `append_toml_value()` in `src/runtime/text/rt_toml.c` and the TOML value grammar.
+- **Review (2026-07-15):** Verified and fixed. The F64 emission now appends `.0` when `%.17g`
+  produced a bare integer token (skipped when the output already contains `.`, an exponent, or
+  the inf/nan spellings, which are valid TOML float tokens), so whole-valued doubles — including
+  negative zero (`-0.0`) — keep their float type through Format/Parse. Regression:
+  `test_format_keeps_float_token` in `src/tests/runtime/RTTomlTests.cpp`; docs note updated.
+  **Resolved.**
 
 ### VDOC-036 — `Toml.GetStr` is missing from the `Toml` class manifest
 
@@ -543,6 +864,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   different public surfaces; a rebuild from the current manifest can regress alias/member lookup.
 - **Source:** `src/il/runtime/defs/api/math_text.def`,
   `src/il/runtime/defs/classes/io_text.def`, and `docs/generated/runtime/text.md`.
+- **Review (2026-07-15):** Verified and fixed. Added the missing
+  `RT_METHOD("GetStr", "str(obj,str)", TomlGetStr)` row to the `Viper.Data.Toml` class manifest,
+  so class metadata and qualified-call lookup expose the same surface (the RT_FUNC row already
+  existed). Runtime completeness check passes; generated docs regenerated; verified
+  `Toml.GetStr(...)` resolves end-to-end on the VM. **Resolved.**
 
 ### VDOC-037 — JSON-derived integer accessors have undefined out-of-range conversion
 
@@ -557,6 +883,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `rt_map_get_int*()` in `src/runtime/collections/rt_map.c`,
   `rt_jsonpath_get_int()` in `src/runtime/text/rt_jsonpath.c`, and `json_val_to_i64()` in
   `src/runtime/game/rt_leveldata.c`.
+- **Review (2026-07-15):** Verified and fixed. All four conversion sites
+  (`rt_map_get_int`/`_or`, `rt_jsonpath_get_int`, and level-data `json_val_to_i64`) now route
+  through the existing saturating `rt_f64_to_i64` helper (NaN → 0, above-range → INT64_MAX,
+  below-range → INT64_MIN, otherwise truncate toward zero), replacing the undefined raw C cast —
+  so results are identical on every platform/compiler. Verified `1e100`/`-1e100`/`42` on the VM.
+  Regression: `test_get_int_saturates_out_of_range` in `src/tests/runtime/RTJsonTests.cpp`.
+  **Resolved.**
 
 ### VDOC-038 — JsonPath ignores path bytes after an embedded NUL
 
@@ -569,6 +902,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   select a member other than the full byte sequence denotes.
 - **Source:** `resolve_path()` and `rt_jsonpath_query()` in
   `src/runtime/text/rt_jsonpath.c`.
+- **Review (2026-07-15):** Verified and fixed. A new `jsonpath_path_cstr` helper guards every
+  public entry (`Get`, `GetOr`, `Has`, `GetStr`, `GetInt`, `Query`): a path whose runtime byte
+  length extends past a NUL matches nothing (NULL / false / empty Seq) instead of silently
+  addressing the shorter C-string prefix. Regression:
+  `test_paths_with_embedded_nul_match_nothing` in
+  `src/tests/runtime/RTJsonPathTests.cpp`. **Resolved.**
 
 ### VDOC-039 — YAML numeric scalar parsing ignores bytes after an embedded NUL
 
@@ -581,6 +920,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** accepted YAML can silently discard a scalar suffix and change a string-like value
   into a number. Formatting then loses the suffix permanently.
 - **Source:** `parse_scalar()` in `src/runtime/text/rt_yaml.c`.
+- **Review (2026-07-15):** Verified and fixed. `parse_scalar` now detects an embedded NUL in the
+  scalar span up front and returns the whole span as an ordinary string (a NUL can never be part
+  of a numeric/boolean/null token), so no suffix bytes are discarded and the value keeps its
+  string type. Regression: `test_scalar_with_embedded_nul_stays_string` in
+  `src/tests/runtime/RTYamlTests.cpp`. **Resolved.**
 
 ### VDOC-040 — TOML and YAML validation accepts malformed UTF-8
 
@@ -595,6 +939,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** the cursor/scalar loops in `src/runtime/text/rt_toml.c` and
   `src/runtime/text/rt_yaml.c`. XML has the same subset limitation recorded in VDOC-026; JSON's
   entry-point disagreement is recorded in VDOC-034.
+- **Review (2026-07-15):** Verified and fixed. Added a shared `rt_utf8_span_valid` helper to the
+  string core (`rt_string_internal.h`/`rt_string_advanced.c`; rejects invalid leads, truncated/
+  invalid continuations, overlong encodings, surrogates, and values above U+10FFFF) and wired it
+  into both parsers' entry points: `rt_toml_parse` and `rt_yaml_parse` now reject non-UTF-8
+  input (so `IsValid` reports false for byte sequences like a standalone 0xFF), matching each
+  standard's character-stream requirement. Regression: `test_parse_rejects_malformed_utf8` in
+  `src/tests/runtime/RTYamlTests.cpp` (plus the TOML NUL-rejection test from VDOC-031 covering
+  the TOML entry guard path). **Resolved.**
 
 ### VDOC-041 — TOML and YAML numeric emission is locale-sensitive
 
@@ -612,6 +964,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** the double-format branches in `src/runtime/text/rt_toml.c`,
   `rt_yaml_format.c`, `rt_jsonpath.c`, `rt_serialize.c`, and `rt_numfmt.c`; compare the
   locale-isolated helpers in `src/runtime/text/rt_json_format.c` and the core conversion path.
+- **Review (2026-07-15):** Verified and fixed at every listed site. Finite-double emission in
+  the TOML formatter, YAML formatter, JsonPath string projection, and Serialize scalar
+  projection now uses the locale-isolated `rt_format_f64_roundtrip` (which also upgrades those
+  paths to exact round-trip output); TOML's non-finite branch keeps `%.17g` (inf/nan carry no
+  separator and are valid TOML tokens). `InvariantNumberFormat` (`rt_numfmt.c`) routes its
+  `%.*f` conversions through `rt_format_snprintf_c_locale`, newly exported from the core
+  formatter, so its output cannot inherit an embedding process's decimal-comma locale.
+  Regression: `test_decimals_locale_independent` in `src/tests/runtime/RTNumFmtTests.cpp`
+  (switches to a comma locale when available and asserts `.`-separated output), alongside the
+  existing JSON locale-independence test. **Resolved.**
 
 ### VDOC-042 — Structured-format source comments misstate runtime type behavior
 

@@ -110,11 +110,11 @@ void *rt_ini_parse(rt_string text) {
     size_t src_len = (size_t)rt_str_len(text);
     const char *end = src + src_len;
 
-    // Current section name (starts as "" for default section)
+    // Current section name (starts as "" for the default section). The default
+    // section's Map is created lazily on the first out-of-section key so that
+    // Parse(NULL) and Parse("") produce the same empty document shape.
     rt_string current_section = ini_string_from_bytes_or_trap("", 0);
-    void *current_map = rt_map_new();
-    rt_map_set(root, current_section, current_map);
-    release_local_obj(current_map);
+    void *current_map = NULL;
 
     const char *line_start = src;
     while (line_start <= end) {
@@ -161,6 +161,13 @@ void *rt_ini_parse(rt_string text) {
 
                 rt_string k = ini_string_from_bytes_or_trap(key, key_len);
                 rt_string v = ini_string_from_bytes_or_trap(val, val_len);
+                if (!current_map) {
+                    // First key outside any section: materialize the default section.
+                    void *default_section = rt_map_new();
+                    rt_map_set(root, current_section, default_section);
+                    current_map = default_section;
+                    release_local_obj(default_section);
+                }
                 rt_map_set(current_map, k, (void *)v);
                 rt_string_unref(k);
                 rt_string_unref(v);

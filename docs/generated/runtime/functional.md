@@ -13,7 +13,10 @@ Provides Lazy functionality for functional programming workflows.
 
 `Viper.Functional.Lazy` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `IsEvaluated` and
-operations including `Of`, `OfStr`, `OfI64`, `Get`.
+operations including `New`, `Of`, `OfStr`, `OfI64`, `Get`. `New` wraps a zero-argument
+supplier that is invoked once on first access; the `Of*` factories wrap eager values.
+
+Constructor: `Viper.Functional.Lazy.New`
 
 #### Properties
 
@@ -34,6 +37,7 @@ operations including `Of`, `OfStr`, `OfI64`, `Get`.
 | <a id="viper-functional-lazy-force"></a>`Force` | `void()` | `Viper.Functional.Lazy.Force` |
 | <a id="viper-functional-lazy-map"></a>`Map` | `obj<Viper.Functional.Lazy>(obj)` | `Viper.Functional.Lazy.Map` |
 | <a id="viper-functional-lazy-andthen"></a>`AndThen` | `obj<Viper.Functional.Lazy>(obj)` | `Viper.Functional.Lazy.AndThen` |
+| <a id="viper-functional-lazy-new"></a>`New` | `obj<Viper.Functional.Lazy>(obj)` | `Viper.Functional.Lazy.New` |
 
 <a id="viper-functional-lazyseq"></a>
 ### `Viper.Functional.LazySeq`
@@ -78,6 +82,7 @@ to construct the class directly. Its public surface exposes properties such as `
 
 | Function | Signature | Runtime symbol |
 |---|---|---|
+| `Viper.Functional.Lazy.New` | `obj<Viper.Functional.Lazy>(obj)` | `rt_lazy_new_wrapper` |
 | `Viper.Functional.Lazy.Of` | `obj<Viper.Functional.Lazy>(obj)` | `rt_lazy_of` |
 | `Viper.Functional.Lazy.OfStr` | `obj<Viper.Functional.Lazy>(str)` | `rt_lazy_of_str` |
 | `Viper.Functional.Lazy.OfI64` | `obj<Viper.Functional.Lazy>(i64)` | `rt_lazy_of_i64` |

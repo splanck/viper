@@ -240,16 +240,19 @@ const RuntimeClass *findRuntimeClassByQName(std::string_view qname) {
 /// @details This function converts the compact type tokens used in signature
 /// strings to the ILScalarType enumeration. The mapping is:
 ///
-/// | Token | ILScalarType | Description                    |
-/// |-------|--------------|--------------------------------|
-/// | i64   | I64          | 64-bit signed integer          |
-/// | f64   | F64          | 64-bit floating point          |
-/// | f32   | F64          | 32-bit float widened to f64    |
-/// | i1    | Bool         | Boolean (true/false)           |
-/// | str   | String       | String reference               |
-/// | void  | Void         | No value (procedures)          |
-/// | obj   | Object       | Runtime class instance pointer |
-/// | ptr   | Object       | Alias for obj                  |
+/// | Token   | ILScalarType | Description                       |
+/// |---------|--------------|-----------------------------------|
+/// | i64     | I64          | 64-bit signed integer             |
+/// | i16/i32 | I64          | Sub-64 integers widened to i64    |
+/// | f64     | F64          | 64-bit floating point             |
+/// | i1      | Bool         | Boolean (true/false)              |
+/// | str     | String       | String reference                  |
+/// | void    | Void         | No value (procedures)             |
+/// | obj     | Object       | Runtime class instance pointer    |
+/// | ptr     | Object       | Alias for obj                     |
+///
+/// The accepted token set matches RuntimeSignatureParser.cpp exactly; there
+/// are no i8 or f32 IL types.
 ///
 /// Unrecognized tokens return Unknown, which signals a parse error.
 ///
@@ -270,11 +273,11 @@ ILScalarType mapILToken(std::string_view tok) {
     // without meaningful performance benefit.
     if (tok == "i64")
         return ILScalarType::I64;
-    if (tok == "f64" || tok == "f32")
+    if (tok == "f64")
         return ILScalarType::F64;
     if (tok == "i1" || tok == "bool")
         return ILScalarType::Bool;
-    if (tok == "i32" || tok == "i16" || tok == "i8")
+    if (tok == "i32" || tok == "i16")
         return ILScalarType::I64; // Widen sub-64 integers to i64
     if (tok == "str")
         return ILScalarType::String;

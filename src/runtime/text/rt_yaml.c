@@ -30,6 +30,8 @@
 
 #include "rt_yaml.h"
 
+#include "rt_string_internal.h"
+
 #include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_map.h"
@@ -338,6 +340,12 @@ static bool looks_like_decimal_float(const char *str, size_t len) {
 void *parse_scalar(const char *str, size_t len) {
     if (len == 0)
         return NULL; // YAML null
+
+    // An embedded NUL can never be part of a numeric/boolean/null token, and
+    // the C-string converters below would silently stop at it (VDOC-039):
+    // treat the whole span as an ordinary string scalar instead.
+    if (memchr(str, '\0', len) != NULL)
+        return rt_string_from_bytes(str, (int64_t)len);
 
     // Null
     if (is_special_value(str, len, "null") || is_special_value(str, len, "~") ||
@@ -667,6 +675,7 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote) {
 
 /// @brief Forward declaration: dispatch for any top-level value (scalar / seq / map).
 static void *parse_value(yaml_parser *p, int base_indent);
+static int reject_anchor_alias(yaml_parser *p);
 
 /// @brief Parse a block-style sequence (`- item` lines at `base_indent`).
 ///
@@ -821,6 +830,11 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
             }
             parser_skip_spaces(p);
         } else {
+            if (reject_anchor_alias(p)) {
+                yaml_release(map);
+                p->depth--;
+                return NULL;
+            }
             size_t key_start = p->pos;
             while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '\n')
                 parser_advance(p);
@@ -910,6 +924,8 @@ static rt_string parse_flow_key(yaml_parser *p) {
     if (c == '"' || c == '\'')
         return parse_quoted_string(p, c);
 
+    if (reject_anchor_alias(p))
+        return NULL;
     size_t start = p->pos;
     while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '}' &&
            parser_peek(p) != '\n')
@@ -1072,6 +1088,20 @@ static void *parse_flow_mapping(yaml_parser *p) {
     return NULL;
 }
 
+/// @brief Reject unsupported YAML anchor/alias indicators at a plain-token start.
+/// @details Anchors (&name) and aliases (*name) are not implemented; accepting
+///          them silently produces a materially different data model, so they
+///          invalidate the document with an explicit diagnostic instead.
+/// @return 1 when the current position starts an anchor/alias (error set), else 0.
+static int reject_anchor_alias(yaml_parser *p) {
+    char c = parser_peek(p);
+    if (c == '&' || c == '*') {
+        set_error("YAML anchors and aliases are not supported", p->line);
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Parse a single value inside a flow collection context (scalar, quoted string,
 ///        or nested `[`/`{`). Stops before `,`, `]`, or `}` without consuming them.
 static void *parse_flow_value(yaml_parser *p) {
@@ -1083,6 +1113,8 @@ static void *parse_flow_value(yaml_parser *p) {
         return parse_flow_mapping(p);
     if (c == '"' || c == '\'')
         return (void *)parse_quoted_string(p, c);
+    if (reject_anchor_alias(p))
+        return NULL;
 
     size_t start = p->pos;
     while (!parser_eof(p) && parser_peek(p) != ',' && parser_peek(p) != ']' &&
@@ -1264,6 +1296,8 @@ static void *parse_value(yaml_parser *p, int base_indent) {
     }
 
     // Plain scalar
+    if (reject_anchor_alias(p))
+        return NULL;
     size_t start = p->pos;
     while (!parser_eof(p) && parser_peek(p) != '\n') {
         if (parser_peek(p) == '#' &&
@@ -1306,6 +1340,12 @@ void *rt_yaml_parse(rt_string text) {
 
     const char *cstr = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
+
+    // YAML requires a valid UTF-8 character stream (VDOC-040).
+    if (!cstr || len < 0 || !rt_utf8_span_valid(cstr, (size_t)len)) {
+        set_error("invalid UTF-8 in document", 1);
+        return NULL;
+    }
 
     yaml_parser p;
     parser_init(&p, cstr, (size_t)len);

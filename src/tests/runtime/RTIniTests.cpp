@@ -138,9 +138,35 @@ static void test_sections_list() {
                                "[beta]\nb = 2\n");
     void *ini = rt_ini_parse(input);
     void *sects = rt_ini_sections(ini);
-    // Should have 3: "", "alpha", "beta"
-    assert(rt_seq_len(sects) == 3);
+    // The default "" section is created lazily (only when out-of-section keys
+    // exist), so this document has exactly "alpha" and "beta" (VDOC-030).
+    assert(rt_seq_len(sects) == 2);
 
+    rt_string_unref(input);
+}
+
+static void test_empty_and_null_inputs_share_shape() {
+    // VDOC-030: NULL input and an empty string must produce the same empty
+    // document shape (no implicit default section).
+    void *from_null = rt_ini_parse(NULL);
+    rt_string empty = make_str("");
+    void *from_empty = rt_ini_parse(empty);
+    assert(rt_map_len(from_null) == 0);
+    assert(rt_map_len(from_empty) == 0);
+    rt_string_unref(empty);
+
+    // Out-of-section keys still land in the default "" section.
+    rt_string input = make_str("k = v\n[s]\nk2 = v2\n");
+    void *ini = rt_ini_parse(input);
+    void *sects = rt_ini_sections(ini);
+    assert(rt_seq_len(sects) == 2); // "" and "s"
+    rt_string sect = make_str("");
+    rt_string key = make_str("k");
+    rt_string got = rt_ini_get(ini, sect, key);
+    assert(str_eq(got, "v"));
+    rt_string_unref(got);
+    rt_string_unref(sect);
+    rt_string_unref(key);
     rt_string_unref(input);
 }
 
@@ -329,6 +355,7 @@ int main() {
     test_parse_whitespace_trimming();
     test_has_section();
     test_sections_list();
+    test_empty_and_null_inputs_share_shape();
     test_set_new_key();
     test_set_creates_section();
     test_remove();

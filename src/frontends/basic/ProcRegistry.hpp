@@ -90,6 +90,13 @@ struct ProcSignature {
     /// @brief True when this signature was imported from the runtime catalog.
     bool isRuntimeBuiltin{false};
 
+    /// @brief True when a runtime builtin returns an object reference.
+    /// @details The AST @ref Type enum cannot express object returns, so runtime
+    ///          helpers returning `obj` are seeded with @ref retType `I64`. This
+    ///          flag preserves the object-ness so semantic analysis can type the
+    ///          call result as OBJECT instead of INTEGER.
+    bool objectReturn{false};
+
     /// @brief Canonical runtime target name for imported helpers.
     std::string runtimeTarget;
 
@@ -98,6 +105,12 @@ struct ProcSignature {
 
     /// @brief Per-parameter unsafe raw pointer flags from the runtime catalog.
     std::vector<bool> rawPointerParams;
+
+    /// @brief Per-parameter object flags for runtime builtins.
+    /// @details Object parameters are seeded with @ref Param::type `I64` because
+    ///          the AST type enum cannot express objects; this mask preserves the
+    ///          object-ness so argument checking can reject primitives.
+    std::vector<bool> objectParams;
 };
 
 using ProcTable = std::unordered_map<std::string, ProcSignature, ProcStringHash, std::equal_to<>>;

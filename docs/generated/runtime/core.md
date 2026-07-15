@@ -132,7 +132,7 @@ Constructor: `Viper.Core.MessageBus.New`
 | <a id="viper-core-messagebus-publish"></a>`Publish` | `i64(str,obj)` | `Viper.Core.MessageBus.Publish` |
 | <a id="viper-core-messagebus-subscribe"></a>`Subscribe` | `i64(str,obj)` | `Viper.Core.MessageBus.Subscribe` |
 | <a id="viper-core-messagebus-subscribercount"></a>`SubscriberCount` | `i64(str)` | `Viper.Core.MessageBus.SubscriberCount` |
-| <a id="viper-core-messagebus-topics"></a>`Topics` | `obj()` | `Viper.Core.MessageBus.Topics` |
+| <a id="viper-core-messagebus-topics"></a>`Topics` | `seq<str>()` | `Viper.Core.MessageBus.Topics` |
 | <a id="viper-core-messagebus-unsubscribe"></a>`Unsubscribe` | `i1(i64)` | `Viper.Core.MessageBus.Unsubscribe` |
 | <a id="viper-core-messagebus-new"></a>`New` | `obj()` | `Viper.Core.MessageBus.New` |
 
@@ -185,7 +185,7 @@ construct the class directly. Its public surface exposes operations including `E
 | `Viper.Core.MessageBus.Publish` | `i64(obj,str,obj)` | `rt_msgbus_publish` |
 | `Viper.Core.MessageBus.SubscriberCount` | `i64(obj,str)` | `rt_msgbus_subscriber_count` |
 | <a id="viper-core-messagebus-get-totalsubscriptions"></a>`Viper.Core.MessageBus.get_TotalSubscriptions` | `i64(obj)` | `rt_msgbus_total_subscriptions` |
-| `Viper.Core.MessageBus.Topics` | `obj(obj)` | `rt_msgbus_topics` |
+| `Viper.Core.MessageBus.Topics` | `seq<str>(obj)` | `rt_msgbus_topics` |
 | `Viper.Core.MessageBus.ClearTopic` | `void(obj,str)` | `rt_msgbus_clear_topic` |
 | `Viper.Core.MessageBus.Clear` | `void(obj)` | `rt_msgbus_clear` |
 | `Viper.Core.Diagnostics.Assert` | `void(i1,str)` | `rt_diag_assert` |

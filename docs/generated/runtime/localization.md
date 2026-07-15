@@ -36,7 +36,7 @@ Constructor: `Viper.Localization.Locale.New`
 | <a id="viper-localization-locale-fromparts"></a>`FromParts` | `obj(str,str,str)` | `Viper.Localization.Locale.FromParts` |
 | <a id="viper-localization-locale-invariant"></a>`Invariant` | `obj()` | `Viper.Localization.Locale.Invariant` |
 | <a id="viper-localization-locale-equals"></a>`Equals` | `i1(obj)` | `Viper.Localization.Locale.Equals` |
-| <a id="viper-localization-locale-fallbacks"></a>`Fallbacks` | `obj()` | `Viper.Localization.Locale.Fallbacks` |
+| <a id="viper-localization-locale-fallbacks"></a>`Fallbacks` | `obj<Viper.Collections.List>()` | `Viper.Localization.Locale.Fallbacks` |
 | <a id="viper-localization-locale-tostring"></a>`ToString` | `str()` | `Viper.Localization.Locale.ToString` |
 | <a id="viper-localization-locale-new"></a>`New` | `obj()` | `Viper.Localization.Locale.New` |
 
@@ -95,7 +95,7 @@ Constructor: `Viper.Localization.MessageBundle.New`
 | <a id="viper-localization-messagebundle-formatwith"></a>`FormatWith` | `str(str,obj)` | `Viper.Localization.MessageBundle.FormatWith` |
 | <a id="viper-localization-messagebundle-plural"></a>`Plural` | `str(str,i64,obj)` | `Viper.Localization.MessageBundle.Plural` |
 | <a id="viper-localization-messagebundle-fallback"></a>`Fallback` | `obj(obj)` | `Viper.Localization.MessageBundle.Fallback` |
-| <a id="viper-localization-messagebundle-keys"></a>`Keys` | `obj()` | `Viper.Localization.MessageBundle.Keys` |
+| <a id="viper-localization-messagebundle-keys"></a>`Keys` | `obj<Viper.Collections.List>()` | `Viper.Localization.MessageBundle.Keys` |
 | <a id="viper-localization-messagebundle-new"></a>`New` | `obj()` | `Viper.Localization.MessageBundle.New` |
 
 <a id="viper-localization-listformat"></a>
@@ -230,7 +230,7 @@ callers to construct the class directly. Its public surface exposes operations i
 | <a id="viper-localization-pluralrules-cardinal"></a>`Cardinal` | `str(f64)` | `Viper.Localization.PluralRules.Cardinal` |
 | <a id="viper-localization-pluralrules-cardinalint"></a>`CardinalInt` | `str(i64)` | `Viper.Localization.PluralRules.CardinalInt` |
 | <a id="viper-localization-pluralrules-ordinal"></a>`Ordinal` | `str(i64)` | `Viper.Localization.PluralRules.Ordinal` |
-| <a id="viper-localization-pluralrules-categories"></a>`Categories` | `obj()` | `Viper.Localization.PluralRules.Categories` |
+| <a id="viper-localization-pluralrules-categories"></a>`Categories` | `obj<Viper.Collections.List>()` | `Viper.Localization.PluralRules.Categories` |
 
 <a id="viper-localization-numberformat"></a>
 ### `Viper.Localization.NumberFormat`
@@ -292,7 +292,7 @@ Its public surface exposes operations including `Current`, `SetCurrent`, `System
 | <a id="viper-localization-localemanager-current"></a>`Current` | `obj()` | `Viper.Localization.LocaleManager.Current` |
 | <a id="viper-localization-localemanager-setcurrent"></a>`SetCurrent` | `void(obj)` | `Viper.Localization.LocaleManager.SetCurrent` |
 | <a id="viper-localization-localemanager-system"></a>`System` | `obj()` | `Viper.Localization.LocaleManager.System` |
-| <a id="viper-localization-localemanager-available"></a>`Available` | `obj()` | `Viper.Localization.LocaleManager.Available` |
+| <a id="viper-localization-localemanager-available"></a>`Available` | `obj<Viper.Collections.List>()` | `Viper.Localization.LocaleManager.Available` |
 | <a id="viper-localization-localemanager-isloaded"></a>`IsLoaded` | `i1(obj)` | `Viper.Localization.LocaleManager.IsLoaded` |
 | <a id="viper-localization-localemanager-loadfromjson"></a>`LoadFromJson` | `void(str)` | `Viper.Localization.LocaleManager.LoadFromJson` |
 | <a id="viper-localization-localemanager-tryloadfromjson"></a>`TryLoadFromJson` | `i1(str)` | `Viper.Localization.LocaleManager.TryLoadFromJson` |
@@ -321,7 +321,7 @@ Its public surface exposes operations including `Current`, `SetCurrent`, `System
 | `Viper.Localization.MessageBundle.FormatWith` | `str(obj,str,obj)` | `rt_message_bundle_format_with` |
 | `Viper.Localization.MessageBundle.Plural` | `str(obj,str,i64,obj)` | `rt_message_bundle_plural` |
 | `Viper.Localization.MessageBundle.Fallback` | `obj(obj,obj)` | `rt_message_bundle_set_fallback` |
-| `Viper.Localization.MessageBundle.Keys` | `obj(obj)` | `rt_message_bundle_keys` |
+| `Viper.Localization.MessageBundle.Keys` | `obj<Viper.Collections.List>(obj)` | `rt_message_bundle_keys` |
 | <a id="viper-localization-messagebundle-get-locale"></a>`Viper.Localization.MessageBundle.get_Locale` | `obj(obj)` | `rt_message_bundle_get_locale` |
 | <a id="viper-localization-messagebundle-get-count"></a>`Viper.Localization.MessageBundle.get_Count` | `i64(obj)` | `rt_message_bundle_get_count` |
 | `Viper.Localization.ListFormat.New` | `obj()` | `rt_list_format_new` |
@@ -367,7 +367,7 @@ Its public surface exposes operations including `Current`, `SetCurrent`, `System
 | `Viper.Localization.PluralRules.Cardinal` | `str(obj,f64)` | `rt_plural_rules_cardinal` |
 | `Viper.Localization.PluralRules.CardinalInt` | `str(obj,i64)` | `rt_plural_rules_cardinal_int` |
 | `Viper.Localization.PluralRules.Ordinal` | `str(obj,i64)` | `rt_plural_rules_ordinal` |
-| `Viper.Localization.PluralRules.Categories` | `obj(obj)` | `rt_plural_rules_categories` |
+| `Viper.Localization.PluralRules.Categories` | `obj<Viper.Collections.List>(obj)` | `rt_plural_rules_categories` |
 | `Viper.Localization.NumberFormat.New` | `obj()` | `rt_numformat_new` |
 | `Viper.Localization.NumberFormat.ForLocale` | `obj(obj)` | `rt_numformat_for_locale` |
 | `Viper.Localization.NumberFormat.Decimal` | `str(obj,f64)` | `rt_numformat_decimal` |
@@ -401,7 +401,7 @@ Its public surface exposes operations including `Current`, `SetCurrent`, `System
 | `Viper.Localization.Locale.FromParts` | `obj(str,str,str)` | `rt_locale_from_parts` |
 | `Viper.Localization.Locale.Invariant` | `obj()` | `rt_locale_invariant` |
 | `Viper.Localization.Locale.Equals` | `i1(obj,obj)` | `rt_locale_equals` |
-| `Viper.Localization.Locale.Fallbacks` | `obj(obj)` | `rt_locale_fallbacks` |
+| `Viper.Localization.Locale.Fallbacks` | `obj<Viper.Collections.List>(obj)` | `rt_locale_fallbacks` |
 | `Viper.Localization.Locale.ToString` | `str(obj)` | `rt_locale_to_string` |
 | <a id="viper-localization-locale-get-language"></a>`Viper.Localization.Locale.get_Language` | `str(obj)` | `rt_locale_language` |
 | <a id="viper-localization-locale-get-script"></a>`Viper.Localization.Locale.get_Script` | `str(obj)` | `rt_locale_script` |
@@ -418,7 +418,7 @@ Its public surface exposes operations including `Current`, `SetCurrent`, `System
 | `Viper.Localization.LocaleManager.Current` | `obj()` | `rt_locale_manager_current` |
 | `Viper.Localization.LocaleManager.SetCurrent` | `void(obj)` | `rt_locale_manager_set_current` |
 | `Viper.Localization.LocaleManager.System` | `obj()` | `rt_locale_manager_system` |
-| `Viper.Localization.LocaleManager.Available` | `obj()` | `rt_locale_manager_available` |
+| `Viper.Localization.LocaleManager.Available` | `obj<Viper.Collections.List>()` | `rt_locale_manager_available` |
 | `Viper.Localization.LocaleManager.IsLoaded` | `i1(obj)` | `rt_locale_manager_is_loaded` |
 | `Viper.Localization.LocaleManager.LoadFromJson` | `void(str)` | `rt_locale_manager_load_from_json` |
 | `Viper.Localization.LocaleManager.TryLoadFromJson` | `i1(str)` | `rt_locale_manager_try_load_from_json` |

@@ -220,56 +220,6 @@ static int json_string_ensure_capacity(char **buf_io, size_t *cap_io, size_t len
     return 1;
 }
 
-/// @brief Validate a raw UTF-8 sequence beginning with @p lead.
-/// @details JSON strings are Unicode text. Escaped codepoints are decoded by
-///          this parser; raw non-ASCII bytes must already be valid UTF-8.
-///          Overlong encodings, surrogate codepoints, and values above
-///          U+10FFFF are rejected.
-/// @param lead First byte already consumed from the parser.
-/// @param rest Remaining unconsumed input bytes.
-/// @param rest_len Number of bytes available in @p rest.
-/// @param extra_out Receives the number of continuation bytes to consume.
-/// @return 1 when the sequence is valid, 0 otherwise.
-static int json_raw_utf8_sequence_valid(unsigned char lead,
-                                        const char *rest,
-                                        size_t rest_len,
-                                        size_t *extra_out) {
-    size_t extra = 0;
-    uint32_t cp = 0;
-    if (extra_out)
-        *extra_out = 0;
-    if (lead < 0x80)
-        return 1;
-    if (lead >= 0xC2 && lead <= 0xDF) {
-        extra = 1;
-        cp = lead & 0x1Fu;
-    } else if (lead >= 0xE0 && lead <= 0xEF) {
-        extra = 2;
-        cp = lead & 0x0Fu;
-    } else if (lead >= 0xF0 && lead <= 0xF4) {
-        extra = 3;
-        cp = lead & 0x07u;
-    } else {
-        return 0;
-    }
-    if (rest_len < extra)
-        return 0;
-    for (size_t i = 0; i < extra; i++) {
-        unsigned char ch = (unsigned char)rest[i];
-        if ((ch & 0xC0u) != 0x80u)
-            return 0;
-        cp = (cp << 6) | (uint32_t)(ch & 0x3Fu);
-    }
-    if ((extra == 2 && cp < 0x800u) || (extra == 3 && cp < 0x10000u))
-        return 0;
-    if (cp >= 0xD800u && cp <= 0xDFFFu)
-        return 0;
-    if (cp > 0x10FFFFu)
-        return 0;
-    if (extra_out)
-        *extra_out = extra;
-    return 1;
-}
 
 /// @brief Parse a JSON string (starting after the opening quote).
 static rt_string parse_string(json_parser *p) {

@@ -107,6 +107,22 @@ thread = Viper.Threads.Thread.Start(ADDRESSOF Worker, 0)
 )"));
 }
 
+TEST(BasicRuntimeCalls, JsonClassAliasesResolve) {
+    // Class-surface aliases without same-named function-registry rows must be
+    // callable from BASIC (VDOC-019): Json.Get*/Set*/Has alias Map functions.
+    ASSERT_TRUE(compileOk(R"(
+DIM data AS OBJECT
+data = Viper.Data.Json.NewObject()
+Viper.Data.Json.SetStr(data, "name", "zia")
+Viper.Data.Json.SetInt(data, "version", 1)
+DIM name AS STRING
+name = Viper.Data.Json.GetStr(data, "name")
+DIM present AS BOOLEAN
+present = Viper.Data.Json.Has(data, "name")
+PRINT Viper.Data.Json.Format(data)
+)"));
+}
+
 TEST(BasicRuntimeCalls, CallbackRuntimeCallsCompileThroughAddressOf) {
     ASSERT_TRUE(compileOk(R"(
 FUNCTION KeepIt(item AS OBJECT) AS BOOLEAN

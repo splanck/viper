@@ -34,12 +34,12 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-data-xml-hasattr"></a>`HasAttr` | `i1(obj,str)` | `Viper.Data.Xml.HasAttr` |
 | <a id="viper-data-xml-setattr"></a>`SetAttr` | `void(obj,str,str)` | `Viper.Data.Xml.SetAttr` |
 | <a id="viper-data-xml-removeattr"></a>`RemoveAttr` | `i1(obj,str)` | `Viper.Data.Xml.RemoveAttr` |
-| <a id="viper-data-xml-attrnames"></a>`AttrNames` | `obj(obj)` | `Viper.Data.Xml.AttrNames` |
-| <a id="viper-data-xml-children"></a>`Children` | `obj(obj)` | `Viper.Data.Xml.Children` |
+| <a id="viper-data-xml-attrnames"></a>`AttrNames` | `seq<str>(obj)` | `Viper.Data.Xml.AttrNames` |
+| <a id="viper-data-xml-children"></a>`Children` | `seq<obj>(obj)` | `Viper.Data.Xml.Children` |
 | <a id="viper-data-xml-childcount"></a>`ChildCount` | `i64(obj)` | `Viper.Data.Xml.ChildCount` |
 | <a id="viper-data-xml-childat"></a>`ChildAt` | `obj(obj,i64)` | `Viper.Data.Xml.ChildAt` |
 | <a id="viper-data-xml-child"></a>`Child` | `obj(obj,str)` | `Viper.Data.Xml.Child` |
-| <a id="viper-data-xml-childrenbytag"></a>`ChildrenByTag` | `obj(obj,str)` | `Viper.Data.Xml.ChildrenByTag` |
+| <a id="viper-data-xml-childrenbytag"></a>`ChildrenByTag` | `seq<obj>(obj,str)` | `Viper.Data.Xml.ChildrenByTag` |
 | <a id="viper-data-xml-append"></a>`Append` | `void(obj,obj)` | `Viper.Data.Xml.Append` |
 | <a id="viper-data-xml-insert"></a>`Insert` | `void(obj,i64,obj)` | `Viper.Data.Xml.Insert` |
 | <a id="viper-data-xml-remove"></a>`Remove` | `i1(obj,obj)` | `Viper.Data.Xml.Remove` |
@@ -47,7 +47,7 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-data-xml-settext"></a>`SetText` | `void(obj,str)` | `Viper.Data.Xml.SetText` |
 | <a id="viper-data-xml-parent"></a>`Parent` | `obj(obj)` | `Viper.Data.Xml.Parent` |
 | <a id="viper-data-xml-root"></a>`Root` | `obj(obj)` | `Viper.Data.Xml.Root` |
-| <a id="viper-data-xml-findall"></a>`FindAll` | `obj(obj,str)` | `Viper.Data.Xml.FindAll` |
+| <a id="viper-data-xml-findall"></a>`FindAll` | `seq<obj>(obj,str)` | `Viper.Data.Xml.FindAll` |
 | <a id="viper-data-xml-find"></a>`Find` | `obj<Viper.Option>(obj,str)` | `Viper.Data.Xml.Find` |
 | <a id="viper-data-xml-format"></a>`Format` | `str(obj)` | `Viper.Data.Xml.Format` |
 | <a id="viper-data-xml-formatpretty"></a>`FormatPretty` | `str(obj,i64)` | `Viper.Data.Xml.FormatPretty` |
@@ -118,10 +118,10 @@ construct the class directly. Its public surface exposes operations including `F
 | <a id="viper-data-csv-formatlinewith"></a>`FormatLineWith` | `str(obj,str)` | `Viper.Data.Csv.FormatLineWith` |
 | <a id="viper-data-csv-formatwith"></a>`FormatWith` | `str(obj,str)` | `Viper.Data.Csv.FormatWith` |
 | <a id="viper-data-csv-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Data.Csv.IsValid` |
-| <a id="viper-data-csv-parse"></a>`Parse` | `obj(str)` | `Viper.Data.Csv.Parse` |
+| <a id="viper-data-csv-parse"></a>`Parse` | `seq<obj>(str)` | `Viper.Data.Csv.Parse` |
 | <a id="viper-data-csv-parseline"></a>`ParseLine` | `seq<str>(str)` | `Viper.Data.Csv.ParseLine` |
 | <a id="viper-data-csv-parselinewith"></a>`ParseLineWith` | `seq<str>(str,str)` | `Viper.Data.Csv.ParseLineWith` |
-| <a id="viper-data-csv-parsewith"></a>`ParseWith` | `obj(str,str)` | `Viper.Data.Csv.ParseWith` |
+| <a id="viper-data-csv-parsewith"></a>`ParseWith` | `seq<obj>(str,str)` | `Viper.Data.Csv.ParseWith` |
 
 <a id="viper-data-ini"></a>
 ### `Viper.Data.Ini`
@@ -141,7 +141,7 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-data-ini-get"></a>`Get` | `str(obj,str,str)` | `Viper.Data.Ini.Get` |
 | <a id="viper-data-ini-set"></a>`Set` | `void(obj,str,str,str)` | `Viper.Data.Ini.Set` |
 | <a id="viper-data-ini-hassection"></a>`HasSection` | `i1(obj,str)` | `Viper.Data.Ini.HasSection` |
-| <a id="viper-data-ini-sections"></a>`Sections` | `obj(obj)` | `Viper.Data.Ini.Sections` |
+| <a id="viper-data-ini-sections"></a>`Sections` | `seq<str>(obj)` | `Viper.Data.Ini.Sections` |
 | <a id="viper-data-ini-remove"></a>`Remove` | `i1(obj,str,str)` | `Viper.Data.Ini.Remove` |
 
 <a id="viper-data-json"></a>
@@ -169,7 +169,7 @@ construct the class directly. Its public surface exposes operations including `F
 | <a id="viper-data-json-setint"></a>`SetInt` | `void(obj,str,i64)` | `Viper.Collections.Map.SetInt` |
 | <a id="viper-data-json-setbool"></a>`SetBool` | `void(obj,str,i1)` | `Viper.Collections.Map.SetBool` |
 | <a id="viper-data-json-parse"></a>`Parse` | `obj(str)` | `Viper.Data.Json.Parse` |
-| <a id="viper-data-json-parsearray"></a>`ParseArray` | `obj(str)` | `Viper.Data.Json.ParseArray` |
+| <a id="viper-data-json-parsearray"></a>`ParseArray` | `seq<obj>(str)` | `Viper.Data.Json.ParseArray` |
 | <a id="viper-data-json-parseobject"></a>`ParseObject` | `obj<Viper.Collections.Map>(str)` | `Viper.Data.Json.ParseObject` |
 | <a id="viper-data-json-typeof"></a>`TypeOf` | `str(obj)` | `Viper.Data.Json.TypeOf` |
 
@@ -239,7 +239,7 @@ construct the class directly. Its public surface exposes operations including `G
 | <a id="viper-data-jsonpath-get"></a>`Get` | `obj(obj,str)` | `Viper.Data.JsonPath.Get` |
 | <a id="viper-data-jsonpath-getor"></a>`GetOr` | `obj(obj,str,obj)` | `Viper.Data.JsonPath.GetOr` |
 | <a id="viper-data-jsonpath-has"></a>`Has` | `i1(obj,str)` | `Viper.Data.JsonPath.Has` |
-| <a id="viper-data-jsonpath-query"></a>`Query` | `obj(obj,str)` | `Viper.Data.JsonPath.Query` |
+| <a id="viper-data-jsonpath-query"></a>`Query` | `seq<obj>(obj,str)` | `Viper.Data.JsonPath.Query` |
 | <a id="viper-data-jsonpath-getstr"></a>`GetStr` | `str(obj,str)` | `Viper.Data.JsonPath.GetStr` |
 | <a id="viper-data-jsonpath-getint"></a>`GetInt` | `i64(obj,str)` | `Viper.Data.JsonPath.GetInt` |
 
@@ -249,8 +249,8 @@ construct the class directly. Its public surface exposes operations including `G
 |---|---|---|
 | `Viper.Data.Csv.ParseLine` | `seq<str>(str)` | `rt_csv_parse_line` |
 | `Viper.Data.Csv.ParseLineWith` | `seq<str>(str,str)` | `rt_csv_parse_line_with` |
-| `Viper.Data.Csv.Parse` | `obj(str)` | `rt_csv_parse` |
-| `Viper.Data.Csv.ParseWith` | `obj(str,str)` | `rt_csv_parse_with` |
+| `Viper.Data.Csv.Parse` | `seq<obj>(str)` | `rt_csv_parse` |
+| `Viper.Data.Csv.ParseWith` | `seq<obj>(str,str)` | `rt_csv_parse_with` |
 | `Viper.Data.Csv.FormatLine` | `str(obj)` | `rt_csv_format_line` |
 | `Viper.Data.Csv.FormatLineWith` | `str(obj,str)` | `rt_csv_format_line_with` |
 | `Viper.Data.Csv.Format` | `str(obj)` | `rt_csv_format` |
@@ -261,11 +261,11 @@ construct the class directly. Its public surface exposes operations including `G
 | `Viper.Data.Ini.Get` | `str(obj,str,str)` | `rt_ini_get` |
 | `Viper.Data.Ini.Set` | `void(obj,str,str,str)` | `rt_ini_set` |
 | `Viper.Data.Ini.HasSection` | `i1(obj,str)` | `rt_ini_has_section` |
-| `Viper.Data.Ini.Sections` | `obj(obj)` | `rt_ini_sections` |
+| `Viper.Data.Ini.Sections` | `seq<str>(obj)` | `rt_ini_sections` |
 | `Viper.Data.Ini.Remove` | `i1(obj,str,str)` | `rt_ini_remove` |
 | `Viper.Data.Json.Parse` | `obj(str)` | `rt_json_parse` |
 | `Viper.Data.Json.ParseObject` | `obj<Viper.Collections.Map>(str)` | `rt_json_parse_object` |
-| `Viper.Data.Json.ParseArray` | `obj(str)` | `rt_json_parse_array` |
+| `Viper.Data.Json.ParseArray` | `seq<obj>(str)` | `rt_json_parse_array` |
 | `Viper.Data.Json.Format` | `str(obj)` | `rt_json_format` |
 | `Viper.Data.Json.FormatPretty` | `str(obj,i64)` | `rt_json_format_pretty` |
 | `Viper.Data.Json.IsValid` | `i1(str)` | `rt_json_is_valid` |
@@ -296,12 +296,12 @@ construct the class directly. Its public surface exposes operations including `G
 | `Viper.Data.Xml.HasAttr` | `i1(obj,str)` | `rt_xml_has_attr` |
 | `Viper.Data.Xml.SetAttr` | `void(obj,str,str)` | `rt_xml_set_attr` |
 | `Viper.Data.Xml.RemoveAttr` | `i1(obj,str)` | `rt_xml_remove_attr` |
-| `Viper.Data.Xml.AttrNames` | `obj(obj)` | `rt_xml_attr_names` |
-| `Viper.Data.Xml.Children` | `obj(obj)` | `rt_xml_children` |
+| `Viper.Data.Xml.AttrNames` | `seq<str>(obj)` | `rt_xml_attr_names` |
+| `Viper.Data.Xml.Children` | `seq<obj>(obj)` | `rt_xml_children` |
 | `Viper.Data.Xml.ChildCount` | `i64(obj)` | `rt_xml_child_count` |
 | `Viper.Data.Xml.ChildAt` | `obj(obj,i64)` | `rt_xml_child_at` |
 | `Viper.Data.Xml.Child` | `obj(obj,str)` | `rt_xml_child` |
-| `Viper.Data.Xml.ChildrenByTag` | `obj(obj,str)` | `rt_xml_children_by_tag` |
+| `Viper.Data.Xml.ChildrenByTag` | `seq<obj>(obj,str)` | `rt_xml_children_by_tag` |
 | `Viper.Data.Xml.Append` | `void(obj,obj)` | `rt_xml_append` |
 | `Viper.Data.Xml.Insert` | `void(obj,i64,obj)` | `rt_xml_insert` |
 | `Viper.Data.Xml.Remove` | `i1(obj,obj)` | `rt_xml_remove` |
@@ -309,7 +309,7 @@ construct the class directly. Its public surface exposes operations including `G
 | `Viper.Data.Xml.SetText` | `void(obj,str)` | `rt_xml_set_text` |
 | `Viper.Data.Xml.Parent` | `obj(obj)` | `rt_xml_parent` |
 | `Viper.Data.Xml.Root` | `obj(obj)` | `rt_xml_root` |
-| `Viper.Data.Xml.FindAll` | `obj(obj,str)` | `rt_xml_find_all` |
+| `Viper.Data.Xml.FindAll` | `seq<obj>(obj,str)` | `rt_xml_find_all` |
 | `Viper.Data.Xml.Find` | `obj<Viper.Option>(obj,str)` | `rt_xml_find_option` |
 | `Viper.Data.Xml.Format` | `str(obj)` | `rt_xml_format` |
 | `Viper.Data.Xml.FormatPretty` | `str(obj,i64)` | `rt_xml_format_pretty` |
@@ -341,7 +341,7 @@ construct the class directly. Its public surface exposes operations including `G
 | `Viper.Data.JsonPath.Get` | `obj(obj,str)` | `rt_jsonpath_get` |
 | `Viper.Data.JsonPath.GetOr` | `obj(obj,str,obj)` | `rt_jsonpath_get_or` |
 | `Viper.Data.JsonPath.Has` | `i1(obj,str)` | `rt_jsonpath_has` |
-| `Viper.Data.JsonPath.Query` | `obj(obj,str)` | `rt_jsonpath_query` |
+| `Viper.Data.JsonPath.Query` | `seq<obj>(obj,str)` | `rt_jsonpath_query` |
 | `Viper.Data.JsonPath.GetStr` | `str(obj,str)` | `rt_jsonpath_get_str` |
 | `Viper.Data.JsonPath.GetInt` | `i64(obj,str)` | `rt_jsonpath_get_int` |
 

@@ -29,21 +29,22 @@ from Zia's type-system features [`T?`](../zia-reference.md#optional-types) and
 
 ## Viper.Functional.Lazy
 
-`Viper.Functional.Lazy` is a runtime wrapper that can cache a deferred object value. The current
-public registry, however, exposes only the `Of`, `OfStr`, and `OfI64` factories. All three create
-**pre-evaluated** wrappers; there is no public supplier-based factory. Consequently every Lazy that
-can currently be created from Zia or BASIC has `IsEvaluated == true` immediately.
+`Viper.Functional.Lazy` is a runtime wrapper that caches a deferred object value. `New(supplier)`
+defers evaluation: the zero-argument supplier is invoked once on the first `Get`/`Force` and its
+object result is cached. The `Of`, `OfStr`, and `OfI64` factories instead create **pre-evaluated**
+wrappers around values you already have, so their `IsEvaluated` is `true` immediately.
 
 For on-demand element generation and deferred transformation pipelines, use
 [`Viper.Functional.LazySeq`](collections/functional.md#viperfunctionallazyseq).
 
 ### Factory Methods
 
-| Method         | Signature          | Description                                  |
-|----------------|--------------------|----------------------------------------------|
-| `Of(value)`    | `Object(Object)`   | Wrap a generic object as already evaluated   |
-| `OfStr(value)` | `Object(String)`   | Wrap a string as already evaluated           |
-| `OfI64(value)` | `Object(Integer)`  | Wrap an integer as already evaluated         |
+| Method          | Signature          | Description                                              |
+|-----------------|--------------------|----------------------------------------------------------|
+| `New(supplier)` | `Lazy(Callback)`   | Defer a zero-argument, object-returning supplier; it runs once on first access |
+| `Of(value)`     | `Lazy(Object)`     | Wrap a generic object as already evaluated               |
+| `OfStr(value)`  | `Lazy(String)`     | Wrap a string as already evaluated                       |
+| `OfI64(value)`  | `Lazy(Integer)`    | Wrap an integer as already evaluated                     |
 
 ### Instance Members
 
@@ -53,16 +54,17 @@ For on-demand element generation and deferred transformation pipelines, use
 | `Get()`         | `Object()`            | Return the generic-object payload                             |
 | `GetStr()`      | `String()`            | Return the string payload; returns `""` for a mismatched type |
 | `GetI64()`      | `Integer()`           | Return the integer payload; returns `0` for a mismatched type |
-| `Force()`       | `Void()`              | Ensure evaluation; a no-op for public `Of*` values            |
-| `Map(callback)` | `Object(Object)`      | Immediately map a generic-object payload into a new Lazy      |
-| `FlatMap(callback)` | `Object(Object)`  | Immediately pass a generic-object payload to a Lazy-producing callback |
+| `Force()`       | `Void()`              | Ensure evaluation; runs a pending `New` supplier, no-op for `Of*` values |
+| `Map(callback)` | `Lazy(Callback)`      | Immediately map a generic-object payload into a new Lazy      |
+| `AndThen(callback)` | `Lazy(Callback)`  | Immediately pass a generic-object payload to a Lazy-producing callback |
 
-`Map` and `FlatMap` force the source before invoking their callback. `Map` wraps the callback's
-object result in a new pre-evaluated Lazy; `FlatMap` returns the callback's Lazy result directly.
-They are not deferred transformations. Both callback operations are for generic `Of` payloads,
+`Map` and `AndThen` force the source before invoking their callback. `Map` wraps the callback's
+object result in a new pre-evaluated Lazy; `AndThen` returns the callback's Lazy result directly.
+They are not deferred transformations. Both callback operations are for generic object payloads,
 not the string or integer variants.
 
-Always match the factory and accessor: `Of`/`Get`, `OfStr`/`GetStr`, or `OfI64`/`GetI64`.
+Always match the factory and accessor: `New`/`Of` with `Get`, `OfStr` with `GetStr`, or `OfI64`
+with `GetI64`. A `New` supplier must return an object; use `Of*` for strings and integers.
 
 ### Zia Example
 
@@ -71,11 +73,26 @@ module LazyDemo;
 
 bind Viper.Terminal;
 bind Viper.Functional.Lazy as Lazy;
+bind Viper.Collections.Seq as Seq;
+
+func makeSeq() -> Viper.Collections.Seq {
+    Say("computing...");
+    var s = new Viper.Collections.Seq();
+    s.Push("built");
+    return s;
+}
 
 func start() {
+    var deferred = Lazy.New(makeSeq);
+    SayBool(deferred.get_IsEvaluated()); // false — supplier not run yet
+
+    var seq = deferred.Get();            // prints "computing..." once
+    SayBool(deferred.get_IsEvaluated()); // true
+    deferred.Get();                      // cached; supplier not re-run
+
     var value = Lazy.OfI64(42);
 
-    // Public Of* factories are already evaluated.
+    // Of* factories are already evaluated.
     SayBool(value.get_IsEvaluated()); // true
     SayInt(value.GetI64());           // 42
 
@@ -132,7 +149,7 @@ Option handle is treated as None by these predicates; language code should creat
 
 | Method        | Signature    | Required factory | Failure behavior                     |
 |---------------|--------------|------------------|--------------------------------------|
-| `Unwrap()`    | `Object()`   | `Some`           | Traps on None                         |
+| `Unwrap()`    | `Object()`   | `Some`           | Traps on None or a non-object payload |
 | `UnwrapStr()` | `String()`   | `SomeStr`        | Traps on None or a mismatched payload |
 | `UnwrapI64()` | `Integer()`  | `SomeI64`/`SomeI1` | Traps on None or a mismatched payload |
 | `UnwrapI1()`  | `Boolean()`  | `SomeI1`/`SomeI64` | Traps on None or a mismatched payload |
@@ -160,11 +177,14 @@ factories.
 |----------------|--------------------|---------------------------------------------------------------|
 | `Value()`      | `Object()`         | Non-trapping generic-object accessor; null for None            |
 | `Expect(msg)`  | `Object(String)`   | Generic-object value, or an invalid-operation trap containing `msg` |
-| `OkOr(err)`    | `Object(Object)`   | Some becomes Ok; None becomes Err with an object error         |
-| `OkOrStr(err)` | `Object(String)`   | Some becomes Ok; None becomes Err with a string error          |
+| `OkOr(err)`    | `Result(Object)`   | Some becomes Ok; None becomes Err with an object error         |
+| `OkOrStr(err)` | `Result(String)`   | Some becomes Ok; None becomes Err with a string error          |
 
-`Value` is not an alias for `Unwrap`: it returns null on None and is intended only for generic
-`Some` payloads. `Expect` is likewise an object-payload accessor. `OkOr` and `OkOrStr` preserve a
+`Value` is not an alias for `Unwrap`: it returns null on None and only accesses generic object
+payloads — for a typed `SomeStr`/`SomeI64`/`SomeI1`/`SomeF64` payload it returns null rather than
+reinterpret the stored bits as a pointer. `Expect` and the generic `Unwrap` likewise accept only
+object payloads and trap with an explanatory message for typed payloads; use the matching
+`UnwrapStr`/`UnwrapI64`/`UnwrapI1`/`UnwrapF64` accessor instead. `OkOr` and `OkOrStr` preserve a
 Some payload's object, string, integer, boolean-storage, or double variant when producing Ok.
 
 ### Combinators and Utilities
@@ -213,7 +233,7 @@ func start() {
     SayInt(none.UnwrapOrI64(99));     // 99
 
     var failed = none.OkOrStr("value was missing");
-    SayBool(Result.get_IsErr(failed)); // true
+    SayBool(failed.IsErr);            // true
 }
 ```
 
@@ -270,7 +290,7 @@ Err.
 
 | Method        | Signature    | Required factory | Failure behavior                     |
 |---------------|--------------|------------------|--------------------------------------|
-| `Unwrap()`    | `Object()`   | `Ok`             | Traps on Err                          |
+| `Unwrap()`    | `Object()`   | `Ok`             | Traps on Err or a non-object payload  |
 | `UnwrapStr()` | `String()`   | `OkStr`          | Traps on Err or a mismatched payload  |
 | `UnwrapI64()` | `Integer()`  | `OkI64`          | Traps on Err or a mismatched payload  |
 | `UnwrapF64()` | `Double()`   | `OkF64`          | Traps on Err or a mismatched payload  |
@@ -296,8 +316,10 @@ generic `UnwrapOr` is for `Ok`, not the typed Ok factories.
 | `Expect(msg)`    | `Object(String)`   | Generic Ok object, or an invalid-operation trap containing `msg` |
 | `ExpectErr(msg)` | `Object(String)`   | Generic Err object, or an invalid-operation trap containing `msg` |
 
-`Unwrap`, `UnwrapErr`, `Expect`, and `ExpectErr` are object-payload operations. Use the matching
-typed unwrap method for string, integer, or double values.
+`Unwrap`, `UnwrapErr`, `Expect`, and `ExpectErr` are object-payload operations: called on a typed
+string, integer, or double payload they trap with an explanatory message instead of exposing the
+stored bits as a pointer. Use the matching typed unwrap method for string, integer, or double
+values.
 
 ### Combinators and Utilities
 

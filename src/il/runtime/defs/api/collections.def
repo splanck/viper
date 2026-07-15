@@ -485,7 +485,7 @@ RT_FUNC(CountMapSet,        rt_countmap_set,        "Viper.Collections.CountMap.
 RT_FUNC(CountMapHas,        rt_countmap_has,        "Viper.Collections.CountMap.Has",        "i1(obj,str)")
 RT_FUNC(CountMapTotal,      rt_countmap_total,      "Viper.Collections.CountMap.get_Total",  "i64(obj)")
 RT_FUNC(CountMapKeys,       rt_countmap_keys,       "Viper.Collections.CountMap.Keys",       "seq<str>(obj)")
-RT_FUNC(CountMapMostCommon, rt_countmap_most_common,"Viper.Collections.CountMap.MostCommon", "obj(obj,i64)")
+RT_FUNC(CountMapMostCommon, rt_countmap_most_common,"Viper.Collections.CountMap.MostCommon", "seq<str>(obj,i64)")
 RT_FUNC(CountMapRemove,     rt_countmap_remove,     "Viper.Collections.CountMap.Remove",     "i1(obj,str)")
 RT_FUNC(CountMapClear,      rt_countmap_clear,      "Viper.Collections.CountMap.Clear",      "void(obj)")
 
@@ -495,7 +495,7 @@ RT_FUNC(CountMapClear,      rt_countmap_clear,      "Viper.Collections.CountMap.
 
 RT_FUNC(MultiMapClear,     rt_multimap_clear,      "Viper.Collections.MultiMap.Clear",        "void(obj)")
 RT_FUNC(MultiMapCountFor,  rt_multimap_count_for,  "Viper.Collections.MultiMap.CountFor",     "i64(obj,str)")
-RT_FUNC(MultiMapGet,       rt_multimap_get,        "Viper.Collections.MultiMap.Get",          "obj(obj,str)")
+RT_FUNC(MultiMapGet,       rt_multimap_get,        "Viper.Collections.MultiMap.Get",          "seq<obj>(obj,str)")
 RT_FUNC(MultiMapGetFirst,  rt_multimap_get_first,  "Viper.Collections.MultiMap.GetFirst",     "obj(obj,str)")
 RT_FUNC(MultiMapHas,       rt_multimap_has,        "Viper.Collections.MultiMap.Has",          "i1(obj,str)")
 RT_FUNC(MultiMapIsEmpty,   rt_multimap_is_empty,   "Viper.Collections.MultiMap.get_IsEmpty",  "i1(obj)")
@@ -578,7 +578,7 @@ RT_FUNC(HeapNewMax,   rt_pqueue_new_max,   "Viper.Collections.Heap.NewMax",     
 RT_FUNC(HeapPeek,     rt_pqueue_peek,      "Viper.Collections.Heap.Peek",         "obj(obj)")
 RT_FUNC(HeapPop,      rt_pqueue_pop,       "Viper.Collections.Heap.Pop",          "obj(obj)")
 RT_FUNC(HeapPush,     rt_pqueue_push,      "Viper.Collections.Heap.Push",         "void(obj,i64,obj)")
-RT_FUNC(HeapToSeq,    rt_pqueue_to_seq,    "Viper.Collections.Heap.ToSeq",        "obj(obj)")
+RT_FUNC(HeapToSeq,    rt_pqueue_to_seq,    "Viper.Collections.Heap.ToSeq",        "seq<obj>(obj)")
 
 // Heap aliases
 RT_FUNC(HeapTryPeekOption, rt_pqueue_try_peek_option, "Viper.Collections.Heap.TryPeek", "obj<Viper.Option>(obj)")
@@ -708,7 +708,7 @@ RT_FUNC(IterPeek,          rt_iter_peek,            "Viper.Collections.Iterator.
 RT_FUNC(IterReset,         rt_iter_reset,           "Viper.Collections.Iterator.Reset",         "void(obj)")
 RT_FUNC(IterIndex,         rt_iter_index,           "Viper.Collections.Iterator.get_Index",     "i64(obj)")
 RT_FUNC(IterLen,           rt_iter_count,           "Viper.Collections.Iterator.get_Count",     "i64(obj)")
-RT_FUNC(IterToSeq,         rt_iter_to_seq,          "Viper.Collections.Iterator.ToSeq",         "obj(obj)")
+RT_FUNC(IterToSeq,         rt_iter_to_seq,          "Viper.Collections.Iterator.ToSeq",         "seq<obj>(obj)")
 RT_FUNC(IterSkip,          rt_iter_skip,            "Viper.Collections.Iterator.Skip",          "i64(obj,i64)")
 
 //=============================================================================

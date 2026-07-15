@@ -25,8 +25,8 @@ construct the class directly. Its public surface exposes operations including `I
 | <a id="viper-input-keyboard-getdown"></a>`GetDown` | `i64()` | `Viper.Input.Keyboard.GetDown` |
 | <a id="viper-input-keyboard-waspressed"></a>`WasPressed` | `i1(i64)` | `Viper.Input.Keyboard.WasPressed` |
 | <a id="viper-input-keyboard-wasreleased"></a>`WasReleased` | `i1(i64)` | `Viper.Input.Keyboard.WasReleased` |
-| <a id="viper-input-keyboard-getpressed"></a>`GetPressed` | `obj()` | `Viper.Input.Keyboard.GetPressed` |
-| <a id="viper-input-keyboard-getreleased"></a>`GetReleased` | `obj()` | `Viper.Input.Keyboard.GetReleased` |
+| <a id="viper-input-keyboard-getpressed"></a>`GetPressed` | `obj<Viper.Collections.Seq>()` | `Viper.Input.Keyboard.GetPressed` |
+| <a id="viper-input-keyboard-getreleased"></a>`GetReleased` | `obj<Viper.Collections.Seq>()` | `Viper.Input.Keyboard.GetReleased` |
 | <a id="viper-input-keyboard-gettext"></a>`GetText` | `str()` | `Viper.Input.Keyboard.GetText` |
 | <a id="viper-input-keyboard-enabletextinput"></a>`EnableTextInput` | `void()` | `Viper.Input.Keyboard.EnableTextInput` |
 | <a id="viper-input-keyboard-disabletextinput"></a>`DisableTextInput` | `void()` | `Viper.Input.Keyboard.DisableTextInput` |
@@ -405,8 +405,8 @@ Constructor: `Viper.Input.KeyChord.New`
 | `Viper.Input.Keyboard.GetDown` | `i64()` | `rt_keyboard_get_down` |
 | `Viper.Input.Keyboard.WasPressed` | `i1(i64)` | `rt_keyboard_was_pressed` |
 | `Viper.Input.Keyboard.WasReleased` | `i1(i64)` | `rt_keyboard_was_released` |
-| `Viper.Input.Keyboard.GetPressed` | `obj()` | `rt_keyboard_get_pressed` |
-| `Viper.Input.Keyboard.GetReleased` | `obj()` | `rt_keyboard_get_released` |
+| `Viper.Input.Keyboard.GetPressed` | `obj<Viper.Collections.Seq>()` | `rt_keyboard_get_pressed` |
+| `Viper.Input.Keyboard.GetReleased` | `obj<Viper.Collections.Seq>()` | `rt_keyboard_get_released` |
 | `Viper.Input.Keyboard.GetText` | `str()` | `rt_keyboard_get_text` |
 | `Viper.Input.Keyboard.EnableTextInput` | `void()` | `rt_keyboard_enable_text_input` |
 | `Viper.Input.Keyboard.DisableTextInput` | `void()` | `rt_keyboard_disable_text_input` |

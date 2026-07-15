@@ -79,9 +79,9 @@ func start() {
 DIM json AS STRING = "{""name"": ""Alice"", ""age"": 30, ""active"": true}"
 DIM data AS OBJECT = Viper.Data.Json.Parse(json)
 
-' BASIC resolves the concrete Map helpers; the Json aliases are available on Zia's class surface
-DIM name AS STRING = Viper.Collections.Map.GetStr(data, "name")
-DIM age AS INTEGER = Viper.Collections.Map.GetInt(data, "age")
+' The Json class aliases resolve in BASIC and Zia alike
+DIM name AS STRING = Viper.Data.Json.GetStr(data, "name")
+DIM age AS INTEGER = Viper.Data.Json.GetInt(data, "age")
 PRINT "Name: "; name   ' Output: Alice
 PRINT "Age: "; age     ' Output: 30
 
@@ -119,21 +119,19 @@ END IF
 
 - `Parse`, `ParseObject`, `ParseArray`, and `IsValid` use the runtime string byte length, not C-string truncation.
 - Invalid escapes, malformed UTF-16 surrogate pairs, raw control characters inside strings, trailing content, leading-zero numbers, and out-of-range/non-finite numbers are rejected.
-- `IsValid` mirrors the parser for escapes, number range checks, and nesting-depth limits, but it
-  currently omits the parser's raw UTF-8 validation. `JsonStream` and `Format` likewise pass raw
-  non-ASCII bytes through without checking UTF-8; see
-  [VDOC-034](../../documentation-review-findings.md#vdoc-034--json-entry-points-disagree-on-raw-utf-8-validation).
+- `IsValid` and `JsonStream` mirror the parser's raw UTF-8 validation (overlong encodings,
+  surrogates, bad continuation bytes, and code points above U+10FFFF are rejected), so
+  `IsValid(text)` never accepts input that `Parse(text)` traps on. `Format` emits stored string
+  bytes unchanged — output-side validation would break the binary-safe runtime String model.
 - `Format` escapes embedded `NUL` and other control bytes as JSON escapes, and traps on cyclic
   `Seq`/`Map` object graphs instead of recursing indefinitely. Unsupported runtime objects and
   non-finite boxed doubles are emitted as JSON `null`.
-- Converting a boxed double through `Json.GetInt`/`Map.GetInt` is defined only while the truncated
-  value fits in an integer. Out-of-range conversion currently uses a C cast with
-  platform-dependent behavior; see
-  [VDOC-037](../../documentation-review-findings.md#vdoc-037--json-derived-integer-accessors-have-undefined-out-of-range-conversion).
-- The `Get*`, `Set*`, and `Has` entries on the Zia `Json` class surface are aliases
-  for other registered functions. BASIC cannot resolve those aliases by their `Json` names;
-  call `Viper.Collections.Map.Get*`, `Set*`, and `Has`, and use `Json.Format` instead of See
-  [VDOC-019](../../documentation-review-findings.md#vdoc-019--basic-cannot-call-the-json-class-aliases).
+- Converting a boxed double through `Json.GetInt`/`Map.GetInt` truncates toward zero with
+  defined saturation: values above/below the signed 64-bit range clamp to the range limits and
+  NaN converts to 0, identically on every platform.
+- The `Get*`, `Set*`, and `Has` entries on the `Json` class surface are aliases for the
+  registered `Viper.Collections.Map` functions. Both Zia and BASIC resolve them by their `Json`
+  names; calling the concrete `Map` functions directly is equivalent.
 
 ---
 
@@ -179,15 +177,13 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 - `Get()`, `Has()`, `GetStr()`, `GetInt()`, and `Query()` also accept raw JSON source text as the
   root and parse it internally. A parsed JSON string scalar has the same runtime representation as
   source text and therefore cannot be used unambiguously as a root.
-- `Has()` currently reports false for both a missing path and a path whose value is JSON `null`;
-  `GetOr()` likewise substitutes its default in both cases. See
-  [VDOC-021](../../documentation-review-findings.md#vdoc-021--jsonpath-conflates-json-null-with-a-missing-path).
+- `Has()` distinguishes a present JSON `null` member (true) from a missing path (false), and
+  `GetOr()` substitutes its default only when the path is missing — a stored JSON `null` is
+  returned as `NULL` rather than replaced.
 - `Query()` supports one wildcard segment. It traverses arrays and object maps and safely skips
   scalar values that cannot contain the remaining path.
 - `Query()` returns an owned sequence that retains the matched values it contains.
-- Its registry return is currently unqualified `Object`; annotate the local as
-  `Viper.Collections.Seq` (BASIC) or use an explicit Seq receiver (Zia) before member access. See
-  [VDOC-020](../../documentation-review-findings.md#vdoc-020--untyped-collection-results-are-inferred-as-their-declaring-static-classes).
+- The registry return is a typed sequence, so member access resolves directly on the result.
 - Recursive descent (`..`), slices, filters, unions, and escaped quoted-key syntax are not
   implemented, despite broader syntax still named in the implementation header; see
   [VDOC-022](../../documentation-review-findings.md#vdoc-022--the-jsonpath-source-contract-overstates-the-implemented-syntax).
@@ -454,17 +450,14 @@ quoting plus configurable-delimiter and line-ending extensions.
   runtime's generic object-to-string conversion
 - Runtime string byte length is used, so embedded `NUL` bytes are preserved
 - Parse functions return `Seq` objects (use `Count`, `Get(index)` to access)
-- `Parse`/`ParseWith` are declared as returning unqualified `Object`; in BASIC, annotate the local
-  as `Viper.Collections.Seq`. In Zia, use an explicit receiver such as
-  `Viper.Collections.Seq.get_Count(rows)`. See
-  [VDOC-020](../../documentation-review-findings.md#vdoc-020--untyped-collection-results-are-inferred-as-their-declaring-static-classes).
+- `Parse`/`ParseWith` are registered as `seq<obj>` (a sequence of row Seqs), so member access
+  such as `rows.Count` resolves directly.
 - `IsValid` uses the default comma delimiter and returns false for malformed quoting without trapping
 - `ParseLine` accepts exactly one CSV record; use `Parse` / `ParseWith` for multi-record text
 - Malformed quoted fields trap on unterminated quotes or non-delimiter characters after the closing quote
 - Quotes inside unquoted fields are rejected as malformed CSV
-- The source/header still labels this implementation fully RFC 4180-compliant and says only the
-  first delimiter character is used; those claims disagree with the behavior above. See
-  [VDOC-023](../../documentation-review-findings.md#vdoc-023--csv-conformance-and-delimiter-contracts-disagree-with-the-runtime).
+- Custom delimiters must be exactly one byte; an empty delimiter selects the comma default and a
+  longer delimiter traps.
 
 ### Zia Example
 
@@ -562,21 +555,18 @@ either version.
   tables become Seqs of Maps.
 - **Dotted paths:** `Get()` and `GetStr()` split the lookup path on dots to navigate nested section
   Maps, such as `"server.host"`. There is no escaping for a literal dot in a key.
-- Dotted section headers such as `[server.database.primary]` create nested Maps. Dotted assignment
-  keys such as `server.host = "localhost"` are currently stored as one literal key and cannot be
-  reached by the dotted getters.
-- **Format:** Formats top-level values and one level of section Maps. It supports strings, boxed
-  integers/doubles/booleans, and nested arrays. Map values inside arrays/inline tables are not
-  emitted faithfully.
-- Boxed doubles use `%.17g`; a whole-valued double such as `1.0` is consequently emitted as the
-  integer token `1`, changing its TOML type if reparsed. See
-  [VDOC-035](../../documentation-review-findings.md#vdoc-035--toml-format-can-emit-a-float-as-integer-syntax).
+- Dotted section headers such as `[server.database.primary]` and dotted assignment keys such as
+  `server.host = "localhost"` both create nested Maps, so the dotted getters reach them. Quoted
+  keys (`"a.b" = ...`) keep their literal spelling, dots included; keys with a leading or trailing
+  dot are rejected.
+- **Format:** Formats top-level values and nested section Maps recursively (dotted `[a.b.c]`
+  headers). It supports strings, boxed integers/doubles/booleans, nested arrays, and maps in
+  value position as inline tables.
+- Boxed doubles use `%.17g` with a float-token guard: whole-valued doubles emit as `1.0` (not the
+  integer token `1`), so the value keeps its float type on reparse.
 - `Format()` quotes keys and string values when needed so scalar values are not misinterpreted as Maps.
 - `Format()` uses runtime string byte lengths and escapes embedded `NUL` and other control bytes as TOML basic-string escapes instead of truncating at the first `NUL`.
 - `Get()` and `GetStr()` use the runtime byte length of the dotted path; embedded `NUL` bytes inside a path segment are part of that segment, not a terminator.
-- `GetStr` has a function-registry entry but is missing from the current `Toml` class manifest, so
-  generated class metadata and exact qualified-call lookup expose different surfaces. See
-  [VDOC-036](../../documentation-review-findings.md#vdoc-036--tomlgetstr-is-missing-from-the-toml-class-manifest).
 - Syntax errors recognized by the parser return NULL from `Parse()` rather than trapping. However,
   arbitrary bare values such as `x = alpha` are accepted even though TOML 1.0 does not permit them,
   so `IsValid()` is only an acceptance probe for this parser. See
@@ -584,14 +574,14 @@ either version.
 - Missing closing section or array brackets, trailing junk after section headers, duplicate keys,
   scalar/table conflicts, and section paths deeper than 200 components are rejected.
 - `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
-- Formatting nested tables below one section level currently omits those nested values. Do not use
-  `Format(Parse(text))` as a lossless TOML round trip; see
-  [VDOC-025](../../documentation-review-findings.md#vdoc-025--toml-format-drops-deeply-nested-tables).
-- Pass only acyclic Seqs to the formatter; unlike JSON formatting, nested TOML/YAML formatting has
-  no cycle guard. See
-  [VDOC-033](../../documentation-review-findings.md#vdoc-033--toml-and-yaml-formatters-do-not-guard-cyclic-containers).
-- The parser/validator accepts malformed raw UTF-8 bytes even though TOML source is UTF-8; see
-  [VDOC-040](../../documentation-review-findings.md#vdoc-040--toml-and-yaml-validation-accepts-malformed-utf-8).
+- Formatting emits nested tables recursively as dotted `[a.b.c]` section headers, and maps in
+  value position (such as inside arrays) as inline tables, so `Format(Parse(text))` preserves
+  nested configuration. Formatting depth is bounded (200 levels); exceeding it yields an empty
+  string.
+- Formatting depth is bounded (200 levels); cyclic or deeper containers fail closed with an empty
+  string instead of recursing without bound.
+- The parser validates the input is NUL-free, well-formed UTF-8 before parsing; malformed byte
+  sequences make `Parse` return NULL and `IsValid` report false.
 - TOML and YAML numeric formatting uses the process numeric locale rather than an isolated C
   locale when called outside the VM's locale initialization; see
   [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
@@ -672,10 +662,9 @@ INI-style configuration parsing and manipulation. The accepted dialect uses `[se
 
 - `Parse` returns a Map where each key is a case-sensitive section name and each value is a Map of
   case-sensitive key/value strings.
-- For every non-NULL input, the empty-string default section is created. Entries before the first
-  named section are stored there, and `Sections()` includes its `""` name even when it has no
-  entries. NULL currently produces a different empty shape; see
-  [VDOC-030](../../documentation-review-findings.md#vdoc-030--iniparsenull-and-iniparse-produce-different-document-shapes).
+- The empty-string default section is created lazily: entries before the first named section are
+  stored there, and `Sections()` includes its `""` name only when such entries exist. NULL input
+  and an empty string both produce the same empty document.
 - Leading/trailing whitespace around lines, section names, keys, and values is trimmed. Duplicate
   keys keep the last value.
 - Only whole-line comments are recognized. Inline `;` and `#` bytes remain part of a value.
@@ -683,9 +672,7 @@ INI-style configuration parsing and manipulation. The accepted dialect uses `[se
   parse-error result.
 - `Set` creates the section automatically if it does not already exist.
 - `Remove` returns true (1) if the key was found and removed, false (0) if not found.
-- `Sections()` is declared as returning unqualified `Object`; in BASIC, annotate its result as
-  `Viper.Collections.Seq`. In Zia, use an explicit Seq receiver for member access. See
-  [VDOC-020](../../documentation-review-findings.md#vdoc-020--untyped-collection-results-are-inferred-as-their-declaring-static-classes).
+- `Sections()` is registered as `seq<str>`, so member access resolves directly on the result.
 - `Parse` and `Format` use runtime string byte lengths, so embedded `NUL` bytes in keys and values are preserved.
 - `Format` writes values verbatim; INI has no escaping layer, so consumers that require text-only INI should avoid control bytes.
 
@@ -976,8 +963,8 @@ child manipulation, and simple slash-path queries. All node values are opaque ob
 - Only the five predefined named entities and numeric character references are decoded. General
   entities declared by a DTD are not expanded, so some well-formed XML 1.0 documents are rejected.
   The parser also does not validate DTDs, namespaces, or UTF-8 byte sequences as a full XML
-  processor would. See
-  [VDOC-026](../../documentation-review-findings.md#vdoc-026--xml-isvalid-is-a-subset-check-not-a-full-well-formedness-check).
+  processor would; `IsValid` therefore checks acceptance by this practical subset, not XML 1.0
+  conformance.
 - Formatting a parsed tree cannot reproduce discarded declarations, processing instructions, or
   DOCTYPE content.
 - Element, attribute, comment, and CDATA creation/mutation validate the runtime's name/content
@@ -989,10 +976,8 @@ child manipulation, and simple slash-path queries. All node values are opaque ob
 - `Append` and `Insert` reject non-node children, document children, cycles, and children that already have a parent.
 - `Append` and `Insert` retain the child; callers may keep using the child handle or release their own reference after insertion.
 - `TextContent` is useful for extracting all readable text from a subtree.
-- `AttrNames`, `Children`, `ChildrenByTag`, and `FindAll` return Seq values but are registered as
-  unqualified `Object`; annotate BASIC locals as `Viper.Collections.Seq` or use an explicit Seq
-  receiver in Zia before member access. See
-  [VDOC-020](../../documentation-review-findings.md#vdoc-020--untyped-collection-results-are-inferred-as-their-declaring-static-classes).
+- `AttrNames`, `Children`, `ChildrenByTag`, and `FindAll` are registered as typed sequences
+  (`seq<str>` for names, `seq<obj>` for nodes), so member access resolves directly.
 
 ### Zia Example
 
@@ -1118,9 +1103,9 @@ Viper strings, integers, doubles, booleans, NULL, Maps, and Seqs.
 - Explicit multi-document YAML streams separated by `---` parse as a sequence of documents.
 - Empty input is valid and maps to YAML null.
 - Anchors, aliases, custom tags, merge keys, directives, and the full YAML schema system are not
-  implemented. Anchor/alias syntax is not reliably rejected and can instead be misinterpreted as
-  ordinary mapping/scalar content; do not pass it to this parser. See
-  [VDOC-028](../../documentation-review-findings.md#vdoc-028--unsupported-yaml-anchor-syntax-is-silently-misparsed).
+  implemented. Anchor/alias syntax (`&name`, `*name` at the start of an unquoted token) is
+  rejected with an explicit parse error rather than misparsed; quoted or mid-token `&`/`*`
+  characters remain ordinary string content.
 - Block and flow collections (`[]` and `{}`), quoted keys, whole-line/after-scalar comments,
   literal/folded block scalars, and common quoted-string escapes are supported.
 - `Format` uses block-style collections and quotes ambiguous string scalars. `FormatIndent` uses
@@ -1131,13 +1116,13 @@ Viper strings, integers, doubles, booleans, NULL, Maps, and Seqs.
 - A plain scalar with an embedded `NUL` can be classified from only its numeric prefix while the
   remaining bytes are ignored—for example, `1\0garbage` is accepted as integer `1`. See
   [VDOC-039](../../documentation-review-findings.md#vdoc-039--yaml-numeric-scalar-parsing-ignores-bytes-after-an-embedded-nul).
-- The parser/validator also accepts malformed raw UTF-8 bytes; see
-  [VDOC-040](../../documentation-review-findings.md#vdoc-040--toml-and-yaml-validation-accepts-malformed-utf-8).
+- The parser validates the input is well-formed UTF-8 before parsing; malformed byte sequences
+  make `Parse` return NULL and `IsValid` report false.
 - Finite double formatting depends on the process numeric locale when the runtime is embedded
   without the VM's locale initialization; see
   [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
-- Format only acyclic Maps/Seqs; cyclic containers are not detected before recursive traversal. See
-  [VDOC-033](../../documentation-review-findings.md#vdoc-033--toml-and-yaml-formatters-do-not-guard-cyclic-containers).
+- Formatting depth is bounded (200 levels, matching the parser); cyclic or deeper containers fail
+  closed with an empty string instead of recursing without bound.
 - YAML scalars with no explicit type tag are auto-typed for null, numbers, and YAML 1.2 booleans (`true`/`false`); legacy YAML 1.1 words such as `yes`, `no`, `on`, and `off` remain strings.
 - Decimal, hexadecimal (`0x`), and octal (`0o`) integers are recognized. `.inf`, `-.inf`, and
   `.nan` are floating-point values; bare C spellings such as `inf` and `nan` remain strings.

@@ -161,6 +161,7 @@ RT_CLASS_BEGIN("Viper.Text.TextWrapper", TextWrapper, "obj", none)
 RT_CLASS_END()
 
 // Viper.Functional.Lazy - Deferred computation until first access
+RT_FUNC(LazyNew,           rt_lazy_new_wrapper,   "Viper.Functional.Lazy.New",            "obj<Viper.Functional.Lazy>(obj)")
 RT_FUNC(LazyOf,            rt_lazy_of,            "Viper.Functional.Lazy.Of",             "obj<Viper.Functional.Lazy>(obj)")
 RT_FUNC(LazyOfStr,         rt_lazy_of_str,        "Viper.Functional.Lazy.OfStr",          "obj<Viper.Functional.Lazy>(str)")
 RT_FUNC(LazyOfI64,         rt_lazy_of_i64,        "Viper.Functional.Lazy.OfI64",          "obj<Viper.Functional.Lazy>(i64)")
@@ -175,8 +176,9 @@ RT_FUNC(LazyFlatMap,       rt_lazy_flat_map_wrapper, "Viper.Functional.Lazy.AndT
 /// @details
 /// `Viper.Functional.Lazy` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `IsEvaluated` and
-/// operations including `Of`, `OfStr`, `OfI64`, `Get`.
-RT_CLASS_BEGIN("Viper.Functional.Lazy", Lazy, "obj", none)
+/// operations including `New`, `Of`, `OfStr`, `OfI64`, `Get`. `New` wraps a zero-argument
+/// supplier that is invoked once on first access; the `Of*` factories wrap eager values.
+RT_CLASS_BEGIN("Viper.Functional.Lazy", Lazy, "obj(obj)", LazyNew)
     RT_METHOD("Of", "obj<Viper.Functional.Lazy>(obj)", LazyOf)
     RT_METHOD("OfStr", "obj<Viper.Functional.Lazy>(str)", LazyOfStr)
     RT_METHOD("OfI64", "obj<Viper.Functional.Lazy>(i64)", LazyOfI64)
@@ -259,7 +261,7 @@ RT_CLASS_BEGIN("Viper.Threads.Scheduler", Scheduler, "obj", SchedulerNew)
     RT_METHOD("IsDue", "i1(str)", SchedulerIsDue)
     RT_METHOD("IsDueGeneration", "i1(str,i64)", SchedulerIsDueGen)
     RT_METHOD("GenerationOf", "i64(str)", SchedulerGenerationOf)
-    RT_METHOD("Poll", "obj()", SchedulerPoll)
+    RT_METHOD("Poll", "seq<str>()", SchedulerPoll)
     RT_METHOD("Clear", "void()", SchedulerClear)
 RT_CLASS_END()
 
@@ -285,12 +287,12 @@ RT_CLASS_END()
 /// object with the instance members below. Its public surface exposes properties such as `Count`
 /// and operations including `Add`, `Get`, `Post`, `Put`.
 RT_CLASS_BEGIN("Viper.Network.HttpRouter", HttpRouter, "obj", HttpRouterNew)
-    RT_METHOD("Add", "obj(str,str)", HttpRouterAdd)
-    RT_METHOD("Get", "obj(str)", HttpRouterGet)
-    RT_METHOD("Post", "obj(str)", HttpRouterPost)
-    RT_METHOD("Put", "obj(str)", HttpRouterPut)
-    RT_METHOD("Delete", "obj(str)", HttpRouterDelete)
-    RT_METHOD("Match", "obj(str,str)", HttpRouterMatch)
+    RT_METHOD("Add", "obj<Viper.Network.HttpRouter>(str,str)", HttpRouterAdd)
+    RT_METHOD("Get", "obj<Viper.Network.HttpRouter>(str)", HttpRouterGet)
+    RT_METHOD("Post", "obj<Viper.Network.HttpRouter>(str)", HttpRouterPost)
+    RT_METHOD("Put", "obj<Viper.Network.HttpRouter>(str)", HttpRouterPut)
+    RT_METHOD("Delete", "obj<Viper.Network.HttpRouter>(str)", HttpRouterDelete)
+    RT_METHOD("Match", "obj<Viper.Network.RouteMatch>(str,str)", HttpRouterMatch)
     RT_PROP("Count", "i64", HttpRouterCount, none)
 RT_CLASS_END()
 
@@ -375,7 +377,7 @@ RT_CLASS_END()
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Size`, `Available` and operations including `Acquire`, `Release`, `Clear`.
 RT_CLASS_BEGIN("Viper.Network.ConnectionPool", ConnectionPool, "obj", ConnPoolNew)
-    RT_METHOD("Acquire", "obj(str,i64)", ConnPoolAcquire)
+    RT_METHOD("Acquire", "obj<Viper.Network.Tcp>(str,i64)", ConnPoolAcquire)
     RT_METHOD("Release", "void(obj)", ConnPoolRelease)
     RT_METHOD("Clear", "void()", ConnPoolClear)
     RT_PROP("Size", "i64", ConnPoolSize, none)
@@ -391,10 +393,10 @@ RT_CLASS_END()
 RT_CLASS_BEGIN("Viper.Network.Multipart", Multipart, "obj", MultipartNew)
     RT_METHOD("AddField", "obj(str,str)", MultipartAddField)
     RT_METHOD("AddFile", "obj(str,str,obj)", MultipartAddFile)
-    RT_METHOD("Build", "obj()", MultipartBuild)
-    RT_METHOD("Parse", "obj(str,obj)", MultipartParse)
+    RT_METHOD("Build", "obj<Viper.Collections.Bytes>()", MultipartBuild)
+    RT_METHOD("Parse", "obj<Viper.Network.Multipart>(str,obj)", MultipartParse)
     RT_METHOD("GetField", "str(str)", MultipartGetField)
-    RT_METHOD("GetFile", "obj(str)", MultipartGetFile)
+    RT_METHOD("GetFile", "obj<Viper.Collections.Bytes>(str)", MultipartGetFile)
     RT_PROP("ContentType", "str", MultipartContentType, none)
     RT_PROP("Count", "i64", MultipartCount, none)
 RT_CLASS_END()
@@ -473,16 +475,16 @@ RT_CLASS_END()
 /// object with the instance members below. Its public surface exposes properties such as
 /// `KeepAlive`, `FollowRedirects` and operations including `Get`, `Post`, `Put`, `Delete`.
 RT_CLASS_BEGIN("Viper.Network.HttpClient", HttpClient, "obj", HttpClientNew)
-    RT_METHOD("Get", "obj(str)", HttpClientGet)
-    RT_METHOD("Post", "obj(str,str)", HttpClientPost)
-    RT_METHOD("Put", "obj(str,str)", HttpClientPut)
-    RT_METHOD("Delete", "obj(str)", HttpClientDelete)
+    RT_METHOD("Get", "obj<Viper.Network.HttpRes>(str)", HttpClientGet)
+    RT_METHOD("Post", "obj<Viper.Network.HttpRes>(str,str)", HttpClientPost)
+    RT_METHOD("Put", "obj<Viper.Network.HttpRes>(str,str)", HttpClientPut)
+    RT_METHOD("Delete", "obj<Viper.Network.HttpRes>(str)", HttpClientDelete)
     RT_METHOD("SetHeader", "void(str,str)", HttpClientSetHeader)
     RT_METHOD("SetTimeout", "void(i64)", HttpClientSetTimeout)
     RT_METHOD("SetPoolSize", "void(i64)", HttpClientSetPoolSize)
     RT_METHOD("SetMaxRedirects", "void(i64)", HttpClientSetMaxRedir)
     RT_METHOD("SetCookie", "void(str,str,str)", HttpClientSetCookie)
-    RT_METHOD("GetCookies", "obj(str)", HttpClientGetCookies)
+    RT_METHOD("GetCookies", "obj<Viper.Collections.Map>(str)", HttpClientGetCookies)
     RT_PROP("KeepAlive", "i1", HttpClientKeepAliveGet, HttpClientKeepAliveSet)
     RT_PROP("FollowRedirects", "i1", HttpClientFollowRedirGet, HttpClientFollowRedirSet)
 RT_CLASS_END()
@@ -508,12 +510,12 @@ RT_CLASS_END()
 /// Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync`,
 /// `SendAsync`, `RecvAsync`.
 RT_CLASS_BEGIN("Viper.Network.AsyncSocket", AsyncSocket, "none", none)
-    RT_METHOD("ConnectAsync",    "obj(str,i64)",    AsyncConnect)
-    RT_METHOD("ConnectForAsync", "obj(str,i64,i64)", AsyncConnectFor)
-    RT_METHOD("SendAsync", "obj(obj,obj)", AsyncSend)
-    RT_METHOD("RecvAsync", "obj(obj,i64)", AsyncRecv)
-    RT_METHOD("HttpGetAsync", "obj(str)", AsyncHttpGet)
-    RT_METHOD("HttpPostAsync", "obj(str,str)", AsyncHttpPost)
+    RT_METHOD("ConnectAsync",    "obj<Viper.Threads.Future>(str,i64)",    AsyncConnect)
+    RT_METHOD("ConnectForAsync", "obj<Viper.Threads.Future>(str,i64,i64)", AsyncConnectFor)
+    RT_METHOD("SendAsync", "obj<Viper.Threads.Future>(obj,obj)", AsyncSend)
+    RT_METHOD("RecvAsync", "obj<Viper.Threads.Future>(obj,i64)", AsyncRecv)
+    RT_METHOD("HttpGetAsync", "obj<Viper.Threads.Future>(str)", AsyncHttpGet)
+    RT_METHOD("HttpPostAsync", "obj<Viper.Threads.Future>(str,str)", AsyncHttpPost)
 RT_CLASS_END()
 
 // Viper.Text.Html - HTML parsing and utilities
@@ -523,13 +525,13 @@ RT_CLASS_END()
 /// construct the class directly. Its public surface exposes operations including `Parse`,
 /// `ToText`, `Escape`, `Unescape`.
 RT_CLASS_BEGIN("Viper.Text.Html", Html, "obj", none)
-    RT_METHOD("Parse", "obj(str)", HtmlParse)
+    RT_METHOD("Parse", "obj<Viper.Collections.Map>(str)", HtmlParse)
     RT_METHOD("ToText", "str(str)", HtmlToText)
     RT_METHOD("Escape", "str(str)", HtmlEscape)
     RT_METHOD("Unescape", "str(str)", HtmlUnescape)
     RT_METHOD("StripTags", "str(str)", HtmlStripTags)
-    RT_METHOD("ExtractLinks", "obj(str)", HtmlExtractLinks)
-    RT_METHOD("ExtractText", "obj(str,str)", HtmlExtractText)
+    RT_METHOD("ExtractLinks", "seq<str>(str)", HtmlExtractLinks)
+    RT_METHOD("ExtractText", "seq<str>(str,str)", HtmlExtractText)
 RT_CLASS_END()
 
 //=============================================================================

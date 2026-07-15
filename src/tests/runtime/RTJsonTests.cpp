@@ -22,6 +22,7 @@
 #include <cmath>
 #include <csetjmp>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <string>
 
@@ -485,10 +486,47 @@ static void test_parse_invalid_traps() {
 // Main
 // ============================================================================
 
+static void test_is_valid_matches_parse_on_raw_utf8() {
+    // VDOC-034: IsValid must reject exactly the raw byte sequences the parser
+    // rejects, so IsValid(text) never returns true right before Parse traps.
+    // Overlong encoding of '/' (0xC0 0xAF):
+    rt_string overlong = make_bytes("{\"k\":\"\xC0\xAF\"}", 10);
+    assert(rt_json_is_valid(overlong) == 0);
+    // Bare continuation byte:
+    rt_string bare_cont = make_bytes("{\"k\":\"\x80\"}", 9);
+    assert(rt_json_is_valid(bare_cont) == 0);
+    // Truncated 3-byte sequence:
+    rt_string truncated = make_bytes("{\"k\":\"\xE2\x82\"}", 10);
+    assert(rt_json_is_valid(truncated) == 0);
+    // Valid multibyte text stays accepted (Euro sign):
+    rt_string valid = make_bytes("{\"k\":\"\xE2\x82\xAC\"}", 11);
+    assert(rt_json_is_valid(valid) == 1);
+    rt_string_unref(overlong);
+    rt_string_unref(bare_cont);
+    rt_string_unref(truncated);
+    rt_string_unref(valid);
+}
+
+static void test_get_int_saturates_out_of_range() {
+    // VDOC-037: out-of-range JSON numbers convert with defined saturation
+    // (INT64_MAX/MIN; NaN would be 0) on every platform, not via a UB C cast.
+    void *doc = rt_json_parse(make_str("{\"big\":1e100,\"small\":-1e100,\"n\":42}"));
+    assert(doc != nullptr);
+    rt_string kb = make_str("big");
+    rt_string ks = make_str("small");
+    rt_string kn = make_str("n");
+    assert(rt_map_get_int(doc, kb) == INT64_MAX);
+    assert(rt_map_get_int(doc, ks) == INT64_MIN);
+    assert(rt_map_get_int(doc, kn) == 42);
+    printf("test_get_int_saturates_out_of_range: PASSED\n");
+}
+
 int main() {
     // Validation
     test_is_valid_basic();
     test_is_valid_complex();
+    test_is_valid_matches_parse_on_raw_utf8();
+    test_get_int_saturates_out_of_range();
 
     // Parsing
     test_parse_null();

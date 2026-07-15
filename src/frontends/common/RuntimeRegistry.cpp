@@ -82,11 +82,11 @@ std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
 RuntimeReturnKind RuntimeRegistry::typeToReturnKind(std::string_view typeAbbrev) {
     if (typeAbbrev == "void")
         return RuntimeReturnKind::Void;
-    if (typeAbbrev == "i64" || typeAbbrev == "i32" || typeAbbrev == "i16" || typeAbbrev == "i8")
+    if (typeAbbrev == "i64" || typeAbbrev == "i32" || typeAbbrev == "i16")
         return RuntimeReturnKind::Integer;
     if (typeAbbrev == "i1")
         return RuntimeReturnKind::Boolean;
-    if (typeAbbrev == "f64" || typeAbbrev == "f32")
+    if (typeAbbrev == "f64")
         return RuntimeReturnKind::Float;
     if (typeAbbrev == "str")
         return RuntimeReturnKind::String;
@@ -98,11 +98,11 @@ RuntimeReturnKind RuntimeRegistry::typeToReturnKind(std::string_view typeAbbrev)
 }
 
 RuntimeArgKind RuntimeRegistry::typeToArgKind(std::string_view typeAbbrev) {
-    if (typeAbbrev == "i64" || typeAbbrev == "i32" || typeAbbrev == "i16" || typeAbbrev == "i8")
+    if (typeAbbrev == "i64" || typeAbbrev == "i32" || typeAbbrev == "i16")
         return RuntimeArgKind::Integer;
     if (typeAbbrev == "i1")
         return RuntimeArgKind::Boolean;
-    if (typeAbbrev == "f64" || typeAbbrev == "f32")
+    if (typeAbbrev == "f64")
         return RuntimeArgKind::Float;
     if (typeAbbrev == "str")
         return RuntimeArgKind::String;

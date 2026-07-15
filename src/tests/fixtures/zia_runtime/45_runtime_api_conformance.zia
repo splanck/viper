@@ -5,6 +5,7 @@ bind Viper.Data.Json;
 bind Viper.Text.Fmt;
 bind Viper.Math.Easing;
 bind Viper.Collections.Map;
+bind Viper.Option as Option;
 
 // EXPECT_OUT: RESULT: ok
 
@@ -65,10 +66,122 @@ func testJsonMachineVecAndEasing() {
     assertApprox(Viper.Math.Easing.EaseInQuad(0.5), 0.25, 0.0001, "easing_in_quad");
 }
 
+var lazySupplierRuns: Integer = 0;
+
+func buildLazySeq() -> Viper.Collections.Seq {
+    lazySupplierRuns = lazySupplierRuns + 1;
+    var s = new Viper.Collections.Seq();
+    s.Push("computed");
+    return s;
+}
+
+func testLazyDeferredFactory() {
+    // Lazy.New defers: the supplier must not run until first access, must run
+    // exactly once, and the result must be cached across accesses.
+    var deferred = Viper.Functional.Lazy.New(buildLazySeq);
+    assertEqInt(lazySupplierRuns, 0, "lazy_new_not_evaluated_early");
+    assertTrue(!deferred.get_IsEvaluated(), "lazy_new_is_evaluated_false");
+
+    var first = deferred.Get();
+    assertEqInt(lazySupplierRuns, 1, "lazy_new_supplier_ran_once");
+    assertTrue(deferred.get_IsEvaluated(), "lazy_new_is_evaluated_true");
+    assertEqStr(Viper.Collections.Seq.GetStr(first, 0), "computed", "lazy_new_payload");
+
+    deferred.Get();
+    deferred.Force();
+    assertEqInt(lazySupplierRuns, 1, "lazy_new_supplier_cached");
+
+    // Of* factories stay eager.
+    var eager = Viper.Functional.Lazy.OfI64(9);
+    assertTrue(eager.get_IsEvaluated(), "lazy_of_is_evaluated");
+    assertEqInt(eager.GetI64(), 9, "lazy_of_payload");
+}
+
+func combinatorTag(x: Viper.Collections.Seq) -> Viper.Collections.Seq {
+    x.Push("mapped");
+    return x;
+}
+
+func combinatorNonEmpty(x: Viper.Collections.Seq) -> Boolean {
+    return x.Count > 0;
+}
+
+func combinatorFallback() -> Viper.Option {
+    var s = new Viper.Collections.Seq();
+    s.Push("fallback");
+    return Option.Some(s);
+}
+
+func combinatorRecover(err: Viper.Collections.Seq) -> Viper.Result {
+    var s = new Viper.Collections.Seq();
+    s.Push("recovered");
+    return Viper.Result.Ok(s);
+}
+
+func testOptionResultCombinatorCallbacks() {
+    // Generic-payload combinator callbacks must execute on every engine
+    // (VM bridges re-enter the interpreter; native calls the C pointer).
+    var payload = new Viper.Collections.Seq();
+    payload.Push("original");
+
+    var mapped = Option.Some(payload).Map(combinatorTag);
+    assertEqInt(Viper.Collections.Seq.get_Count(mapped.Unwrap()), 2, "option_map_callback_ran");
+    assertTrue(Option.Some(payload).Filter(combinatorNonEmpty).IsSome, "option_filter_pred_ran");
+    assertTrue(Option.None().OrElse(combinatorFallback).IsSome, "option_or_else_fallback_ran");
+
+    var errPayload = new Viper.Collections.Seq();
+    assertTrue(Viper.Result.Err(errPayload).OrElse(combinatorRecover).IsOk,
+               "result_or_else_recovered");
+
+    // Typed payloads keep the documented pass-through behavior.
+    assertEqInt(Option.SomeI64(7).Map(combinatorTag).UnwrapI64(), 7, "option_map_typed_passthrough");
+}
+
+func testOptionToResultTyping() {
+    // Option.OkOr/OkOrStr are registered as obj<Viper.Result>, so the returned
+    // Result's members must type-check without an explicit receiver.
+    var none = Option.None();
+    var failed = none.OkOrStr("missing");
+    assertTrue(failed.IsErr, "option_ok_or_str_none_is_err");
+    assertEqStr(failed.UnwrapErrStr(), "missing", "option_ok_or_str_err_payload");
+
+    var some = Option.SomeI64(42);
+    var ok = some.OkOrStr("unused");
+    assertTrue(ok.IsOk, "option_ok_or_some_is_ok");
+    assertEqInt(ok.UnwrapI64(), 42, "option_ok_or_some_payload");
+}
+
+func testTypedConcreteReturns() {
+    // Registry rows for concrete collection results carry qualified types
+    // (VDOC-020): natural chaining must type-check without explicit receivers.
+    var rows = Viper.Data.Csv.Parse("a,b\nc,d");
+    assertEqInt(rows.Count, 2, "csv_parse_rows_count");
+
+    var texts = Viper.Text.Html.ExtractText("<p>hi</p>", "p");
+    assertEqInt(texts.Count, 1, "html_extract_text_count");
+
+    var bus = new Viper.Core.MessageBus();
+    assertEqInt(bus.Topics().Count, 0, "messagebus_topics_count");
+
+    var key = Viper.Crypto.Cipher.GenerateKey();
+    assertEqInt(key.Length, 32, "cipher_generate_key_length");
+
+    var router = new Viper.Network.HttpRouter();
+    assertTrue(router.Get("/x").Match("GET", "/x") != null, "http_router_chain_match");
+
+    var heap = new Viper.Collections.Heap();
+    heap.Push(1, "only");
+    assertEqInt(heap.ToSeq().Count, 1, "heap_to_seq_count");
+}
+
 func start() {
+    testTypedConcreteReturns();
     testCanonicalRuntimeSurface();
     testCollectionSnapshots();
     testConstructorsAndRandom();
     testJsonMachineVecAndEasing();
+    testLazyDeferredFactory();
+    testOptionResultCombinatorCallbacks();
+    testOptionToResultTyping();
     report();
 }

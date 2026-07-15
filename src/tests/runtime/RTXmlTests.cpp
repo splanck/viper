@@ -318,8 +318,25 @@ static void test_mixed_content_pretty_round_trip(void) {
     release_obj(doc);
 }
 
+static void test_name_validation_scans_full_length() {
+    // VDOC-032: element names are validated over the full runtime byte length,
+    // so an embedded NUL (forbidden in XML names) rejects the name instead of
+    // validating only the prefix before it.
+    rt_string bad = rt_string_from_bytes("a\0bad", 5);
+    void *node = rt_xml_element(bad);
+    check("element name with embedded NUL rejected", node == NULL);
+    rt_string_unref(bad);
+
+    rt_string good = S("a");
+    void *ok_node = rt_xml_element(good);
+    check("plain element name accepted", ok_node != NULL);
+    release_obj(ok_node);
+    rt_string_unref(good);
+}
+
 int main(void) {
     printf("=== RTXmlTests ===\n");
+    test_name_validation_scans_full_length();
     test_parse_simple();
     test_is_valid();
     test_create_and_format();

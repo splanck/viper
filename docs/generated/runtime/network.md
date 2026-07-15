@@ -122,7 +122,7 @@ Its public surface exposes operations including `Resolve`, `ResolveAll`, `Resolv
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-network-dns-resolve"></a>`Resolve` | `str(str)` | `Viper.Network.Dns.Resolve` |
-| <a id="viper-network-dns-resolveall"></a>`ResolveAll` | `obj(str)` | `Viper.Network.Dns.ResolveAll` |
+| <a id="viper-network-dns-resolveall"></a>`ResolveAll` | `seq<str>(str)` | `Viper.Network.Dns.ResolveAll` |
 | <a id="viper-network-dns-resolveipv4"></a>`ResolveIpv4` | `str(str)` | `Viper.Network.Dns.ResolveIpv4` |
 | <a id="viper-network-dns-resolveipv6"></a>`ResolveIpv6` | `str(str)` | `Viper.Network.Dns.ResolveIpv6` |
 | <a id="viper-network-dns-reverse"></a>`Reverse` | `str(str)` | `Viper.Network.Dns.Reverse` |
@@ -130,7 +130,7 @@ Its public surface exposes operations including `Resolve`, `ResolveAll`, `Resolv
 | <a id="viper-network-dns-isipv6"></a>`IsIpv6` | `i1(str)` | `Viper.Network.Dns.IsIpv6` |
 | <a id="viper-network-dns-isip"></a>`IsIp` | `i1(str)` | `Viper.Network.Dns.IsIp` |
 | <a id="viper-network-dns-localhost"></a>`LocalHost` | `str()` | `Viper.Network.Dns.LocalHost` |
-| <a id="viper-network-dns-localaddrs"></a>`LocalAddrs` | `obj()` | `Viper.Network.Dns.LocalAddrs` |
+| <a id="viper-network-dns-localaddrs"></a>`LocalAddrs` | `seq<str>()` | `Viper.Network.Dns.LocalAddrs` |
 
 <a id="viper-network-http"></a>
 ### `Viper.Network.Http`
@@ -145,11 +145,11 @@ Its public surface exposes operations including `Get`, `GetBytes`, `Post`, `Post
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-network-http-get"></a>`Get` | `str(str)` | `Viper.Network.Http.Get` |
-| <a id="viper-network-http-getbytes"></a>`GetBytes` | `obj(str)` | `Viper.Network.Http.GetBytes` |
+| <a id="viper-network-http-getbytes"></a>`GetBytes` | `obj<Viper.Collections.Bytes>(str)` | `Viper.Network.Http.GetBytes` |
 | <a id="viper-network-http-post"></a>`Post` | `str(str,str)` | `Viper.Network.Http.Post` |
 | <a id="viper-network-http-postbytes"></a>`PostBytes` | `obj(str,obj)` | `Viper.Network.Http.PostBytes` |
 | <a id="viper-network-http-download"></a>`Download` | `i1(str,str)` | `Viper.Network.Http.Download` |
-| <a id="viper-network-http-head"></a>`Head` | `obj(str)` | `Viper.Network.Http.Head` |
+| <a id="viper-network-http-head"></a>`Head` | `obj<Viper.Collections.Map>(str)` | `Viper.Network.Http.Head` |
 | <a id="viper-network-http-patch"></a>`Patch` | `str(str,str)` | `Viper.Network.Http.Patch` |
 | <a id="viper-network-http-options"></a>`Options` | `str(str)` | `Viper.Network.Http.Options` |
 | <a id="viper-network-http-put"></a>`Put` | `str(str,str)` | `Viper.Network.Http.Put` |
@@ -181,7 +181,7 @@ Constructor: `Viper.Network.HttpReq.New`
 | <a id="viper-network-httpreq-settlsverify"></a>`SetTlsVerify` | `obj(i1)` | `Viper.Network.HttpReq.SetTlsVerify` |
 | <a id="viper-network-httpreq-allowinsecurecertificatesfortesting"></a>`AllowInsecureCertificatesForTesting` | `obj()` | `Viper.Network.HttpReq.AllowInsecureCertificatesForTesting` |
 | <a id="viper-network-httpreq-setkeepalive"></a>`SetKeepAlive` | `obj(i1)` | `Viper.Network.HttpReq.SetKeepAlive` |
-| <a id="viper-network-httpreq-send"></a>`Send` | `obj()` | `Viper.Network.HttpReq.Send` |
+| <a id="viper-network-httpreq-send"></a>`Send` | `obj<Viper.Network.HttpRes>()` | `Viper.Network.HttpReq.Send` |
 | <a id="viper-network-httpreq-sendresult"></a>`SendResult` | `obj<Viper.Result>()` | `Viper.Network.HttpReq.SendResult` |
 
 <a id="viper-network-httpres"></a>
@@ -199,13 +199,13 @@ construct the class directly. Its public surface exposes properties such as `Sta
 |---|---|---|
 | <a id="viper-network-httpres-status"></a>`Status` | `i64` | read-only |
 | <a id="viper-network-httpres-statustext"></a>`StatusText` | `str` | read-only |
-| <a id="viper-network-httpres-headers"></a>`Headers` | `obj` | read-only |
+| <a id="viper-network-httpres-headers"></a>`Headers` | `obj<Viper.Collections.Map>` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-network-httpres-body"></a>`Body` | `obj()` | `Viper.Network.HttpRes.Body` |
+| <a id="viper-network-httpres-body"></a>`Body` | `obj<Viper.Collections.Bytes>()` | `Viper.Network.HttpRes.Body` |
 | <a id="viper-network-httpres-bodystr"></a>`BodyStr` | `str()` | `Viper.Network.HttpRes.BodyStr` |
 | <a id="viper-network-httpres-header"></a>`Header` | `str(str)` | `Viper.Network.HttpRes.Header` |
 | <a id="viper-network-httpres-isok"></a>`IsOk` | `i1()` | `Viper.Network.HttpRes.IsOk` |
@@ -421,12 +421,12 @@ Constructor: `Viper.Network.HttpRouter.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-network-httprouter-add"></a>`Add` | `obj(str,str)` | `Viper.Network.HttpRouter.Add` |
-| <a id="viper-network-httprouter-get"></a>`Get` | `obj(str)` | `Viper.Network.HttpRouter.Get` |
-| <a id="viper-network-httprouter-post"></a>`Post` | `obj(str)` | `Viper.Network.HttpRouter.Post` |
-| <a id="viper-network-httprouter-put"></a>`Put` | `obj(str)` | `Viper.Network.HttpRouter.Put` |
-| <a id="viper-network-httprouter-delete"></a>`Delete` | `obj(str)` | `Viper.Network.HttpRouter.Delete` |
-| <a id="viper-network-httprouter-match"></a>`Match` | `obj(str,str)` | `Viper.Network.HttpRouter.Match` |
+| <a id="viper-network-httprouter-add"></a>`Add` | `obj<Viper.Network.HttpRouter>(str,str)` | `Viper.Network.HttpRouter.Add` |
+| <a id="viper-network-httprouter-get"></a>`Get` | `obj<Viper.Network.HttpRouter>(str)` | `Viper.Network.HttpRouter.Get` |
+| <a id="viper-network-httprouter-post"></a>`Post` | `obj<Viper.Network.HttpRouter>(str)` | `Viper.Network.HttpRouter.Post` |
+| <a id="viper-network-httprouter-put"></a>`Put` | `obj<Viper.Network.HttpRouter>(str)` | `Viper.Network.HttpRouter.Put` |
+| <a id="viper-network-httprouter-delete"></a>`Delete` | `obj<Viper.Network.HttpRouter>(str)` | `Viper.Network.HttpRouter.Delete` |
+| <a id="viper-network-httprouter-match"></a>`Match` | `obj<Viper.Network.RouteMatch>(str,str)` | `Viper.Network.HttpRouter.Match` |
 | <a id="viper-network-httprouter-new"></a>`New` | `obj()` | `Viper.Network.HttpRouter.New` |
 
 <a id="viper-network-routematch"></a>
@@ -578,7 +578,7 @@ Constructor: `Viper.Network.ConnectionPool.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-network-connectionpool-acquire"></a>`Acquire` | `obj(str,i64)` | `Viper.Network.ConnectionPool.Acquire` |
+| <a id="viper-network-connectionpool-acquire"></a>`Acquire` | `obj<Viper.Network.Tcp>(str,i64)` | `Viper.Network.ConnectionPool.Acquire` |
 | <a id="viper-network-connectionpool-release"></a>`Release` | `void(obj)` | `Viper.Network.ConnectionPool.Release` |
 | <a id="viper-network-connectionpool-clear"></a>`Clear` | `void()` | `Viper.Network.ConnectionPool.Clear` |
 | <a id="viper-network-connectionpool-new"></a>`New` | `obj(i64)` | `Viper.Network.ConnectionPool.New` |
@@ -607,10 +607,10 @@ Constructor: `Viper.Network.Multipart.New`
 |---|---|---|
 | <a id="viper-network-multipart-addfield"></a>`AddField` | `obj(str,str)` | `Viper.Network.Multipart.AddField` |
 | <a id="viper-network-multipart-addfile"></a>`AddFile` | `obj(str,str,obj)` | `Viper.Network.Multipart.AddFile` |
-| <a id="viper-network-multipart-build"></a>`Build` | `obj()` | `Viper.Network.Multipart.Build` |
-| <a id="viper-network-multipart-parse"></a>`Parse` | `obj(str,obj)` | `Viper.Network.Multipart.Parse` |
+| <a id="viper-network-multipart-build"></a>`Build` | `obj<Viper.Collections.Bytes>()` | `Viper.Network.Multipart.Build` |
+| <a id="viper-network-multipart-parse"></a>`Parse` | `obj<Viper.Network.Multipart>(str,obj)` | `Viper.Network.Multipart.Parse` |
 | <a id="viper-network-multipart-getfield"></a>`GetField` | `str(str)` | `Viper.Network.Multipart.GetField` |
-| <a id="viper-network-multipart-getfile"></a>`GetFile` | `obj(str)` | `Viper.Network.Multipart.GetFile` |
+| <a id="viper-network-multipart-getfile"></a>`GetFile` | `obj<Viper.Collections.Bytes>(str)` | `Viper.Network.Multipart.GetFile` |
 | <a id="viper-network-multipart-new"></a>`New` | `obj()` | `Viper.Network.Multipart.New` |
 
 <a id="viper-network-netutils"></a>
@@ -744,16 +744,16 @@ Constructor: `Viper.Network.HttpClient.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-network-httpclient-get"></a>`Get` | `obj(str)` | `Viper.Network.HttpClient.Get` |
-| <a id="viper-network-httpclient-post"></a>`Post` | `obj(str,str)` | `Viper.Network.HttpClient.Post` |
-| <a id="viper-network-httpclient-put"></a>`Put` | `obj(str,str)` | `Viper.Network.HttpClient.Put` |
-| <a id="viper-network-httpclient-delete"></a>`Delete` | `obj(str)` | `Viper.Network.HttpClient.Delete` |
+| <a id="viper-network-httpclient-get"></a>`Get` | `obj<Viper.Network.HttpRes>(str)` | `Viper.Network.HttpClient.Get` |
+| <a id="viper-network-httpclient-post"></a>`Post` | `obj<Viper.Network.HttpRes>(str,str)` | `Viper.Network.HttpClient.Post` |
+| <a id="viper-network-httpclient-put"></a>`Put` | `obj<Viper.Network.HttpRes>(str,str)` | `Viper.Network.HttpClient.Put` |
+| <a id="viper-network-httpclient-delete"></a>`Delete` | `obj<Viper.Network.HttpRes>(str)` | `Viper.Network.HttpClient.Delete` |
 | <a id="viper-network-httpclient-setheader"></a>`SetHeader` | `void(str,str)` | `Viper.Network.HttpClient.SetHeader` |
 | <a id="viper-network-httpclient-settimeout"></a>`SetTimeout` | `void(i64)` | `Viper.Network.HttpClient.SetTimeout` |
 | <a id="viper-network-httpclient-setpoolsize"></a>`SetPoolSize` | `void(i64)` | `Viper.Network.HttpClient.SetPoolSize` |
 | <a id="viper-network-httpclient-setmaxredirects"></a>`SetMaxRedirects` | `void(i64)` | `Viper.Network.HttpClient.SetMaxRedirects` |
 | <a id="viper-network-httpclient-setcookie"></a>`SetCookie` | `void(str,str,str)` | `Viper.Network.HttpClient.SetCookie` |
-| <a id="viper-network-httpclient-getcookies"></a>`GetCookies` | `obj(str)` | `Viper.Network.HttpClient.GetCookies` |
+| <a id="viper-network-httpclient-getcookies"></a>`GetCookies` | `obj<Viper.Collections.Map>(str)` | `Viper.Network.HttpClient.GetCookies` |
 | <a id="viper-network-httpclient-new"></a>`New` | `obj()` | `Viper.Network.HttpClient.New` |
 
 <a id="viper-network-smtpclient"></a>
@@ -791,12 +791,12 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-network-asyncsocket-connectasync"></a>`ConnectAsync` | `obj(str,i64)` | `Viper.Network.AsyncSocket.ConnectAsync` |
-| <a id="viper-network-asyncsocket-connectforasync"></a>`ConnectForAsync` | `obj(str,i64,i64)` | `Viper.Network.AsyncSocket.ConnectForAsync` |
-| <a id="viper-network-asyncsocket-sendasync"></a>`SendAsync` | `obj(obj,obj)` | `Viper.Network.AsyncSocket.SendAsync` |
-| <a id="viper-network-asyncsocket-recvasync"></a>`RecvAsync` | `obj(obj,i64)` | `Viper.Network.AsyncSocket.RecvAsync` |
-| <a id="viper-network-asyncsocket-httpgetasync"></a>`HttpGetAsync` | `obj(str)` | `Viper.Network.AsyncSocket.HttpGetAsync` |
-| <a id="viper-network-asyncsocket-httppostasync"></a>`HttpPostAsync` | `obj(str,str)` | `Viper.Network.AsyncSocket.HttpPostAsync` |
+| <a id="viper-network-asyncsocket-connectasync"></a>`ConnectAsync` | `obj<Viper.Threads.Future>(str,i64)` | `Viper.Network.AsyncSocket.ConnectAsync` |
+| <a id="viper-network-asyncsocket-connectforasync"></a>`ConnectForAsync` | `obj<Viper.Threads.Future>(str,i64,i64)` | `Viper.Network.AsyncSocket.ConnectForAsync` |
+| <a id="viper-network-asyncsocket-sendasync"></a>`SendAsync` | `obj<Viper.Threads.Future>(obj,obj)` | `Viper.Network.AsyncSocket.SendAsync` |
+| <a id="viper-network-asyncsocket-recvasync"></a>`RecvAsync` | `obj<Viper.Threads.Future>(obj,i64)` | `Viper.Network.AsyncSocket.RecvAsync` |
+| <a id="viper-network-asyncsocket-httpgetasync"></a>`HttpGetAsync` | `obj<Viper.Threads.Future>(str)` | `Viper.Network.AsyncSocket.HttpGetAsync` |
+| <a id="viper-network-asyncsocket-httppostasync"></a>`HttpPostAsync` | `obj<Viper.Threads.Future>(str,str)` | `Viper.Network.AsyncSocket.HttpPostAsync` |
 
 ## Functions
 
@@ -819,12 +819,12 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | <a id="viper-network-ratelimiter-get-max"></a>`Viper.Network.RateLimiter.get_Max` | `i64(obj)` | `rt_ratelimit_get_max` |
 | <a id="viper-network-ratelimiter-get-rate"></a>`Viper.Network.RateLimiter.get_Rate` | `f64(obj)` | `rt_ratelimit_get_rate` |
 | `Viper.Network.HttpRouter.New` | `obj()` | `rt_http_router_new` |
-| `Viper.Network.HttpRouter.Add` | `obj(obj,str,str)` | `rt_http_router_add` |
-| `Viper.Network.HttpRouter.Get` | `obj(obj,str)` | `rt_http_router_get` |
-| `Viper.Network.HttpRouter.Post` | `obj(obj,str)` | `rt_http_router_post` |
-| `Viper.Network.HttpRouter.Put` | `obj(obj,str)` | `rt_http_router_put` |
-| `Viper.Network.HttpRouter.Delete` | `obj(obj,str)` | `rt_http_router_delete` |
-| `Viper.Network.HttpRouter.Match` | `obj(obj,str,str)` | `rt_http_router_match` |
+| `Viper.Network.HttpRouter.Add` | `obj<Viper.Network.HttpRouter>(obj,str,str)` | `rt_http_router_add` |
+| `Viper.Network.HttpRouter.Get` | `obj<Viper.Network.HttpRouter>(obj,str)` | `rt_http_router_get` |
+| `Viper.Network.HttpRouter.Post` | `obj<Viper.Network.HttpRouter>(obj,str)` | `rt_http_router_post` |
+| `Viper.Network.HttpRouter.Put` | `obj<Viper.Network.HttpRouter>(obj,str)` | `rt_http_router_put` |
+| `Viper.Network.HttpRouter.Delete` | `obj<Viper.Network.HttpRouter>(obj,str)` | `rt_http_router_delete` |
+| `Viper.Network.HttpRouter.Match` | `obj<Viper.Network.RouteMatch>(obj,str,str)` | `rt_http_router_match` |
 | <a id="viper-network-httprouter-get-count"></a>`Viper.Network.HttpRouter.get_Count` | `i64(obj)` | `rt_http_router_count` |
 | `Viper.Network.RouteMatch.Param` | `str(obj,str)` | `rt_route_match_param` |
 | <a id="viper-network-routematch-get-index"></a>`Viper.Network.RouteMatch.get_Index` | `i64(obj)` | `rt_route_match_index` |
@@ -860,7 +860,7 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | <a id="viper-network-httpsserver-get-port"></a>`Viper.Network.HttpsServer.get_Port` | `i64(obj)` | `rt_https_server_port` |
 | <a id="viper-network-httpsserver-get-isrunning"></a>`Viper.Network.HttpsServer.get_IsRunning` | `i1(obj)` | `rt_https_server_is_running` |
 | `Viper.Network.ConnectionPool.New` | `obj(i64)` | `rt_connpool_new` |
-| `Viper.Network.ConnectionPool.Acquire` | `obj(obj,str,i64)` | `rt_connpool_acquire` |
+| `Viper.Network.ConnectionPool.Acquire` | `obj<Viper.Network.Tcp>(obj,str,i64)` | `rt_connpool_acquire` |
 | `Viper.Network.ConnectionPool.Release` | `void(obj,obj)` | `rt_connpool_release` |
 | `Viper.Network.ConnectionPool.Clear` | `void(obj)` | `rt_connpool_clear` |
 | <a id="viper-network-connectionpool-get-size"></a>`Viper.Network.ConnectionPool.get_Size` | `i64(obj)` | `rt_connpool_size` |
@@ -869,11 +869,11 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | `Viper.Network.Multipart.AddField` | `obj(obj,str,str)` | `rt_multipart_add_field` |
 | `Viper.Network.Multipart.AddFile` | `obj(obj,str,str,obj)` | `rt_multipart_add_file` |
 | <a id="viper-network-multipart-get-contenttype"></a>`Viper.Network.Multipart.get_ContentType` | `str(obj)` | `rt_multipart_content_type` |
-| `Viper.Network.Multipart.Build` | `obj(obj)` | `rt_multipart_build` |
+| `Viper.Network.Multipart.Build` | `obj<Viper.Collections.Bytes>(obj)` | `rt_multipart_build` |
 | <a id="viper-network-multipart-get-count"></a>`Viper.Network.Multipart.get_Count` | `i64(obj)` | `rt_multipart_count` |
-| `Viper.Network.Multipart.Parse` | `obj(str,obj)` | `rt_multipart_parse` |
+| `Viper.Network.Multipart.Parse` | `obj<Viper.Network.Multipart>(str,obj)` | `rt_multipart_parse` |
 | `Viper.Network.Multipart.GetField` | `str(obj,str)` | `rt_multipart_get_field` |
-| `Viper.Network.Multipart.GetFile` | `obj(obj,str)` | `rt_multipart_get_file` |
+| `Viper.Network.Multipart.GetFile` | `obj<Viper.Collections.Bytes>(obj,str)` | `rt_multipart_get_file` |
 | `Viper.Network.NetUtils.IsPortOpen` | `i1(str,i64,i64)` | `rt_netutils_is_port_open` |
 | `Viper.Network.NetUtils.GetFreePort` | `i64()` | `rt_netutils_get_free_port` |
 | `Viper.Network.NetUtils.MatchCidr` | `i1(str,str)` | `rt_netutils_match_cidr` |
@@ -907,10 +907,10 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | <a id="viper-network-sseclient-get-lasteventtype"></a>`Viper.Network.SseClient.get_LastEventType` | `str(obj)` | `rt_sse_last_event_type` |
 | <a id="viper-network-sseclient-get-lasteventid"></a>`Viper.Network.SseClient.get_LastEventId` | `str(obj)` | `rt_sse_last_event_id` |
 | `Viper.Network.HttpClient.New` | `obj()` | `rt_http_client_new` |
-| `Viper.Network.HttpClient.Get` | `obj(obj,str)` | `rt_http_client_get` |
-| `Viper.Network.HttpClient.Post` | `obj(obj,str,str)` | `rt_http_client_post` |
-| `Viper.Network.HttpClient.Put` | `obj(obj,str,str)` | `rt_http_client_put` |
-| `Viper.Network.HttpClient.Delete` | `obj(obj,str)` | `rt_http_client_delete` |
+| `Viper.Network.HttpClient.Get` | `obj<Viper.Network.HttpRes>(obj,str)` | `rt_http_client_get` |
+| `Viper.Network.HttpClient.Post` | `obj<Viper.Network.HttpRes>(obj,str,str)` | `rt_http_client_post` |
+| `Viper.Network.HttpClient.Put` | `obj<Viper.Network.HttpRes>(obj,str,str)` | `rt_http_client_put` |
+| `Viper.Network.HttpClient.Delete` | `obj<Viper.Network.HttpRes>(obj,str)` | `rt_http_client_delete` |
 | `Viper.Network.HttpClient.SetHeader` | `void(obj,str,str)` | `rt_http_client_set_header` |
 | `Viper.Network.HttpClient.SetTimeout` | `void(obj,i64)` | `rt_http_client_set_timeout` |
 | <a id="viper-network-httpclient-get-keepalive"></a>`Viper.Network.HttpClient.get_KeepAlive` | `i1(obj)` | `rt_http_client_get_keep_alive` |
@@ -920,19 +920,19 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | <a id="viper-network-httpclient-get-followredirects"></a>`Viper.Network.HttpClient.get_FollowRedirects` | `i1(obj)` | `rt_http_client_get_follow_redirects` |
 | <a id="viper-network-httpclient-set-followredirects"></a>`Viper.Network.HttpClient.set_FollowRedirects` | `void(obj,i1)` | `rt_http_client_set_follow_redirects` |
 | `Viper.Network.HttpClient.SetCookie` | `void(obj,str,str,str)` | `rt_http_client_set_cookie` |
-| `Viper.Network.HttpClient.GetCookies` | `obj(obj,str)` | `rt_http_client_get_cookies` |
+| `Viper.Network.HttpClient.GetCookies` | `obj<Viper.Collections.Map>(obj,str)` | `rt_http_client_get_cookies` |
 | `Viper.Network.SmtpClient.New` | `obj(str,i64)` | `rt_smtp_new` |
 | `Viper.Network.SmtpClient.SetAuth` | `void(obj,str,str)` | `rt_smtp_set_auth` |
 | `Viper.Network.SmtpClient.SetTls` | `void(obj,i1)` | `rt_smtp_set_tls` |
 | `Viper.Network.SmtpClient.SendResult` | `obj<Viper.Result>(obj,str,str,str,str)` | `rt_smtp_send_result` |
 | `Viper.Network.SmtpClient.SendHtmlResult` | `obj<Viper.Result>(obj,str,str,str,str)` | `rt_smtp_send_html_result` |
 | `Viper.Network.SmtpClient.Close` | `void(obj)` | `rt_smtp_close` |
-| `Viper.Network.AsyncSocket.ConnectAsync` | `obj(str,i64)` | `rt_async_connect` |
-| `Viper.Network.AsyncSocket.ConnectForAsync` | `obj(str,i64,i64)` | `rt_async_connect_for` |
-| `Viper.Network.AsyncSocket.SendAsync` | `obj(obj,obj)` | `rt_async_send` |
-| `Viper.Network.AsyncSocket.RecvAsync` | `obj(obj,i64)` | `rt_async_recv` |
-| `Viper.Network.AsyncSocket.HttpGetAsync` | `obj(str)` | `rt_async_http_get` |
-| `Viper.Network.AsyncSocket.HttpPostAsync` | `obj(str,str)` | `rt_async_http_post` |
+| `Viper.Network.AsyncSocket.ConnectAsync` | `obj<Viper.Threads.Future>(str,i64)` | `rt_async_connect` |
+| `Viper.Network.AsyncSocket.ConnectForAsync` | `obj<Viper.Threads.Future>(str,i64,i64)` | `rt_async_connect_for` |
+| `Viper.Network.AsyncSocket.SendAsync` | `obj<Viper.Threads.Future>(obj,obj)` | `rt_async_send` |
+| `Viper.Network.AsyncSocket.RecvAsync` | `obj<Viper.Threads.Future>(obj,i64)` | `rt_async_recv` |
+| `Viper.Network.AsyncSocket.HttpGetAsync` | `obj<Viper.Threads.Future>(str)` | `rt_async_http_get` |
+| `Viper.Network.AsyncSocket.HttpPostAsync` | `obj<Viper.Threads.Future>(str,str)` | `rt_async_http_post` |
 | `Viper.Network.Tcp.Connect` | `obj(str,i64)` | `rt_tcp_connect` |
 | `Viper.Network.Tcp.ConnectFor` | `obj(str,i64,i64)` | `rt_tcp_connect_for` |
 | <a id="viper-network-tcp-get-host"></a>`Viper.Network.Tcp.get_Host` | `str(obj)` | `rt_tcp_host` |
@@ -977,7 +977,7 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | `Viper.Network.Udp.SetRecvTimeout` | `void(obj,i64)` | `rt_udp_set_recv_timeout` |
 | `Viper.Network.Udp.Close` | `void(obj)` | `rt_udp_close` |
 | `Viper.Network.Dns.Resolve` | `str(str)` | `rt_dns_resolve` |
-| `Viper.Network.Dns.ResolveAll` | `obj(str)` | `rt_dns_resolve_all` |
+| `Viper.Network.Dns.ResolveAll` | `seq<str>(str)` | `rt_dns_resolve_all` |
 | `Viper.Network.Dns.ResolveIpv4` | `str(str)` | `rt_dns_resolve4` |
 | `Viper.Network.Dns.ResolveIpv6` | `str(str)` | `rt_dns_resolve6` |
 | `Viper.Network.Dns.Reverse` | `str(str)` | `rt_dns_reverse` |
@@ -985,13 +985,13 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | `Viper.Network.Dns.IsIpv4` | `i1(str)` | `rt_dns_is_ipv4` |
 | `Viper.Network.Dns.IsIpv6` | `i1(str)` | `rt_dns_is_ipv6` |
 | `Viper.Network.Dns.LocalHost` | `str()` | `rt_dns_local_host` |
-| `Viper.Network.Dns.LocalAddrs` | `obj()` | `rt_dns_local_addrs` |
+| `Viper.Network.Dns.LocalAddrs` | `seq<str>()` | `rt_dns_local_addrs` |
 | `Viper.Network.Http.Get` | `str(str)` | `rt_http_get` |
-| `Viper.Network.Http.GetBytes` | `obj(str)` | `rt_http_get_bytes` |
+| `Viper.Network.Http.GetBytes` | `obj<Viper.Collections.Bytes>(str)` | `rt_http_get_bytes` |
 | `Viper.Network.Http.Post` | `str(str,str)` | `rt_http_post` |
 | `Viper.Network.Http.PostBytes` | `obj(str,obj)` | `rt_http_post_bytes` |
 | `Viper.Network.Http.Download` | `i1(str,str)` | `rt_http_download` |
-| `Viper.Network.Http.Head` | `obj(str)` | `rt_http_head` |
+| `Viper.Network.Http.Head` | `obj<Viper.Collections.Map>(str)` | `rt_http_head` |
 | `Viper.Network.Http.Patch` | `str(str,str)` | `rt_http_patch` |
 | `Viper.Network.Http.Options` | `str(str)` | `rt_http_options` |
 | `Viper.Network.Http.Put` | `str(str,str)` | `rt_http_put` |
@@ -1007,12 +1007,12 @@ Its public surface exposes operations including `ConnectAsync`, `ConnectForAsync
 | `Viper.Network.HttpReq.SetTlsVerify` | `obj(obj,i1)` | `rt_http_req_set_tls_verify` |
 | `Viper.Network.HttpReq.AllowInsecureCertificatesForTesting` | `obj(obj)` | `rt_http_req_allow_insecure_certificates_for_testing` |
 | `Viper.Network.HttpReq.SetKeepAlive` | `obj(obj,i1)` | `rt_http_req_set_keep_alive` |
-| `Viper.Network.HttpReq.Send` | `obj(obj)` | `rt_http_req_send` |
+| `Viper.Network.HttpReq.Send` | `obj<Viper.Network.HttpRes>(obj)` | `rt_http_req_send` |
 | `Viper.Network.HttpReq.SendResult` | `obj<Viper.Result>(obj)` | `rt_http_req_send_result` |
 | <a id="viper-network-httpres-get-status"></a>`Viper.Network.HttpRes.get_Status` | `i64(obj)` | `rt_http_res_status` |
 | <a id="viper-network-httpres-get-statustext"></a>`Viper.Network.HttpRes.get_StatusText` | `str(obj)` | `rt_http_res_status_text` |
-| <a id="viper-network-httpres-get-headers"></a>`Viper.Network.HttpRes.get_Headers` | `obj(obj)` | `rt_http_res_headers` |
-| `Viper.Network.HttpRes.Body` | `obj(obj)` | `rt_http_res_body` |
+| <a id="viper-network-httpres-get-headers"></a>`Viper.Network.HttpRes.get_Headers` | `obj<Viper.Collections.Map>(obj)` | `rt_http_res_headers` |
+| `Viper.Network.HttpRes.Body` | `obj<Viper.Collections.Bytes>(obj)` | `rt_http_res_body` |
 | `Viper.Network.HttpRes.BodyStr` | `str(obj)` | `rt_http_res_body_str` |
 | `Viper.Network.HttpRes.Header` | `str(obj,str)` | `rt_http_res_header` |
 | `Viper.Network.HttpRes.IsOk` | `i1(obj)` | `rt_http_res_is_ok` |

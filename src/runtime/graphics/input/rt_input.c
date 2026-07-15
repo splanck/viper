@@ -1409,7 +1409,9 @@ void rt_mouse_init(void) {
 /// pumping and game-loop user code.
 void rt_mouse_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
-    // Calculate delta from previous position
+    // Calculate delta from previous position. Poll paths that pump events after
+    // this call refresh the delta via rt_mouse_finalize_frame() so it describes
+    // this frame's motion instead of lagging one poll behind Mouse.X/Y.
     g_mouse_delta_x = g_mouse_x - g_mouse_prev_x;
     g_mouse_delta_y = g_mouse_y - g_mouse_prev_y;
     g_mouse_prev_x = g_mouse_x;
@@ -1428,6 +1430,23 @@ void rt_mouse_begin_frame(void) {
     // Reset wheel deltas
     g_mouse_wheel_x = 0.0;
     g_mouse_wheel_y = 0.0;
+}
+
+/// @brief Recompute the absolute mouse delta after this frame's events are pumped.
+///
+/// `rt_mouse_begin_frame` runs before the poll drains the OS event queue, so the
+/// delta it computes describes the *previous* frame's motion. Poll paths call this
+/// after event processing so `Mouse.DeltaX/Y` and `Mouse.X/Y` agree on the same
+/// frame. Relative-mode overrides (`rt_mouse_force_delta*`) run afterwards in the
+/// Canvas3D poll and take precedence.
+void rt_mouse_finalize_frame(void) {
+    RT_ASSERT_MAIN_THREAD();
+    g_mouse_delta_x = g_mouse_x - g_mouse_prev_x;
+    g_mouse_delta_y = g_mouse_y - g_mouse_prev_y;
+    g_mouse_prev_x = g_mouse_x;
+    g_mouse_prev_y = g_mouse_y;
+    g_mouse_delta_fx = (double)g_mouse_delta_x;
+    g_mouse_delta_fy = (double)g_mouse_delta_y;
 }
 
 /// @brief Forward an OS mouse-move event into the runtime state.
@@ -1612,9 +1631,9 @@ int64_t rt_mouse_y(void) {
 
 /// @brief Get the per-frame pointer delta along x.
 ///
-/// Computed by `rt_mouse_begin_frame` as `current_x - previous_frame_x`.
-/// Stable for the entire duration of the current frame; updated only at
-/// the next `begin_frame`.
+/// Refreshed by `rt_mouse_finalize_frame` after the poll pumps this frame's
+/// events (or forced by the relative-mode overrides), so it describes the same
+/// frame as `rt_mouse_x`. Stable for the rest of the frame once polling ends.
 ///
 /// @return Movement delta in canvas pixels since the last frame (+X right).
 int64_t rt_mouse_delta_x(void) {

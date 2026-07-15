@@ -717,11 +717,8 @@ In-process publish/subscribe message bus for decoupled communication between com
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
 - Empty topic names are valid. `Topics()` returns an owning `Seq` of copied topic strings in
   unspecified hash-bucket order; the result remains valid after the bus is cleared or destroyed.
-- The implementation returns a Seq, but both registry entries declare unqualified `obj`. Zia
-  therefore infers the declaring `MessageBus` class and rejects natural chains such as
-  `bus.Topics().Count`; use an explicitly typed local or
-  `Viper.Collections.Seq.get_Count(bus.Topics())`. This is tracked in
-  [VDOC-020](../documentation-review-findings.md#vdoc-020--untyped-concrete-object-results-break-member-typing-or-infer-the-declaring-class).
+- `Topics()` is registered as `seq<str>`, so natural chains such as `bus.Topics().Count`
+  type-check directly.
 - `Unsubscribe`, `ClearTopic`, and `Clear` remove empty topic records, so a later `Topics()` call reports only active topics.
 - If a handler traps during `Publish`, the in-flight snapshot is released before the trap is re-raised.
 - MessageBus instances are typed runtime objects, participate in GC traversal for retained handlers,

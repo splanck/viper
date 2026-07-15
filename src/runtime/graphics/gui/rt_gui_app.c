@@ -1741,6 +1741,10 @@ void rt_gui_app_poll(void *app_ptr) {
                 rt_gui_complete_drag_drop(app, rt_gui_hit_root(app));
         }
     }
+
+    // Recompute the absolute delta after this frame's events so Mouse.DeltaX/Y
+    // describe the same frame as Mouse.X/Y instead of lagging one poll behind.
+    rt_mouse_finalize_frame();
 }
 
 /// @brief Layout, paint, and present the entire UI to the window.

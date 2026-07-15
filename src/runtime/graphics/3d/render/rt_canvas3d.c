@@ -2157,6 +2157,10 @@ int64_t rt_canvas3d_poll(void *obj) {
             rt_mouse_force_delta(dx, dy);
         } else if (!captured) {
             rt_canvas3d_update_mouse_from_logical(mx, my);
+            /* Recompute the absolute delta after this frame's motion so
+             * Mouse.DeltaX/Y describe the same frame as Mouse.X/Y. Captured
+             * paths above force their own (relative) deltas instead. */
+            rt_mouse_finalize_frame();
         }
     }
 

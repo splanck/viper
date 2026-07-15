@@ -787,10 +787,8 @@ in `text`; it is not accumulated into the containing element's `text` field.
 - `StripTags` inserts separators for block-like tags such as paragraphs and line breaks, while inline tags such as `span`, `b`, and `i` do not invent spaces inside a word.
 - Escaping, unescaping, stripping, and extraction use runtime string byte length, so embedded `NUL` bytes are preserved.
 - `ExtractLinks` recognizes `href` attributes with whitespace around `=`, quoted or unquoted values, absolute paths such as `/about`, and self-closing tags; it ignores non-`href` names such as `data-href`.
-- `Parse`, `ExtractLinks`, and `ExtractText` are registered with unqualified `Object` return types
-  even though they return Map/Seq objects. Natural chained member access can infer `Html` instead;
-  use an explicit collection receiver in Zia or a typed BASIC local as shown below. See
-  [VDOC-020](../../documentation-review-findings.md#vdoc-020--untyped-collection-results-are-inferred-as-their-declaring-static-classes).
+- `Parse` is registered as returning a `Viper.Collections.Map`, and `ExtractLinks`/`ExtractText`
+  as string sequences, so chained member access resolves against the returned collections.
 - `ExtractLinks` returns raw attribute text without entity decoding. `ExtractLinks` and
   `ExtractText` return owned sequences of owned strings.
 - `ExtractText` does not correctly delimit nested elements with the same tag name and can omit

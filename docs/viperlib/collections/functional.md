@@ -498,9 +498,8 @@ A sequential cursor over a collection that provides controlled traversal with pe
 - In BASIC, `Next()` and `Peek()` return values directly
 - `Skip(n)` returns the actual number of elements skipped, which may be less than n if the iterator is near the end
 - `ToSeq()` collects only the *remaining* elements from the current position onward and advances the iterator to its end
-- `ToSeq()` returns a Seq at runtime but is registered as unqualified `obj`. In Zia, annotate the
-  result as `Viper.Collections.Seq`; chaining `it.ToSeq().Count` resolves the Iterator's `Count`
-  property and traps on the returned Seq (VDOC-020).
+- `ToSeq()` is registered as a typed sequence return, so chains such as `it.ToSeq().Count`
+  resolve against the returned Seq.
 - Stack iterators snapshot the stack in bottom-to-top order and restore the source stack unchanged
 - Seq, List, and Ring iterators retain a live source reference but cache its length. Avoid changing a live source while
   iterating: inserted elements do not extend `Count`, and shrinking a source can invalidate a cached position.

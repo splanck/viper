@@ -34,8 +34,8 @@ RT_CLASS_BEGIN("Viper.Input.Keyboard", Keyboard, "obj", none)
     // Event methods (since last Poll)
     RT_METHOD("WasPressed", "i1(i64)", KeyboardWasPressed)
     RT_METHOD("WasReleased", "i1(i64)", KeyboardWasReleased)
-    RT_METHOD("GetPressed", "obj()", KeyboardGetPressed)
-    RT_METHOD("GetReleased", "obj()", KeyboardGetReleased)
+    RT_METHOD("GetPressed", "obj<Viper.Collections.Seq>()", KeyboardGetPressed)
+    RT_METHOD("GetReleased", "obj<Viper.Collections.Seq>()", KeyboardGetReleased)
 
     // Text input
     RT_METHOD("GetText", "str()", KeyboardGetText)

@@ -194,10 +194,8 @@ Approved-mode key encryption produces:
   Raw-key mode instead depends on nonce uniqueness under the caller-managed key. Its current
   32-bit cross-process prefix is unsafe for a persistent key reused across enough restarts; see
   [VDOC-172](../documentation-review-findings.md#vdoc-172--ciphers-raw-key-nonce-construction-has-only-a-32-bit-cross-process-margin).
-- Several byte-returning Cipher/Aes registry signatures are unqualified `obj`. In Zia, use an
-  explicit `Viper.Collections.Bytes` receiver for properties of an inferred result, as the examples
-  below do. This typing defect is tracked in
-  [VDOC-020](../documentation-review-findings.md#vdoc-020--untyped-concrete-object-results-break-member-typing-or-infer-the-declaring-class).
+- Byte-returning Cipher/Aes registry signatures are typed as `Viper.Collections.Bytes`, so
+  properties such as `.Length` resolve directly on the result.
 
 ### Zia Example
 

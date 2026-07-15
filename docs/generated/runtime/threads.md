@@ -129,11 +129,11 @@ Constructor: `Viper.Threads.ConcurrentMap.New`
 | <a id="viper-threads-concurrentmap-get"></a>`Get` | `obj(str)` | `Viper.Threads.ConcurrentMap.Get` |
 | <a id="viper-threads-concurrentmap-getor"></a>`GetOr` | `obj(str,obj)` | `Viper.Threads.ConcurrentMap.GetOr` |
 | <a id="viper-threads-concurrentmap-has"></a>`Has` | `i1(str)` | `Viper.Threads.ConcurrentMap.Has` |
-| <a id="viper-threads-concurrentmap-keys"></a>`Keys` | `obj()` | `Viper.Threads.ConcurrentMap.Keys` |
+| <a id="viper-threads-concurrentmap-keys"></a>`Keys` | `seq<obj>()` | `Viper.Threads.ConcurrentMap.Keys` |
 | <a id="viper-threads-concurrentmap-remove"></a>`Remove` | `i1(str)` | `Viper.Threads.ConcurrentMap.Remove` |
 | <a id="viper-threads-concurrentmap-set"></a>`Set` | `void(str,obj)` | `Viper.Threads.ConcurrentMap.Set` |
 | <a id="viper-threads-concurrentmap-setifmissing"></a>`SetIfMissing` | `i1(str,obj)` | `Viper.Threads.ConcurrentMap.SetIfMissing` |
-| <a id="viper-threads-concurrentmap-values"></a>`Values` | `obj()` | `Viper.Threads.ConcurrentMap.Values` |
+| <a id="viper-threads-concurrentmap-values"></a>`Values` | `seq<obj>()` | `Viper.Threads.ConcurrentMap.Values` |
 | <a id="viper-threads-concurrentmap-new"></a>`New` | `obj()` | `Viper.Threads.ConcurrentMap.New` |
 
 <a id="viper-threads-monitor"></a>
@@ -511,7 +511,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-scheduler-isdue"></a>`IsDue` | `i1(str)` | `Viper.Threads.Scheduler.IsDue` |
 | <a id="viper-threads-scheduler-isduegeneration"></a>`IsDueGeneration` | `i1(str,i64)` | `Viper.Threads.Scheduler.IsDueGeneration` |
 | <a id="viper-threads-scheduler-generationof"></a>`GenerationOf` | `i64(str)` | `Viper.Threads.Scheduler.GenerationOf` |
-| <a id="viper-threads-scheduler-poll"></a>`Poll` | `obj()` | `Viper.Threads.Scheduler.Poll` |
+| <a id="viper-threads-scheduler-poll"></a>`Poll` | `seq<str>()` | `Viper.Threads.Scheduler.Poll` |
 | <a id="viper-threads-scheduler-clear"></a>`Clear` | `void()` | `Viper.Threads.Scheduler.Clear` |
 | <a id="viper-threads-scheduler-new"></a>`New` | `obj()` | `Viper.Threads.Scheduler.New` |
 
@@ -540,8 +540,8 @@ Constructor: `Viper.Threads.Scheduler.New`
 | `Viper.Threads.ConcurrentMap.SetIfMissing` | `i1(obj,str,obj)` | `rt_concmap_set_if_missing` |
 | `Viper.Threads.ConcurrentMap.Remove` | `i1(obj,str)` | `rt_concmap_remove` |
 | `Viper.Threads.ConcurrentMap.Clear` | `void(obj)` | `rt_concmap_clear` |
-| `Viper.Threads.ConcurrentMap.Keys` | `obj(obj)` | `rt_concmap_keys` |
-| `Viper.Threads.ConcurrentMap.Values` | `obj(obj)` | `rt_concmap_values` |
+| `Viper.Threads.ConcurrentMap.Keys` | `seq<obj>(obj)` | `rt_concmap_keys` |
+| `Viper.Threads.ConcurrentMap.Values` | `seq<obj>(obj)` | `rt_concmap_values` |
 | `Viper.Threads.CancelToken.New` | `obj()` | `rt_cancellation_new` |
 | <a id="viper-threads-canceltoken-get-iscancelled"></a>`Viper.Threads.CancelToken.get_IsCancelled` | `i1(obj)` | `rt_cancellation_is_cancelled` |
 | `Viper.Threads.CancelToken.Cancel` | `void(obj)` | `rt_cancellation_cancel` |
@@ -568,7 +568,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | `Viper.Threads.Scheduler.IsDue` | `i1(obj,str)` | `rt_scheduler_is_due` |
 | `Viper.Threads.Scheduler.IsDueGeneration` | `i1(obj,str,i64)` | `rt_scheduler_is_due_gen` |
 | `Viper.Threads.Scheduler.GenerationOf` | `i64(obj,str)` | `rt_scheduler_generation_of` |
-| `Viper.Threads.Scheduler.Poll` | `obj(obj)` | `rt_scheduler_poll` |
+| `Viper.Threads.Scheduler.Poll` | `seq<str>(obj)` | `rt_scheduler_poll` |
 | <a id="viper-threads-scheduler-get-pending"></a>`Viper.Threads.Scheduler.get_Pending` | `i64(obj)` | `rt_scheduler_pending` |
 | `Viper.Threads.Scheduler.Clear` | `void(obj)` | `rt_scheduler_clear` |
 | `Viper.Threads.Monitor.Enter` | `void(obj)` | `rt_monitor_enter` |

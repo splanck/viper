@@ -32,6 +32,8 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/sem/RegistryBuilder.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -764,6 +766,26 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
         }
         attempts.push_back(q);
         sig = procReg_.lookup(q);
+        if (!sig && segs.size() >= 2) {
+            // Runtime class-method alias fallback: classes may expose methods that
+            // alias functions registered under a different canonical name (e.g.
+            // Viper.Data.Json.GetStr aliases Viper.Collections.Map.GetStr). Resolve
+            // the class surface and rewrite the call to the alias target so the
+            // rest of the pipeline (argument checks, lowering) sees the real
+            // function, keeping BASIC's callable surface equal to Zia's.
+            std::vector<std::string> classSegs(segs.begin(), segs.end() - 1);
+            const std::string classQ = JoinDots(classSegs);
+            if (il::runtime::findRuntimeClassByQName(classQ)) {
+                if (auto alias = runtimeMethodIndex().find(classQ, segs.back(), c.args.size())) {
+                    if (const auto *aliasSig = procReg_.lookup(alias->target)) {
+                        auto &mutableCall = const_cast<CallExpr &>(c);
+                        mutableCall.calleeQualified = SplitDots(alias->target);
+                        mutableCall.callee = alias->target;
+                        sig = aliasSig;
+                    }
+                }
+            }
+        }
         if (!sig && usedAlias) {
             // Unknown after alias expansion: show canonical and note alias mapping.
             diagx::ErrorUnknownProcQualified(de.emitter(), c.loc, q);
@@ -981,6 +1003,21 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
             }
             continue;
         }
+        // Object parameters of runtime builtins are seeded as I64 (the AST type
+        // enum cannot express objects); reject primitives explicitly so an i64
+        // never reaches IL verification as an object-pointer operand. A literal
+        // 0 is permitted as the null-object idiom (e.g. Thread.Start payloads).
+        if (sig->isRuntimeBuiltin && i < sig->objectParams.size() && sig->objectParams[i]) {
+            if (argTy == Type::Int || argTy == Type::Float || argTy == Type::Bool) {
+                const auto *lit = c.args[i] ? as<const IntExpr>(*c.args[i]) : nullptr;
+                if (!(argTy == Type::Int && lit && lit->value == 0)) {
+                    std::string msg = "argument " + std::to_string(i + 1) + " to " + c.callee +
+                                      " expects an OBJECT; box primitives with Viper.Core.Box";
+                    de.emit(il::support::Severity::Error, "B2001", c.loc, 1, std::move(msg));
+                }
+            }
+            continue; // Object/String/Unknown arguments are acceptable object payloads.
+        }
         if (expectTy == ::il::frontends::basic::Type::F64 && argTy == Type::Int)
             continue;
         // Float arguments can be implicitly converted to integer parameters (truncation)
@@ -1042,6 +1079,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::inferCallType([[maybe_unused]] const Ca
                                                        const ProcSignature *sig) {
     if (!sig || !sig->retType)
         return Type::Unknown;
+    if (sig->objectReturn)
+        return Type::Object;
     if (*sig->retType == ::il::frontends::basic::Type::F64)
         return Type::Float;
     if (*sig->retType == ::il::frontends::basic::Type::Str)

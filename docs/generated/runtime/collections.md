@@ -505,7 +505,7 @@ Constructor: `Viper.Collections.CountMap.New`
 | <a id="viper-collections-countmap-increment"></a>`Increment` | `i64(str)` | `Viper.Collections.CountMap.Increment` |
 | <a id="viper-collections-countmap-incrementby"></a>`IncrementBy` | `i64(str,i64)` | `Viper.Collections.CountMap.IncrementBy` |
 | <a id="viper-collections-countmap-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.CountMap.Keys` |
-| <a id="viper-collections-countmap-mostcommon"></a>`MostCommon` | `obj(i64)` | `Viper.Collections.CountMap.MostCommon` |
+| <a id="viper-collections-countmap-mostcommon"></a>`MostCommon` | `seq<str>(i64)` | `Viper.Collections.CountMap.MostCommon` |
 | <a id="viper-collections-countmap-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.CountMap.Remove` |
 | <a id="viper-collections-countmap-set"></a>`Set` | `void(str,i64)` | `Viper.Collections.CountMap.Set` |
 | <a id="viper-collections-countmap-new"></a>`New` | `obj()` | `Viper.Collections.CountMap.New` |
@@ -582,9 +582,9 @@ Constructor: `Viper.Collections.SortedSet.New`
 | <a id="viper-collections-sortedset-at"></a>`At` | `str(i64)` | `Viper.Collections.SortedSet.At` |
 | <a id="viper-collections-sortedset-indexof"></a>`IndexOf` | `i64(str)` | `Viper.Collections.SortedSet.IndexOf` |
 | <a id="viper-collections-sortedset-toseq"></a>`ToSeq` | `seq<str>()` | `Viper.Collections.SortedSet.ToSeq` |
-| <a id="viper-collections-sortedset-range"></a>`Range` | `obj(str,str)` | `Viper.Collections.SortedSet.Range` |
-| <a id="viper-collections-sortedset-take"></a>`Take` | `obj(i64)` | `Viper.Collections.SortedSet.Take` |
-| <a id="viper-collections-sortedset-skip"></a>`Skip` | `obj(i64)` | `Viper.Collections.SortedSet.Skip` |
+| <a id="viper-collections-sortedset-range"></a>`Range` | `seq<str>(str,str)` | `Viper.Collections.SortedSet.Range` |
+| <a id="viper-collections-sortedset-take"></a>`Take` | `seq<str>(i64)` | `Viper.Collections.SortedSet.Take` |
+| <a id="viper-collections-sortedset-skip"></a>`Skip` | `seq<str>(i64)` | `Viper.Collections.SortedSet.Skip` |
 | <a id="viper-collections-sortedset-union"></a>`Union` | `obj(obj)` | `Viper.Collections.SortedSet.Union` |
 | <a id="viper-collections-sortedset-intersect"></a>`Intersect` | `obj(obj)` | `Viper.Collections.SortedSet.Intersect` |
 | <a id="viper-collections-sortedset-difference"></a>`Difference` | `obj(obj)` | `Viper.Collections.SortedSet.Difference` |
@@ -844,7 +844,7 @@ Constructor: `Viper.Collections.Heap.New`
 | <a id="viper-collections-heap-peek"></a>`Peek` | `obj()` | `Viper.Collections.Heap.Peek` |
 | <a id="viper-collections-heap-pop"></a>`Pop` | `obj()` | `Viper.Collections.Heap.Pop` |
 | <a id="viper-collections-heap-push"></a>`Push` | `void(i64,obj)` | `Viper.Collections.Heap.Push` |
-| <a id="viper-collections-heap-toseq"></a>`ToSeq` | `obj()` | `Viper.Collections.Heap.ToSeq` |
+| <a id="viper-collections-heap-toseq"></a>`ToSeq` | `seq<obj>()` | `Viper.Collections.Heap.ToSeq` |
 | <a id="viper-collections-heap-trypeek"></a>`TryPeek` | `obj<Viper.Option>()` | `Viper.Collections.Heap.TryPeek` |
 | <a id="viper-collections-heap-trypop"></a>`TryPop` | `obj<Viper.Option>()` | `Viper.Collections.Heap.TryPop` |
 | <a id="viper-collections-heap-new"></a>`New` | `obj()` | `Viper.Collections.Heap.New` |
@@ -1014,7 +1014,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-collections-iterator-next"></a>`Next` | `obj()` | `Viper.Collections.Iterator.Next` |
 | <a id="viper-collections-iterator-peek"></a>`Peek` | `obj()` | `Viper.Collections.Iterator.Peek` |
 | <a id="viper-collections-iterator-reset"></a>`Reset` | `void()` | `Viper.Collections.Iterator.Reset` |
-| <a id="viper-collections-iterator-toseq"></a>`ToSeq` | `obj()` | `Viper.Collections.Iterator.ToSeq` |
+| <a id="viper-collections-iterator-toseq"></a>`ToSeq` | `seq<obj>()` | `Viper.Collections.Iterator.ToSeq` |
 | <a id="viper-collections-iterator-skip"></a>`Skip` | `i64(i64)` | `Viper.Collections.Iterator.Skip` |
 | <a id="viper-collections-iterator-fromseq"></a>`FromSeq` | `obj(obj)` | `Viper.Collections.Iterator.FromSeq` |
 | <a id="viper-collections-iterator-fromlist"></a>`FromList` | `obj(obj)` | `Viper.Collections.Iterator.FromList` |
@@ -1376,12 +1376,12 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.CountMap.Has` | `i1(obj,str)` | `rt_countmap_has` |
 | <a id="viper-collections-countmap-get-total"></a>`Viper.Collections.CountMap.get_Total` | `i64(obj)` | `rt_countmap_total` |
 | `Viper.Collections.CountMap.Keys` | `seq<str>(obj)` | `rt_countmap_keys` |
-| `Viper.Collections.CountMap.MostCommon` | `obj(obj,i64)` | `rt_countmap_most_common` |
+| `Viper.Collections.CountMap.MostCommon` | `seq<str>(obj,i64)` | `rt_countmap_most_common` |
 | `Viper.Collections.CountMap.Remove` | `i1(obj,str)` | `rt_countmap_remove` |
 | `Viper.Collections.CountMap.Clear` | `void(obj)` | `rt_countmap_clear` |
 | `Viper.Collections.MultiMap.Clear` | `void(obj)` | `rt_multimap_clear` |
 | `Viper.Collections.MultiMap.CountFor` | `i64(obj,str)` | `rt_multimap_count_for` |
-| `Viper.Collections.MultiMap.Get` | `obj(obj,str)` | `rt_multimap_get` |
+| `Viper.Collections.MultiMap.Get` | `seq<obj>(obj,str)` | `rt_multimap_get` |
 | `Viper.Collections.MultiMap.GetFirst` | `obj(obj,str)` | `rt_multimap_get_first` |
 | `Viper.Collections.MultiMap.Has` | `i1(obj,str)` | `rt_multimap_has` |
 | <a id="viper-collections-multimap-get-isempty"></a>`Viper.Collections.MultiMap.get_IsEmpty` | `i1(obj)` | `rt_multimap_is_empty` |
@@ -1447,7 +1447,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Heap.Peek` | `obj(obj)` | `rt_pqueue_peek` |
 | `Viper.Collections.Heap.Pop` | `obj(obj)` | `rt_pqueue_pop` |
 | `Viper.Collections.Heap.Push` | `void(obj,i64,obj)` | `rt_pqueue_push` |
-| `Viper.Collections.Heap.ToSeq` | `obj(obj)` | `rt_pqueue_to_seq` |
+| `Viper.Collections.Heap.ToSeq` | `seq<obj>(obj)` | `rt_pqueue_to_seq` |
 | `Viper.Collections.Heap.TryPeek` | `obj<Viper.Option>(obj)` | `rt_pqueue_try_peek_option` |
 | `Viper.Collections.Heap.TryPop` | `obj<Viper.Option>(obj)` | `rt_pqueue_try_pop_option` |
 | <a id="viper-collections-ring-get-capacity"></a>`Viper.Collections.Ring.get_Capacity` | `i64(obj)` | `rt_ring_cap` |
@@ -1540,7 +1540,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Iterator.Reset` | `void(obj)` | `rt_iter_reset` |
 | <a id="viper-collections-iterator-get-index"></a>`Viper.Collections.Iterator.get_Index` | `i64(obj)` | `rt_iter_index` |
 | <a id="viper-collections-iterator-get-count"></a>`Viper.Collections.Iterator.get_Count` | `i64(obj)` | `rt_iter_count` |
-| `Viper.Collections.Iterator.ToSeq` | `obj(obj)` | `rt_iter_to_seq` |
+| `Viper.Collections.Iterator.ToSeq` | `seq<obj>(obj)` | `rt_iter_to_seq` |
 | `Viper.Collections.Iterator.Skip` | `i64(obj,i64)` | `rt_iter_skip` |
 | `Viper.Collections.SortedMap.New` | `obj()` | `rt_treemap_new` |
 | <a id="viper-collections-sortedmap-get-count"></a>`Viper.Collections.SortedMap.get_Count` | `i64(obj)` | `rt_treemap_len` |
@@ -1595,9 +1595,9 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.SortedSet.At` | `str(obj,i64)` | `rt_sortedset_at` |
 | `Viper.Collections.SortedSet.IndexOf` | `i64(obj,str)` | `rt_sortedset_index_of` |
 | `Viper.Collections.SortedSet.ToSeq` | `seq<str>(obj)` | `rt_sortedset_items` |
-| `Viper.Collections.SortedSet.Range` | `obj(obj,str,str)` | `rt_sortedset_range` |
-| `Viper.Collections.SortedSet.Take` | `obj(obj,i64)` | `rt_sortedset_take` |
-| `Viper.Collections.SortedSet.Skip` | `obj(obj,i64)` | `rt_sortedset_skip` |
+| `Viper.Collections.SortedSet.Range` | `seq<str>(obj,str,str)` | `rt_sortedset_range` |
+| `Viper.Collections.SortedSet.Take` | `seq<str>(obj,i64)` | `rt_sortedset_take` |
+| `Viper.Collections.SortedSet.Skip` | `seq<str>(obj,i64)` | `rt_sortedset_skip` |
 | `Viper.Collections.SortedSet.Union` | `obj(obj,obj)` | `rt_sortedset_union` |
 | `Viper.Collections.SortedSet.Intersect` | `obj(obj,obj)` | `rt_sortedset_intersect` |
 | `Viper.Collections.SortedSet.Difference` | `obj(obj,obj)` | `rt_sortedset_diff` |

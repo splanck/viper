@@ -250,6 +250,11 @@ void *rt_option_unwrap(void *obj) {
         trap_with_message("Unwrap called on None Option");
         return NULL;
     }
+    if (o->value_type != VALUE_PTR) {
+        trap_with_message(
+            "Unwrap called on non-object payload; use UnwrapStr/UnwrapI64/UnwrapI1/UnwrapF64");
+        return NULL;
+    }
     return o->value.ptr;
 }
 
@@ -372,6 +377,10 @@ void *rt_option_value(void *obj) {
     Option *o = (Option *)obj;
     if (o->variant != OPTION_SOME)
         return NULL;
+    // Generic object accessor: typed payloads (str/i64/f64) must not be
+    // reinterpreted as pointers; non-trapping contract returns NULL instead.
+    if (o->value_type != VALUE_PTR)
+        return NULL;
     return o->value.ptr;
 }
 
@@ -401,6 +410,14 @@ void *rt_option_expect(void *obj, rt_string msg) {
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
         return NULL;
     }
+    if (o->value_type != VALUE_PTR) {
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "Option expect: %s (payload is not an object; use UnwrapStr/UnwrapI64/UnwrapF64)",
+                 msg_str);
+        rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
+    }
     return o->value.ptr;
 }
 
@@ -416,7 +433,32 @@ void *rt_option_expect(void *obj, rt_string msg) {
 // =============================================================================
 
 /// @brief Apply `fn` to the wrapped value, returning `Some(fn(val))`. None passes through.
+/// @brief Direct-call invoker used by the native combinator wrappers.
+void *rt_cb_direct_invoke1(void *ctx, void *fn, void *arg) {
+    (void)ctx;
+    return ((void *(*)(void *))fn)(arg);
+}
+
+/// @brief Direct-call invoker for zero-argument callbacks.
+void *rt_cb_direct_invoke0(void *ctx, void *fn) {
+    (void)ctx;
+    return ((void *(*)(void))fn)();
+}
+
+/// @brief Direct-call invoker for boolean predicates.
+int8_t rt_cb_direct_invoke_pred(void *ctx, void *fn, void *arg) {
+    (void)ctx;
+    return ((int8_t (*)(void *))fn)(arg);
+}
+
 void *rt_option_map(void *obj, void *(*fn)(void *)) {
+    return rt_option_map_invoke(obj, (void *)fn, rt_cb_direct_invoke1, NULL);
+}
+
+/// @brief Combinator core shared by the native wrapper and the VM callback bridges.
+/// The `invoke` strategy abstracts how the user callback runs (direct C call for
+/// native code, interpreter re-entry for the VMs) so the semantics live here once.
+void *rt_option_map_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx) {
     if (!obj || !fn)
         return rt_option_none();
     Option *o = (Option *)obj;
@@ -424,7 +466,7 @@ void *rt_option_map(void *obj, void *(*fn)(void *)) {
         return rt_option_none();
 
     if (o->value_type == VALUE_PTR) {
-        void *new_val = fn(o->value.ptr);
+        void *new_val = invoke(ctx, fn, o->value.ptr);
         return rt_option_some(new_val);
     }
     return obj;
@@ -433,6 +475,11 @@ void *rt_option_map(void *obj, void *(*fn)(void *)) {
 /// @brief Monadic bind: apply `fn` to the wrapped value where `fn` itself returns an Option,
 /// flattening the result. Used to chain fallible operations without nested Options.
 void *rt_option_and_then(void *obj, void *(*fn)(void *)) {
+    return rt_option_and_then_invoke(obj, (void *)fn, rt_cb_direct_invoke1, NULL);
+}
+
+/// @brief Combinator core; see @ref rt_option_map_invoke for the invoker contract.
+void *rt_option_and_then_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx) {
     if (!obj || !fn)
         return rt_option_none();
     Option *o = (Option *)obj;
@@ -440,7 +487,7 @@ void *rt_option_and_then(void *obj, void *(*fn)(void *)) {
         return rt_option_none();
 
     if (o->value_type == VALUE_PTR) {
-        return fn(o->value.ptr);
+        return invoke(ctx, fn, o->value.ptr);
     }
     return obj;
 }
@@ -448,24 +495,34 @@ void *rt_option_and_then(void *obj, void *(*fn)(void *)) {
 /// @brief If the option is Some, return it unchanged; otherwise call `fn()` to compute a fallback
 /// Option. Used for "try this default lookup if the primary failed" patterns.
 void *rt_option_or_else(void *obj, void *(*fn)(void)) {
+    return rt_option_or_else_invoke(obj, (void *)fn, rt_cb_direct_invoke0, NULL);
+}
+
+/// @brief Combinator core; see @ref rt_option_map_invoke for the invoker contract.
+void *rt_option_or_else_invoke(void *obj, void *fn, rt_cb_invoke0 invoke, void *ctx) {
     if (!obj)
-        return fn ? fn() : rt_option_none();
+        return fn ? invoke(ctx, fn) : rt_option_none();
     Option *o = (Option *)obj;
     if (o->variant == OPTION_SOME)
         return obj;
-    return fn ? fn() : rt_option_none();
+    return fn ? invoke(ctx, fn) : rt_option_none();
 }
 
 /// @brief Return the option if Some AND `pred(value)` is true; otherwise None. Cheap way to
 /// turn unconditional Some values into Some-or-None based on a predicate.
 void *rt_option_filter(void *obj, int8_t (*pred)(void *)) {
-    if (!obj || !pred)
+    return rt_option_filter_invoke(obj, (void *)pred, rt_cb_direct_invoke_pred, NULL);
+}
+
+/// @brief Combinator core; see @ref rt_option_map_invoke for the invoker contract.
+void *rt_option_filter_invoke(void *obj, void *fn, rt_cb_invoke_pred invoke, void *ctx) {
+    if (!obj || !fn)
         return rt_option_none();
     Option *o = (Option *)obj;
     if (o->variant != OPTION_SOME)
         return rt_option_none();
 
-    if (o->value_type == VALUE_PTR && pred(o->value.ptr)) {
+    if (o->value_type == VALUE_PTR && invoke(ctx, fn, o->value.ptr)) {
         return obj;
     }
     return rt_option_none();

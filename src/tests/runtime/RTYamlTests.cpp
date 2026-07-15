@@ -17,6 +17,7 @@ extern "C" {
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_yaml.h"
+#include "rt_yaml_internal.h"
 }
 
 static rt_string make_str(const char *text) {
@@ -316,7 +317,103 @@ static void test_formatter_quotes_ambiguous_and_multiline_strings() {
     release_obj(map);
 }
 
+static void test_format_preserves_double_precision_and_string_bytes() {
+    // VDOC-027: finite doubles must format with round-trip precision, and
+    // strings with embedded NUL bytes must be emitted (escaped) in full.
+    rt_string src = make_str("v: 1.0000000000000002");
+    void *doc = rt_yaml_parse(src);
+    release_obj((void *)src);
+    assert(doc != NULL);
+    rt_string out = rt_yaml_format(doc);
+    assert(out != NULL);
+    assert(std::strstr(rt_string_cstr(out), "1.0000000000000002") != NULL);
+    release_obj((void *)out);
+    release_obj(doc);
+
+    void *map = rt_map_new();
+    rt_string key = make_str("k");
+    rt_string val = rt_string_from_bytes("a\0b", 3);
+    rt_map_set(map, key, val);
+    rt_string nul_out = rt_yaml_format(map);
+    assert(nul_out != NULL);
+    const char *s = rt_string_cstr(nul_out);
+    // The NUL byte is escaped, and the trailing byte after it survives.
+    assert(std::strstr(s, "\\u0000") != NULL);
+    assert(std::strstr(s, "b\"") != NULL);
+    release_obj((void *)nul_out);
+    release_obj((void *)key);
+    release_obj((void *)val);
+    release_obj(map);
+}
+
+static void test_anchor_alias_syntax_is_rejected() {
+    // VDOC-028: anchors/aliases are unsupported and must invalidate the
+    // document explicitly instead of being silently misparsed.
+    rt_string anchored = make_str("base: &b {x: 1}\ncopy: *b");
+    assert(rt_yaml_parse(anchored) == NULL);
+    release_obj((void *)anchored);
+
+    rt_string alias_only = make_str("a: *ref");
+    assert(rt_yaml_parse(alias_only) == NULL);
+    release_obj((void *)alias_only);
+
+    // Quoted and mid-token '&'/'*' remain ordinary string content.
+    rt_string quoted = make_str("q: \"a&b\"\nm: x*y");
+    void *doc = rt_yaml_parse(quoted);
+    assert(doc != NULL);
+    release_obj(doc);
+    release_obj((void *)quoted);
+}
+
+static void test_format_bounds_cyclic_containers() {
+    // VDOC-033: a self-referencing container must fail the format (empty
+    // result) instead of recursing without bound.
+    void *map = rt_map_new();
+    rt_string key = make_str("self");
+    rt_map_set(map, key, map);
+    rt_string out = rt_yaml_format(map);
+    assert(out != NULL);
+    assert(rt_str_len(out) == 0);
+    release_obj((void *)out);
+    release_obj((void *)key);
+    // Break the cycle before releasing so the map tears down normally.
+    rt_string self_key = make_str("self");
+    rt_map_remove(map, self_key);
+    release_obj((void *)self_key);
+    release_obj(map);
+}
+
+static void test_scalar_with_embedded_nul_stays_string() {
+    // VDOC-039: a scalar span containing a NUL can never be numeric; the whole
+    // span must stay a string instead of strtoll silently stopping at the NUL.
+    void *v = parse_scalar("1\0garbage", 9);
+    assert(v != NULL);
+    assert(rt_string_is_handle(v));
+    assert(rt_str_len((rt_string)v) == 9);
+    release_obj(v);
+}
+
+static void test_parse_rejects_malformed_utf8() {
+    // VDOC-040: YAML requires a valid UTF-8 stream; a standalone 0xFF byte is
+    // not UTF-8 and must invalidate the document.
+    rt_string bad = rt_string_from_bytes("x: \xFF", 4);
+    assert(rt_yaml_parse(bad) == NULL);
+    release_obj((void *)bad);
+
+    // Valid multibyte text still parses (Euro sign value).
+    rt_string good = rt_string_from_bytes("x: \xE2\x82\xAC", 6);
+    void *doc = rt_yaml_parse(good);
+    assert(doc != NULL);
+    release_obj(doc);
+    release_obj((void *)good);
+}
+
 int main() {
+    test_scalar_with_embedded_nul_stays_string();
+    test_parse_rejects_malformed_utf8();
+    test_format_bounds_cyclic_containers();
+    test_anchor_alias_syntax_is_rejected();
+    test_format_preserves_double_precision_and_string_bytes();
     test_parse_nested_mapping_and_sequence();
     test_sequence_preserves_null_items();
     test_multi_document_stream_returns_sequence();

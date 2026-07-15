@@ -569,22 +569,23 @@ coordinate system: the origin is at the top left and positive Y points down.
 | `Show()`         | `Void()`                  | Show the cursor                                     |
 
 `Capture()` is not an operating-system pointer lock or confinement API. By itself it leaves
-absolute motion bounded by the desktop/window. Use Canvas3D relative mode for unbounded camera
-input.
+absolute motion bounded by the desktop/window. Use relative mode for unbounded camera input.
 
 ### Relative (Raw) Mouse Mode — FPS Mouse-Look
 
 `SetRelativeMode(true)` requests unbounded mouse motion and implies `Capture()`;
-`SetRelativeMode(false)` releases capture. The request is applied only while `Canvas3D.Poll()`
-drives input. A 2D Canvas or GUI poll records the request and hides the cursor but does not engage
-native relative input or the center-warp fallback.
+`SetRelativeMode(false)` releases capture. The request is applied by both `Canvas3D.Poll()` and
+the 2D `Canvas.Poll()` — whichever poll drives input reconciles the request against its window.
+The GUI application poll records the request and hides the cursor but does not engage native
+relative input or the center-warp fallback.
 
-With Canvas3D polling, the absolute position freezes and motion is exposed through
+While relative mode is engaged, the absolute position freezes and motion is exposed through
 `DeltaXF()`/`DeltaYF()`; `DeltaX()`/`DeltaY()` return rounded integer deltas.
 
-Canvas3D uses Windows raw input, macOS cursor dissociation, or Linux XInput2 when available. If
-native relative input cannot be enabled, it falls back to warping to the window center, with
-integer precision. `RelativeModeNative` distinguishes the native path from the fallback.
+Both canvas polls use Windows raw input, macOS cursor dissociation, or Linux XInput2 when
+available. If native relative input cannot be enabled, they fall back to warping to the window
+center, with integer precision. `RelativeModeNative` distinguishes the native path from the
+fallback.
 
 | Method / Property         | Signature        | Description                                       |
 |---------------------------|------------------|---------------------------------------------------|
@@ -598,8 +599,8 @@ module RelativeMouseRequest;
 bind Viper.Input.Mouse as Mouse;
 
 func start() {
-    Mouse.SetRelativeMode(true);  // request Canvas3D mouse-look
-    // Each frame after Canvas3D.Poll():
+    Mouse.SetRelativeMode(true);  // request mouse-look
+    // Each frame after Canvas.Poll() or Canvas3D.Poll():
     var lookX = Mouse.DeltaXF();  // sub-pixel, unbounded
     var lookY = Mouse.DeltaYF();
     Mouse.SetRelativeMode(false); // back to a normal cursor

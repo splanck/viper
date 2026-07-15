@@ -19,11 +19,11 @@ Its public surface exposes operations including `EncryptAuth`, `DecryptAuth`,
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-aes-encryptauth"></a>`EncryptAuth` | `obj(obj,obj,obj)` | `Viper.Crypto.Aes.EncryptAuth` |
+| <a id="viper-crypto-aes-encryptauth"></a>`EncryptAuth` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `Viper.Crypto.Aes.EncryptAuth` |
 | <a id="viper-crypto-aes-decryptauth"></a>`DecryptAuth` | `obj(obj,obj,obj)` | `Viper.Crypto.Aes.DecryptAuth` |
 | <a id="viper-crypto-aes-decryptauthresult"></a>`DecryptAuthResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Aes.DecryptAuthResult` |
 | <a id="viper-crypto-aes-trydecryptauth"></a>`TryDecryptAuth` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Aes.TryDecryptAuth` |
-| <a id="viper-crypto-aes-encryptstr"></a>`EncryptStr` | `obj(str,str)` | `Viper.Crypto.Aes.EncryptStr` |
+| <a id="viper-crypto-aes-encryptstr"></a>`EncryptStr` | `obj<Viper.Collections.Bytes>(str,str)` | `Viper.Crypto.Aes.EncryptStr` |
 | <a id="viper-crypto-aes-decryptstr"></a>`DecryptStr` | `str(obj,str)` | `Viper.Crypto.Aes.DecryptStr` |
 | <a id="viper-crypto-aes-decryptstrresult"></a>`DecryptStrResult` | `obj<Viper.Result>(obj,str)` | `Viper.Crypto.Aes.DecryptStrResult` |
 | <a id="viper-crypto-aes-trydecryptstr"></a>`TryDecryptStr` | `obj<Viper.Option>(obj,str)` | `Viper.Crypto.Aes.TryDecryptStr` |
@@ -178,23 +178,23 @@ construct the class directly. Its public surface exposes operations including `E
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-cipher-encrypt"></a>`Encrypt` | `obj(obj,str)` | `Viper.Crypto.Cipher.Encrypt` |
+| <a id="viper-crypto-cipher-encrypt"></a>`Encrypt` | `obj<Viper.Collections.Bytes>(obj,str)` | `Viper.Crypto.Cipher.Encrypt` |
 | <a id="viper-crypto-cipher-decrypt"></a>`Decrypt` | `obj(obj,str)` | `Viper.Crypto.Cipher.Decrypt` |
 | <a id="viper-crypto-cipher-decryptresult"></a>`DecryptResult` | `obj<Viper.Result>(obj,str)` | `Viper.Crypto.Cipher.DecryptResult` |
 | <a id="viper-crypto-cipher-trydecrypt"></a>`TryDecrypt` | `obj<Viper.Option>(obj,str)` | `Viper.Crypto.Cipher.TryDecrypt` |
-| <a id="viper-crypto-cipher-encryptaad"></a>`EncryptAad` | `obj(obj,str,obj)` | `Viper.Crypto.Cipher.EncryptAad` |
+| <a id="viper-crypto-cipher-encryptaad"></a>`EncryptAad` | `obj<Viper.Collections.Bytes>(obj,str,obj)` | `Viper.Crypto.Cipher.EncryptAad` |
 | <a id="viper-crypto-cipher-decryptaad"></a>`DecryptAad` | `obj(obj,str,obj)` | `Viper.Crypto.Cipher.DecryptAad` |
 | <a id="viper-crypto-cipher-decryptaadresult"></a>`DecryptAadResult` | `obj<Viper.Result>(obj,str,obj)` | `Viper.Crypto.Cipher.DecryptAadResult` |
 | <a id="viper-crypto-cipher-trydecryptaad"></a>`TryDecryptAad` | `obj<Viper.Option>(obj,str,obj)` | `Viper.Crypto.Cipher.TryDecryptAad` |
-| <a id="viper-crypto-cipher-encryptwithkey"></a>`EncryptWithKey` | `obj(obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKey` |
+| <a id="viper-crypto-cipher-encryptwithkey"></a>`EncryptWithKey` | `obj<Viper.Collections.Bytes>(obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKey` |
 | <a id="viper-crypto-cipher-decryptwithkey"></a>`DecryptWithKey` | `obj(obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKey` |
 | <a id="viper-crypto-cipher-decryptwithkeyresult"></a>`DecryptWithKeyResult` | `obj<Viper.Result>(obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyResult` |
 | <a id="viper-crypto-cipher-trydecryptwithkey"></a>`TryDecryptWithKey` | `obj<Viper.Option>(obj,obj)` | `Viper.Crypto.Cipher.TryDecryptWithKey` |
-| <a id="viper-crypto-cipher-encryptwithkeyaad"></a>`EncryptWithKeyAad` | `obj(obj,obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKeyAad` |
+| <a id="viper-crypto-cipher-encryptwithkeyaad"></a>`EncryptWithKeyAad` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKeyAad` |
 | <a id="viper-crypto-cipher-decryptwithkeyaad"></a>`DecryptWithKeyAad` | `obj(obj,obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyAad` |
 | <a id="viper-crypto-cipher-decryptwithkeyaadresult"></a>`DecryptWithKeyAadResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyAadResult` |
 | <a id="viper-crypto-cipher-trydecryptwithkeyaad"></a>`TryDecryptWithKeyAad` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Cipher.TryDecryptWithKeyAad` |
-| <a id="viper-crypto-cipher-generatekey"></a>`GenerateKey` | `obj()` | `Viper.Crypto.Cipher.GenerateKey` |
+| <a id="viper-crypto-cipher-generatekey"></a>`GenerateKey` | `obj<Viper.Collections.Bytes>()` | `Viper.Crypto.Cipher.GenerateKey` |
 | <a id="viper-crypto-cipher-derivekey"></a>`DeriveKey` | `obj(str,obj)` | `Viper.Crypto.Cipher.DeriveKey` |
 
 <a id="viper-crypto-tls"></a>
@@ -266,33 +266,33 @@ construct the class directly. Its public surface exposes properties such as `Hos
 | `Viper.Crypto.Compliance.DisableApprovedModeForProcess` | `void()` | `rt_crypto_module_disable_approved_mode` |
 | `Viper.Crypto.Compliance.IsApprovedModeForProcess` | `i1()` | `rt_crypto_module_is_approved_mode_viper` |
 | `Viper.Crypto.Compliance.Status` | `str()` | `rt_crypto_module_status_text` |
-| `Viper.Crypto.Cipher.Encrypt` | `obj(obj,str)` | `rt_cipher_encrypt` |
+| `Viper.Crypto.Cipher.Encrypt` | `obj<Viper.Collections.Bytes>(obj,str)` | `rt_cipher_encrypt` |
 | `Viper.Crypto.Cipher.Decrypt` | `obj(obj,str)` | `rt_cipher_decrypt` |
 | `Viper.Crypto.Cipher.DecryptResult` | `obj<Viper.Result>(obj,str)` | `rt_cipher_decrypt_result` |
 | `Viper.Crypto.Cipher.TryDecrypt` | `obj<Viper.Option>(obj,str)` | `rt_cipher_try_decrypt` |
-| `Viper.Crypto.Cipher.EncryptAad` | `obj(obj,str,obj)` | `rt_cipher_encrypt_aad` |
+| `Viper.Crypto.Cipher.EncryptAad` | `obj<Viper.Collections.Bytes>(obj,str,obj)` | `rt_cipher_encrypt_aad` |
 | `Viper.Crypto.Cipher.DecryptAad` | `obj(obj,str,obj)` | `rt_cipher_decrypt_aad` |
 | `Viper.Crypto.Cipher.DecryptAadResult` | `obj<Viper.Result>(obj,str,obj)` | `rt_cipher_decrypt_aad_result` |
 | `Viper.Crypto.Cipher.TryDecryptAad` | `obj<Viper.Option>(obj,str,obj)` | `rt_cipher_try_decrypt_aad` |
-| `Viper.Crypto.Cipher.EncryptWithKey` | `obj(obj,obj)` | `rt_cipher_encrypt_with_key` |
+| `Viper.Crypto.Cipher.EncryptWithKey` | `obj<Viper.Collections.Bytes>(obj,obj)` | `rt_cipher_encrypt_with_key` |
 | `Viper.Crypto.Cipher.DecryptWithKey` | `obj(obj,obj)` | `rt_cipher_decrypt_with_key` |
 | `Viper.Crypto.Cipher.DecryptWithKeyResult` | `obj<Viper.Result>(obj,obj)` | `rt_cipher_decrypt_with_key_result` |
 | `Viper.Crypto.Cipher.TryDecryptWithKey` | `obj<Viper.Option>(obj,obj)` | `rt_cipher_try_decrypt_with_key` |
-| `Viper.Crypto.Cipher.EncryptWithKeyAad` | `obj(obj,obj,obj)` | `rt_cipher_encrypt_with_key_aad` |
+| `Viper.Crypto.Cipher.EncryptWithKeyAad` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `rt_cipher_encrypt_with_key_aad` |
 | `Viper.Crypto.Cipher.DecryptWithKeyAad` | `obj(obj,obj,obj)` | `rt_cipher_decrypt_with_key_aad` |
 | `Viper.Crypto.Cipher.DecryptWithKeyAadResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_cipher_decrypt_with_key_aad_result` |
 | `Viper.Crypto.Cipher.TryDecryptWithKeyAad` | `obj<Viper.Option>(obj,obj,obj)` | `rt_cipher_try_decrypt_with_key_aad` |
-| `Viper.Crypto.Cipher.GenerateKey` | `obj()` | `rt_cipher_generate_key` |
+| `Viper.Crypto.Cipher.GenerateKey` | `obj<Viper.Collections.Bytes>()` | `rt_cipher_generate_key` |
 | `Viper.Crypto.Cipher.DeriveKey` | `obj(str,obj)` | `rt_cipher_derive_key` |
 | `Viper.Crypto.Legacy.Aes.EncryptCbc` | `obj(obj,obj,obj)` | `rt_aes_encrypt` |
 | `Viper.Crypto.Legacy.Aes.DecryptCbc` | `obj(obj,obj,obj)` | `rt_aes_decrypt` |
 | `Viper.Crypto.Legacy.Aes.DecryptCbcResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_aes_decrypt_result` |
 | `Viper.Crypto.Legacy.Aes.TryDecryptCbc` | `obj<Viper.Option>(obj,obj,obj)` | `rt_aes_try_decrypt` |
-| `Viper.Crypto.Aes.EncryptAuth` | `obj(obj,obj,obj)` | `rt_aes_encrypt_auth` |
+| `Viper.Crypto.Aes.EncryptAuth` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `rt_aes_encrypt_auth` |
 | `Viper.Crypto.Aes.DecryptAuth` | `obj(obj,obj,obj)` | `rt_aes_decrypt_auth` |
 | `Viper.Crypto.Aes.DecryptAuthResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_aes_decrypt_auth_result` |
 | `Viper.Crypto.Aes.TryDecryptAuth` | `obj<Viper.Option>(obj,obj,obj)` | `rt_aes_try_decrypt_auth` |
-| `Viper.Crypto.Aes.EncryptStr` | `obj(str,str)` | `rt_aes_encrypt_str` |
+| `Viper.Crypto.Aes.EncryptStr` | `obj<Viper.Collections.Bytes>(str,str)` | `rt_aes_encrypt_str` |
 | `Viper.Crypto.Aes.DecryptStr` | `str(obj,str)` | `rt_aes_decrypt_str` |
 | `Viper.Crypto.Aes.DecryptStrResult` | `obj<Viper.Result>(obj,str)` | `rt_aes_decrypt_str_result` |
 | `Viper.Crypto.Aes.TryDecryptStr` | `obj<Viper.Option>(obj,str)` | `rt_aes_try_decrypt_str` |

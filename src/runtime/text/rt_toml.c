@@ -6,19 +6,24 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_toml.c
-// Purpose: Implements TOML v1.0 parsing and formatting for the Viper.Text.Toml
+// Purpose: Implements a TOML-subset parser and formatter for the Viper.Data.Toml
 //          class. Produces an rt_map tree from a TOML document supporting
 //          tables ([table]), arrays of tables ([[array]]), inline tables,
-//          string types (basic, literal, multi-line), integer, float, bool,
-//          datetime, and array values.
+//          basic/literal/multi-line strings, and array values. This is NOT a
+//          conforming TOML v1.0 parser: every scalar (integers, floats,
+//          booleans, datetimes) is stored as an rt_string and arbitrary
+//          unquoted scalar text is accepted (so IsValid is a structural check,
+//          not a conformance check). Dotted assignment keys (a.b = ...)
+//          construct nested tables like section headers; quoted keys keep
+//          their literal spelling. Input must be NUL-free valid UTF-8.
 //
 // Key invariants:
-//   - Section/key hierarchy maps to nested rt_map trees.
-//   - Integer values are stored as Box.I64; floats as Box.F64.
-//   - Booleans are Box.I64(0/1); arrays are rt_seq; datetime as rt_string.
+//   - [Section] key hierarchy maps to nested rt_map trees; scalars are strings.
+//   - Arrays are rt_seq of element strings (nested arrays/inline tables recurse).
 //   - Duplicate keys within the same table cause a parse error.
-//   - Parse returns NULL on invalid TOML input (not a trap).
-//   - Format output is valid TOML 1.0; nested tables use explicit [section] headers.
+//   - Parse returns NULL on invalid input (not a trap).
+//   - Format emits [section] headers for nested tables (see the depth limits
+//     documented on rt_toml_format).
 //
 // Ownership/Lifetime:
 //   - Returned rt_map trees are fresh allocations owned by the caller.
@@ -31,6 +36,8 @@
 
 #include "rt_toml.h"
 
+#include "rt_string_internal.h"
+
 #include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_map.h"
@@ -38,8 +45,10 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_format.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -566,6 +575,15 @@ void *rt_toml_parse(rt_string src) {
         return NULL;
 
     const char *p = rt_string_cstr(src);
+    // TOML documents are text: an embedded NUL byte in the runtime String is
+    // invalid input. Reject it explicitly instead of silently parsing only the
+    // prefix before the NUL (the C-string walker below cannot see past it).
+    int64_t src_len = rt_str_len(src);
+    if (!p || src_len < 0 || memchr(p, '\0', (size_t)src_len) != NULL)
+        return NULL;
+    // TOML requires a valid UTF-8 stream (VDOC-040).
+    if (!rt_utf8_span_valid(p, (size_t)src_len))
+        return NULL;
     g_toml_had_error = 0;
     void *root = rt_map_new();
     void *current_section = root;
@@ -654,8 +672,9 @@ void *rt_toml_parse(rt_string src) {
         }
 
         // Key = Value
+        const int quoted_key = (*p == '"' || *p == '\'');
         rt_string key = NULL;
-        if (*p == '"' || *p == '\'')
+        if (quoted_key)
             key = parse_quoted_string(&p);
         else
             key = parse_bare_key(&p);
@@ -678,18 +697,57 @@ void *rt_toml_parse(rt_string src) {
         p++; // skip '='
         skip_ws(&p);
 
+        // Dotted bare keys construct nested tables per TOML semantics
+        // (`a.b = v` stores `v` under key `b` of table `a`). Quoted keys keep
+        // their literal spelling, dots included.
+        void *target_section = current_section;
+        rt_string final_key = key; // borrowed alias unless a split allocates
+        rt_string split_key = NULL;
+        if (!quoted_key) {
+            const char *kc = rt_string_cstr(key);
+            const char *last_dot = kc ? strrchr(kc, '.') : NULL;
+            if (last_dot) {
+                int key_depth = 1;
+                for (const char *dp = kc; *dp; dp++) {
+                    if (*dp == '.')
+                        key_depth++;
+                }
+                if (last_dot == kc || last_dot[1] == '\0' || key_depth > TOML_MAX_DEPTH) {
+                    /* Leading/trailing dot or excessive nesting: malformed key. */
+                    g_toml_had_error = 1;
+                    rt_string_unref(key);
+                    skip_line(&p);
+                    continue;
+                }
+                target_section =
+                    ensure_table_path(current_section, kc, (size_t)(last_dot - kc));
+                if (!target_section || !is_map_obj(target_section)) {
+                    g_toml_had_error = 1;
+                    rt_string_unref(key);
+                    skip_line(&p);
+                    continue;
+                }
+                split_key = make_str(last_dot + 1, (int64_t)strlen(last_dot + 1));
+                final_key = split_key;
+            }
+        }
+
         // Parse value
-        if (rt_map_has(current_section, key)) {
+        if (rt_map_has(target_section, final_key)) {
             g_toml_had_error = 1;
+            if (split_key)
+                rt_string_unref(split_key);
             rt_string_unref(key);
             skip_line(&p);
             continue;
         }
         void *val = parse_value_object(&p, 0, 0);
         if (val) {
-            rt_map_set(current_section, key, val);
+            rt_map_set(target_section, final_key, val);
             release_obj_maybe(val);
         }
+        if (split_key)
+            rt_string_unref(split_key);
         rt_string_unref(key);
 
         skip_line(&p);
@@ -830,7 +888,11 @@ static int append_toml_key_bytes(rt_string_builder *sb, const char *key, size_t 
 /// @param sb Destination builder.
 /// @param val Runtime value pointer.
 /// @return 1 on success, 0 when appending or numeric formatting failed.
-static int append_toml_value(rt_string_builder *sb, void *val) {
+static int append_toml_value(rt_string_builder *sb, void *val, int depth) {
+    // Depth guard bounds recursion for deeply nested (or cyclic) containers;
+    // exceeding it fails the format, which surfaces as an empty result.
+    if (depth > TOML_MAX_DEPTH)
+        return 0;
     if (!val) {
         return append_quoted_toml_string(sb, "");
     }
@@ -854,9 +916,29 @@ static int append_toml_value(rt_string_builder *sb, void *val) {
                    toml_format_append_bytes(sb, buf, (size_t)n);
         }
         case RT_BOX_F64: {
-            int n = snprintf(buf, sizeof(buf), "%.17g", rt_unbox_f64(val));
-            return n >= 0 && (size_t)n < sizeof(buf) &&
-                   toml_format_append_bytes(sb, buf, (size_t)n);
+            double d = rt_unbox_f64(val);
+            int n;
+            if (isfinite(d)) {
+                // Locale-independent exact formatting (VDOC-041): plain snprintf
+                // would inherit the process C numeric locale (comma separators).
+                rt_format_f64_roundtrip(d, buf, sizeof(buf));
+                n = (int)strlen(buf);
+            } else {
+                // inf/nan spellings contain no separator and are valid TOML.
+                n = snprintf(buf, sizeof(buf), "%.17g", d);
+            }
+            if (n < 0 || (size_t)n >= sizeof(buf) - 2)
+                return 0;
+            // TOML floats must carry a fractional/exponent marker: whole-valued
+            // doubles like 1.0 print as "1" via %g, which is an integer token.
+            // Append ".0" so the value keeps its float type on reparse. Skip for
+            // outputs already containing '.', an exponent, or inf/nan spellings.
+            if (!strpbrk(buf, ".eEni")) {
+                buf[n++] = '.';
+                buf[n++] = '0';
+                buf[n] = '\0';
+            }
+            return toml_format_append_bytes(sb, buf, (size_t)n);
         }
         case RT_BOX_STR: {
             rt_string s = rt_unbox_str(val);
@@ -881,16 +963,106 @@ static int append_toml_value(rt_string_builder *sb, void *val) {
         for (int64_t i = 0; i < len; i++) {
             if (i > 0 && !toml_format_append_cstr(sb, ", "))
                 return 0;
-            if (!append_toml_value(sb, rt_seq_get(val, i)))
+            if (!append_toml_value(sb, rt_seq_get(val, i), depth + 1))
                 return 0;
         }
         return toml_format_append_cstr(sb, "]");
+    }
+
+    if (is_map_obj(val)) {
+        // Maps in value position (e.g. inside arrays) emit as inline tables.
+        if (!toml_format_append_cstr(sb, "{"))
+            return 0;
+        void *keys = rt_map_keys(val);
+        if (!keys)
+            return 0;
+        int ok = 1;
+        int64_t n = rt_seq_len(keys);
+        for (int64_t i = 0; ok && i < n; i++) {
+            rt_string k = (rt_string)rt_seq_get(keys, i);
+            int64_t klen = rt_str_len(k);
+            if (klen < 0 || (i > 0 && !toml_format_append_cstr(sb, ", ")) ||
+                !append_toml_key_bytes(sb, rt_string_cstr(k), (size_t)klen) ||
+                !toml_format_append_cstr(sb, " = ") ||
+                !append_toml_value(sb, rt_map_get(val, k), depth + 1)) {
+                ok = 0;
+            }
+        }
+        release_obj_maybe(keys);
+        return ok && toml_format_append_cstr(sb, "}");
     }
 
     return append_quoted_toml_string(sb, "");
 }
 
 /// @brief Format a Map as a TOML document string.
+/// @brief Recursively emit a table: scalar entries first, then subtables as
+///        dotted `[a.b.c]` section headers.
+/// @param sb Output builder.
+/// @param map Table to emit.
+/// @param path Dotted (already-escaped) path of this table; empty at the root.
+/// @param depth Current nesting depth; bounded by TOML_MAX_DEPTH so deeply
+///        nested or cyclic inputs fail the format instead of recursing forever.
+/// @return 1 on success, 0 on failure.
+static int toml_format_table(rt_string_builder *sb,
+                             void *map,
+                             rt_string_builder *path,
+                             int depth) {
+    if (depth > TOML_MAX_DEPTH)
+        return 0;
+
+    void *keys = rt_map_keys(map);
+    if (!keys)
+        return 0;
+    int ok = 1;
+    int64_t n = rt_seq_len(keys);
+
+    // Pass 1: scalar/array entries under this table's header.
+    for (int64_t i = 0; ok && i < n; i++) {
+        rt_string key = (rt_string)rt_seq_get(keys, i);
+        void *val = rt_map_get(map, key);
+        if (is_map_obj(val))
+            continue;
+        int64_t klen = rt_str_len(key);
+        if (klen < 0 || !append_toml_key_bytes(sb, rt_string_cstr(key), (size_t)klen) ||
+            !toml_format_append_cstr(sb, " = ") || !append_toml_value(sb, val, depth) ||
+            !toml_format_append_cstr(sb, "\n"))
+            ok = 0;
+    }
+
+    // Pass 2: subtables as [dotted.section] headers, recursively.
+    for (int64_t i = 0; ok && i < n; i++) {
+        rt_string key = (rt_string)rt_seq_get(keys, i);
+        void *val = rt_map_get(map, key);
+        if (!is_map_obj(val))
+            continue;
+        int64_t klen = rt_str_len(key);
+        if (klen < 0) {
+            ok = 0;
+            break;
+        }
+
+        const size_t saved_path_len = path->len;
+        if ((path->len > 0 && !toml_format_append_cstr(path, ".")) ||
+            !append_toml_key_bytes(path, rt_string_cstr(key), (size_t)klen)) {
+            ok = 0;
+            break;
+        }
+
+        if (!toml_format_append_cstr(sb, "[") ||
+            !toml_format_append_bytes(sb, path->data, path->len) ||
+            !toml_format_append_cstr(sb, "]\n") ||
+            !toml_format_table(sb, val, path, depth + 1) ||
+            !toml_format_append_cstr(sb, "\n"))
+            ok = 0;
+
+        path->len = saved_path_len;
+    }
+
+    release_obj_maybe(keys);
+    return ok;
+}
+
 rt_string rt_toml_format(void *map) {
     if (!map)
         return rt_string_from_bytes("", 0);
@@ -899,66 +1071,19 @@ rt_string rt_toml_format(void *map) {
 
     rt_string_builder sb;
     rt_sb_init(&sb);
+    rt_string_builder path;
+    rt_sb_init(&path);
 
-    void *keys = rt_map_keys(map);
-    if (!keys)
-        goto format_error;
-    int64_t n = rt_seq_len(keys);
-
-    for (int64_t i = 0; i < n; i++) {
-        rt_string key = (rt_string)rt_seq_get(keys, i);
-        void *val = rt_map_get(map, key);
-        const char *key_cstr = rt_string_cstr(key);
-        int64_t raw_key_len = rt_str_len(key);
-        if (raw_key_len < 0)
-            goto format_error;
-        size_t key_len = (size_t)raw_key_len;
-
-        if (is_map_obj(val)) {
-            if (!toml_format_append_cstr(&sb, "[") ||
-                !append_toml_key_bytes(&sb, key_cstr, key_len) ||
-                !toml_format_append_cstr(&sb, "]\n"))
-                goto format_error;
-
-            void *sub_k = rt_map_keys(val);
-            if (!sub_k)
-                goto format_error;
-            for (int64_t j = 0; j < rt_seq_len(sub_k); j++) {
-                rt_string sk = (rt_string)rt_seq_get(sub_k, j);
-                void *sv = rt_map_get(val, sk);
-                if (is_map_obj(sv))
-                    continue;
-                const char *sk_cstr = rt_string_cstr(sk);
-                int64_t raw_sk_len = rt_str_len(sk);
-                if (raw_sk_len < 0 || !append_toml_key_bytes(&sb, sk_cstr, (size_t)raw_sk_len) ||
-                    !toml_format_append_cstr(&sb, " = ") || !append_toml_value(&sb, sv) ||
-                    !toml_format_append_cstr(&sb, "\n")) {
-                    release_obj_maybe(sub_k);
-                    goto format_error;
-                }
-            }
-            release_obj_maybe(sub_k);
-            if (!toml_format_append_cstr(&sb, "\n"))
-                goto format_error;
-            continue;
-        }
-
-        if (!append_toml_key_bytes(&sb, key_cstr, key_len) ||
-            !toml_format_append_cstr(&sb, " = ") || !append_toml_value(&sb, val) ||
-            !toml_format_append_cstr(&sb, "\n"))
-            goto format_error;
+    if (!toml_format_table(&sb, map, &path, 0)) {
+        rt_sb_free(&path);
+        rt_sb_free(&sb);
+        return rt_string_from_bytes("", 0);
     }
 
-    release_obj_maybe(keys);
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&path);
     rt_sb_free(&sb);
     return result;
-
-format_error:
-    if (keys)
-        release_obj_maybe(keys);
-    rt_sb_free(&sb);
-    return rt_string_from_bytes("", 0);
 }
 
 /// @brief Get a value from a parsed TOML document by dot-separated key path.

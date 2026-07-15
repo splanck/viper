@@ -834,11 +834,12 @@ int8_t rt_action_held(rt_string action) {
     return a ? a->held : 0;
 }
 
-/// @brief Get the strength of a button action (0.0 or 1.0 for digital inputs).
-/// @details For digital inputs (keyboard/buttons), returns 1.0 when held, 0.0
-///   when released. For analog inputs (gamepad triggers), returns the axis value.
+/// @brief Get the strength of a button action (always digital: 0.0 or 1.0).
+/// @details Returns 1.0 while any bound input is held and 0.0 otherwise. Button
+///   actions have no trigger-axis binding, so no analog value is ever produced;
+///   use axis actions for analog input.
 /// @param action Action name.
-/// @return Strength value in [0.0, 1.0].
+/// @return 1.0 if held, 0.0 otherwise.
 double rt_action_strength(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);

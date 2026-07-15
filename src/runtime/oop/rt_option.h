@@ -156,6 +156,41 @@ void *rt_option_expect(void *obj, rt_string msg);
 // Transformation
 //=========================================================================
 
+/// @brief Strategy for invoking a one-argument, value-returning user callback.
+/// @details VM bridges supply an invoker that executes the opaque function
+///          handle on the interpreter; native code uses a direct C call. `ctx`
+///          is the bridge's context pointer and is passed through unchanged.
+typedef void *(*rt_cb_invoke1)(void *ctx, void *fn, void *arg);
+
+/// @brief Strategy for invoking a zero-argument, value-returning user callback.
+typedef void *(*rt_cb_invoke0)(void *ctx, void *fn);
+
+/// @brief Strategy for invoking a one-argument boolean predicate callback.
+typedef int8_t (*rt_cb_invoke_pred)(void *ctx, void *fn, void *arg);
+
+/// @brief Direct-call invoker: treats `fn` as a C function pointer `void*(*)(void*)`.
+void *rt_cb_direct_invoke1(void *ctx, void *fn, void *arg);
+
+/// @brief Direct-call invoker: treats `fn` as a C function pointer `void*(*)(void)`.
+void *rt_cb_direct_invoke0(void *ctx, void *fn);
+
+/// @brief Direct-call invoker: treats `fn` as a C predicate pointer `int8_t(*)(void*)`.
+int8_t rt_cb_direct_invoke_pred(void *ctx, void *fn, void *arg);
+
+/// @brief Core of @ref rt_option_map with a pluggable callback invoker.
+/// @details Single source of truth for the combinator's semantics; used by the
+///          native wrapper and the VM callback bridges.
+void *rt_option_map_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx);
+
+/// @brief Core of @ref rt_option_and_then with a pluggable callback invoker.
+void *rt_option_and_then_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx);
+
+/// @brief Core of @ref rt_option_or_else with a pluggable callback invoker.
+void *rt_option_or_else_invoke(void *obj, void *fn, rt_cb_invoke0 invoke, void *ctx);
+
+/// @brief Core of @ref rt_option_filter with a pluggable callback invoker.
+void *rt_option_filter_invoke(void *obj, void *fn, rt_cb_invoke_pred invoke, void *ctx);
+
 /// @brief Transform the Some value using a function.
 /// @param obj Opaque Option object pointer.
 /// @param fn Function to apply to Some value.

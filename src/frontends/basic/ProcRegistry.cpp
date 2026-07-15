@@ -321,14 +321,18 @@ void ProcRegistry::seedRuntimeBuiltins() {
         sig.isRuntimeBuiltin = true;
         sig.runtimeTarget = std::string(desc.name);
         sig.rawPointerParams.reserve(desc.signature.paramTypes.size());
+        sig.objectParams.reserve(desc.signature.paramTypes.size());
         for (std::size_t i = 0; i < desc.signature.paramTypes.size(); ++i) {
             const bool objectParam =
                 (desc.signature.objectParamMask & (std::uint64_t{1} << i)) != 0;
             sig.rawPointerParams.push_back(
                 desc.signature.paramTypes[i].kind == il::core::Type::Kind::Ptr && !objectParam);
+            sig.objectParams.push_back(objectParam);
         }
         if (auto parsed = RuntimeRegistry::instance().findFunction(desc.name)) {
             sig.rawPointerReturn = parsed->rawPointerReturn;
+            sig.objectReturn =
+                parsed->returnType == ILScalarType::Object && !parsed->rawPointerReturn;
         }
 
         // Canonical qualified key

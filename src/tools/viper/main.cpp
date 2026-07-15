@@ -1132,6 +1132,7 @@ void printTopLevelUsage(std::ostream &out) {
         << "\n"
         << "Targets:\n"
         << "  A target is a .zia file, .bas file, directory, or viper.project path.\n"
+        << "  'viper run' additionally accepts a .il file and executes it on the VM.\n"
         << "  If omitted where supported, the target defaults to the current directory.\n"
         << "\n"
         << "Help:\n"

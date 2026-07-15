@@ -54,6 +54,7 @@ namespace il::vm {
 void registerThreadsRuntimeExternals();
 void registerNetworkRuntimeExternals();
 void registerGame3DRuntimeExternals();
+void registerFunctionalRuntimeExternals();
 
 namespace {
 
@@ -75,6 +76,7 @@ struct ThreadsRuntimeInitializer {
         registerThreadsRuntimeExternals();
         registerNetworkRuntimeExternals();
         registerGame3DRuntimeExternals();
+        registerFunctionalRuntimeExternals();
     }
 };
 

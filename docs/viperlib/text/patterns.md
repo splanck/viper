@@ -573,9 +573,8 @@ Line-based text differencing using a longest-common-subsequence table. It comput
 ### Notes
 
 - Each entry in the `Lines` result is prefixed: `" "` (unchanged), `"+"` (added), `"-"` (removed)
-- `Lines` is registered with an unqualified Object return despite returning a Seq. Natural chained
-  access can infer the static `Diff` class; use an explicit Seq receiver or typed local. See
-  [VDOC-020](../../documentation-review-findings.md#vdoc-020--untyped-collection-results-are-inferred-as-their-declaring-static-classes).
+- `Lines` is registered as `seq<str>`, so chained access such as `Diff.Lines(a, b).Count`
+  resolves against the returned sequence.
 - `Patch` reconstructs the modified text entirely from the full `Lines` records. Its `original`
   argument is currently ignored and is not validated; see
   [VDOC-061](../../documentation-review-findings.md#vdoc-061--diffpatch-ignores-its-original-argument).

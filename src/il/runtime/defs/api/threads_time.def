@@ -46,8 +46,8 @@ RT_FUNC(ConcMapHas,          rt_concmap_has,            "Viper.Threads.Concurren
 RT_FUNC(ConcMapSetIfMissing, rt_concmap_set_if_missing, "Viper.Threads.ConcurrentMap.SetIfMissing",   "i1(obj,str,obj)")
 RT_FUNC(ConcMapRemove,       rt_concmap_remove,         "Viper.Threads.ConcurrentMap.Remove",         "i1(obj,str)")
 RT_FUNC(ConcMapClear,        rt_concmap_clear,          "Viper.Threads.ConcurrentMap.Clear",          "void(obj)")
-RT_FUNC(ConcMapKeys,         rt_concmap_keys,           "Viper.Threads.ConcurrentMap.Keys",           "obj(obj)")
-RT_FUNC(ConcMapValues,       rt_concmap_values,         "Viper.Threads.ConcurrentMap.Values",         "obj(obj)")
+RT_FUNC(ConcMapKeys,         rt_concmap_keys,           "Viper.Threads.ConcurrentMap.Keys",           "seq<obj>(obj)")
+RT_FUNC(ConcMapValues,       rt_concmap_values,         "Viper.Threads.ConcurrentMap.Values",         "seq<obj>(obj)")
 
 // Cancellation Token
 RT_FUNC(CancelNew,               rt_cancellation_new,              "Viper.Threads.CancelToken.New",              "obj()")
@@ -85,7 +85,7 @@ RT_FUNC(SchedulerCancel,         rt_scheduler_cancel,          "Viper.Threads.Sc
 RT_FUNC(SchedulerIsDue,          rt_scheduler_is_due,          "Viper.Threads.Scheduler.IsDue",           "i1(obj,str)")
 RT_FUNC(SchedulerIsDueGen,       rt_scheduler_is_due_gen,      "Viper.Threads.Scheduler.IsDueGeneration",        "i1(obj,str,i64)")
 RT_FUNC(SchedulerGenerationOf,   rt_scheduler_generation_of,   "Viper.Threads.Scheduler.GenerationOf",    "i64(obj,str)")
-RT_FUNC(SchedulerPoll,           rt_scheduler_poll,            "Viper.Threads.Scheduler.Poll",            "obj(obj)")
+RT_FUNC(SchedulerPoll,           rt_scheduler_poll,            "Viper.Threads.Scheduler.Poll",            "seq<str>(obj)")
 RT_FUNC(SchedulerPending,        rt_scheduler_pending,         "Viper.Threads.Scheduler.get_Pending",     "i64(obj)")
 RT_FUNC(SchedulerClear,          rt_scheduler_clear,           "Viper.Threads.Scheduler.Clear",           "void(obj)")
 
