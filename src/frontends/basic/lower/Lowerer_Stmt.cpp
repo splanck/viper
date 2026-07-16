@@ -11,7 +11,7 @@
 //                 mutate AST ownership.
 // Ownership/Lifetime: Operates on a borrowed Lowerer instance while the caller
 //                     retains AST ownership.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

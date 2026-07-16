@@ -834,7 +834,7 @@ LOOP
 - `Capture()` only hides and records state; Canvas3D relative mode provides FPS-style motion
 - **Known issue:** in ordinary absolute mode, `DeltaX()`/`DeltaY()` are calculated before current
   events are pumped and therefore trail `X()`/`Y()` by one poll (see
-  [VDOC-006](../documentation-review-findings.md#vdoc-006--absolute-mouse-deltas-lag-one-poll-behind))
+  [VDOC-006](../../misc/reviews/documentation-review-findings.md#vdoc-006--absolute-mouse-deltas-lag-one-poll-behind))
 
 ### Integration with Canvas
 
@@ -1812,7 +1812,7 @@ LOOP
   sum all devices
 - Use `-1` for any gamepad only with the three Manager button methods
 - **Known issue:** the edge gate does not implement the commonly expected repeat-delay behavior;
-  see [VDOC-010](../documentation-review-findings.md#vdoc-010--inputmanager-debounce-delay-does-not-implement-held-key-repeat)
+  see [VDOC-010](../../misc/reviews/documentation-review-findings.md#vdoc-010--inputmanager-debounce-delay-does-not-implement-held-key-repeat)
 
 ### InputManager vs Low-Level Classes
 

@@ -9,7 +9,7 @@
 // Purpose: Ensure stores to pointers release previous string handles.
 // Key invariants: Writing successive strings to the same address balances refcounts.
 // Ownership/Lifetime: Constructs a synthetic module and inspects runtime headers.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

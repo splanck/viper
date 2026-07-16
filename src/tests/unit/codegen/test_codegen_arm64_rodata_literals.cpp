@@ -9,7 +9,7 @@
 // Purpose: Verify rodata pool generation for large constants and literals.
 // Key invariants: Large immediates and FP constants go to rodata pool.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

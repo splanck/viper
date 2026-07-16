@@ -9,7 +9,7 @@
 // Purpose: Declare integer arithmetic, bitwise, and comparison opcode handlers.
 // Key invariants: Handlers implement two's complement semantics and enforce IL traps.
 // Ownership/Lifetime: Handlers operate on VM frames without retaining external resources.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

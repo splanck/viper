@@ -9,7 +9,7 @@
 // Purpose: Helpers for parsing --break flag specifications.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

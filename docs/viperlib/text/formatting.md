@@ -303,7 +303,7 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 
 - Widths and line lengths are byte counts, not Unicode codepoint counts or terminal display widths.
   Wrapping, truncation, and shortening can split a multi-byte UTF-8 sequence and return malformed
-  text; see [VDOC-046](../../documentation-review-findings.md#vdoc-046--textwrapper-can-split-utf-8-sequences).
+  text; see [VDOC-046](../../../misc/reviews/documentation-review-findings.md#vdoc-046--textwrapper-can-split-utf-8-sequences).
 - `Wrap` prefers the last ASCII space or tab before the limit, hard-splits longer words, preserves
   existing `LF` line breaks and other whitespace, and disables wrapping when `width <= 0`.
 - `Fill` calls `Wrap` directly. It does not normalize whitespace or existing line breaks.
@@ -451,7 +451,7 @@ Number formatting utilities for human-readable display of integers and floating-
 - `ToWords` handles the full signed 64-bit range and produces hyphenated compound numbers (e.g., "forty-two", "one hundred twenty-three")
 - Despite the class name, finite floating-point output uses the process C numeric locale. The VM
   selects the `C` locale, but an embedding process can produce decimal-comma output; see
-  [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
+  [VDOC-041](../../../misc/reviews/documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
 - Formatting helpers trap on internal builder allocation or overflow failure instead of returning partial output
 
 ### Zia Example
@@ -955,17 +955,17 @@ PRINT Viper.Collections.Seq.GetStr(headings, 0)  ' Output: "Introduction"
 - This is a basic Markdown converter, not a full CommonMark implementation
 - Input is split only on `LF`. A preceding `CR` is retained in headings, paragraphs, and code, so
   normalize CRLF input before conversion; see
-  [VDOC-050](../../documentation-review-findings.md#vdoc-050--markdown-retains-carriage-returns-from-crlf-input).
+  [VDOC-050](../../../misc/reviews/documentation-review-findings.md#vdoc-050--markdown-retains-carriage-returns-from-crlf-input).
 - Spaced `- - -` and `* * *` horizontal rules are consumed as list items, and a list is not closed
   before every following block type; see
-  [VDOC-049](../../documentation-review-findings.md#vdoc-049--markdown-block-state-produces-wrong-or-invalid-html).
+  [VDOC-049](../../../misc/reviews/documentation-review-findings.md#vdoc-049--markdown-block-state-produces-wrong-or-invalid-html).
 - Link URLs are escaped before being written to HTML attributes, and unsafe schemes are blocked even with leading whitespace/control bytes
 - `ExtractLinks` applies the same unsafe-scheme policy and returns `"#"` in place of a blocked URL
 - Unmatched `**`, `*`, and backtick markers are emitted as literal text rather than as unclosed formatting spans
 - `ToText` preserves source line breaks but does not append an extra final newline; malformed link
   starts such as `[` stay literal. It removes every underscore byte, including literal underscores
   in names such as `snake_case`; see
-  [VDOC-051](../../documentation-review-findings.md#vdoc-051--markdowntotext-deletes-literal-underscores).
+  [VDOC-051](../../../misc/reviews/documentation-review-findings.md#vdoc-051--markdowntotext-deletes-literal-underscores).
 - `ExtractHeadings` follows the same heading rule as rendering: one to six `#` characters followed by a space
 - `ExtractHeadings` returns the raw heading contents, including any inline Markdown markers
 - Extraction helpers return owned sequences of owned strings

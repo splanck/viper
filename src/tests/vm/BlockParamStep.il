@@ -1,4 +1,4 @@
-il 0.3.0 ; // File: tests/vm/BlockParamStep.il // Purpose: Validate block parameter transfer while stepping. // Links: docs/il-guide.md#reference#control-flow-terminators
+il 0.3.0 ; // File: tests/vm/BlockParamStep.il // Purpose: Validate block parameter transfer while stepping. // Links: docs/il/il-guide.md#reference#control-flow-terminators
 
 func @main() -> i64 {
 entry:

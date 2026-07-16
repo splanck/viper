@@ -11,7 +11,7 @@
 // Key invariants: Cursor movement respects grapheme boundaries; display width
 //                 accounts for combining marks (0-width) and full-width CJK (2).
 // Ownership/Lifetime: Tests are self-contained with no external dependencies.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

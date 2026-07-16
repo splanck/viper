@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0096: Cloth3D — Verlet Chains and Patches
 
 Date: 2026-07-11

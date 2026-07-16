@@ -13,7 +13,7 @@
 //                 instance and are re-used across procedure invocations.
 // Ownership/Lifetime: Owns the lowering helpers and IR builder façade used to
 //                     emit IL, but borrows AST nodes from callers.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Ensure extern declarations without a name produce diagnostics.
 // Key invariants: Parser reports the missing extern name with the source line.
 // Ownership/Lifetime: Test owns module state and diagnostic buffers.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

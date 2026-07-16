@@ -11,7 +11,7 @@
 // Key invariants: Drawing respects buffer bounds; callers must ensure the
 //                 rectangle fits within the screen buffer.
 // Ownership/Lifetime: Stateless utility functions; no dynamic resources.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

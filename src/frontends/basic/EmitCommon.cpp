@@ -11,7 +11,7 @@
 // Key invariants: Helpers update the Lowerer source location before emitting
 //                 instructions, preserving diagnostic fidelity.
 // Ownership/Lifetime: Emit borrows the Lowerer and never owns IR objects.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Verify large immediate materialization uses movz/movk sequence for ret const.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

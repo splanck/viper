@@ -12,7 +12,7 @@
 //                 ensuring callers can safely check the result. Numeric results
 //                 preserve BASIC's floating-point semantics.
 // Ownership/Lifetime: Returns newly allocated AST nodes via unique_ptr.
-// Links: docs/codemap.md, docs/basic-language.md#builtins
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md#builtins
 //
 //===----------------------------------------------------------------------===//
 

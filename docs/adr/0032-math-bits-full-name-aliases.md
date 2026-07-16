@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0032: Math Bits Full-Name Aliases
 
 ## Status

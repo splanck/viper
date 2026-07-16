@@ -17,7 +17,7 @@
 //   - One declaration per opcode in enum order
 //   - Handler signature: void inline_handle_<OpName>(ExecState &st)
 //
-// Links: docs/il-guide.md#reference, vm/ops/generated/InlineHandlersImpl.inc
+// Links: docs/il/il-guide.md#reference, vm/ops/generated/InlineHandlersImpl.inc
 //
 //===----------------------------------------------------------------------===//
 

@@ -2,7 +2,7 @@
 ## Purpose: Ensure array bounds violations trigger runtime panic with message.
 ## Key invariants: Program exits non-zero and reports rt_arr_i32 panic text.
 ## Ownership/Lifetime: Invoked by CTest via CMake script mode.
-## Links: docs/codemap.md
+## Links: docs/internals/codemap.md
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

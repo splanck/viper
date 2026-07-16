@@ -1,4 +1,4 @@
-il 0.1 ; // File: examples/il/debug_script.il // Purpose: Uses a debugger script to step through execution. // Links: docs/tools.md#ilc#non-interactive-debugging-with--debug-cmds
+il 0.1 ; // File: examples/il/debug_script.il // Purpose: Uses a debugger script to step through execution. // Links: docs/tools/cli.md#ilc#non-interactive-debugging-with--debug-cmds
 
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {

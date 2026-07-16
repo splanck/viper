@@ -10,7 +10,7 @@
 // Key invariants: All symbol tracking goes through this helper to avoid
 //                 duplicated logic in VarCollectWalker and RuntimeNeedsScanner.
 // Ownership/Lifetime: Operates on borrowed Lowerer state; does not own data.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

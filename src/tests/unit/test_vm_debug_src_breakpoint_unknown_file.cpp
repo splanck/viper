@@ -9,7 +9,7 @@
 // Purpose: Ensure unresolved file ids do not trigger source breakpoints.
 // Key invariants: Unknown file ids with matching breakpoints should skip stops.
 // Ownership/Lifetime: Standalone unit test executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

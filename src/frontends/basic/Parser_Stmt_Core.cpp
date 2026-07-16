@@ -10,7 +10,7 @@
 // statements without parentheses can still be
 //                 resolved and ensures assignment targets honour BASIC's typing conventions.
 // Ownership/Lifetime: Parser allocates AST nodes with std::unique_ptr and transfers ownership to
-// the caller. Links: docs/codemap.md, docs/basic-language.md#statements
+// the caller. Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md#statements
 //
 //===----------------------------------------------------------------------===//
 

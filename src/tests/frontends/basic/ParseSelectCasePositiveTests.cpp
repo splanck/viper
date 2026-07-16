@@ -9,7 +9,7 @@
 // Purpose: Ensure SELECT CASE with ELSE parses correctly from BASIC source file.
 // Key invariants: Parser builds SelectCaseStmt with expected arms and else body.
 // Ownership/Lifetime: Test owns parser, source manager, and AST result.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

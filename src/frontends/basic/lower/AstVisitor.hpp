@@ -11,7 +11,7 @@
 //                 never mutates ownership of AST nodes.
 // Ownership/Lifetime: Visitors borrow AST nodes and Lowerer context; no node
 //                     ownership is transferred.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

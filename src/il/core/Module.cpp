@@ -13,7 +13,7 @@
 // Ownership/Lifetime: Module owns its StringInterner and all IR declarations;
 //                     helpers operate on caller-owned Module instances without
 //                     introducing global state.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

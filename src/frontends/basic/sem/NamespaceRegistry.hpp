@@ -9,7 +9,7 @@
 // Purpose: Records declared namespaces and their types with case-insensitive lookups.
 // Key invariants: // Key invariants:
 // Ownership/Lifetime: Registry is owned by semantic analyzer; lives for compilation.
-// Links: docs/codemap.md, CLAUDE.md
+// Links: docs/internals/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -8,7 +8,7 @@
 // Purpose: Internal shared declarations for OOP lowering implementation.
 // Key invariants: For use only by OOP lowering translation units.
 // Ownership/Lifetime: Non-owning references to Lowerer and OOP metadata.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //===----------------------------------------------------------------------===//
 
 #pragma once

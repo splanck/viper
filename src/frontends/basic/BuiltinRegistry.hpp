@@ -11,7 +11,7 @@
 // Key invariants: Table order matches BuiltinCallExpr::Builtin enum for O(1)
 //                 lookup. Registry is immutable after static initialization.
 // Ownership/Lifetime: Static compile-time data; no dynamic allocation.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

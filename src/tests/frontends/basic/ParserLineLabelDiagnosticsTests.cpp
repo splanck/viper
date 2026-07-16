@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC parser does not misreport diagnostics for legitimate line labels.
 // Key invariants: Line-number tokens are consumed by the statement sequencer rather than parsed as
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

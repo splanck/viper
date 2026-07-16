@@ -23,8 +23,8 @@ loads a scene and maps objects/properties into game-owned entities.
 | `SceneDocument.LoadResult(path)` | `Result(str)` | Read and load a scene file as `Ok(SceneDocument)` or `Err(message)`. |
 | `SceneDocument.LoadJson(text)` | `SceneDocument(str)` | Load scene JSON without trapping on malformed user input. |
 | `SceneDocument.Load(path)` | `SceneDocument(str)` | Read and load a scene file. |
-| `ToJson()` | `str()` | Emit canonical schema v1 JSON. |
-| `Save(path)` | `i1(str)` | Save through a same-directory temporary file before replacement. |
+| `ToJson()` | `String()` | Emit canonical schema v1 JSON. |
+| `Save(path)` | `Boolean(String)` | Save through a same-directory temporary file before replacement. |
 
 Canonical scene files use the `.scene` extension. The loader also accepts legacy
 unversioned JSON with `layers[].data` and LevelData-shaped scalar properties for

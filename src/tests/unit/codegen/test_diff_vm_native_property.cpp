@@ -9,7 +9,7 @@
 // Purpose: Property-based differential testing between VM and native backends.
 // Key invariants: VM and native execution must produce identical results.
 // Ownership/Lifetime: Test generates ephemeral IL modules for each iteration.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 // Backend Selection:
 //   - On ARM64 hosts (Apple Silicon): Uses AArch64 backend automatically

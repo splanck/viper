@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0006: Spec Currency and ADR Triggers
 
 Date: 2026-06-20
@@ -8,7 +14,7 @@ Status: Accepted; implemented and verified against source/tests on 2026-06-27
 
 `docs/specs/errors.md` and `docs/specs/numerics.md` are referenced as
 normative by the IL guide and contributor documentation, but their front matter
-still marked them as draft. `docs/il-guide.md` and `docs/specs/errors.md` also
+still marked them as draft. `docs/il/il-guide.md` and `docs/specs/errors.md` also
 carry the ADR 0005 resume-token model, while their verification metadata lagged
 behind that decision.
 
@@ -26,7 +32,7 @@ specific enough to enforce without weakening spec-first development.
   referenced implementation or ADR.
 - Require an ADR for changes that alter one of these architecture contracts:
   IL opcodes, IL grammar, IL verifier legality rules, cross-layer dependencies,
-  runtime C ABI surface, `docs/il-guide.md#reference`, or
+  runtime C ABI surface, `docs/il/il-guide.md#reference`, or
   `.github/workflows/*`.
 - Do not require an ADR for routine implementation, test, example, or
   non-normative documentation edits that preserve those contracts.
@@ -38,13 +44,13 @@ specific enough to enforce without weakening spec-first development.
 
 Verified on 2026-06-27:
 
-- `docs/specs/errors.md`, `docs/specs/numerics.md`, and `docs/il-guide.md` are
+- `docs/specs/errors.md`, `docs/specs/numerics.md`, and `docs/il/il-guide.md` are
   active and carry `last-verified: 2026-06-20` front matter.
-- `docs/il-guide.md#reference` links `docs/specs/errors.md` and
+- `docs/il/il-guide.md#reference` links `docs/specs/errors.md` and
   `docs/specs/numerics.md` as normative for front ends and the VM.
 - `AGENTS.md` and `CLAUDE.md` use the narrowed ADR trigger rule for IL opcode,
   grammar, verifier-rule, cross-layer dependency, runtime C ABI,
-  `docs/il-guide.md#reference`, and workflow changes.
+  `docs/il/il-guide.md#reference`, and workflow changes.
 - `src/tests/tools/TrapKindSpecConsistencyTest.cmake` compares
   `docs/specs/errors.md` trap-kind rows with `src/vm/Trap.hpp` and fails if any
   `docs/specs/*.md` file is still marked draft.

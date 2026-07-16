@@ -9,7 +9,7 @@
 // Purpose: Ensure semantic analyzer rejects boolean array parameters in procedures.
 // Key invariants: Procedure registration forbids array parameters unless i64 or str.
 // Ownership/Lifetime: Test owns constructed AST and diagnostic infrastructure.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

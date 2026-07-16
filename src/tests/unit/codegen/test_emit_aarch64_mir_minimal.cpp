@@ -9,7 +9,7 @@
 // Purpose: Verify minimal AArch64 MIR emission: header, prologue, add, epilogue.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

@@ -8,7 +8,7 @@
 // File: tests/unit/il/transform/test_SCCP.cpp
 // Purpose: Validate SCCP lattice behaviour (constants, traps) and interaction
 //          with SimplifyCFG on conditional/switch terminators.
-// Links: docs/architecture.md, docs/il-reference.md
+// Links: docs/internals/architecture.md, docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

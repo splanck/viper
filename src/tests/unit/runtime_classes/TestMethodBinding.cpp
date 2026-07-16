@@ -9,7 +9,7 @@
 // Purpose: Ensure method binding for Viper.String emits canonical externs with receiver.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

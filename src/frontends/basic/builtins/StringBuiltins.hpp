@@ -11,7 +11,7 @@
 //                 builtin's name, arity bounds, and lowering entry point.
 // Ownership/Lifetime: Functions operate on the lowering context supplied by the
 //                     caller; LowerCtx borrows the Lowerer and call AST node.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

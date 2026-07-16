@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-29
+---
+
 # ADR 0018: GUI Command Binding (Viper.GUI.Command / CommandRegistry)
 
 ## Status

@@ -10,7 +10,7 @@
 // Key invariants: Builder maintains a current function/block insertion context
 //                 and monotonically increasing SSA identifiers.
 // Ownership/Lifetime: Builder references a module owned by the caller.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

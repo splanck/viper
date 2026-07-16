@@ -518,4 +518,4 @@ func start() {
 - [Collections](collections/README.md) - `Map` and `Seq` result containers
 - [Diagnostics](diagnostics.md) - runtime assertion and trap helpers
 - [Generated Zia surface](../generated/runtime/zia.md) - registry-derived signatures and runtime symbols
-- [Documentation review findings](../documentation-review-findings.md) - open Zia tooling defects and inconsistencies
+- [Documentation review findings](../../misc/reviews/documentation-review-findings.md) - open Zia tooling defects and inconsistencies

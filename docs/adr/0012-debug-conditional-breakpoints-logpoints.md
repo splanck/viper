@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0012: Debug Conditional Breakpoints and Logpoints
 
 Date: 2026-06-25

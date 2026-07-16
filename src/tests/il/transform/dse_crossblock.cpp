@@ -10,7 +10,7 @@
 // Key invariants: Stores to non-escaping allocas that are overwritten
 //                 before being read should be eliminated.
 // Ownership/Lifetime: Builds transient modules per test invocation.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

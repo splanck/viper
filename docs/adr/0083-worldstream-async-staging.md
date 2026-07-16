@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0083: Worker-Backed WorldStream3D Staging with Ordered Main-Thread Commits
 
 Date: 2026-07-10

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-30
+---
+
 # ADR 0022: GUI Layout Conveniences (panel centering + Viper.GUI.Grid)
 
 ## Status

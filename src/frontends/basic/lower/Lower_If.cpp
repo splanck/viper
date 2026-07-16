@@ -13,7 +13,7 @@
 //                 the caller once @ref CtrlState is returned.
 // Ownership/Lifetime: Helpers borrow the @ref Lowerer state and manipulate IL
 //                     blocks owned by the active procedure context.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

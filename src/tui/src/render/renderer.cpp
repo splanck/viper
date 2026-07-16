@@ -12,7 +12,7 @@
 //                 so that redundant escape codes are not transmitted.
 // Ownership/Lifetime: Renderer retains references to @ref term::TermIO but does
 //                     not own the underlying terminal resources.
-// Links: docs/tools.md#rendering
+// Links: docs/tools/cli.md#rendering
 //
 //===----------------------------------------------------------------------===//
 

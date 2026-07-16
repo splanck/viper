@@ -9,7 +9,7 @@
 // Purpose: Shared helpers for loading source files used by language frontend CLI tools.
 // Key invariants: LoadedSource accurately captures file contents and SourceManager registration.
 // Ownership/Lifetime: The caller owns the returned LoadedSource and may use it after the call.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

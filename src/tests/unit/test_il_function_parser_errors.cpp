@@ -9,7 +9,7 @@
 // Purpose: Exercise Expected-returning function parser helpers on failure paths.
 // Key invariants: Helpers surface structured diagnostics for malformed headers and bodies.
 // Ownership/Lifetime: Tests construct modules and parser states locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

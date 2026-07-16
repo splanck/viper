@@ -9,7 +9,7 @@
 // Purpose: Implementation of centralized VM diagnostic string builders.
 // Key invariants: All helpers are cold-path only; constructs strings on demand.
 // Ownership/Lifetime: Returns std::string by value.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

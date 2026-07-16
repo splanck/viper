@@ -9,7 +9,7 @@
 // Purpose: Validate BASIC numeric type promotion and operator result helpers.
 // Key invariants: TypeRules provides deterministic lattice-based results.
 // Ownership/Lifetime: Standalone executable using simple assertions.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

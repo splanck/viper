@@ -10,7 +10,7 @@
 // Key invariants: Known math helpers report pure+nothrow; string helpers stay readonly but
 //                 may trap on invalid handles.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "il/runtime/signatures/Registry.hpp"

@@ -18,7 +18,7 @@ Emit IL to file
 \fBvbasic -o\fR \fIFILE.il\fR \fIFILE.bas\fR
 .SH OPTIONS
 .TP
-\fB- o\fR, \fB--output\fR \fIFILE\fR
+\fB-o\fR, \fB--output\fR \fIFILE\fR
 Output IL file when emitting.
 .TP
 \fB--emit-il\fR
@@ -28,7 +28,10 @@ Emit IL instead of running.
 Enable tracing.
 .TP
 \fB--bounds-checks\fR
-Enable array bounds checks.
+Enable array bounds checks (default for source).
+.TP
+\fB--no-bounds-checks\fR
+Disable generated source bounds checks.
 .TP
 \fB--stdin-from\fR \fIFILE\fR
 Redirect stdin from file.

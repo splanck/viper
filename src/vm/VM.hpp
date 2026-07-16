@@ -1142,7 +1142,7 @@ class VM {
     // il/core/Opcode.def. The inline handlers (inline_handle_*) and switch
     // dispatch (dispatchOpcodeSwitch) are the core dispatch entry points.
     //
-    // Generated files - do not edit. See docs/generated-files.md.
+    // Generated files - do not edit. See docs/internals/generated-files.md.
     // =========================================================================
 #include "vm/ops/generated/InlineHandlersDecl.inc"
 #include "vm/ops/generated/SwitchDispatchDecl.inc"

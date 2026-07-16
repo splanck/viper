@@ -16,7 +16,7 @@
 //                 When opcode counting is enabled, DISPATCH_BEFORE is redefined to
 //                 increment per-opcode counters (gated by runtime config flag).
 // Ownership/Lifetime: Header-only; no owning objects or runtime state.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

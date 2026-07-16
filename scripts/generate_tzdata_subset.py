@@ -52,7 +52,7 @@ def render() -> str:
 //   - The subset is host-independent and intentionally covers only curated
 //     zones required by the runtime determinism tests.
 // Ownership/Lifetime: Static data only.
-// Links: scripts/generate_tzdata_subset.py, docs/generated-files.md
+// Links: scripts/generate_tzdata_subset.py, docs/internals/generated-files.md
 //
 //===----------------------------------------------------------------------===//
 

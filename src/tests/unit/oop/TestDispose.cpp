@@ -9,7 +9,7 @@
 // Purpose: Validate DISPOSE null is no-op and double DISPOSE traps (debug).
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/Lowerer.hpp"

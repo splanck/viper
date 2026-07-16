@@ -9,7 +9,7 @@
 // Purpose: Validate il::verify::verifyInstruction for representative opcodes.
 // Key invariants: Checker records results on success and reports mismatches.
 // Ownership/Lifetime: Uses locally constructed IL structures.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

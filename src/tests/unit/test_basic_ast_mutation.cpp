@@ -9,7 +9,7 @@
 // Purpose: Regression tests ensuring AST mutation passes update nodes correctly.
 // Key invariants: Const folder short-circuits and loop folding mutate AST; semantic
 // Ownership/Lifetime: Test owns AST objects and infrastructure locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

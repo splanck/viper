@@ -9,7 +9,7 @@
 // //         deterministic ranking and diagnostics.
 // Key invariants: No user-defined conversions; only exact or widening numeric.
 // Ownership/Lifetime: Borrows OopIndex and DiagnosticEmitter; owns no state.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //===----------------------------------------------------------------------===//
 
 #pragma once

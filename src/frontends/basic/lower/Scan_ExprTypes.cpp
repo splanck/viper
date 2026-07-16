@@ -9,7 +9,7 @@
 // Key invariants: Produces expression classifications without mutating runtime
 //                 flags or emitting IL.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

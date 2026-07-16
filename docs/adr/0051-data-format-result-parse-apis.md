@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0051: Data Format Result Parse APIs
 
 ## Status

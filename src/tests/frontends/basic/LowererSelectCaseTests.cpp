@@ -9,7 +9,7 @@
 // Purpose: Validate Lowerer SELECT CASE lowering for string, range, and CASE ELSE scenarios.
 // Key invariants: String selectors avoid SwitchI32, range arms emit range comparisons, CASE ELSE
 // Ownership/Lifetime: Test owns parser, lowerer, and produced module per scenario.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Ensure Verifier accepts blocks terminated by trap.
 // Key invariants: Blocks ending with Opcode::Trap pass verification.
 // Ownership/Lifetime: Constructs module locally for verification.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

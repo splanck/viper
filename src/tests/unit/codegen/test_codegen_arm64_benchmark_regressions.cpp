@@ -10,7 +10,7 @@
 // Key invariants: O2 preserves owned string work and keeps checked unsigned
 //                 div/rem verifier-clean after loop optimizations.
 // Ownership/Lifetime: Temporary IL files are written under build/test-out.
-// Links: docs/il-passes.md
+// Links: docs/il/il-passes.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser reports a diagnostic when a function body misses a closing brace.
 // Key invariants: Parser surfaces EOF diagnostics referencing the final line number.
 // Ownership/Lifetime: Test owns module buffers and diagnostics locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

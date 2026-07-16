@@ -14,7 +14,7 @@
 //                 structured diagnostics.
 // Ownership/Lifetime: Operates on references to IR structures owned by the
 //                     caller; no allocations or state are retained.
-// Links: docs/il-guide.md#exception-handling, docs/codemap.md
+// Links: docs/il/il-guide.md#exception-handling, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

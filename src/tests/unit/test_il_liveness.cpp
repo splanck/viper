@@ -9,7 +9,7 @@
 // Purpose: Regression tests for liveness analysis on complex control flow.
 // Key invariants: Live-in/out sets reflect required SSA values across branches.
 // Ownership/Lifetime: Test constructs modules locally and discards on exit.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

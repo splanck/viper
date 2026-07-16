@@ -40,7 +40,7 @@ run_help_case(PACKAGE package --help)
 if (PACKAGE_TEXT MATCHES "macos-sign-identity" OR PACKAGE_TEXT MATCHES "windows-sign-thumbprint")
     message(FATAL_ERROR "package help still contains platform signing reference details\n${PACKAGE_TEXT}")
 endif ()
-if (NOT PACKAGE_TEXT MATCHES "docs/tools.md")
+if (NOT PACKAGE_TEXT MATCHES "docs/tools/cli.md")
     message(FATAL_ERROR "package help should point to detailed docs\n${PACKAGE_TEXT}")
 endif ()
 

@@ -15,7 +15,7 @@
 // Ownership/Lifetime: CsiParser borrows event buffers and a paste accumulator
 //                     from the embedder; it stores references without assuming
 //                     ownership.
-// Links: docs/architecture.md#vipertui-architecture, ECMA-48 §5.4
+// Links: docs/internals/architecture.md#vipertui-architecture, ECMA-48 §5.4
 //
 //===----------------------------------------------------------------------===//
 

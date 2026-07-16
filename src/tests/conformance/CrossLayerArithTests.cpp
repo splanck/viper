@@ -15,7 +15,7 @@
 //
 // Platform: On non-ARM64 hosts, native tests are skipped via VIPER_TEST_SKIP.
 //
-// Reference: docs/arithmetic-semantics.md
+// Reference: docs/languages/arithmetic-semantics.md
 //
 //===----------------------------------------------------------------------===//
 

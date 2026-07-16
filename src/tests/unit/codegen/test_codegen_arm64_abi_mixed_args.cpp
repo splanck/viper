@@ -9,7 +9,7 @@
 // Purpose: Verify ABI compliance for mixed integer and floating-point arguments.
 // Key invariants: ints go to x0-x7, floats go to d0-d7 independently.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

@@ -13,7 +13,7 @@
 // Ownership/Lifetime: Returned AST nodes use std::unique_ptr semantics; the
 //                     parser retains no ownership once the node is returned to
 //                     the caller.
-// Links: docs/basic-language.md#statements, docs/codemap.md
+// Links: docs/tutorials/basic-tutorial.md#statements, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

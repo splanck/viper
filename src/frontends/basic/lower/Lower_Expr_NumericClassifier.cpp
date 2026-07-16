@@ -10,7 +10,7 @@
 //          expressions according to BASIC type promotion rules.
 // Key invariants: Classification follows QBasic/GW-BASIC type promotion rules.
 // Ownership/Lifetime: Operates on borrowed Lowerer reference.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

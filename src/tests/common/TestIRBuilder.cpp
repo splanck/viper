@@ -9,7 +9,7 @@
 // Purpose: Implement the TestIRBuilder helper used by VM unit tests.
 // Key invariants: Tracks the active insertion block within the synthetic function.
 // Ownership/Lifetime: Owns the IL module and VmFixture executing the program.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

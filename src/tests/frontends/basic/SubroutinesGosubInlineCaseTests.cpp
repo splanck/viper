@@ -9,7 +9,7 @@
 // Purpose: Exercise parsing and execution of GOSUB with named labels and inline CASE bodies.
 // Key invariants: Parser resolves identifier targets for GOSUB and CASE arms execute inline
 // Ownership/Lifetime: To be documented.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -12,7 +12,7 @@
 //                 sentinel entry representing the start of the document.
 // Ownership/Lifetime: The index stores offsets only; underlying text storage is
 //                     owned elsewhere by the piece table.
-// Links: docs/tools.md#text-buffer
+// Links: docs/tools/cli.md#text-buffer
 //
 //===----------------------------------------------------------------------===//
 

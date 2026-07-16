@@ -9,7 +9,7 @@
 // Purpose: Provide a compact mapping between opcode enumeration values and
 //          their textual mnemonics for diagnostics and serialization.
 // Key invariants: Table size always matches the opcode enumeration count.
-// Links: docs/il-guide.md#opcodes
+// Links: docs/il/il-guide.md#opcodes
 //
 //===----------------------------------------------------------------------===//
 

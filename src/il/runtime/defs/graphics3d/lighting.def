@@ -737,7 +737,7 @@ RT_FUNC(Sound3DSyncBindings, rt_sound3d_sync_bindings, "Viper.Audio.SpatialAudio
 
 /// @summary Provides Spatial Audio 3D constants and static operations for audio playback and synthesis.
 /// @details
-/// `Viper.Sound.SpatialAudio3D` is a static runtime surface and does not require an instance.
+/// `Viper.Audio.SpatialAudio3D` is a static runtime surface and does not require an instance.
 /// Its public surface exposes operations including `SetListener`, `PlayAt`, `UpdateVoice`,
 /// `SyncBindings`.
 RT_CLASS_BEGIN("Viper.Audio.SpatialAudio3D", SpatialAudio3D, "none", none)

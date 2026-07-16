@@ -9,7 +9,7 @@
 // Purpose: Verify all floating-point comparison operations on AArch64.
 // Key invariants: All fcmp variants emit fcmp + appropriate cset.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

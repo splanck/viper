@@ -1,7 +1,7 @@
 # CLAUDE.md — AI Agent Operating Guide for Viper
 
 **Project:** IL-based Compiler Toolchain (Frontends → IL → VM → Codegen)
-**Spec Authority:** `/docs/il-guide.md#reference` (IL v0.3.0), `/docs/architecture.md`, `/docs/codemap.md`
+**Spec Authority:** `/docs/il/il-guide.md#reference` (IL v0.3.0), `/docs/internals/architecture.md`, `/docs/internals/codemap.md`
 
 **Permissions:** File/network access within Viper project scope. May download/install tools needed for Viper development work.
 
@@ -104,13 +104,13 @@ Codegen → IL (Core/Verify) + Support
 Runtime → Pure C, stable ABI, no compiler deps
 ```
 
-IL opcode, grammar, verifier-rule, cross-layer dependency, and runtime C ABI surface changes require ADR. Never modify `/docs/il-guide.md#reference` without ADR.
+IL opcode, grammar, verifier-rule, cross-layer dependency, and runtime C ABI surface changes require ADR. Never modify `/docs/il/il-guide.md#reference` without ADR.
 
 ---
 
 ## File Ownership ("Do Not Touch" Without ADR)
 
-- `/docs/il-guide.md#reference` — IL spec
+- `/docs/il/il-guide.md#reference` — IL spec
 - `.github/workflows/*` — No CI workflow creation/modification during viper phase
 
 ---

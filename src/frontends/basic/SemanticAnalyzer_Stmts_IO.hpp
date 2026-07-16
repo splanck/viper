@@ -9,7 +9,7 @@
 // Purpose: Declares helpers specific to IO-oriented statement analysis for the
 // Key invariants: IO helpers leverage shared utilities without mutating public
 // Ownership/Lifetime: Helpers borrow SemanticAnalyzer state.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

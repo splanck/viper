@@ -9,7 +9,7 @@
 // Purpose: Implementation of OOP method dispatch helpers for BASIC lowering.
 // Key invariants: See MethodDispatchHelpers.hpp for documentation.
 // Ownership/Lifetime: Non-owning reference to Lowerer context.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

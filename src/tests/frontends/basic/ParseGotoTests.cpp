@@ -9,7 +9,7 @@
 // Purpose: Validate parsing and AST printing of BASIC GOTO statements.
 // Key invariants: GOTO resolves the destination to a numeric label for the AST printer.
 // Ownership/Lifetime: Test owns parser, AST, and source manager instances.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-30
+---
+
 # ADR 0021: HiDPI Logical-Unit Helpers (Viper.GUI.App)
 
 ## Status

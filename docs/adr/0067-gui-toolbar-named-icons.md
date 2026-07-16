@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-05
+---
+
 # ADR 0067: GUI Toolbar Named Icon Runtime API
 
 ## Status

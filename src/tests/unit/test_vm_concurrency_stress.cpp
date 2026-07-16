@@ -9,7 +9,7 @@
 // Purpose: Stress test for VM concurrency model with many VMs across threads.
 // Key invariants: Each VM instance is isolated; trap reports are thread-correct.
 // Ownership/Lifetime: Each thread constructs and owns its VM instance.
-// Links: docs/vm.md
+// Links: docs/internals/vm.md
 //
 //===----------------------------------------------------------------------===//
 

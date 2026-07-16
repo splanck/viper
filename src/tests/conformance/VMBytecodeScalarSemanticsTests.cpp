@@ -12,7 +12,7 @@
 //                 bytecode threaded dispatch.
 // Ownership/Lifetime: Builds ephemeral modules and executes them immediately.
 // Links: il/semantics/ScalarOps.hpp, bytecode/BytecodeSemantics.hpp,
-//        docs/arithmetic-semantics.md
+//        docs/languages/arithmetic-semantics.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Validate SimplifyCFG utility BitVector resize preserves set bits.
 // Key invariants: Growing fills new bits with the provided value; shrinking keeps leading bits.
 // Ownership/Lifetime: Operates on a local BitVector instance within the test.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

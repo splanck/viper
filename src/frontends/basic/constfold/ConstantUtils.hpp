@@ -14,7 +14,7 @@
 //                 the originating domain.
 // Ownership/Lifetime: Return values are plain aggregates without ownership
 //                     semantics; callers receive them by value.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

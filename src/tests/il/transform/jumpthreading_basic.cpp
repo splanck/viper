@@ -10,7 +10,7 @@
 // Key invariants: Threading preserves control flow semantics while
 //                 eliminating unnecessary conditional branches.
 // Ownership/Lifetime: Builds transient modules per test invocation.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

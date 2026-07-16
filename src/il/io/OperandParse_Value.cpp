@@ -11,7 +11,7 @@
 //                 diagnostics compatible with the historical parser.
 // Ownership/Lifetime: Operates on parser-managed state without owning data or
 //                     introducing new global resources.
-// Links: docs/il-guide.md#reference and docs/il-reference.md#operands
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

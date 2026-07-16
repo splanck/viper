@@ -11,7 +11,7 @@
 // Key invariants: Each VM instance is single-threaded; thread-local state is
 //                 correctly managed by ActiveVMGuard.
 // Ownership/Lifetime: Constructs independent modules per thread.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

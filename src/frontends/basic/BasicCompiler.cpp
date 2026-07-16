@@ -14,7 +14,7 @@
 //                 lower) and abort early on fatal diagnostics.
 // Ownership/Lifetime: Diagnostic emitters and modules are owned by
 //                     BasicCompilerResult; all other helpers are stack scoped.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 //

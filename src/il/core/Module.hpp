@@ -16,7 +16,7 @@
 //          std::vector containers. Movable efficiently; copying is expensive
 //          (deep copy of all functions). Most code works with Module by
 //          reference or pointer.
-// Links: docs/il-guide.md#reference, il/core/Extern.hpp,
+// Links: docs/il/il-guide.md#reference, il/core/Extern.hpp,
 //        il/core/Function.hpp, il/core/Global.hpp
 //
 //===----------------------------------------------------------------------===//

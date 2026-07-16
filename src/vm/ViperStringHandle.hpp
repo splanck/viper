@@ -9,7 +9,7 @@
 // Purpose: RAII wrapper for runtime string handles to ensure proper cleanup.
 // Key invariants: Handle owns one reference; copy increments, move transfers.
 // Ownership/Lifetime: Calls rt_str_release_maybe on destruction if non-null.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

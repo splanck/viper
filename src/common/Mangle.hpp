@@ -11,7 +11,7 @@
 //                 ordinary C-safe identifiers remain readable, while qualified
 //                 or escaped names use a reserved prefix and reversible escapes.
 // Ownership/Lifetime: Header-only declarations; implementation in Mangle.cpp.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

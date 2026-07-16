@@ -9,7 +9,7 @@
 // Purpose: Test class inheritance features including fields and methods.
 // Key invariants: Inherited fields/methods should be accessible on derived class instances.
 // Ownership/Lifetime: N/A - unit test.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

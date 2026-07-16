@@ -7,7 +7,7 @@
 //
 // File: src/il/io/StringEscape.cpp
 // Purpose: Implement string escape decoding helpers shared by IL text parsers.
-// Links: docs/il-guide.md#literals
+// Links: docs/il/il-guide.md#literals
 //
 //===----------------------------------------------------------------------===//
 

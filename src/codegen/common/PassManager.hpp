@@ -11,7 +11,7 @@
 //                 diagnostics are checked after every pass to catch silent errors.
 // Ownership/Lifetime: PassManager takes unique_ptr ownership of all registered
 //                     passes; destruction order follows insertion order.
-// Links: docs/architecture.md, codegen/common/Diagnostics.hpp
+// Links: docs/internals/architecture.md, codegen/common/Diagnostics.hpp
 //
 //===----------------------------------------------------------------------===//
 

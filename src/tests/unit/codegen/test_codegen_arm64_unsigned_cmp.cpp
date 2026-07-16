@@ -9,7 +9,7 @@
 // Purpose: Verify unsigned comparison operations on AArch64.
 // Key invariants: ucmp uses unsigned condition codes (hi, hs, lo, ls).
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

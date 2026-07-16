@@ -9,7 +9,7 @@
 // Purpose: Ensure VM traps on negative allocation sizes.
 // Key invariants: Alloca with negative bytes must emit "negative allocation" trap.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

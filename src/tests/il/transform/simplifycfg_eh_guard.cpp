@@ -9,7 +9,7 @@
 // Purpose: Ensure SimplifyCFG preserves EH-sensitive blocks.
 // Key invariants: Blocks containing EH structural ops or resume terminators remain intact.
 // Ownership/Lifetime: Builds a local module and runs SimplifyCFG in place.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

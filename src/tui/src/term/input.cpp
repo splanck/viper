@@ -12,7 +12,7 @@
 //                 state machines preserve queued parameters until completion.
 // Ownership/Lifetime: The decoder owns event buffers but borrows incoming byte
 //                     spans supplied by the caller.
-// Links: docs/tools.md#input-decoder
+// Links: docs/tools/cli.md#input-decoder
 //
 //===----------------------------------------------------------------------===//
 

@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - Each cadence pass owns fresh gameplay and presentation state.
 // Links: player.zia, environment.zia, tutorials.zia, abilities.zia,
-//        docs/testing.md
+//        docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

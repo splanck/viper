@@ -10,7 +10,7 @@
 // Key invariants: Centralizes patterns for parameter initialization, array field
 //                 allocation, and method epilogue. (BUG-056, BUG-073, BUG-089, etc.)
 // Ownership/Lifetime: Non-owning references to Lowerer and OOP metadata.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

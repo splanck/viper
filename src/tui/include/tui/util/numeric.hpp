@@ -9,7 +9,7 @@
 // Purpose: Provides saturating arithmetic helpers for safe index computation.
 // Key invariants: Arithmetic never overflows; results saturate at type limits.
 // Ownership/Lifetime: Stateless inline utilities with no dynamic resources.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

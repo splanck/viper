@@ -9,7 +9,7 @@
 // Purpose: Declare switch dispatch cache structures for VM control flow helpers.
 // Key invariants: Cached dispatch data remains valid for the lifetime of the owning
 // Ownership/Lifetime: SwitchCache owns memoized backend data keyed by instruction pointer.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

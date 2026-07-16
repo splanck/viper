@@ -26,7 +26,7 @@
 //   - Returns false without modifying state.
 //   - Caller should fall back to regular call semantics.
 //
-// Links: docs/architecture.md, docs/vm.md
+// Links: docs/internals/architecture.md, docs/internals/vm.md
 //
 //===----------------------------------------------------------------------===//
 

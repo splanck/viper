@@ -25,7 +25,7 @@ descriptions come from the modular `runtime.def` registry.
 | Module                          | Description                                                               |
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
-| [Audio](audio.md)               | `Audio`, `Music`, `MusicGen`, `Sound`, `Synth`, `Voice` — audio playback and procedural generation |
+| [Audio](audio.md)               | `Mixer`, `Music`, `MusicGen`, `Playlist`, `Sound`, `SoundBank`, `Synth`, `Voice` — audio playback and procedural generation |
 | [Collections](collections/README.md)   | `StringSet`, `Bytes`, `Deque`, `F64Buffer`, `Heap`, `I64Buffer`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `SortedMap`, `Trie`, `WeakMap` |
 | [Core Types](core.md)           | `Box`, `Diagnostics`, `MessageBus`, `Object`, `Parse`, `String` — foundational types (`Viper.Core`) |
 | [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`; compatibility `Legacy.Aes`, `Legacy.Hash` |
@@ -185,14 +185,14 @@ the conceptual guide does not provide a class-specific section.
 
 | Class                                         | Type     | Description                      |
 |-----------------------------------------------|----------|----------------------------------|
-| [`Audio`](../generated/runtime/sound.md#viper-audio-audio)            | Static   | Global audio control             |
-| [`Music`](audio.md#vipersoundmusic)            | Instance | Streaming music playback         |
-| [`MusicGen`](audio.md#vipersoundmusicgen)      | Instance | Procedural music composition     |
-| [`Playlist`](../generated/runtime/sound.md#viper-audio-playlist)      | Instance | Sequential/shuffle track queue   |
+| [`Mixer`](audio.md#viperaudiomixer)            | Static   | Global audio mixer control       |
+| [`Music`](audio.md#viperaudiomusic)            | Instance | Streaming music playback         |
+| [`MusicGen`](audio.md#viperaudiomusicgen)      | Instance | Procedural music composition     |
+| [`Playlist`](audio.md#viperaudioplaylist)      | Instance | Sequential/shuffle track queue   |
 | [`Sound`](audio.md#viperaudiosound)            | Instance | Sound effects for short clips    |
 | [`SoundBank`](audio.md#viperaudiosoundbank)    | Instance | Named sound registry             |
-| [`Synth`](audio.md#vipersoundsynth)            | Static   | Procedural sound synthesis       |
-| [`Voice`](audio.md#vipersoundvoice)            | Static   | Voice control for playing sounds |
+| [`Synth`](audio.md#viperaudiosynth)            | Static   | Procedural sound synthesis       |
+| [`Voice`](audio.md#viperaudiovoice)            | Static   | Voice control for playing sounds |
 
 ### Viper.Graphics
 
@@ -443,7 +443,7 @@ the conceptual guide does not provide a class-specific section.
 
 ## See Also
 
-- [Zia Language Reference](../zia-reference.md)
-- [BASIC Language Reference](../basic-reference.md)
-- [IL Guide](../il-guide.md)
+- [Zia Language Reference](../languages/zia-reference.md)
+- [BASIC Language Reference](../languages/basic-reference.md)
+- [IL Guide](../il/il-guide.md)
 - [Getting Started](../getting-started.md)

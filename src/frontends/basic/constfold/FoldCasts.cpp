@@ -12,7 +12,7 @@
 // Key invariants: Returns `std::nullopt` for every invocation until cast rules
 //                 are defined, ensuring dispatchers can call the hook safely.
 // Ownership/Lifetime: No allocations; simply forwards state back to callers.
-// Links: docs/codemap.md, docs/il-guide.md#basic-frontend-constant-folding
+// Links: docs/internals/codemap.md, docs/il/il-guide.md#basic-frontend-constant-folding
 //
 //===----------------------------------------------------------------------===//
 

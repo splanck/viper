@@ -10,7 +10,7 @@
 // Key invariants: Populates AArch64Module::mir from AArch64Module::ilMod.
 //                 ilMod and ti must be non-null before this pass runs.
 // Ownership/Lifetime: Stateless pass; mutates the provided AArch64Module in place.
-// Links: docs/codemap.md, src/codegen/aarch64/LowerILToMIR.hpp
+// Links: docs/internals/codemap.md, src/codegen/aarch64/LowerILToMIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

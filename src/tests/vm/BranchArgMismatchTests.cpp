@@ -9,7 +9,7 @@
 // Purpose: Ensure the VM traps when a branch supplies the wrong number of arguments.
 // Key invariants: Branch argument count mismatches produce InvalidOperation traps mentioning the
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

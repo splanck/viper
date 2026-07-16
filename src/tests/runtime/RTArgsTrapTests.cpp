@@ -9,7 +9,7 @@
 // Purpose: Ensure rt_args_get signals out-of-range via rt_trap (not abort).
 // Key invariants: Out-of-range access traps with a stable message.
 // Ownership/Lifetime: Overrides vm_trap to observe trap payloads.
-// Links: docs/codemap/runtime-library-c.md
+// Links: docs/internals/codemap/runtime-library-c.md
 //
 //===----------------------------------------------------------------------===//
 

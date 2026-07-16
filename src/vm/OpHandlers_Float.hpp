@@ -9,7 +9,7 @@
 // Purpose: Declare floating-point opcode handlers for the VM dispatcher.
 // Key invariants: Handlers implement IEEE-754 semantics via host double operations.
 // Ownership/Lifetime: Handlers only mutate the destination slot in the active frame.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

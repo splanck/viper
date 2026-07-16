@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0017: CRLF-Aware Line Splitting (Viper.String.Lines)
 
 ## Status

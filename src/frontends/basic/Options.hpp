@@ -11,7 +11,7 @@
 //   - Defaults are conservative and stable across the frontend.
 //   - Flags are process-global and intended for testing/experiments.
 // Ownership/Lifetime: Simple process-global storage with thread-safe access.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 //

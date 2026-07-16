@@ -11,7 +11,7 @@
 //                 arity/type checking so call sites share consistent rules.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; AST nodes owned
 //                     externally.
-// Links: docs/codemap.md, docs/basic-language.md#builtins
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md#builtins
 //
 //===----------------------------------------------------------------------===//
 

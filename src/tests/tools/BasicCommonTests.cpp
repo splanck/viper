@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC tool helpers surface source manager failures.
 // Key invariants: Buffer remains untouched on registration failures.
 // Ownership/Lifetime: Test owns captured streams and buffers.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

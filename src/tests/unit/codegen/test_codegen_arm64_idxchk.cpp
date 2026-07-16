@@ -9,7 +9,7 @@
 // Purpose: Verify index bounds checking (idxchk) lowering on AArch64.
 // Key invariants: Generates compare + conditional trap for out-of-bounds.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

@@ -14,7 +14,7 @@
 // Ownership/Lifetime: TextBuffer owns its @ref PieceTable, @ref LineIndex, and
 //                     @ref EditHistory instances outright and therefore manages
 //                     their lifetimes as a unit.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

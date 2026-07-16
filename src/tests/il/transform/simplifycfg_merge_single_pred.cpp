@@ -9,7 +9,7 @@
 // Purpose: Validate SimplifyCFG merges single-predecessor blocks into their parent.
 // Key invariants: Instructions from the merged block relocate to the predecessor and the block is
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

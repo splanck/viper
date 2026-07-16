@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0074: Game3D Third-Person Controller And Target Lock
 
 Date: 2026-07-10

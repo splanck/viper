@@ -9,7 +9,7 @@
 // Purpose: Verify floating-point register (FPR) spilling on AArch64.
 // Key invariants: Excess FP values spill to stack with str/ldr dN, [fp, #off].
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

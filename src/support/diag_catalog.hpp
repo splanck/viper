@@ -14,7 +14,7 @@
 //     description when the prefix is recognized.
 // Ownership/Lifetime:
 //   - All entries are static data with program lifetime.
-// Links: support/diag_catalog.def, docs/debugging.md
+// Links: support/diag_catalog.def, docs/tools/debugging.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Validate VM switch.i32 execution paths and trace/debug diagnostics.
 // Key invariants: Switch instruction selects correct successor and reports it
 // Ownership/Lifetime: Tests build modules on the fly and execute them immediately.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

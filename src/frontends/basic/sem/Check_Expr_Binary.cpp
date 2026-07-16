@@ -15,8 +15,8 @@
 //     users receive actionable feedback across different operator families.
 //   * Rule tables are indexed by the @ref BinaryExpr::Op enumeration; the table
 //     size is locked to the enum to prevent divergence when new operators land.
-// References: docs/basic-language.md#expressions,
-//             docs/codemap/basic.md#semantic-analyzer
+// References: docs/tutorials/basic-tutorial.md#expressions,
+//             docs/internals/codemap/basic.md#semantic-analyzer
 //
 //===----------------------------------------------------------------------===//
 //

@@ -9,7 +9,7 @@
 // Purpose: Declares helpers for parsing IL function definitions.
 // Key invariants: Requires ParserState to track current function and block context.
 // Ownership/Lifetime: Populates the module held by ParserState with parsed functions.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Smoke test for runtime class catalog exposing Viper.String.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

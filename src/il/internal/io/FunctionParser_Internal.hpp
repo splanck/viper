@@ -11,7 +11,7 @@
 //          parser state wrappers, and common utility functions.
 // Key invariants: Used only by FunctionParser_*.cpp files; not part of public API.
 // Ownership/Lifetime: Header-only utilities with no ownership semantics.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

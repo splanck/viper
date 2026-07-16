@@ -390,4 +390,4 @@ See [GameBase and IScene](../viperlib/game/gameloop.md) for the full pattern.
 - [Audio](../viperlib/audio.md) — Sound loading, music streaming, and procedural synthesis
 - [Input](../viperlib/input.md) — Keyboard codes, gamepad, and action mapping
 - [Canvas API Reference](../viperlib/graphics/canvas.md) — Exhaustive method signatures
-- [The Viper Bible, Chapter 19](../bible/part4-applications/19-graphics.md) — Deep dive on graphics fundamentals
+- [The Viper Book, Chapter 19](../book/part4-applications/19-graphics.md) — Deep dive on graphics fundamentals

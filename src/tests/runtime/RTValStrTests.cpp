@@ -9,7 +9,7 @@
 // Purpose: Validate VAL and STR$ runtime conversions.
 // Key invariants: Parsing stops at non-numeric; round-trip within tolerance.
 // Ownership/Lifetime: Uses runtime library.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,0 +1,65 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-16
+---
+
+# Viper Internals Documentation
+
+Contributor-facing documentation: system design, subsystem code maps, formal
+specifications, decision records, and guides for extending the toolchain.
+User-facing documentation lives in the **[main documentation index](../README.md)**.
+
+---
+
+## Architecture
+
+- [Architecture Overview](architecture.md) — System design: frontends, IL, VM, codegen
+- [Code Map](codemap.md) — Source directory layout and subsystem overview
+- [VM Guide](vm.md) — VM design, dispatch, profiling, and runtime ABI
+- [Bytecode VM Reference](bytecode-vm.md) — Bytecode format, dispatch, runtime, and test surface
+- [Backend Guide](backend.md) — x86-64 and ARM64 native code generation
+- [Graphics3D Architecture](graphics3d-architecture.md) — 3D subsystem internals
+- [Native Assembler](native-assembler.md) — Binary encoders and object file writers (x86_64/AArch64 × ELF/Mach-O/COFF)
+- [Native Linker](native-linker.md) — Archive reading, symbol resolution, relocation, and executable output
+
+## Code Map Deep Dives
+
+**IL Subsystem** — [Core](codemap/il-core.md) · [Build](codemap/il-build.md) · [I/O](codemap/il-i-o.md) · [Transform](codemap/il-transform.md) · [Analysis](codemap/il-analysis.md) · [Link](codemap/il-link.md) · [Runtime](codemap/il-runtime.md) · [API](codemap/il-api.md) · [Verification](codemap/il-verification.md) · [Utilities](codemap/il-utilities.md)
+
+**Frontends** — [Zia](codemap/front-end-zia.md) · [BASIC](codemap/front-end-basic.md) · [Common](codemap/front-end-common.md)
+
+**Other** — [Bytecode VM](codemap/bytecode-vm.md) · [Codegen](codemap/codegen.md) · [Graphics](codemap/graphics.md) · [Graphics Stubs](codemap/runtime-graphics-stubs.md) · [VM/Runtime](codemap/vm-runtime.md) · [Runtime C Library](codemap/runtime-library-c.md) · [Support](codemap/support.md) · [Tools](codemap/tools.md) · [TUI](codemap/tui.md) · [ViperIDE](codemap/viperide.md) · [Zia Server](codemap/zia-server.md) · [Docs](codemap/docs.md)
+
+## Specifications
+
+- [IL Guide](../il/il-guide.md) — Normative IL specification (changes require an ADR)
+- [Error Model](../specs/errors.md) — Trap kinds, handler semantics, error model
+- [Numeric Types](../specs/numerics.md) — Numeric types, ranges, IEEE semantics
+- [Object Layout / ABI](../specs/object-layout.md) — Object layout, vtable, call ABI
+- [Threading and Globals](../specs/threading-and-globals.md) — VM threading model
+- [x86-64 Backend](../specs/x86_64.md) — x86-64 SysV ABI reference
+- [AArch64 Backend](../specs/aarch64.md) — AArch64 backend specification
+- [Compiler Specification](specifications.md) — Internal compiler behavior spec
+- [Requirements](requirements.md) — Project requirements and constraints
+
+## Architecture Decision Records
+
+- [ADR Index](../adr/README.md) — All decision records, grouped by area
+
+## Extending Viper
+
+- [Frontend How-To](frontend-howto.md) — Build your own language frontend
+- [Runtime Extension How-To](runtime-extend-howto.md) — Add new runtime classes and functions
+- [Adding a Runtime Class](runtime-class-howto.md) — Deep dive: 8-step guide
+- [Generated Files](generated-files.md) — Auto-generated C++ sources and how to regenerate them
+
+## Development Workflow
+
+- [Contributor Guide](contributor-guide.md) — Style guide and contribution process
+- [Documentation Style Guide](doc-style.md) — Layout, naming, and formatting rules for `docs/`
+- [Testing Guide](testing.md) — Unit, golden, e2e, and performance tests
+- [Source Health Guardrails](source-health.md) — Local audit baselines for high-ownership subsystems
+- [Dependencies](dependencies.md) — Build and runtime dependencies
+- [Cross-Platform Differences](../cross-platform/platform-differences.md) — macOS vs Linux vs Windows behavior
+- [Cross-Platform Checklist](../cross-platform/platform-checklist.md) — Compliance tracking

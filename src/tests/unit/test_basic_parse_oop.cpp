@@ -9,7 +9,7 @@
 // Purpose: Ensure OOP-specific expressions and statements parse into expected AST nodes.
 // Key invariants: NEW/ME expressions and DELETE statement are recognized with OOP always enabled.
 // Ownership/Lifetime: Test owns parser instance and resulting AST.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

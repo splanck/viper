@@ -14,7 +14,7 @@
 //                 when a procedure context is active.
 // Ownership/Lifetime: Non-owning reference to Lowerer; IR objects remain owned
 //                     by the lowering pipeline.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

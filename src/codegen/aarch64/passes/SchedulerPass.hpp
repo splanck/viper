@@ -14,7 +14,7 @@
 //                 Terminators are always kept at the end of the block.
 //                 Does not add, remove, or modify instructions — only reorders.
 // Ownership/Lifetime: Stateless pass; mutates AArch64Module::mir in place.
-// Links: docs/codemap.md, src/codegen/aarch64/Scheduler.hpp
+// Links: docs/internals/codemap.md, src/codegen/aarch64/Scheduler.hpp
 //
 //===----------------------------------------------------------------------===//
 

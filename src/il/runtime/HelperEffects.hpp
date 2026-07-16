@@ -11,7 +11,7 @@
 //                 are reused across debug registries and runtime descriptor
 //                 builders to ensure consistent optimisation metadata.
 // Ownership/Lifetime: Header-only utilities containing constexpr tables.
-// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
+// Links: docs/il/il-guide.md#reference, docs/internals/architecture.md#runtime-signatures
 //
 //===----------------------------------------------------------------------===//
 

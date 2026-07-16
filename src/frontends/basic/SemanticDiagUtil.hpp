@@ -12,7 +12,7 @@
 //   - Candidate lists are sorted case-insensitively for determinism.
 //   - Diagnostic codes and severities come from the generated catalog.
 // Ownership/Lifetime: Header-only helpers; no state.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

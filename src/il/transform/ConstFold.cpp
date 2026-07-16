@@ -13,7 +13,7 @@
 // Ownership/Lifetime: Operates on caller-owned Module/Function instances and
 //                     mutates instructions in place without allocating global
 //                     state.
-// Links: docs/il-guide.md#reference, docs/codemap.md
+// Links: docs/il/il-guide.md#reference, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 //

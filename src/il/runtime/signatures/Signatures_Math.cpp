@@ -15,7 +15,7 @@
 //                 appropriate section.
 // Ownership/Lifetime: Registered metadata persists for the lifetime of the
 //                     process via the shared registry.
-// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
+// Links: docs/il/il-guide.md#reference, docs/internals/architecture.md#runtime-signatures
 
 /// @file
 /// @brief Runtime signature definitions for numeric helpers.

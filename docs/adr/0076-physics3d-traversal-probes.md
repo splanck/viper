@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0076: Physics3D Traversal Probes
 
 Date: 2026-07-10

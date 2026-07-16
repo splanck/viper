@@ -11,7 +11,7 @@
 // Ownership/Lifetime: Helpers are stateless aside from buildIlcArgs, whose
 //                     returned char* vector aliases into a caller-owned storage
 //                     vector that must outlive it.
-// Links: docs/architecture.md, src/tools/common/native_compiler.hpp
+// Links: docs/internals/architecture.md, src/tools/common/native_compiler.hpp
 //
 //===----------------------------------------------------------------------===//
 

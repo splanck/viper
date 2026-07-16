@@ -8,7 +8,7 @@
 // File: src/il/verify/Verifier.cpp
 // Purpose: Drive the multi-stage IL verifier and collate diagnostics into a
 //          single Expected result.
-// Links: docs/il-guide.md#verification
+// Links: docs/il/il-guide.md#verification
 //
 //===----------------------------------------------------------------------===//
 

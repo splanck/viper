@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-07-15
+---
+
 # Viper.Graphics3D — User Guide
 
 ## Overview

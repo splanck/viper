@@ -33,11 +33,11 @@
 //
 // Generated Files:
 // All strategies rely on tables synchronized with il/core/Opcode.def.
-// See docs/generated-files.md for regeneration instructions.
+// See docs/internals/generated-files.md for regeneration instructions.
 //
 // Key invariants: Each strategy only handles opcode-to-handler mapping
 // Ownership/Lifetime: Strategies are owned by the VM instance
-// Links: docs/generated-files.md, docs/il-guide.md#reference
+// Links: docs/internals/generated-files.md, docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

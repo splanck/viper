@@ -9,7 +9,7 @@
 // Purpose: Verify CLI lowers simple call+ret to `bl <callee>` with args in x0..x7.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

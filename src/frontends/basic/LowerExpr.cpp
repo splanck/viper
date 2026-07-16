@@ -9,7 +9,7 @@
 // Key invariants: Expression lowering preserves operand types, injecting
 //                 conversions to match IL expectations and runtime helpers.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md, docs/basic-language.md#expressions
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md#expressions
 //
 //===----------------------------------------------------------------------===//
 

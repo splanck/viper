@@ -9,7 +9,7 @@
 // Purpose: Validate that the verifier rejects runtime array handle uses after release.
 // Key invariants: Intra-block release-after-use and double-release must fail verification.
 // Ownership/Lifetime: Constructs modules locally for verification.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

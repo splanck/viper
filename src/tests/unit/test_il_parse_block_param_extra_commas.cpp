@@ -9,7 +9,7 @@
 // Purpose: Validate that block parameter lists reject empty entries between commas.
 // Key invariants: Parser emits diagnostics referencing the empty slot and line number.
 // Ownership/Lifetime: Test constructs module and diagnostic buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

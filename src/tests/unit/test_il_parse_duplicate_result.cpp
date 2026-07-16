@@ -9,7 +9,7 @@
 // Purpose: Ensure the IL parser rejects duplicate SSA result names within a block.
 // Key invariants: Parser reports diagnostics when a result name is redefined.
 // Ownership/Lifetime: Test owns module and diagnostic buffers constructed from string literals.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

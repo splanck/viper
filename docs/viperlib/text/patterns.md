@@ -271,7 +271,7 @@ return a Seq containing:
 
 If there is no match, an empty Seq is returned. Alternation does not retain empty slots for
 unmatched lexical groups, and the capture matcher can fail even when `Find` succeeds; see
-[VDOC-057](../../documentation-review-findings.md#vdoc-057--compiledpattern-captures-uses-a-different-matcher-and-group-numbering).
+[VDOC-057](../../../misc/reviews/documentation-review-findings.md#vdoc-057--compiledpattern-captures-uses-a-different-matcher-and-group-numbering).
 
 Prefer the Option-returning `Find*Option()` methods for branchable search code. The legacy
 `Find()` and `FindFrom()` methods return an empty string for no match, which is ambiguous

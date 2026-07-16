@@ -9,7 +9,7 @@
 // Purpose: Round-trip parse/serialize coverage for parse-roundtrip IL goldens.
 // Key invariants: Serializer reproduces canonical text for new opcode forms.
 // Ownership/Lifetime: Test owns all modules and buffers.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

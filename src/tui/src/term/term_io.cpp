@@ -15,7 +15,7 @@
 // Ownership/Lifetime: Implementations borrow or own only their immediate
 //                     buffers—no global state beyond the C stdio handles is
 //                     touched.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

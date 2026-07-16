@@ -13,7 +13,7 @@
 //     variables are detected early.
 //   * Levenshtein suggestions help users fix typos in variable names.
 //   * BASIC suffix rules ($ for string, #/! for float) provide implicit types.
-// References: docs/codemap/basic.md, docs/basic-language.md#variables
+// References: docs/internals/codemap/basic.md, docs/tutorials/basic-tutorial.md#variables
 //
 //===----------------------------------------------------------------------===//
 //

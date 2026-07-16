@@ -14,7 +14,7 @@
 // Ownership/Lifetime: TextView borrows TextBuffer and Theme instances owned by
 //                     the application; this file only mutates TextView's own
 //                     bookkeeping fields.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

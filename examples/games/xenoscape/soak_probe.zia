@@ -12,7 +12,7 @@
 //   - Dynamic tiles, boss AI, projectile pressure, and effects keep advancing.
 // Ownership/Lifetime:
 //   - Probe owns one Core level and fresh combat/presentation systems.
-// Links: performance_probe.zia, enemy.zia, level.zia, docs/testing.md
+// Links: performance_probe.zia, enemy.zia, level.zia, docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

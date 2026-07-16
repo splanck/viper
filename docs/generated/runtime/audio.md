@@ -11,7 +11,7 @@
 
 Provides audio system control.
 
-`Viper.Sound.Audio` exposes a registry-backed runtime surface without requiring callers to
+`Viper.Audio.Mixer` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `RenderCalls`,
 `MixerLockMisses`, `BackendWriteCalls` and operations including `IsAvailable`, `Init`,
 `Shutdown`, `SetMasterVolume`.
@@ -66,7 +66,7 @@ construct the class directly. Its public surface exposes properties such as `Ren
 
 Provides sound effect playback.
 
-`Viper.Sound.Sound` exposes a registry-backed runtime surface without requiring callers to
+`Viper.Audio.Sound` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `LoadAsset`,
 `Play`, `Play`, `Play`.
 
@@ -90,7 +90,7 @@ construct the class directly. Its public surface exposes operations including `L
 
 Provides voice control for playing sounds.
 
-`Viper.Sound.Voice` exposes a registry-backed runtime surface without requiring callers to
+`Viper.Audio.Voice` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Stop`,
 `SetVolume`, `SetPan`, `IsPlaying`.
 
@@ -114,7 +114,7 @@ construct the class directly. Its public surface exposes operations including `S
 
 Provides music streaming playback.
 
-`Viper.Sound.Music` exposes a registry-backed runtime surface without requiring callers to
+`Viper.Audio.Music` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Volume`,
 `Position`, `Duration` and operations including `Play`, `Stop`, `Pause`, `Resume`.
 
@@ -146,7 +146,7 @@ construct the class directly. Its public surface exposes properties such as `Vol
 
 Provides Playlist functionality for audio playback and synthesis.
 
-Create `Viper.Sound.Playlist` values through its registered constructor and use the returned
+Create `Viper.Audio.Playlist` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Count`,
 `Current`, `IsPlaying` and operations including `Add`, `Insert`, `Remove`, `Clear`.
 
@@ -188,7 +188,7 @@ Constructor: `Viper.Audio.Playlist.New`
 
 Provides Sound Bank functionality for audio playback and synthesis.
 
-Create `Viper.Sound.SoundBank` values through its registered constructor and use the returned
+Create `Viper.Audio.SoundBank` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Count`
 and operations including `Register`, `RegisterSound`, `Play`, `PlayEx`.
 
@@ -219,7 +219,7 @@ Constructor: `Viper.Audio.SoundBank.New`
 
 Provides Synth functionality for audio playback and synthesis.
 
-`Viper.Sound.Synth` exposes a registry-backed runtime surface without requiring callers to
+`Viper.Audio.Synth` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Tone`, `Sweep`,
 `Noise`, `Sfx`.
 
@@ -237,7 +237,7 @@ construct the class directly. Its public surface exposes operations including `T
 
 Provides Music Gen functionality for audio playback and synthesis.
 
-Create `Viper.Sound.MusicGen` values through its registered constructor and use the returned
+Create `Viper.Audio.MusicGen` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Bpm`,
 `Length`, `ChannelCount` and operations including `AddChannel`, `SetEnvelope`,
 `SetChannelVolume`, `SetDuty`.
@@ -278,7 +278,7 @@ Constructor: `Viper.Audio.MusicGen.New`
 
 Provides Spatial Audio 3D constants and static operations for audio playback and synthesis.
 
-`Viper.Sound.SpatialAudio3D` is a static runtime surface and does not require an instance.
+`Viper.Audio.SpatialAudio3D` is a static runtime surface and does not require an instance.
 Its public surface exposes operations including `SetListener`, `PlayAt`, `UpdateVoice`,
 `SyncBindings`.
 

@@ -9,7 +9,7 @@
 // Purpose: Verify checked signed/unsigned division and remainder lowering on AArch64.
 // Key invariants: Emits sdiv/udiv instructions with divide-by-zero checks.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

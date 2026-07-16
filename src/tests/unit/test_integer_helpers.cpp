@@ -9,7 +9,7 @@
 // Purpose: Exercise il::common::integer helpers with targeted invariants.
 // Key invariants: Wrapping conversions must sign-extend for negative results.
 // Ownership/Lifetime: Standalone unit test binary.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

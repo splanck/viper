@@ -10,7 +10,7 @@
 //          LShr) including sign extension, zero extension, and shift amount
 //          masking. Complements ShiftLeftTests.cpp which covers Shl.
 //
-// Semantics (see docs/arithmetic-semantics.md):
+// Semantics (see docs/languages/arithmetic-semantics.md):
 //   - Shift amounts masked to [0, 63] via `shift & 63`.
 //   - AShr: arithmetic (sign-extending) right shift.
 //   - LShr: logical (zero-extending) right shift.

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-13
+---
+
 # ADR 0101: Modular Runtime Definitions and Authored API Documentation
 
 Date: 2026-07-11

@@ -9,7 +9,7 @@
 // Purpose: Ensure parser rejects branches targeting undefined blocks.
 // Key invariants: Parsing fails with an "unknown block" diagnostic referencing the label/line.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

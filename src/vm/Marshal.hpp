@@ -9,7 +9,7 @@
 // Purpose: Declares helpers for converting between VM and runtime data types.
 // Key invariants: Conversion helpers preserve existing runtime encodings.
 // Ownership/Lifetime: Views returned do not extend the lifetime of underlying data.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

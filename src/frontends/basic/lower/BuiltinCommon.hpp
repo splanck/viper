@@ -16,7 +16,7 @@
 //                 and are released when the context is destroyed.
 // Ownership/Lifetime: Borrows Lowerer state; synthetic argument RVals are
 //                     owned by the context.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

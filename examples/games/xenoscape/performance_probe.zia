@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - Each pass owns fresh Level, EnemyManager, Palette, and ParticleSystem state.
 // Links: enemy.zia, level.zia, particles.zia, src/tests/CMakeLists.txt,
-//        docs/testing.md
+//        docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

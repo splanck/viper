@@ -13,7 +13,7 @@
 //   - CBr simplification with single-use predicates removes dead comparisons
 //   - Large functions do not exhibit O(N^2) compile-time behavior
 // Ownership/Lifetime: Constructs local modules and runs the peephole pass.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

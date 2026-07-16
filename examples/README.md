@@ -17,7 +17,7 @@ scripts\build_demos_win.cmd           # Windows equivalent
 
 ## 🖥️ Applications
 
-Full-featured applications built with [Zia](../docs/zia-reference.md).
+Full-featured applications built with [Zia](../docs/languages/zia-reference.md).
 
 | Project | Description | Highlights |
 |---------|-------------|------------|
@@ -66,7 +66,7 @@ The [`games/lib/`](games/lib/) directory provides reusable base classes for Zia 
 
 ## 🗃️ SQL Engine — BASIC
 
-A [SQL database engine](sqldb-basic/) written entirely in [BASIC](../docs/basic-reference.md) (9,600 lines). Implements a complete pipeline: lexer, parser, executor, indexes, schema management, and a test suite.
+A [SQL database engine](sqldb-basic/) written entirely in [BASIC](../docs/languages/basic-reference.md) (9,600 lines). Implements a complete pipeline: lexer, parser, executor, indexes, schema management, and a test suite.
 
 ---
 
@@ -131,10 +131,10 @@ The [`basic/`](basic/) directory contains 28 BASIC programs demonstrating langua
 
 ## ⚙️ IL Examples
 
-The [`il/`](il/) directory contains 22 [Viper IL](../docs/il-guide.md) programs for VM development and testing:
+The [`il/`](il/) directory contains 22 [Viper IL](../docs/il/il-guide.md) programs for VM development and testing:
 
 - **Tutorials** — `ex1` through `ex6`: progressive IL feature demonstrations (hello, loops, tables, factorial, strings, heap arrays)
-- **Benchmarks** — [`benchmarks/`](il/benchmarks/): VM and [optimizer](../docs/il-passes.md) performance tests (fib, arithmetic, branching, strings)
+- **Benchmarks** — [`benchmarks/`](il/benchmarks/): VM and [optimizer](../docs/il/il-passes.md) performance tests (fib, arithmetic, branching, strings)
 - **IL v1.2** — [`1.2/`](il/1.2/): block parameter features
 - **Advanced** — `break_label.il`, `random_three.il`, `summary.il`, `trace_min.il`
 - **Debugging** — `debug_script.il` + `debug_script.txt`: debugger integration demo
@@ -151,7 +151,7 @@ The [`embedding/`](embedding/) directory demonstrates embedding the Viper VM in 
 | `register_times2.cpp` | Registering native C++ functions as IL externs |
 | `combined.cpp` | TCO, extern registration, opcode counters, polling |
 
-> See the [VM Guide](../docs/vm.md) for the full embedding API.
+> See the [VM Guide](../docs/internals/vm.md) for the full embedding API.
 
 ---
 

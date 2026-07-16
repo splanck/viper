@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser reports diagnostics when global names lack '@'.
 // Key invariants: Parser surfaces the missing-at diagnostic instead of slicing strings unsafely.
 // Ownership/Lifetime: Test owns parsing streams and module instance.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

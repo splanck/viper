@@ -10,7 +10,7 @@
 //          semantic types used by the lowering pipeline.
 // Key invariants: Missing suffixes default to the integer type to match legacy
 //                 BASIC semantics.
-// Links: docs/basic-language.md#types
+// Links: docs/tutorials/basic-tutorial.md#types
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Verify VM dispatch loops exit correctly after host runtime calls.
 // Key invariants: Host calls complete with switch/threaded dispatch without stalling.
 // Ownership/Lifetime: Builds ephemeral modules per dispatch strategy.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

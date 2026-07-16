@@ -11,7 +11,7 @@
 //          RETURN, END) to IL branches and continuation stack operations.
 // Key invariants: Maintains Lowerer's control flow lowering semantics exactly
 // Ownership/Lifetime: Borrows Lowerer reference; coordinates with parent
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

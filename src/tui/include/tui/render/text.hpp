@@ -9,7 +9,7 @@
 // Purpose: Text rendering utilities for painting strings into a screen buffer.
 // Key invariants: Drawing respects buffer bounds; strings are clipped to width.
 // Ownership/Lifetime: Stateless utility functions; no dynamic resources.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

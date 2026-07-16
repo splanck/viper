@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0079: Game3D Time Control (TimeScale, Pause, Hit-Stop)
 
 Date: 2026-07-10

@@ -10,7 +10,7 @@
 // Key invariants: Requires AArch64Module::mir to have physical registers assigned.
 //                 Populates AArch64Module::assembly with the final asm text.
 // Ownership/Lifetime: Stateless pass; mutates AArch64Module::assembly.
-// Links: docs/codemap.md, src/codegen/aarch64/AsmEmitter.hpp
+// Links: docs/internals/codemap.md, src/codegen/aarch64/AsmEmitter.hpp
 //
 //===----------------------------------------------------------------------===//
 

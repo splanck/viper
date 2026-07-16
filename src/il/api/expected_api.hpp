@@ -9,7 +9,7 @@
 // Purpose: Provide Expected-based wrappers for IL parsing and verification entry points.
 // Key invariants: Wrapper success mirrors legacy bool-returning APIs; errors carry diagnostic text
 // Ownership/Lifetime: To be documented.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

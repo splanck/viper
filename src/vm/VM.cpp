@@ -42,7 +42,7 @@
 //   - VM owns dispatch drivers, string caches, and runtime context
 //   - Module data is borrowed from callers
 //
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 
@@ -929,7 +929,7 @@ VM::~VM() {
 //   switch statement when computed-goto (threaded dispatch) is unavailable.
 //
 // Both files are synchronized with il/core/Opcode.def and must be updated when
-// opcodes are added or removed. See docs/generated-files.md for details.
+// opcodes are added or removed. See docs/internals/generated-files.md for details.
 // =============================================================================
 #include "vm/ops/generated/InlineHandlersImpl.inc"
 #include "vm/ops/generated/SwitchDispatchImpl.inc"

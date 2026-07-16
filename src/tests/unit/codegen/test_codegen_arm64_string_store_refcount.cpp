@@ -10,7 +10,7 @@
 // Key invariants: Plain string stores remain plain stores, while explicit
 //                 retain/release calls in the IL are not duplicated by lowering.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

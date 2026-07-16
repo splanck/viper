@@ -13,7 +13,7 @@
 // Ownership/Lifetime: BasicBlock remains header-only today; future additions
 //                     should avoid owning global state and instead operate on
 //                     caller-provided IR objects.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Ensure block parameter transfers release previous string registers.
 // Key invariants: Re-entering a block with a new string decrements the old refcount.
 // Ownership/Lifetime: Builds a synthetic module and inspects VM frame state.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

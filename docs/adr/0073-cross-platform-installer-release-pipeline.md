@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-10
+---
+
 # ADR 0073: Cross-Platform Installer Release Pipeline
 
 Date: 2026-07-10

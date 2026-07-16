@@ -13,7 +13,7 @@
 //   - Qualified names join segments with '.' and include the procedure name.
 //   - AST structure is not flattened; only annotations are added to nodes.
 // Ownership/Lifetime: Mutates AST nodes in-place; no allocations beyond strings.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

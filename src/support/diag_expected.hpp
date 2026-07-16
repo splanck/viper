@@ -11,7 +11,7 @@
 //                 Expected<T> holds either a value or an error Diag, never both and never neither.
 // Ownership/Lifetime: Expected owns its stored value or diagnostic by value; the optional
 //                     SourceManager passed to the print helpers is borrowed for the call only.
-// Links: docs/architecture.md, src/support/diagnostics.hpp
+// Links: docs/internals/architecture.md, src/support/diagnostics.hpp
 //
 //===----------------------------------------------------------------------===//
 

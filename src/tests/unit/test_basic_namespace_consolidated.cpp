@@ -7,7 +7,7 @@
 //
 // File: tests/unit/test_basic_namespace_consolidated.cpp
 // Purpose: Consolidated namespace/using tests (8 files merged, 75 TEST cases).
-// Links: docs/basic-namespaces.md
+// Links: docs/languages/basic-namespaces.md
 //
 //===----------------------------------------------------------------------===//
 

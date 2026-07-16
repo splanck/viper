@@ -9,7 +9,7 @@
 // Purpose: Provides color parsing utilities for the TUI library.
 // Key invariants: Parses hex RGB triplets into RGBA structs.
 // Ownership/Lifetime: Stateless utility functions.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

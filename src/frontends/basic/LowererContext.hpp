@@ -12,7 +12,7 @@
 // Key invariants: Context state is reset between procedures; block labels are
 //                 deterministic given the procedure name and counter state.
 // Ownership/Lifetime: Owned by Lowerer; references to IL objects are borrowed.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

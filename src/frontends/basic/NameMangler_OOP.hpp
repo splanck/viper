@@ -9,7 +9,7 @@
 // Purpose: Re-export OOP name mangling helpers from common library.
 // Key invariants: Mangled names remain stable and purely derived from inputs.
 // Ownership/Lifetime: Returns freshly-allocated std::string instances owned by callers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

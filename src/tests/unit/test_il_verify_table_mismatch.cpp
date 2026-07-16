@@ -9,7 +9,7 @@
 // Purpose: Ensure verifier reports clear diagnostics for table-driven mismatches.
 // Key invariants: Operand and constant typing errors produce stable substrings.
 // Ownership/Lifetime: Constructs verifier modules locally within each test case.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

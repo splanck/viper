@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-08
+---
+
 # ADR 0069: Canvas3D Diagnostics API
 
 Date: 2026-07-09

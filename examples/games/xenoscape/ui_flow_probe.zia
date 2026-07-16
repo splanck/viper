@@ -12,7 +12,7 @@
 //   - Automatic cards expire, can be dismissed, and remain explicitly replayable.
 // Ownership/Lifetime:
 //   - Probe owns one coordinator, palette, tutorial system, and ability manager.
-// Links: ui_coordinator.zia, tutorials.zia, abilities.zia, docs/testing.md
+// Links: ui_coordinator.zia, tutorials.zia, abilities.zia, docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

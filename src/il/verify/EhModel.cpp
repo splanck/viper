@@ -19,7 +19,7 @@
 //   them to remain valid for the model's lifetime.
 //
 // Links:
-//   docs/il-guide.md#reference
+//   docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

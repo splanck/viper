@@ -9,7 +9,7 @@
 // Purpose: Lint runtime class catalog against the runtime signature registry.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "il/runtime/RuntimeSignatures.hpp"

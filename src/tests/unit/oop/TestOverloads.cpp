@@ -9,7 +9,7 @@
 // Purpose: Exercise overload resolver ambiguity with method vs property same name.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

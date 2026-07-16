@@ -9,7 +9,7 @@
 // Purpose: Declares helpers for parsing module-level IL directives.
 // Key invariants: Operates with ParserState positioned at module scope.
 // Ownership/Lifetime: Updates module metadata and dispatches to function parsing.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

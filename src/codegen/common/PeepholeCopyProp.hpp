@@ -19,7 +19,7 @@
 //   - Operates on mutable instruction vectors owned by the caller.
 //   - Temporary maps are stack-allocated and do not outlive the call.
 //
-// Links: docs/architecture.md, codegen/common/PeepholeUtil.hpp
+// Links: docs/internals/architecture.md, codegen/common/PeepholeUtil.hpp
 //
 //===----------------------------------------------------------------------===//
 

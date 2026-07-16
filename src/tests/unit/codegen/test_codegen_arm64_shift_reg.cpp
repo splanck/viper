@@ -9,7 +9,7 @@
 // Purpose: Verify shift by register (variable shift amount) on AArch64.
 // Key invariants: Emits lslv/lsrv/asrv instructions for register shifts.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

@@ -12,7 +12,7 @@
 // Key invariants: Resolution searches from innermost to outermost scope.
 //                 ScopedScope RAII guard ensures balanced push/pop.
 // Ownership/Lifetime: Owns the scope stack; bindings store string copies.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

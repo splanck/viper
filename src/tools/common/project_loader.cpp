@@ -15,7 +15,7 @@
 // Ownership/Lifetime: All helpers return values or Expected<>; the caller owns
 //                     the resulting ProjectConfig. No global state is mutated.
 // Links: src/tools/common/project_loader.hpp,
-//        src/tools/common/packaging/PkgUtils.hpp, docs/codemap.md#tools
+//        src/tools/common/packaging/PkgUtils.hpp, docs/internals/codemap.md#tools
 //
 //===----------------------------------------------------------------------===//
 

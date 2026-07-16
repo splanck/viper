@@ -10,7 +10,7 @@
 //          shift operations, and proper boolean type production.
 // Key invariants: Folding must preserve semantics and produce correct types.
 // Ownership/Lifetime: Builds transient modules per test invocation.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Implements box drawing utilities for the TUI rendering subsystem.
 // Key invariants: Box dimensions are assumed valid; callers ensure bounds.
 // Ownership/Lifetime: Stateless utility; no dynamic allocations.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

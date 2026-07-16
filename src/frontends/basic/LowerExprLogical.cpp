@@ -8,7 +8,7 @@
 // Key invariants: Logical operators preserve BASIC truthiness semantics using
 //                 Lowerer utilities for short-circuiting.
 // Ownership/Lifetime: Helpers borrow the Lowerer for the duration of the call.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

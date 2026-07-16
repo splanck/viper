@@ -18,7 +18,7 @@
 //   - Handler implementation: void VM::inline_handle_<OpName>(ExecState &st)
 //   - Each handler delegates to detail::handle<OpName> and calls handleInlineResult
 //
-// Links: docs/il-guide.md#reference, vm/ops/generated/InlineHandlersDecl.inc
+// Links: docs/il/il-guide.md#reference, vm/ops/generated/InlineHandlersDecl.inc
 //
 //===----------------------------------------------------------------------===//
 

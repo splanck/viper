@@ -17,7 +17,7 @@
 //                 pointers.
 // Ownership/Lifetime: ProgramLowering borrows the Lowerer; emitted modules are
 //                     owned by the caller-provided builder.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

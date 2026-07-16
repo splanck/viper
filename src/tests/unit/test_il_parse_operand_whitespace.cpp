@@ -9,7 +9,7 @@
 // Purpose: Verify OperandParser trims leading whitespace for registers and globals.
 // Key invariants: parseValueToken should succeed for whitespace-prefixed identifiers and
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

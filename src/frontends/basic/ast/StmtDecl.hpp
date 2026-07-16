@@ -9,7 +9,7 @@
 // Purpose: Defines BASIC statement nodes representing declarations and statement lists.
 // Key invariants: Declaration bodies own their child statements and record source
 // Ownership/Lifetime: Nodes own nested statements via StmtPtr containers and store
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

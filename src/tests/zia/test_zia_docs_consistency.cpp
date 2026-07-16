@@ -79,7 +79,7 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
     const fs::path root = repoRoot();
 
     const std::vector<DocCheck> checks = {
-        {"docs/zia-reference.md",
+        {"docs/languages/zia-reference.md",
          {
              "Either `get` or `set` may be omitted for read-only or write-only properties.",
              "Reading a write-only property is an error.",
@@ -99,11 +99,11 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "Viper.Memory.Release(handle)",
              "```viper",
          }},
-        {"docs/zia-getting-started.md",
+        {"docs/tutorials/zia-tutorial.md",
          {
              "```viper",
          }},
-        {"docs/feature-parity.md",
+        {"misc/reviews/feature-parity.md",
          {
              "| Function overloading | None | None | Neither |",
              "Zia parses `weak` but doesn't lower",
@@ -122,18 +122,18 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
          {
              "cache the pointer",
          }},
-        {"docs/bible/appendices/a-zia-reference.md",
+        {"docs/book/appendices/a-zia-reference.md",
          {
              "../../../zia-reference.md",
          }},
-        {"docs/bible/part2-building-blocks/12-modules.md",
+        {"docs/book/part2-building-blocks/12-modules.md",
          {
              "export func",
              "export struct",
              "mockDatabase.Contains",
              "email.Contains",
          }},
-        {"docs/bible/part2-building-blocks/13-stdlib.md",
+        {"docs/book/part2-building-blocks/13-stdlib.md",
          {
              "GetOS(",
              "Viper.Random",
@@ -145,7 +145,7 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "isNumeric(",
              "= [:];",
          }},
-        {"docs/bible/appendices/d-runtime-reference.md",
+        {"docs/book/appendices/c-runtime-reference.md",
          {
              "function-based, not object-oriented",
              "var map = new Map[String, Integer]();",
@@ -154,7 +154,7 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "var stack = new Stack[String]();",
              "var heap = new Heap[String]();",
          }},
-        {"docs/bible/appendices/e-error-messages.md",
+        {"docs/book/appendices/d-error-messages.md",
          {
              "bind Viper.Json",
              "catch e:",
@@ -164,11 +164,11 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "isNumeric(",
              "var data = parse(",
          }},
-        {"docs/bible/part5-mastery/27-testing.md",
+        {"docs/book/part5-mastery/27-testing.md",
          {
              "catch e {",
          }},
-        {"docs/bible/part3-objects/17-polymorphism.md",
+        {"docs/book/part3-objects/17-polymorphism.md",
          {
              "bind Viper.Random;",
              "var r = Int(0, 3);",

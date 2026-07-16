@@ -15,7 +15,7 @@
 //                     diagnostic sinks.  Temporary diagnostics are copied into
 //                     @ref LoadResult so the caller can persist them beyond the
 //                     function call.
-// Links: src/tools/common/module_loader.hpp, docs/codemap.md#tools
+// Links: src/tools/common/module_loader.hpp, docs/internals/codemap.md#tools
 //
 //===----------------------------------------------------------------------===//
 

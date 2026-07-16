@@ -9,7 +9,7 @@
 // Purpose: Verify IL parser decodes escaped globals and serializer re-escapes them.
 // Key invariants: Parsed globals store literal characters; serialization round-trips escapes.
 // Ownership/Lifetime: Test owns module and buffers.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

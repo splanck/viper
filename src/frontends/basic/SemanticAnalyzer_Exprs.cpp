@@ -13,7 +13,7 @@
 //                 SemanticAnalyzer helpers.
 // Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; AST nodes owned
 //                     externally.
-// Links: docs/codemap.md, docs/basic-language.md#expressions
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md#expressions
 //
 //===----------------------------------------------------------------------===//
 

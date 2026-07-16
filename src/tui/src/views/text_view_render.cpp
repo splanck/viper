@@ -13,7 +13,7 @@
 // Ownership/Lifetime: TextView borrows TextBuffer and Theme instances managed
 //                     by the caller and writes results into an externally-owned
 //                     ScreenBuffer.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

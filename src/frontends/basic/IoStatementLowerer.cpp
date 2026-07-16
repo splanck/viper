@@ -11,7 +11,7 @@
 //          and runtime helper calls.
 // Key invariants: Maintains Lowerer's I/O lowering semantics exactly
 // Ownership/Lifetime: Borrows Lowerer reference; coordinates with parent
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

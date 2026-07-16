@@ -20,7 +20,7 @@
 //   ownership. Diagnostics are surfaced via Expected results.
 //
 // Links:
-//   docs/il-guide.md#reference
+//   docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

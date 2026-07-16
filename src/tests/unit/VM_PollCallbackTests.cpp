@@ -9,7 +9,7 @@
 // Purpose: Verify periodic host callback invocation and pause behaviour.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

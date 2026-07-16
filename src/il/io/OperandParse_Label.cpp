@@ -9,7 +9,7 @@
 // Purpose: Provide the per-kind parser for IL branch labels.
 // Key invariants: Matches OperandParser's label normalisation and diagnostics.
 // Ownership/Lifetime: Operates on parser-managed state without owning data.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

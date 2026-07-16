@@ -9,7 +9,7 @@
 // Purpose: Validate verifier diagnostics for exception handler table instructions.
 // Key invariants: EH stack operations enforce successor arity and resume token typing.
 // Ownership/Lifetime: Constructs IL modules locally for verification and discards after use.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

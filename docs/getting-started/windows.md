@@ -230,7 +230,7 @@ Then open a fresh Developer PowerShell and rerun the canonical build script.
 
 ## What to Read Next
 
-- [Zia tutorial](../zia-getting-started.md)
-- [Zia reference](../zia-reference.md)
-- [BASIC tutorial](../basic-language.md)
+- [Zia tutorial](../tutorials/zia-tutorial.md)
+- [Zia reference](../languages/zia-reference.md)
+- [BASIC tutorial](../tutorials/basic-tutorial.md)
 - [General getting started guide](../getting-started.md)

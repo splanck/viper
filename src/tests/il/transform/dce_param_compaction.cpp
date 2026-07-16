@@ -13,7 +13,7 @@
 //   - Multiple predecessors are handled correctly.
 //   - Many parameters with selective removal work correctly.
 // Ownership/Lifetime: Constructs local modules and runs DCE pass.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

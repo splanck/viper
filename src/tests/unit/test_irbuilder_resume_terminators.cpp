@@ -9,7 +9,7 @@
 // Purpose: Ensure IRBuilder marks blocks terminated after emitting resume instructions.
 // Key invariants: Resume opcodes behave as terminators when emitted via IRBuilder helpers.
 // Ownership/Lifetime: Test owns its module/function fixtures locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

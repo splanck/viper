@@ -9,7 +9,7 @@
 // Purpose: Verify BASIC expression nodes record source locations.
 // Key invariants: Line and column values must match token positions.
 // Ownership/Lifetime: Test owns parsed AST.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

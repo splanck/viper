@@ -13,7 +13,7 @@
 //   - Re-entering the same VM (nested calls) is allowed
 //   - Extern callbacks can invoke VM methods and guards work correctly
 // Ownership/Lifetime: Constructs test modules with extern callbacks.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

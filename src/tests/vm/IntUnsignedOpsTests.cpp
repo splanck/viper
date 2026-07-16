@@ -9,7 +9,7 @@
 // Purpose: Validate VM handlers for signed/unsigned div/rem opcodes including traps.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -10,7 +10,7 @@
 // Key invariants: errorCount()/warningCount() always equal the number of stored
 //                 diagnostics at each severity; printAll preserves report order.
 // Ownership/Lifetime: Engine owns collected diagnostics.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -12,7 +12,7 @@
 //                 registry initialises exactly once per process.
 // Ownership/Lifetime: Relies on process-wide registration tables and does not
 //                     allocate persistent state beyond handler bindings.
-// Links: docs/basic-language.md, docs/codemap.md
+// Links: docs/tutorials/basic-tutorial.md, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

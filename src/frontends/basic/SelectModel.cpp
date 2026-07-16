@@ -10,7 +10,7 @@
 // Key invariants: Normalises label data into 32-bit ranges and relations while
 //                 surfacing diagnostics through the supplied callback.
 // Ownership/Lifetime: Operates on AST references without taking ownership.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

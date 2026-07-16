@@ -12,7 +12,7 @@
 //                 string literal that outlives the process.
 // Ownership/Lifetime: String literal resides in read-only program storage and
 //                     requires no caller-managed lifetime.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

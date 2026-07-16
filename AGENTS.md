@@ -7,9 +7,9 @@ and documents the agent-facing toolchain surface.
 
 ## Ground Rules
 
-- **Spec first.** `/docs/il-guide.md#reference` (IL v0.3.0) is normative.
+- **Spec first.** `/docs/il/il-guide.md#reference` (IL v0.3.0) is normative.
   ADRs are required for IL opcode, grammar, verifier-rule, cross-layer
-  dependency, runtime C ABI surface, `docs/il-guide.md#reference`, and
+  dependency, runtime C ABI surface, `docs/il/il-guide.md#reference`, and
   `.github/workflows/*` changes.
 - **Always green.** Build and tests must pass locally before proposing changes.
 - **Zero dependencies.** Viper is 100% from-scratch. Never introduce external
@@ -51,7 +51,7 @@ ctest --test-dir build -R test_zia_lexer                # by name
 ./scripts/update_goldens.sh [filter]                    # regenerate goldens
 ```
 
-See `src/tests/CMakeLists.txt` and `docs/testing.md` for the label taxonomy.
+See `src/tests/CMakeLists.txt` and `docs/internals/testing.md` for the label taxonomy.
 
 ## Agent-Facing Toolchain Surface
 
@@ -68,7 +68,7 @@ human-oriented output.
 | `viper --dump-opcodes` | JSON registry of all IL opcodes with arity, operand types, and effects. |
 | `viper run program.zia --diagnostic-format=json` | Compile and execute; same structured diagnostics. |
 | `viper run program.il --max-steps N` | Step-budgeted execution (safe for untrusted generated code on the VM). |
-| `--dump-tokens / --dump-ast / --dump-sema-ast / --dump-il / --dump-il-opt / --dump-il-passes` | Pipeline introspection at every stage (see docs/debugging.md). |
+| `--dump-tokens / --dump-ast / --dump-sema-ast / --dump-il / --dump-il-opt / --dump-il-passes` | Pipeline introspection at every stage (see docs/tools/debugging.md). |
 | `viper run --debug-adapter` | VM-backed debugger over newline-delimited JSON (breakpoints, stepping, call stacks, locals). |
 
 ## MCP Language Server
@@ -77,13 +77,13 @@ human-oriented output.
 (11 tools: check, compile, completions, hover, symbols, IL/AST/token dumps,
 runtime-classes/-methods/-search). The repo's `.mcp.json` points at the build
 output (`build/src/tools/zia-server/zia-server`); build the project first.
-See docs/zia-server.md and docs/zia-server-mcp-tools.md. A BASIC equivalent
+See docs/tools/zia-server.md and docs/tools/zia-server-mcp-tools.md. A BASIC equivalent
 ships as `vbasic-server`.
 
 ## Key Docs
 
-- Architecture: `docs/architecture.md` · Code map: `docs/codemap.md` (+ `docs/codemap/`)
-- Languages: `docs/zia-reference.md`, `docs/basic-reference.md`
-- IL: `docs/il-quickstart.md`, `docs/il-guide.md` (normative)
-- Debugging & diagnostics: `docs/debugging.md` · Tools: `docs/tools.md`
-- Testing: `docs/testing.md`
+- Architecture: `docs/internals/architecture.md` · Code map: `docs/internals/codemap.md` (+ `docs/internals/codemap/`)
+- Languages: `docs/languages/zia-reference.md`, `docs/languages/basic-reference.md`
+- IL: `docs/il/il-guide.md#quickstart`, `docs/il/il-guide.md` (normative)
+- Debugging & diagnostics: `docs/tools/debugging.md` · Tools: `docs/tools/cli.md`
+- Testing: `docs/internals/testing.md`

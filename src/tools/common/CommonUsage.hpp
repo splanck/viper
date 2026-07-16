@@ -10,7 +10,7 @@
 // Key invariants: All frontend tools share the same option descriptions.
 // Ownership/Lifetime: Stateless; the helper borrows the caller's output stream
 //                     for the duration of the call and retains no references.
-// Links: docs/architecture.md, src/tools/vbasic/usage.cpp, src/tools/zia/usage.cpp
+// Links: docs/internals/architecture.md, src/tools/vbasic/usage.cpp, src/tools/zia/usage.cpp
 //
 //===----------------------------------------------------------------------===//
 

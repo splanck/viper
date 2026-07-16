@@ -11,7 +11,7 @@
 //                 once across the process lifetime.
 // Ownership/Lifetime: Relies on process-wide builtin registry entries and does
 //                     not allocate persistent state beyond handler bindings.
-// Links: docs/basic-language.md, docs/codemap.md
+// Links: docs/tutorials/basic-tutorial.md, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

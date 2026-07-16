@@ -16,7 +16,7 @@
 //   - Load-path retains are never elided here: they carry the ownership
 //     transfer for slot-resident strings (consuming callees, returns).
 // Ownership/Lifetime: Header-only policy; no state beyond the env hatch.
-// Links: docs/il-passes.md, src/il/runtime/RuntimeOwnership.hpp
+// Links: docs/il/il-passes.md, src/il/runtime/RuntimeOwnership.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once

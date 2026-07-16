@@ -9,7 +9,7 @@
 // Purpose: Ensure the VM dispatch table executes SwitchI32 handlers correctly.
 // Key invariants: Matching case transfers to correct block, default is taken otherwise.
 // Ownership/Lifetime: Builds ephemeral modules per scenario and executes immediately.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

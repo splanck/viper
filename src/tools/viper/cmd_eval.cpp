@@ -17,7 +17,7 @@
 // Ownership/Lifetime:
 //   - The language adapter lives for the duration of the command.
 // Links: src/repl/ReplSession.hpp, src/repl/ZiaReplAdapter.hpp,
-//        src/repl/BasicReplAdapter.hpp, docs/tools.md
+//        src/repl/BasicReplAdapter.hpp, docs/tools/cli.md
 //
 //===----------------------------------------------------------------------===//
 

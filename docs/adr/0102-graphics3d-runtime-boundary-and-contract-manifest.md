@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-13
+---
+
 # ADR 0102: Graphics3D Runtime Boundary and Contract Manifest
 
 Date: 2026-07-13

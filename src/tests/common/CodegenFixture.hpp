@@ -9,7 +9,7 @@
 // Purpose: Provide reusable helpers for invoking the ilc CLI in end-to-end
 // Key invariants: Temporary filesystem artefacts are confined to a unique
 // Ownership/Lifetime: The fixture owns its temporary directory for the
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

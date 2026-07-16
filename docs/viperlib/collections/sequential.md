@@ -73,6 +73,11 @@ Dynamic array that grows automatically. Stores object references.
 
 ### Zia Example
 
+> **Two equivalent surfaces:** Zia's language-level lists (`var xs: List[Integer] = []`)
+> also accept lowercase convenience methods (`add`, `get`, `count`) shown in the
+> [Zia Tutorial](../../tutorials/zia-tutorial.md). The runtime class methods below
+> (`Push`, `Get`, `Count`) work on the same objects; both styles compile.
+
 ```rust
 module ListDemo;
 

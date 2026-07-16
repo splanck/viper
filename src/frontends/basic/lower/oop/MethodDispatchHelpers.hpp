@@ -27,7 +27,7 @@
 //   - Uses Lowerer's coercion helpers for argument type matching
 //
 // Ownership/Lifetime: Non-owning reference to Lowerer context.
-// Links: docs/codemap.md, docs/il-guide.md#reference
+// Links: docs/internals/codemap.md, docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

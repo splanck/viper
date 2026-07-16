@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-26
+---
+
 # ADR 0014: Viper BASIC Language-Service Runtime Bridge
 
 Date: 2026-06-25

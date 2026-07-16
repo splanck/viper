@@ -8,7 +8,7 @@
 // File: tests/unit/test_vm_stack_memcpy_ops.cpp
 // Purpose: Validate VM load/store against stack-allocated memory use memcpy paths.
 // Key invariants: All scalar kinds load/store correctly; misalignment traps covered elsewhere.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

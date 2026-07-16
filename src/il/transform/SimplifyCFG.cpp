@@ -15,7 +15,7 @@
 // Ownership/Lifetime: The pass operates on caller-owned modules and functions
 //                     without taking ownership; analysis caches are invalidated
 //                     via the supplied AnalysisManager.
-// Links: docs/codemap.md#transforms
+// Links: docs/internals/codemap.md#transforms
 //
 //===----------------------------------------------------------------------===//
 

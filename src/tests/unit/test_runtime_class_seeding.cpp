@@ -8,7 +8,7 @@
 // File: tests/unit/test_runtime_class_seeding.cpp
 // Purpose: Validate seeding of TypeRegistry, Property/Method indexes, and NamespaceRegistry from
 // class catalog. Key invariants: To be documented. Ownership/Lifetime: To be documented. Links:
-// docs/architecture.md
+// docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

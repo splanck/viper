@@ -121,7 +121,7 @@ func start() {
 
 DebugOverlay works naturally in the `onFrame()` hook — it draws after the current scene's `draw()` has completed, so it renders on top of all game content.
 
-```
+```text
 GameBase.run() loop:
   1. scene.update(dt)
   2. scene.draw(canvas)

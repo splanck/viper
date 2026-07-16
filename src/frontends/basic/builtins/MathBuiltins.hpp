@@ -11,7 +11,7 @@
 // Key invariants: Registration writes entries at the dense index matching each
 //                 BuiltinCallExpr::Builtin enumerator; it never resizes tables.
 // Ownership/Lifetime: Functions mutate caller-provided tables in-place.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

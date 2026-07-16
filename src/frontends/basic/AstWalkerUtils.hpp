@@ -9,7 +9,7 @@
 // Purpose: Provides helper utilities shared by BASIC AST walker implementations.
 // Key invariants: Utilities preserve traversal semantics defined by BasicAstWalker.
 // Ownership/Lifetime: Helpers operate on borrowed AST nodes without taking ownership.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

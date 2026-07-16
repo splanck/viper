@@ -7,7 +7,7 @@
 // Purpose: Implements program-level emission orchestration for BASIC lowering.
 // Key invariants: Block labels are deterministic via BlockNamer or mangler.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

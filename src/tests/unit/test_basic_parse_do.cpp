@@ -9,7 +9,7 @@
 // Purpose: Verify BASIC parser handles all DO/EXIT loop forms and preserves nesting details.
 // Key invariants: DO loop conditions map to correct enum/test position and nested statements keep
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

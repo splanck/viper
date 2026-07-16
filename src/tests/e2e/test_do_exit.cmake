@@ -2,7 +2,7 @@
 ## Purpose: Run BASIC loop control programs and compare stdout to golden outputs.
 ## Key invariants: Runtime stdout must match the provided golden file byte-for-byte.
 ## Ownership/Lifetime: Invoked by CTest via CMake script mode for BASIC front-end programs.
-## Links: docs/codemap.md
+## Links: docs/internals/codemap.md
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

@@ -9,7 +9,7 @@
 // Purpose: Ensure the IL parser rejects duplicate parameter names within a block header.
 // Key invariants: Parser emits a diagnostic mentioning the duplicate name and source line.
 // Ownership/Lifetime: Test constructs module and diagnostic buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

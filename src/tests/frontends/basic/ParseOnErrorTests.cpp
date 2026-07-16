@@ -9,7 +9,7 @@
 // Purpose: Validate parsing of ON ERROR and RESUME statements in BASIC front-end.
 // Key invariants: AST printer output reflects statement variants precisely.
 // Ownership/Lifetime: Test owns parser and AST instances.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

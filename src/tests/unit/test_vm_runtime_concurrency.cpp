@@ -9,7 +9,7 @@
 // Purpose: Verify runtime trap metadata remains isolated per VM under concurrency.
 // Key invariants: Concurrent runtime calls must preserve distinct trap context.
 // Ownership/Lifetime: Constructs independent modules per thread and overrides vm_trap.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Shared helpers for bytecode VM execution used by language frontend CLI tools.
 // Key invariants: Encapsulates BytecodeVM setup, execution, and trap handling.
 // Ownership/Lifetime: The caller owns the IL module; the executor manages internal VM state.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

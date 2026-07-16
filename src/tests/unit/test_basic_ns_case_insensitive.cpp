@@ -9,7 +9,7 @@
 // Purpose: Verify ProcRegistry canonicalizes qualified names case-insensitively and strips
 // Key invariants: To be documented.
 // Ownership/Lifetime: Local diagnostics/emitter/registry.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

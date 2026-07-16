@@ -60,7 +60,7 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 - Integer formatting/parsing is exact across the full signed 64-bit range, including `-9223372036854775808`.
 - A valid `numbers.digits` table is honored for both formatting and parsing, so configured
   non-Latin digit sets round-trip. Locale files currently receive only weak UTF-8 span validation;
-  see VDOC-069 in the [review findings](../../documentation-review-findings.md#vdoc-069--locale-digit-validation-does-not-validate-utf-8).
+  see VDOC-069 in the [review findings](../../../misc/reviews/documentation-review-findings.md#vdoc-069--locale-digit-validation-does-not-validate-utf-8).
 - Decimal parsing and decimal/scientific formatting use C-locale numeric conversion internally, then apply locale separators, so the host process locale does not change results. There is no scientific-notation parse method.
 - Decimal and currency parsing accept the locale's exact `NaN` and infinity tokens (with an
   optional sign), so formatted non-finite values round-trip through `TryParseDecimal` and

@@ -39,7 +39,7 @@
 //   - VMContext holds a non-owning pointer to its VM
 //   - ActiveVMGuard saves and restores previous VM on scope exit
 //
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

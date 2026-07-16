@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0060: SceneAsset Load Result APIs
 
 Date: 2026-07-02

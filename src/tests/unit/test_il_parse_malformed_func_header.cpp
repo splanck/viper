@@ -9,7 +9,7 @@
 // Purpose: Ensure parser rejects function headers missing delimiters.
 // Key invariants: Parser reports malformed headers through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and streams locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

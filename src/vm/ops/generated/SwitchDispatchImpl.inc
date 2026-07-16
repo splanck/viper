@@ -21,7 +21,7 @@
 //   - Case labels MUST cover all il::core::Opcode values
 //   - Case order MUST match Opcode enum declaration order
 //
-// Links: docs/il-guide.md#reference, vm/ops/generated/SwitchDispatchDecl.inc
+// Links: docs/il/il-guide.md#reference, vm/ops/generated/SwitchDispatchDecl.inc
 //
 //===----------------------------------------------------------------------===//
 

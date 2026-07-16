@@ -10,7 +10,7 @@
 //          identifiers for temporaries and lowered control-flow labels.
 // Key invariants: Generated names are deterministic and collision-free within a
 //                 compilation unit.
-// Links: docs/basic-language.md, docs/codemap/basic.md
+// Links: docs/tutorials/basic-tutorial.md, docs/internals/codemap/basic.md
 //
 //===----------------------------------------------------------------------===//
 

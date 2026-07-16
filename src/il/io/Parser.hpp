@@ -16,7 +16,7 @@
 //   - On failure, returns diagnostic with precise line/column location.
 // Ownership/Lifetime: Parser is a stateless facade with a static parse()
 //          method. The caller owns the istream and the output Module.
-// Links: docs/il-guide.md, il/io/Serializer.hpp,
+// Links: docs/il/il-guide.md, il/io/Serializer.hpp,
 //        il/internal/io/ParserState.hpp
 //
 //===----------------------------------------------------------------------===//

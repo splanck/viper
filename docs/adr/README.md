@@ -1,0 +1,139 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-16
+---
+
+# Architecture Decision Records
+
+Every ADR in the repository, grouped by area. ADRs record decisions that change
+the IL specification, verifier rules, runtime C ABI surface, cross-layer
+dependencies, or other contracts that must not drift silently. New ADRs start
+from [0000-template.md](0000-template.md) and take the next unused number.
+
+
+## Process & Governance
+
+- [ADR 0006](0006-spec-currency-and-adr-triggers.md) — Spec Currency and ADR Triggers
+
+## IL & Optimizer
+
+- [ADR 0003](0003-il-linkage-and-module-linking.md) — IL Linkage and Module Linking
+- [ADR 0005](0005-resume-token-provenance.md) — Resume Tokens Are Handler-Provenance Capabilities
+- [ADR 0026](0026-range-analysis-demotion-proofs.md) — Whole-Function Range Analysis for Checked-Arithmetic Demotion Proofs
+- [ADR 0063](0063-il-select-and-if-conversion.md) — IL `select` Opcode and If-Conversion
+- [ADR 0064](0064-il-version-0-3-0.md) — IL Spec Version 0.2.0 → 0.3.0
+
+## Concurrency & Threads
+
+- [ADR 0002](0002-threads-monitor-safe.md) — Shared-Memory Threads with FIFO Monitors and Safe Variables
+- [ADR 0020](0020-scheduler-generation-dimension.md) — Revision-Aware Scheduling (Viper.Threads.Scheduler generations)
+
+## Runtime API Design & Naming
+
+- [ADR 0001](0001-builtin-signatures-from-registry.md) — Derive BASIC Builtin Signatures from Registry
+- [ADR 0017](0017-string-lines-runtime-function.md) — CRLF-Aware Line Splitting (Viper.String.Lines)
+- [ADR 0027](0027-runtime-api-contract-metadata.md) — Add Contract Metadata to the Runtime API Dump
+- [ADR 0028](0028-terminal-option-result-input-apis.md) — Terminal Option and Result Input APIs
+- [ADR 0029](0029-diagnostics-current-trap-api.md) — Diagnostics Current Trap API
+- [ADR 0030](0030-runtime-memory-and-gc-namespaces.md) — Runtime Memory and GC Namespaces
+- [ADR 0031](0031-core-parse-double-aliases.md) — Core Parse Double Aliases
+- [ADR 0032](0032-math-bits-full-name-aliases.md) — Math Bits Full-Name Aliases
+- [ADR 0033](0033-core-convert-string-aliases.md) — Core Convert String Aliases
+- [ADR 0034](0034-capacity-aliases.md) — Capacity Aliases
+- [ADR 0035](0035-bloomfilter-false-positive-rate-alias.md) — BloomFilter False Positive Rate Alias
+- [ADR 0036](0036-format-and-frame-abbreviation-aliases.md) — Format And Frame Abbreviation Aliases
+- [ADR 0037](0037-collection-write-verb-aliases.md) — Collection Write Verb Aliases
+- [ADR 0038](0038-graphics-factory-aliases.md) — Graphics Factory Aliases
+- [ADR 0039](0039-option-failure-aliases.md) — Option Failure Aliases
+- [ADR 0040](0040-input-key-namespace.md) — Input Key Namespace
+- [ADR 0041](0041-crypto-result-and-legacy-apis.md) — Crypto Result APIs and Legacy Namespaces
+- [ADR 0042](0042-http-tls-verification-bypass-api.md) — HTTP TLS Verification Bypass API
+- [ADR 0043](0043-random-chance-boolean-api.md) — Random Chance Boolean API
+- [ADR 0044](0044-crypto-module-process-policy-api.md) — Crypto Module Process Policy API
+- [ADR 0045](0045-boxed-value-type-unsafe-api.md) — Boxed Value-Type Unsafe API
+- [ADR 0047](0047-network-http-result-apis.md) — Network HTTP Result APIs
+- [ADR 0048](0048-runtime-unsafe-trap-state-hooks.md) — Runtime Unsafe Trap-State Hooks
+- [ADR 0049](0049-terminal-signature-nullability-cleanup.md) — Terminal Signature Nullability Cleanup
+- [ADR 0050](0050-game-stateful-result-objects.md) — Game Stateful Result Objects
+- [ADR 0051](0051-data-format-result-parse-apis.md) — Data Format Result Parse APIs
+- [ADR 0052](0052-connect-open-load-result-apis.md) — Connect, Open, and Load Result APIs
+- [ADR 0053](0053-search-option-apis.md) — Search Option APIs
+- [ADR 0054](0054-unionfind-find-root-option-api.md) — UnionFind Root Lookup Option API
+- [ADR 0055](0055-exec-command-result-api.md) — Exec CommandResult API
+- [ADR 0056](0056-table-click-result-api.md) — Table ClickResult API
+- [ADR 0057](0057-smtp-send-result-api.md) — SMTP Send Result API
+- [ADR 0060](0060-sceneasset-load-result-apis.md) — SceneAsset Load Result APIs
+- [ADR 0061](0061-zia-semantic-job-error-option-api.md) — Zia SemanticJob Error Option API
+- [ADR 0062](0062-pathresult-step-count-api.md) — PathResult StepCount API
+- [ADR 0066](0066-process-pty-read-result-apis.md) — Process And PTY Read Result APIs
+- [ADR 0101](0101-modular-runtime-definitions-and-documentation.md) — Modular Runtime Definitions and Authored API Documentation
+- [ADR 0104](0104-entity3d-position-accessor-properties.md) — Normalize Entity3D Position Accessors to Properties
+
+## GUI & IDE
+
+- [ADR 0007](0007-codeeditor-syntax-surface-expansion.md) — CodeEditor Syntax Surface Expansion Uses Registry-Only Semantics
+- [ADR 0008](0008-semantic-token-overlay.md) — Semantic Token Overlay Uses Registry-Only Semantics
+- [ADR 0009](0009-debug-evaluate-protocol.md) — Debug Adapter Evaluate Protocol Extension
+- [ADR 0010](0010-workspace-file-index-status.md) — Workspace File Index Status Runtime API
+- [ADR 0011](0011-codeeditor-editing-runtime-api.md) — CodeEditor Editing Runtime API
+- [ADR 0012](0012-debug-conditional-breakpoints-logpoints.md) — Debug Conditional Breakpoints and Logpoints
+- [ADR 0013](0013-editor-input-popup-runtime-surface.md) — Editor Input and Popup Runtime Surface
+- [ADR 0014](0014-basic-language-service-runtime-bridge.md) — Viper BASIC Language-Service Runtime Bridge
+- [ADR 0015](0015-workspace-file-index-paging.md) — Workspace File Index Paging
+- [ADR 0016](0016-pty-runtime-surface.md) — PTY Runtime Surface (Viper.System.Pty) and Integrated Terminal
+- [ADR 0018](0018-gui-command-binding-runtime-surface.md) — GUI Command Binding (Viper.GUI.Command / CommandRegistry)
+- [ADR 0019](0019-gui-text-cell-metrics-runtime-surface.md) — GUI Text/Cell Metrics (Viper.GUI.OutputPane measurement)
+- [ADR 0021](0021-gui-app-logical-unit-helpers.md) — HiDPI Logical-Unit Helpers (Viper.GUI.App)
+- [ADR 0022](0022-gui-layout-conveniences.md) — GUI Layout Conveniences (panel centering + Viper.GUI.Grid)
+- [ADR 0023](0023-gui-popuplist-widget.md) — Caret-Anchored Filtered Popup (Viper.GUI.PopupList)
+- [ADR 0024](0024-text-char-and-editor-insert-helpers.md) — Text/Editing Helpers (Viper.Text.Char + CodeEditor.InsertAndPlaceCursor)
+- [ADR 0058](0058-gui-lookup-option-apis.md) — GUI Lookup Option APIs
+- [ADR 0067](0067-gui-toolbar-named-icons.md) — GUI Toolbar Named Icon Runtime API
+- [ADR 0068](0068-gui-app-activation-api.md) — GUI App Activation API
+
+## Graphics3D & Game Systems
+
+- [ADR 0004](0004-graphics3d-runtime-surface-expansion.md) — Graphics3D Runtime Surface Expansion Uses Registry-Only Semantics
+- [ADR 0046](0046-game3d-prefab-loading-api.md) — Game3D Prefab Loading API
+- [ADR 0059](0059-graphics3d-lookup-option-apis.md) — Graphics3D Lookup Option APIs
+- [ADR 0065](0065-gameui-canvas-polymorphic-widgets.md) — Game.UI widgets are canvas-polymorphic (2D Canvas + Canvas3D)
+- [ADR 0069](0069-canvas3d-diagnostics-api.md) — Canvas3D Diagnostics API
+- [ADR 0070](0070-canvas3d-clustered-lighting-probe-api.md) — Canvas3D Clustered Lighting Probe API
+- [ADR 0071](0071-mesh3d-retained-bytes-api.md) — Mesh3D Retained Bytes API
+- [ADR 0072](0072-vegetation3d-scatter-seed-api.md) — Vegetation3D Scatter Seed API
+- [ADR 0074](0074-game3d-thirdperson-controller-and-target-lock.md) — Game3D Third-Person Controller And Target Lock
+- [ADR 0075](0075-character3d-dynamics-and-platforms.md) — Character3D Dynamic-Body Interaction, Crouch, And Moving Platforms
+- [ADR 0076](0076-physics3d-traversal-probes.md) — Physics3D Traversal Probes
+- [ADR 0077](0077-game3d-combat-volumes-and-health.md) — Game3D Combat Volumes And Health
+- [ADR 0078](0078-graphics3d-ragdoll.md) — Graphics3D Ragdoll Pipeline
+- [ADR 0079](0079-game3d-time-control.md) — Game3D Time Control (TimeScale, Pause, Hit-Stop)
+- [ADR 0080](0080-game3d-cinematic-cameras.md) — Game3D Cinematic Cameras (RailCamera3D + Timeline3D)
+- [ADR 0081](0081-game3d-dialogue.md) — Game3D Dialogue System (Dialogue3D + Camera3D.WorldToScreen)
+- [ADR 0082](0082-game3d-facial-and-voice-metering.md) — Game3D Facial Animation (LipSync3D) and Per-Voice Metering
+- [ADR 0083](0083-worldstream-async-staging.md) — Worker-Backed WorldStream3D Staging with Ordered Main-Thread Commits
+- [ADR 0084](0084-worldstream-hlod-proxies-and-impostors.md) — Cell-Level HLOD Proxies and Automated Impostors
+- [ADR 0085](0085-gpu-skinning-capability-and-telemetry.md) — GPU Skinning Capability, Routing Override, and Telemetry
+- [ADR 0086](0086-terrain-holes-splats-autoblend.md) — Terrain Holes, 8 Splat Layers, and Slope/Height Auto-Blend
+- [ADR 0087](0087-height-fog-sun-inscattering.md) — Height-Fog Sun Inscattering
+- [ADR 0088](0088-baked-gi-lightmaps-and-probes.md) — Baked GI — LightBaker3D and LightProbeGrid3D
+- [ADR 0089](0089-reflection-probes.md) — Local Reflection Probes (Capture Core)
+- [ADR 0090](0090-procedural-sky-and-time-of-day.md) — Procedural Sky and Time-of-Day Clock
+- [ADR 0091](0091-physics-materials-and-surfaces.md) — Per-Collider Physics Materials, Surface Tags, Body User Data
+- [ADR 0092](0092-footsteps-surface-events.md) — Surface-Driven Footsteps (SurfaceTable3D + Footsteps3D)
+- [ADR 0093](0093-game3d-interaction.md) — Focus-and-Use Interaction (Interactable3D + Interactor3D)
+- [ADR 0094](0094-game3d-ai-perception-behavior-trees.md) — NPC AI — Perception3D and BehaviorTree3D
+- [ADR 0095](0095-audio-immersion.md) — Audio Immersion — Reverb Zones, Occlusion, Ambient Beds, Dialogue Ducking
+- [ADR 0096](0096-cloth3d-verlet.md) — Cloth3D — Verlet Chains and Patches
+- [ADR 0097](0097-world-persistence.md) — Streamed-World Entity-State Persistence + Save Slots
+- [ADR 0098](0098-game3d-minimap-markers.md) — Minimap3D, Compass, and World Markers
+- [ADR 0099](0099-game-quests.md) — Viper.Game.Quests — Objective Tracker with SaveData Integration
+- [ADR 0100](0100-profiling-depth.md) — Profiling Depth — Per-Pass Draw Attribution + Hitch Tracer
+- [ADR 0102](0102-graphics3d-runtime-boundary-and-contract-manifest.md) — Graphics3D Runtime Boundary and Contract Manifest
+- [ADR 0105](0105-game3d-character-controller-gravity.md) — CharacterController3D Gravity Magnitude
+
+## Release & Packaging
+
+- [ADR 0025](0025-windows-release-installer-workflow.md) — Windows Release Installer Workflow
+- [ADR 0073](0073-cross-platform-installer-release-pipeline.md) — Cross-Platform Installer Release Pipeline
+- [ADR 0103](0103-windows-developer-installer-v2.md) — Windows Developer Installer v2

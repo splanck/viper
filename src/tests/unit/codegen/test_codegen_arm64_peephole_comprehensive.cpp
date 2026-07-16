@@ -9,7 +9,7 @@
 // Purpose: Comprehensive peephole optimization tests via IL compilation.
 // Key invariants: Peephole patterns apply during codegen, producing better code.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

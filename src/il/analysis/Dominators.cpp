@@ -8,7 +8,7 @@
 // File: src/il/analysis/Dominators.cpp
 // Purpose: Implement the Cooper–Harvey–Kennedy dominator tree algorithm and
 //          expose dominance queries for IL CFGs.
-// Links: docs/architecture.md#analysis
+// Links: docs/internals/architecture.md#analysis
 //
 //===----------------------------------------------------------------------===//
 

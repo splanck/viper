@@ -11,7 +11,7 @@
 // Ownership/Lifetime: Functions take Module by reference and populate it on success.
 //                     Callers own the Module and must keep it alive while using returned results.
 //                     LoadResult owns its diagnostic data; safe to copy/move.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -10,7 +10,7 @@
 // Key invariants: Helpers respect the Lowerer procedure context and only append
 //                 instructions to the active block when one is selected.
 // Ownership/Lifetime: Borrows Lowerer state; does not own IR objects or AST.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

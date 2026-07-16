@@ -22,8 +22,8 @@ instance as an explicit first argument, so both `value.UnwrapI64()` and
 `Viper.Option.UnwrapI64(value)` are supported call shapes.
 
 `Viper.Option` and `Viper.Result` are dynamically typed runtime-library objects. They are distinct
-from Zia's type-system features [`T?`](../zia-reference.md#optional-types) and
-[`Result[T]`](../zia-reference.md#result-values).
+from Zia's type-system features [`T?`](../languages/zia-reference.md#optional-types) and
+[`Result[T]`](../languages/zia-reference.md#result-values).
 
 ---
 

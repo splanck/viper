@@ -10,7 +10,7 @@
 // Key invariants: FnTable, Switch, and Threaded strategies must produce the
 //                 same observable behavior (return value).
 // Ownership/Lifetime: Builds ephemeral modules and executes with each strategy.
-// Links: docs/vm.md
+// Links: docs/internals/vm.md
 //
 //===----------------------------------------------------------------------===//
 

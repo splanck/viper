@@ -9,7 +9,7 @@
 // Purpose: Verify subtraction and multiplication lowering on AArch64.
 // Key invariants: Emits sub and mul instructions correctly.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

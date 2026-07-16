@@ -13,7 +13,7 @@
 //                 structurally valid.
 // Ownership/Lifetime: Procedures borrow the owning @ref Lowerer state and write
 //                     into IL blocks managed by the @ref ProcedureContext.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

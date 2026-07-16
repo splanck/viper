@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser surfaces only the first diagnostic for malformed input.
 // Key invariants: Parser stops after first fatal error and returns a single diagnostic payload.
 // Ownership/Lifetime: Test owns all streams and module storage.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

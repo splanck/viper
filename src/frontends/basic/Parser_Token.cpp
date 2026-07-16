@@ -7,7 +7,7 @@
 //
 // File: src/frontends/basic/Parser_Token.cpp
 // Purpose: Implement token buffer management utilities for the BASIC parser.
-// Links: docs/basic-language.md#parser
+// Links: docs/tutorials/basic-tutorial.md#parser
 //
 //===----------------------------------------------------------------------===//
 

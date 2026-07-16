@@ -9,7 +9,7 @@
 // Purpose: Verify that the x86-64 codegen CLI can assemble IL modules without
 // Key invariants: The CLI must successfully emit an object file even when the
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

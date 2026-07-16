@@ -42,7 +42,7 @@ This means the entire engine compiles on a fresh system with just a C compiler �
 
 The engine is organized in layers. Each layer depends only on layers below it:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     Game Code (Zia / BASIC)                  │
 ├─────────────────────────────────────────────────────────────┤
@@ -120,7 +120,7 @@ Most example games use GameBase + IScene. Simpler programs (demos, tests) use th
 
 ## Data Flow: One Frame
 
-```
+```text
 1. canvas.BeginFrame() / canvas.Poll()
    └─ ViperGFX polls OS events → keyboard/mouse/gamepad state updated
 
@@ -151,7 +151,7 @@ Most example games use GameBase + IScene. Simpler programs (demos, tests) use th
 
 ## Source Code Layout
 
-```
+```text
 src/runtime/
 ├── graphics/           # Canvas, Pixels, SpriteBatch, Tilemap, Camera, BitmapFont
 │   ├── rt_canvas.c     #   2D Canvas implementation
@@ -194,7 +194,7 @@ src/runtime/
 
 Canvas3D automatically selects the best available GPU backend:
 
-```
+```text
 Canvas3D.New()
     │
     ├─ macOS?  → try Metal   → success? use Metal
@@ -208,7 +208,7 @@ The software rasterizer is always available and produces identical output. It's 
 
 All four backends implement the same internal interface (`vgfx3d_backend_*.c`), so game code is identical across platforms.
 
-For details, see [3D Graphics Architecture](../graphics3d-architecture.md).
+For details, see [3D Graphics Architecture](../internals/graphics3d-architecture.md).
 
 ---
 
@@ -228,7 +228,7 @@ platform-specific details.
 
 ## See Also
 
-- [Viper Architecture](../architecture.md) — Full system architecture (compiler, IL, VM, codegen, runtime)
+- [Viper Architecture](../internals/architecture.md) — Full system architecture (compiler, IL, VM, codegen, runtime)
 - [Graphics Library (ViperGFX)](../graphics-library.md) — Low-level 2D platform API documentation
-- [3D Architecture](../graphics3d-architecture.md) — GPU backend internals
-- [Code Map](../codemap.md) — Complete source directory layout
+- [3D Architecture](../internals/graphics3d-architecture.md) — GPU backend internals
+- [Code Map](../internals/codemap.md) — Complete source directory layout

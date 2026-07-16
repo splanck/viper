@@ -13,7 +13,7 @@
 //   - Repeated assembly emission for the same corpus file is deterministic.
 // Ownership/Lifetime: Reads corpus files from the source tree and writes
 //                     temporary assembly under build/test-out/aarch64.
-// Links: docs/testing.md, docs/codegen/aarch64.md
+// Links: docs/internals/testing.md, docs/specs/aarch64.md
 //
 //===----------------------------------------------------------------------===//
 

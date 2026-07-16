@@ -9,7 +9,7 @@
 // Purpose: Validate that BASIC OPEN mode enumerations map to the expected mode strings.
 // Key invariants: Returned mode strings are stable literals that include required modifiers.
 // Ownership/Lifetime: Uses constant literals provided by the runtime; no allocations performed.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 
 #include "rt_file_path.h"
 #include "viper/runtime/rt.h"

@@ -17,7 +17,7 @@
 // Description: Contains the switch statement body that maps MOpcode enum
 //              values to their corresponding emit* function calls.
 //
-// Links: docs/il-guide.md#reference, codegen/aarch64/AsmEmitter.cpp
+// Links: docs/il/il-guide.md#reference, codegen/aarch64/AsmEmitter.cpp
 //
 //===----------------------------------------------------------------------===//
 

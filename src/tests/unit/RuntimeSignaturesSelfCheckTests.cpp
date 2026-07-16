@@ -9,7 +9,7 @@
 // Purpose: Test the runtime descriptor self-check API for embedders.
 // Key invariants: Self-check passes in correctly built binaries, is idempotent.
 // Ownership/Lifetime: Uses read-only runtime metadata.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "il/runtime/RuntimeSignatureParser.hpp"

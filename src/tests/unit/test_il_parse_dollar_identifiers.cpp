@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser accepts identifiers containing '$' characters.
 // Key invariants: Operand parser should mirror Cursor identifier rules.
 // Ownership/Lifetime: Test owns parsed module and diagnostics stream.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

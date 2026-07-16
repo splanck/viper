@@ -9,7 +9,7 @@
 // Purpose: Test the invariant violation mode configuration API.
 // Key invariants: Default mode is Abort; handlers are properly registered.
 // Ownership/Lifetime: Uses static configuration state; tests must reset state.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "il/runtime/RuntimeSignatures.hpp"

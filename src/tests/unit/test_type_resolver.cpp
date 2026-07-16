@@ -9,7 +9,7 @@
 // Purpose: Ensure TypeResolver resolves types using namespace registry and using context.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

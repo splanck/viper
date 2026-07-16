@@ -9,7 +9,7 @@
 // Purpose: Verify DomainError trap diagnostics include kind and instruction index.
 // Key invariants: Trap output must mention DomainError and #0 for the trap terminator.
 // Ownership/Lifetime: Spawns child process to capture VM stderr.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

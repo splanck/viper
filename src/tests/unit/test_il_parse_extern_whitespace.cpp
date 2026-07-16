@@ -9,7 +9,7 @@
 // Purpose: Ensure extern declarations tolerate incidental whitespace around names.
 // Key invariants: Parser trims extern identifiers so verification resolves calls.
 // Ownership/Lifetime: Test owns IL module and buffers.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

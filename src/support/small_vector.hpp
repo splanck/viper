@@ -12,7 +12,7 @@
 //                 only elements in [0, size_) are constructed.
 // Ownership/Lifetime: The container owns its constructed elements and heap buffer;
 //                     inline storage is raw memory tied to the object's lifetime.
-// Links: docs/codemap.md#support-library
+// Links: docs/internals/codemap.md#support-library
 //
 // SmallVector stores up to N elements inline (on the stack) and only allocates
 // from the heap when the size exceeds N. This is particularly useful for

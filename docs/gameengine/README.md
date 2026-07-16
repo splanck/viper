@@ -179,7 +179,7 @@ The topical guides above explain concepts and patterns. For exhaustive method si
 
 ## See Also
 
-- [The Viper Bible](../bible/README.md) — Chapters 19-21 cover graphics, input, and building a complete game project
-- [Zia Reference](../zia-reference.md) — Complete Zia language specification
-- [BASIC Reference](../basic-reference.md) — Complete BASIC language specification
-- [Architecture Overview](../architecture.md) — Full Viper system architecture (compiler, VM, codegen, runtime)
+- [The Viper Book](../book/README.md) — Chapters 19-21 cover graphics, input, and building a complete game project
+- [Zia Reference](../languages/zia-reference.md) — Complete Zia language specification
+- [BASIC Reference](../languages/basic-reference.md) — Complete BASIC language specification
+- [Architecture Overview](../internals/architecture.md) — Full Viper system architecture (compiler, VM, codegen, runtime)

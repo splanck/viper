@@ -9,7 +9,7 @@
 // Purpose: Verify AsmEmitter emits additional callee-saved saves/restores per FramePlan.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

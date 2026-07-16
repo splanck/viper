@@ -14,7 +14,7 @@
 // Ownership/Lifetime: Expected instances own their diagnostic payloads by value;
 //                     printing helpers borrow output streams and optional source
 //                     managers supplied by the caller.
-// Links: src/support/diag_expected.hpp, docs/codemap.md#support-library
+// Links: src/support/diag_expected.hpp, docs/internals/codemap.md#support-library
 //
 //===----------------------------------------------------------------------===//
 

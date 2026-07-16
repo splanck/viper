@@ -9,7 +9,7 @@
 // Purpose: Provide out-of-line helpers for the parse::Cursor utility.
 // Key invariants: Mirrors the behaviour expected by FunctionParser and OperandParser.
 // Ownership/Lifetime: Operates on caller-owned string_view buffers.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

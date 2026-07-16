@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-15
+---
+
 # ADR 0053: Search Option APIs
 
 Date: 2026-07-02

@@ -49,7 +49,7 @@ last-verified: 2026-07-14
   overflow behavior is not a universal collection-level guarantee. The
   type-specific pages document known exceptions, including the current BitSet
   staged-growth defect. Maintainers should also consult the [documentation
-  review findings](../../documentation-review-findings.md).
+  review findings](../../../misc/reviews/documentation-review-findings.md).
 - Collections are generally not thread-safe. Some apparent reads mutate state
   (`LruCache.Get` changes recency and `UnionFind.Find` compresses paths), so use
   external synchronization whenever an instance is shared across threads.

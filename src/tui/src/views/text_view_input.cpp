@@ -12,7 +12,7 @@
 //                 and maintains consistent selection anchors.
 // Ownership/Lifetime: TextView borrows TextBuffer and Theme instances; this
 //                     translation unit mutates only TextView state.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

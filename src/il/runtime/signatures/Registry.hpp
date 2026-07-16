@@ -12,7 +12,7 @@
 //                 simplified type classification for comparison.
 // Ownership/Lifetime: Registered signatures are stored with static lifetime
 //                     and remain valid for the duration of the process.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

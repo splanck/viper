@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser reports error when extern declaration lacks '->'.
 // Key invariants: Parser reports malformed extern declarations through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

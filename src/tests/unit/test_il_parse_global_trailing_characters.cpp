@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser rejects globals that include trailing characters after string literals.
 // Key invariants: Parser emits a diagnostic referencing unexpected trailing characters.
 // Ownership/Lifetime: Test owns parsing streams and module instance.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

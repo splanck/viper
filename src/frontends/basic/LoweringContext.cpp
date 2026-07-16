@@ -10,7 +10,7 @@
 //          into IL instructions and blocks.
 // Key invariants: Slot names, block labels, and string identifiers are stable
 //                 and deterministic within a compilation unit.
-// Links: docs/codemap/basic.md
+// Links: docs/internals/codemap/basic.md
 //
 //===----------------------------------------------------------------------===//
 

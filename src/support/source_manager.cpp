@@ -16,7 +16,7 @@
 //                     string_view references that remain valid for the lifetime
 //                     of the manager instance.  Callers are responsible for
 //                     respecting that lifetime.
-// Links: docs/codemap.md#support-library, docs/architecture.md#diagnostics
+// Links: docs/internals/codemap.md#support-library, docs/internals/architecture.md#diagnostics
 //
 //===----------------------------------------------------------------------===//
 

@@ -10,7 +10,7 @@
 // Key invariants: Table size MUST equal il::core::kNumOpcodes. Each entry
 //                 corresponds to an Opcode enum value in declaration order.
 // Ownership/Lifetime: Static table shared across all VM instances.
-// Links: docs/architecture.md, vm/DispatchMacros.hpp
+// Links: docs/internals/architecture.md, vm/DispatchMacros.hpp
 //
 // IMPORTANT: When adding a new opcode, add its handler at the correct position
 // matching the opcode's enum value. See vm/DispatchMacros.hpp for full guide.

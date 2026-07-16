@@ -2,7 +2,7 @@
 ## Purpose: Validate BASIC integer overflow traps while preserving earlier output.
 ## Key invariants: Program traps with Overflow and prints expected prefix output.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/codemap.md
+## Links: docs/internals/codemap.md
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

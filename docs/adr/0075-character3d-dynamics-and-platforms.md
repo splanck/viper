@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0075: Character3D Dynamic-Body Interaction, Crouch, And Moving Platforms
 
 Date: 2026-07-10

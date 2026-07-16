@@ -9,7 +9,7 @@
 // Purpose: Test variable and memory watch functionality including ID-based lookups.
 // Key invariants: Watch IDs enable O(1) lookups; memory watches use sorted ranges.
 // Ownership/Lifetime: Standalone unit test executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

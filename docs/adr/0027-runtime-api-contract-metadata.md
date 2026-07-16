@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0027: Add Contract Metadata to the Runtime API Dump
 
 Date: 2026-07-02

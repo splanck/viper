@@ -9,7 +9,7 @@
 // Purpose: Verify the IL parser tolerates a UTF-8 BOM on the first line.
 // Key invariants: A leading BOM must be stripped before directive matching and
 // Ownership/Lifetime: Tests own module instances and in-memory buffers.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

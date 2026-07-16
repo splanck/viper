@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0035: BloomFilter False Positive Rate Alias
 
 ## Status

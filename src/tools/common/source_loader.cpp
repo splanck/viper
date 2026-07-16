@@ -10,7 +10,7 @@
 // Key invariants: The loaded buffer contains the complete file contents.
 // Ownership/Lifetime: The returned LoadedSource owns its buffer; the caller
 //                     may use it after the function returns.
-// Links: src/tools/common/source_loader.hpp, docs/codemap.md#tools
+// Links: src/tools/common/source_loader.hpp, docs/internals/codemap.md#tools
 //
 //===----------------------------------------------------------------------===//
 

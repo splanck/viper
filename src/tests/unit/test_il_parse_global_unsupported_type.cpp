@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser rejects globals declared with unsupported types.
 // Key invariants: Parser must surface a diagnostic describing the unsupported token.
 // Ownership/Lifetime: Test owns parsing streams and module state locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

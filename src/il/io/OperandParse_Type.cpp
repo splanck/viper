@@ -11,7 +11,7 @@
 //                 implementation while updating the instruction type in place.
 // Ownership/Lifetime: Operates on parser-managed state without owning data and
 //                     never allocates persistent resources.
-// Links: docs/il-guide.md#reference and docs/il-reference.md#types
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

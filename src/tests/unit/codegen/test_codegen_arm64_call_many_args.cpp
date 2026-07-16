@@ -9,7 +9,7 @@
 // Purpose: Verify AArch64 lowering handles >8 integer args with outgoing stack area
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

@@ -10,7 +10,7 @@
 // Key invariants: The bridge maintains thread-local trap context and validates
 //                 runtime signatures before invocation.
 // Ownership/Lifetime: Bridge does not own VM or runtime resources.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

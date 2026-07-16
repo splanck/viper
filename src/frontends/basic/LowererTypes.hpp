@@ -10,7 +10,7 @@
 // Key invariants: Types are POD or simple structs; no methods beyond trivial
 //                 accessors.
 // Ownership/Lifetime: Included transitively via Lowerer.hpp.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

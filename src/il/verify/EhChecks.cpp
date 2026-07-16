@@ -18,7 +18,7 @@
 //   All routines borrow IR nodes through EhModel and never assume ownership.
 //
 // Links:
-//   docs/il-guide.md#reference
+//   docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

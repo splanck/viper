@@ -16,7 +16,7 @@
  * heavyweight pipeline objects. Pipeline ownership resides in the codegen
  * library itself.
  *
- * @see docs/architecture.md for high-level structure.
+ * @see docs/internals/architecture.md for high-level structure.
  */
 
 #pragma once

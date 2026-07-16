@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0085: GPU Skinning Capability, Routing Override, and Telemetry
 
 Date: 2026-07-10

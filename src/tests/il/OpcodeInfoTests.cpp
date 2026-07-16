@@ -9,7 +9,7 @@
 // Purpose: Exercise opcode metadata enumeration helpers for stability.
 // Key invariants: Enumeration covers every opcode exactly once in declaration order.
 // Ownership/Lifetime: Uses read-only metadata from il::core.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

@@ -11,7 +11,7 @@
 //                 ownership facts. Bitmasks refer to explicit IL-visible
 //                 arguments, not hidden bridge parameters.
 // Ownership/Lifetime: Header-only table; no dynamic storage.
-// Links: docs/il-passes.md
+// Links: docs/il/il-passes.md
 //
 //===----------------------------------------------------------------------===//
 

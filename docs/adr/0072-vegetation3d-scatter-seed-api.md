@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-09
+---
+
 # ADR 0072: Vegetation3D Scatter Seed API
 
 Date: 2026-07-09

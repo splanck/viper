@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC lexer handles high-bit characters without UB.
 // Key invariants: None.
 // Ownership/Lifetime: N/A (test).
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

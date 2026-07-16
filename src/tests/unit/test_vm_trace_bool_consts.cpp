@@ -9,7 +9,7 @@
 // Purpose: Ensure VM IL traces render boolean constants using textual literals.
 // Key invariants: Trace output spells const.i1 operands as "true"/"false" to
 // Ownership/Lifetime: Test constructs IL in-memory and executes the VM with tracing
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

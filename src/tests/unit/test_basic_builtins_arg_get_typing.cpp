@@ -9,7 +9,7 @@
 // Purpose: Ensure ARG$ requires integer index (registry-driven semantic signature).
 // Key invariants: Passing a string to ARG$ should fail semantic analysis.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

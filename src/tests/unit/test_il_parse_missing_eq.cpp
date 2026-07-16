@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser reports error when result assignment lacks '='.
 // Key invariants: Parser reports malformed instructions through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

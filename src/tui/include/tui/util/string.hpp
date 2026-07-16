@@ -9,7 +9,7 @@
 // Purpose: Provides string manipulation utilities for the TUI library.
 // Key invariants: ASCII-only case conversion (no Unicode support).
 // Ownership/Lifetime: Stateless inline utilities with no dynamic resources.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

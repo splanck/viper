@@ -9,7 +9,7 @@
 // Purpose: Ensure EH verifier reports clear diagnostics for invalid handler patterns.
 // Key invariants: Parsing succeeds but verification fails with targeted error substrings.
 // Ownership/Lifetime: Test owns loaded modules and input streams.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

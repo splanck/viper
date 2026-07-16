@@ -9,7 +9,7 @@
 // Purpose: Ensure parsing a call with a non-void return preserves the instruction type.
 // Key invariants: Call instruction retains deduced result type from annotation/signature.
 // Ownership/Lifetime: Test owns module and input stream locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

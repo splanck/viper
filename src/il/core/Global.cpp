@@ -12,7 +12,7 @@
 //                 downstream tools that depend on the core IR model.
 // Ownership/Lifetime: Globals continue to be managed by header-only types;
 //                     future helpers should respect caller-owned storage.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

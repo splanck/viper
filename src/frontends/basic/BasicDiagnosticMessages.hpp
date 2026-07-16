@@ -9,7 +9,7 @@
 // Purpose: Defines reusable diagnostic message identifiers for the BASIC front end.
 // Key invariants: Message identifiers are stable and uniquely map to human-readable text.
 // Ownership/Lifetime: Header-only constants; no dynamic ownership.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Validate VM/native parity for floating-point division IL programs
 // Key invariants: Floating-point outputs are compared within a configurable
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -12,7 +12,7 @@
 #
 # Ownership/Lifetime: CMake owns target outputs under the selected build tree.
 #
-# Links: CMakeLists.txt, docs/codemap.md
+# Links: CMakeLists.txt, docs/internals/codemap.md
 #
 #===----------------------------------------------------------------------===#
 

@@ -9,7 +9,7 @@
 // Purpose: Verify IL tracing emits deterministic lines and disables by default.
 // Key invariants: Trace output matches golden file exactly.
 // Ownership/Lifetime: Test owns temporary files and cleans them up.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

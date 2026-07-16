@@ -14,7 +14,7 @@
 //                 signature metadata and deliberately does not trust raw
 //                 instruction attributes without verified callee metadata.
 // Ownership/Lifetime: Header-only utilities; no global state.
-// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
+// Links: docs/il/il-guide.md#reference, docs/internals/architecture.md#runtime-signatures
 //
 //===----------------------------------------------------------------------===//
 

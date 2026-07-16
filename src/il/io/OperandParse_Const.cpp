@@ -11,7 +11,7 @@
 //                 semantics for integers, floats, booleans, null, and strings.
 // Ownership/Lifetime: Operates on parser-managed state without owning data and
 //                     never allocates process-global resources.
-// Links: docs/il-guide.md#reference and docs/il-reference.md#literal-operands
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

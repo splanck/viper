@@ -10,7 +10,7 @@
 //          branch metadata.
 // Key invariants: Operates on instructions tied to the current parser state.
 // Ownership/Lifetime: Mutates instructions owned by the parser caller.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

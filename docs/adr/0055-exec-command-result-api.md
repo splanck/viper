@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0055: Exec CommandResult API
 
 Date: 2026-07-02

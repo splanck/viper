@@ -9,7 +9,7 @@
 // Purpose: Verify IRBuilder::emitCall records results for non-void functions.
 // Key invariants: Call instruction captures result id and return type.
 // Ownership/Lifetime: Test constructs module and inspects instruction.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

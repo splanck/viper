@@ -9,7 +9,7 @@
 // Purpose: Validate AArch64 linear-scan allocator assigns phys regs, spills,
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

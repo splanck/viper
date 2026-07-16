@@ -115,7 +115,7 @@
 //   PHYSICS 2D
 //   RANDOM
 //   RELATIVE TIME
-//   SOUND (Audio, SFX, Voice, Music)
+//   AUDIO (Mixer, Sound, Voice, Music)
 //   SPLINE
 //   STRING FUNCTIONS
 //   TERMINAL I/O

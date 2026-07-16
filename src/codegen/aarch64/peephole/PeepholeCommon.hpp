@@ -19,7 +19,7 @@
 // Ownership/Lifetime:
 //   - Free functions, no dynamic state.
 //
-// Links: codegen/aarch64/Peephole.hpp, docs/architecture.md
+// Links: codegen/aarch64/Peephole.hpp, docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

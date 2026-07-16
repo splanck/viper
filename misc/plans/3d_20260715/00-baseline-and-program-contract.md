@@ -19,7 +19,7 @@ The 2026-07-15 review covered:
 - Game3D runtime implementation, internals, VM callback bridge, graphics
   backends, scene, physics, render, terrain/water/vegetation, audio, asset,
   persistence, effect, controller, combat, and test ownership.
-- `docs/graphics3d-architecture.md`,
+- `docs/internals/graphics3d-architecture.md`,
   `docs/viperlib/graphics/game3d.md`, and related Game, IO, Graphics3D, and UI
   documentation.
 - Existing ADRs through ADR 0102 and historical 3D plans from repository

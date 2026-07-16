@@ -17,7 +17,7 @@
 // Ownership/Lifetime: Functions and BasicBlocks own Param structs by value
 //          in std::vector. Each Param owns its name string and type. Parameter
 //          lifetime matches the containing function or block.
-// Links: docs/il-guide.md#reference, il/core/Type.hpp
+// Links: docs/il/il-guide.md#reference, il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -16,7 +16,7 @@
 //                     translation unit, ensuring the registry survives for the
 //                     duration of the process and remains accessible from
 //                     multiple translation units.
-// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
+// Links: docs/il/il-guide.md#reference, docs/internals/architecture.md#runtime-signatures
 //
 //===----------------------------------------------------------------------===//
 

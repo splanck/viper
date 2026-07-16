@@ -8,7 +8,7 @@
 // File: src/il/core/OpcodeInfo.cpp
 // Purpose: Define metadata tables describing IL opcode signatures and helper
 //          routines for querying them.
-// Links: docs/il-guide.md#opcodes
+// Links: docs/il/il-guide.md#opcodes
 //
 //===----------------------------------------------------------------------===//
 

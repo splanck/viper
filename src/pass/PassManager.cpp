@@ -12,7 +12,7 @@
 //                 instrumentation hooks.
 // Ownership/Lifetime: Owns pass callbacks and instrumentation hooks by value;
 //                     callers retain ownership of any captured state.
-// Links: docs/architecture.md#passes and docs/codemap.md#pass-manager
+// Links: docs/internals/architecture.md#passes and docs/internals/codemap.md#pass-manager
 //
 //===----------------------------------------------------------------------===//
 

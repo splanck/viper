@@ -11,7 +11,7 @@
 //                 ordering while tracking selector ranges for diagnostics.
 // Ownership/Lifetime: AST nodes are produced as `std::unique_ptr` values that
 //                     transfer ownership to the caller.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

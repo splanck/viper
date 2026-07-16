@@ -9,7 +9,7 @@
 // Purpose: Declares the common BASIC statement base class and visitor interfaces.
 // Key invariants: Visitors enumerate every concrete statement kind and statements
 // Ownership/Lifetime: Statements are owned via std::unique_ptr managed by callers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

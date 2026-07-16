@@ -21,7 +21,7 @@
 //   - Entry order MUST match Opcode enum declaration order exactly
 //   - Requires GCC/Clang computed-goto extension (&&label address syntax)
 //
-// Links: docs/il-guide.md#reference, vm/ops/generated/ThreadedCases.inc
+// Links: docs/il/il-guide.md#reference, vm/ops/generated/ThreadedCases.inc
 //
 //===----------------------------------------------------------------------===//
 &&LBL_Add, &&LBL_Sub, &&LBL_Mul, &&LBL_IAddOvf, &&LBL_ISubOvf, &&LBL_IMulOvf, &&LBL_SDiv,

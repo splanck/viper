@@ -13,7 +13,7 @@
 //     mismatches produce rich diagnostics referencing the source operand.
 //   * Successful checks update @ref ExprCheckContext so later phases know about
 //     implicit numeric promotions and maintain consistent scope bookkeeping.
-// References: docs/basic-language.md#expressions, docs/codemap/basic.md
+// References: docs/tutorials/basic-tutorial.md#expressions, docs/internals/codemap/basic.md
 //
 //===----------------------------------------------------------------------===//
 //

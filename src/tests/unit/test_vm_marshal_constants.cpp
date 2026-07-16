@@ -9,7 +9,7 @@
 // Purpose: Test constant scalar conversion helpers in Marshal.cpp.
 // Key invariants: toI64/toF64 only accept constant scalars (ConstInt, ConstFloat, NullPtr).
 // Ownership/Lifetime: No runtime resources allocated.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

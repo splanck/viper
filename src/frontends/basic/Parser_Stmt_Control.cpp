@@ -15,7 +15,7 @@
 //                 messages deterministic.
 // Ownership/Lifetime: Registry entries borrow parser member functions; no
 //                     additional resources are owned.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

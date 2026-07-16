@@ -11,7 +11,7 @@
 //          runtime function calls for helpers requiring custom marshalling.
 // Key invariants: Each adapter matches the RuntimeHandler signature.
 // Ownership/Lifetime: Functions have static duration; called via function ptr.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

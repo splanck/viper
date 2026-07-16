@@ -11,7 +11,7 @@
 //   - Large stackBytes allows allocations that exceed the default 64KB.
 //   - Small stackBytes triggers overflow on allocations that fit in default.
 // Ownership/Lifetime: Test constructs IL module and executes VM with configs.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

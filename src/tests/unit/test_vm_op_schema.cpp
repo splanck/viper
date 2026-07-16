@@ -9,7 +9,7 @@
 // Purpose: Validate generated VM opcode schema metadata matches IL opcode info.
 // Key invariants: Generated schema mirrors il::core::Opcode metadata and ensures
 // Ownership/Lifetime: Tests operate on static tables only.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

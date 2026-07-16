@@ -20,7 +20,7 @@ Assets can be:
 
 ## viper.project Directives
 
-```
+```text
 # Embed file or directory into the executable's read-only data
 embed sprites/player.png
 embed sprites

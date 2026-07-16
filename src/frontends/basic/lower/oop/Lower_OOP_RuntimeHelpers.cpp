@@ -10,7 +10,7 @@
 // Key invariants: Centralizes patterns for parameter initialization, array field
 //                 allocation, and method epilogue. (BUG-056, BUG-073, etc.)
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 
