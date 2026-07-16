@@ -51,6 +51,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+
+#include "rt_file_path.h" // rt_file_path_wide_to_string for UTF-8 conversion (VDOC-217)
 #elif defined(__viperdos__)
 // ViperDOS provides POSIX-compatible system info APIs.
 #include <sys/types.h>
@@ -101,8 +103,9 @@ rt_string rt_machine_os(void) {
 }
 
 /// @brief Return the OS version string in the platform's native format. Per-OS source:
-///   - **Windows:** `GetVersionExA` → `"major.minor.build"`; this deprecated API can report a
-///   compatibility version depending on the embedding executable's manifest.
+///   - **Windows:** `RtlGetVersion` (ntdll) → `"major.minor.build"`, the true OS version
+///   independent of the executable's compatibility manifest; falls back to the deprecated
+///   `GetVersionExA` only if RtlGetVersion is unavailable.
 ///   - **macOS:** `sysctlbyname("kern.osproductversion")` (e.g. "14.5"); falls back to
 ///   `uname.release`.
 ///   - **Linux:** Parses `VERSION_ID=` from `/etc/os-release` (e.g. "22.04"); falls back to
@@ -111,12 +114,39 @@ rt_string rt_machine_os(void) {
 /// Returns "unknown" if every probe fails.
 rt_string rt_machine_os_ver(void) {
 #ifdef _WIN32
-    // Windows version
+    // Prefer RtlGetVersion (ntdll): unlike GetVersionExA it returns the TRUE OS
+    // version regardless of the executable's supported-OS compatibility manifest,
+    // so an unmanifested native output or custom embedder does not misreport
+    // Windows 10/11 as an older release (VDOC-216). Loaded dynamically because it
+    // is not in a linkable import library.
+    {
+        typedef LONG(WINAPI * RtlGetVersionFn)(PRTL_OSVERSIONINFOW);
+        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        if (ntdll) {
+            RtlGetVersionFn rtl_get_version =
+                (RtlGetVersionFn)(void *)GetProcAddress(ntdll, "RtlGetVersion");
+            if (rtl_get_version) {
+                RTL_OSVERSIONINFOW info;
+                ZeroMemory(&info, sizeof(info));
+                info.dwOSVersionInfoSize = sizeof(info);
+                if (rtl_get_version(&info) == 0) { // STATUS_SUCCESS
+                    char buf[64];
+                    snprintf(buf,
+                             sizeof(buf),
+                             "%lu.%lu.%lu",
+                             (unsigned long)info.dwMajorVersion,
+                             (unsigned long)info.dwMinorVersion,
+                             (unsigned long)info.dwBuildNumber);
+                    return make_str(buf);
+                }
+            }
+        }
+    }
+
+    // Fallback: GetVersionExA (deprecated; may be manifest-conditioned).
     OSVERSIONINFOA osvi;
     ZeroMemory(&osvi, sizeof(osvi));
     osvi.dwOSVersionInfoSize = sizeof(osvi);
-
-    // GetVersionExA is deprecated but still works for basic version info
 #pragma warning(push)
 #pragma warning(disable : 4996)
     if (GetVersionExA(&osvi)) {
@@ -193,11 +223,12 @@ rt_string rt_machine_os_ver(void) {
 /// Truncated to 256 characters and NUL-terminated. "unknown" if the syscall fails.
 rt_string rt_machine_host(void) {
 #ifdef _WIN32
-    char buf[256];
-    DWORD len = sizeof(buf);
-    if (GetComputerNameA(buf, &len)) {
-        return make_str(buf);
-    }
+    // Wide API + validated UTF-8 conversion so non-ASCII host names survive,
+    // matching Viper.System.Environment (VDOC-217).
+    wchar_t buf[256];
+    DWORD len = (DWORD)(sizeof(buf) / sizeof(buf[0]));
+    if (GetComputerNameW(buf, &len))
+        return rt_file_path_wide_to_string(buf);
     return make_str("unknown");
 #else
     char buf[256];
@@ -213,15 +244,16 @@ rt_string rt_machine_host(void) {
 /// POSIX uses `getpwuid(getuid())` (then `$USER` / `$LOGNAME`). "unknown" if all probes fail.
 rt_string rt_machine_user(void) {
 #ifdef _WIN32
-    char buf[256];
-    DWORD len = sizeof(buf);
-    if (GetUserNameA(buf, &len)) {
-        return make_str(buf);
-    }
-    // Fallback to environment variable
-    const char *user = getenv("USERNAME");
+    // Wide API + validated UTF-8 conversion so non-ASCII user names survive
+    // (VDOC-217).
+    wchar_t buf[256];
+    DWORD len = (DWORD)(sizeof(buf) / sizeof(buf[0]));
+    if (GetUserNameW(buf, &len))
+        return rt_file_path_wide_to_string(buf);
+    // Fallback to the wide environment variable.
+    const wchar_t *user = _wgetenv(L"USERNAME");
     if (user)
-        return make_str(user);
+        return rt_file_path_wide_to_string(user);
     return make_str("unknown");
 #else
     // Try getpwuid first
@@ -248,16 +280,19 @@ rt_string rt_machine_user(void) {
 /// entry. Empty string if no probe succeeds (rare on a properly configured system).
 rt_string rt_machine_home(void) {
 #ifdef _WIN32
-    const char *home = getenv("USERPROFILE");
+    // Wide environment variables + validated UTF-8 conversion so non-ASCII home
+    // paths survive (VDOC-217).
+    const wchar_t *home = _wgetenv(L"USERPROFILE");
     if (home)
-        return make_str(home);
-    // Try HOMEDRIVE + HOMEPATH
-    const char *drive = getenv("HOMEDRIVE");
-    const char *path = getenv("HOMEPATH");
+        return rt_file_path_wide_to_string(home);
+    // Try HOMEDRIVE + HOMEPATH.
+    const wchar_t *drive = _wgetenv(L"HOMEDRIVE");
+    const wchar_t *path = _wgetenv(L"HOMEPATH");
     if (drive && path) {
-        char buf[512];
-        snprintf(buf, sizeof(buf), "%s%s", drive, path);
-        return make_str(buf);
+        wchar_t buf[512];
+        _snwprintf(buf, sizeof(buf) / sizeof(buf[0]), L"%ls%ls", drive, path);
+        buf[(sizeof(buf) / sizeof(buf[0])) - 1] = L'\0';
+        return rt_file_path_wide_to_string(buf);
     }
     return make_str("");
 #else
@@ -277,13 +312,16 @@ rt_string rt_machine_home(void) {
 /// POSIX checks `$TMPDIR` → `$TMP` → `$TEMP` → fixed `/tmp` fallback.
 rt_string rt_machine_temp(void) {
 #ifdef _WIN32
-    char buf[512];
-    DWORD len = GetTempPathA(sizeof(buf), buf);
-    if (len > 0 && len < sizeof(buf)) {
-        // Remove trailing backslash if present
-        if (len > 1 && buf[len - 1] == '\\')
-            buf[len - 1] = '\0';
-        return make_str(buf);
+    // Wide API + validated UTF-8 conversion so non-ASCII temp paths survive
+    // (VDOC-217).
+    wchar_t buf[512];
+    DWORD cap = (DWORD)(sizeof(buf) / sizeof(buf[0]));
+    DWORD len = GetTempPathW(cap, buf);
+    if (len > 0 && len < cap) {
+        // Remove trailing backslash if present.
+        if (len > 1 && buf[len - 1] == L'\\')
+            buf[len - 1] = L'\0';
+        return rt_file_path_wide_to_string(buf);
     }
     return make_str("C:\\Temp");
 #else
@@ -303,23 +341,31 @@ rt_string rt_machine_temp(void) {
 // ============================================================================
 
 /// @brief Return the number of logical CPU cores. Win32: `GetSystemInfo.dwNumberOfProcessors`.
-/// macOS: `sysctlbyname("hw.logicalcpu")` (falls back to the raw
-/// `sysconf(_SC_NPROCESSORS_ONLN)` result, including -1 on failure).
+/// macOS: `sysctlbyname("hw.logicalcpu")`, validated and falling back to a
+/// positive `sysconf(_SC_NPROCESSORS_ONLN)`, else 1.
 /// Linux/other: `sysconf(_SC_NPROCESSORS_ONLN)`, with 1 as the safe minimum.
+/// Every platform returns at least 1 (VDOC-219).
 int64_t rt_machine_cores(void) {
 #ifdef _WIN32
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
-    return (int64_t)sysinfo.dwNumberOfProcessors;
+    if (sysinfo.dwNumberOfProcessors > 0)
+        return (int64_t)sysinfo.dwNumberOfProcessors;
+    return 1;
 
 #elif defined(__APPLE__)
+    // Validate the sysctl result and fall back to a POSITIVE sysconf value, else
+    // the safe minimum of 1 — the raw sysctl/sysconf values could be 0 or -1 and
+    // callers sizing worker pools must never receive a non-positive count
+    // (VDOC-219).
     int cores = 0;
     size_t len = sizeof(cores);
-    if (sysctlbyname("hw.logicalcpu", &cores, &len, NULL, 0) == 0) {
+    if (sysctlbyname("hw.logicalcpu", &cores, &len, NULL, 0) == 0 && cores > 0)
         return (int64_t)cores;
-    }
-    // Fallback
-    return (int64_t)sysconf(_SC_NPROCESSORS_ONLN);
+    long fallback = sysconf(_SC_NPROCESSORS_ONLN);
+    if (fallback > 0)
+        return (int64_t)fallback;
+    return 1;
 
 #elif defined(__linux__)
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
@@ -413,11 +459,14 @@ int64_t rt_machine_mem_total(void) {
 #endif
 }
 
-/// @brief Return free physical RAM in bytes. Per platform:
-///   - Win32: `GlobalMemoryStatusEx.ullAvailPhys`.
-///   - macOS: Mach-port + `host_statistics64(HOST_VM_INFO64)`. Adds `free_count + inactive_count`
-///     pages because inactive pages are reclaimable on macOS (truly idle, not just unmapped).
-///   - Linux: `sysinfo.freeram * mem_unit`.
+/// @brief Return AVAILABLE physical RAM in bytes — one portable estimate of the
+///        memory that can be given to new work without swapping, INCLUDING
+///        reclaimable page cache, on every platform (VDOC-218):
+///   - Win32: `GlobalMemoryStatusEx.ullAvailPhys` (available physical memory).
+///   - macOS: `host_statistics64(HOST_VM_INFO64)`, `(free_count + inactive_count)` pages —
+///     inactive pages are reclaimable on macOS (truly idle, not just unmapped).
+///   - Linux: `MemAvailable` from `/proc/meminfo` (kernel's available estimate, includes
+///     reclaimable cache); falls back to `(freeram + bufferram) * mem_unit` on kernels lacking it.
 ///   - Generic POSIX: `sysconf(_SC_AVPHYS_PAGES) * _SC_PAGE_SIZE`.
 /// Mach paths carefully `mach_port_deallocate` on every exit (success or failure).
 int64_t rt_machine_mem_free(void) {
@@ -455,9 +504,32 @@ int64_t rt_machine_mem_free(void) {
     return free_mem;
 
 #elif defined(__linux__)
+    // Prefer MemAvailable from /proc/meminfo — the kernel's estimate of memory
+    // available for new work WITHOUT swapping, which INCLUDES reclaimable page
+    // cache. Plain sysinfo.freeram counts only strictly-free pages and badly
+    // understates usable memory, making the metric incomparable with macOS
+    // (free+inactive) and Windows (ullAvailPhys). Reporting MemAvailable puts all
+    // three platforms on one "available memory" definition (VDOC-218).
+    {
+        FILE *meminfo = fopen("/proc/meminfo", "r");
+        if (meminfo) {
+            char line[256];
+            while (fgets(line, sizeof(line), meminfo)) {
+                unsigned long long kb = 0;
+                if (sscanf(line, "MemAvailable: %llu kB", &kb) == 1) {
+                    fclose(meminfo);
+                    return (int64_t)(kb * 1024ULL);
+                }
+            }
+            fclose(meminfo);
+        }
+    }
+    // Fallback for older kernels without MemAvailable: free + buffers + cached is
+    // a closer approximation than freeram alone.
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
-        return (int64_t)si.freeram * (int64_t)si.mem_unit;
+        int64_t unit = (int64_t)si.mem_unit;
+        return ((int64_t)si.freeram + (int64_t)si.bufferram) * unit;
     }
     return 0;
 

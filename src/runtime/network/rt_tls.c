@@ -38,6 +38,7 @@
 #include "rt_object.h"
 #include "rt_rsa.h"
 #include "rt_socket_platform.h"
+#include "rt_time.h"
 #include "rt_tls_internal.h"
 #include "rt_tls_server_internal.h"
 
@@ -3287,34 +3288,42 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         return NULL;
     }
 
+    // One monotonic deadline covers every address attempt AND the handshake,
+    // so ConnectFor(t) honors t as an overall connection budget rather than
+    // applying t independently per address (VDOC-179). cfg.timeout_ms is > 0
+    // here (normalized above).
+    int64_t deadline_us = rt_clock_ticks_us() + (int64_t)cfg.timeout_ms * 1000;
+
     socket_t sock = INVALID_SOCK;
     for (struct addrinfo *p = res; p; p = p->ai_next) {
+        int64_t remaining_ms = (deadline_us - rt_clock_ticks_us()) / 1000;
+        if (remaining_ms <= 0)
+            break; // overall connection deadline exhausted
+        if (remaining_ms > INT_MAX)
+            remaining_ms = INT_MAX;
+
         sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sock == INVALID_SOCK)
             continue;
         suppress_sigpipe(sock);
 
         int connected = 0;
-        if (cfg.timeout_ms > 0) {
-            rt_socket_set_nonblocking(sock, true);
-            if (connect(sock, p->ai_addr, (int)p->ai_addrlen) == 0) {
-                connected = 1;
-            } else {
-                int err = GET_LAST_ERROR();
-                if (rt_socket_error_is_in_progress(err)) {
-                    int ready = wait_socket(sock, cfg.timeout_ms, true);
-                    if (ready > 0) {
-                        int so_error = 0;
-                        socklen_t so_error_len = sizeof(so_error);
-                        getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &so_error_len);
-                        connected = (so_error == 0);
-                    }
+        rt_socket_set_nonblocking(sock, true);
+        if (connect(sock, p->ai_addr, (int)p->ai_addrlen) == 0) {
+            connected = 1;
+        } else {
+            int err = GET_LAST_ERROR();
+            if (rt_socket_error_is_in_progress(err)) {
+                int ready = wait_socket(sock, (int)remaining_ms, true);
+                if (ready > 0) {
+                    int so_error = 0;
+                    socklen_t so_error_len = sizeof(so_error);
+                    getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &so_error_len);
+                    connected = (so_error == 0);
                 }
             }
-            rt_socket_set_nonblocking(sock, false);
-        } else {
-            connected = (connect(sock, p->ai_addr, (int)p->ai_addrlen) == 0);
         }
+        rt_socket_set_nonblocking(sock, false);
 
         if (connected)
             break;
@@ -3329,10 +3338,15 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         return NULL;
     }
 
-    if (cfg.timeout_ms > 0) {
-        set_socket_timeout(sock, cfg.timeout_ms, true);
-        set_socket_timeout(sock, cfg.timeout_ms, false);
-    }
+    // Bound the handshake by the remaining connection budget (minimum 1 ms so a
+    // just-in-time connect still gets to attempt the handshake).
+    int64_t handshake_ms = (deadline_us - rt_clock_ticks_us()) / 1000;
+    if (handshake_ms < 1)
+        handshake_ms = 1;
+    if (handshake_ms > INT_MAX)
+        handshake_ms = INT_MAX;
+    set_socket_timeout(sock, (int)handshake_ms, true);
+    set_socket_timeout(sock, (int)handshake_ms, false);
 
     rt_tls_session_t *session = rt_tls_new((int)sock, &cfg);
     if (!session) {
@@ -3340,6 +3354,7 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         tls_set_last_error_msg("TLS: failed to allocate session");
         return NULL;
     }
+    session->timeout_ms = (int)handshake_ms;
 
     // Perform handshake
     if (rt_tls_handshake(session) != RT_TLS_OK) {
@@ -3347,6 +3362,12 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         rt_tls_close(session);
         return NULL;
     }
+
+    // Post-connect I/O uses the configured timeout as a per-operation budget,
+    // independent of the (now-consumed) connection deadline.
+    session->timeout_ms = cfg.timeout_ms;
+    set_socket_timeout(sock, cfg.timeout_ms, true);
+    set_socket_timeout(sock, cfg.timeout_ms, false);
 
     tls_set_last_error_msg(NULL);
     return session;

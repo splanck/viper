@@ -1575,9 +1575,17 @@ void *rt_aes_try_decrypt_auth(void *data, void *key, void *aad) {
 ///
 /// Kept for backward-compatibility decryption only; new encryptions
 /// must use `derive_key_pbkdf2`. It hashes a fixed domain separator, a
-/// one-byte capped length, and at most the first 256 password bytes, then
+/// one-byte length prefix, and at most the first 256 password bytes, then
 /// performs 10,000 SHA-256 rounds. It has no per-payload salt and is retained
 /// only to read existing ciphertexts created with the legacy format.
+///
+/// WEAKNESS (VDOC-178): the length prefix is a single byte, so passwords of
+/// exactly 256 bytes or longer store a zero length prefix, and only the first
+/// 256 password bytes contribute to the key. Long passwords sharing their
+/// first 256 bytes therefore derive the same legacy key. This math CANNOT be
+/// changed without breaking decryption of existing legacy ciphertexts; on a
+/// successful legacy decrypt, immediately re-encrypt with the current
+/// authenticated `VAG1`/`Viper.Crypto.Cipher` format.
 static void derive_key_legacy(const uint8_t *password, size_t pass_len, uint8_t key[32]) {
     /* Fixed application-level domain separator (S-06) */
     static const uint8_t kSalt[16] = {0x56,
@@ -1653,7 +1661,13 @@ static void generate_random_bytes(uint8_t *buf, size_t len) {
 /// Checks the 4-byte magic prefix that distinguishes the current
 /// PBKDF2+GCM format from the legacy CBC format, so the decryptor
 /// can dispatch to the intended routine. A legacy random IV that happens to
-/// equal the magic is therefore ambiguous and is classified as current.
+/// equal the magic is therefore ambiguous and is classified as current
+/// (VDOC-173). Unlike the authenticated Cipher formats, legacy AES-CBC is
+/// unauthenticated, so there is NO safe automatic fallback: retrying CBC after
+/// a GCM authentication failure would return unauthenticated garbage for
+/// tampered current-format frames (a downgrade). Such a ~2^-32 colliding legacy
+/// frame is therefore intentionally left undecryptable — re-encrypt legacy
+/// AES-CBC string data with the current authenticated format.
 static int aes_is_gcm_string_payload(const uint8_t *data, size_t len) {
     return len >= AES_STR_HEADER_LEN && data[0] == AES_STR_MAGIC0 && data[1] == AES_STR_MAGIC1 &&
            data[2] == AES_STR_MAGIC2 && data[3] == AES_STR_MAGIC3;

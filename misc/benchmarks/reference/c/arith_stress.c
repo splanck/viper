@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: misc/benchmarks/reference/c/arith_stress.c
+// Purpose: C reference for the arith_stress benchmark kernel.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 /* arith_stress.c — Arithmetic-heavy loop benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/arith_stress.il */
 #include <stdint.h>

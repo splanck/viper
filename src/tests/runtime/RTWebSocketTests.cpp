@@ -812,6 +812,123 @@ static void test_ws_invalid_utf8_closes_with_1007() {
     server.join();
 }
 
+//=============================================================================
+// Close handshake (VDOC-137)
+//=============================================================================
+
+static std::atomic<bool> ws_close_server_saw_close_frame{false};
+static std::atomic<bool> ws_close_server_saw_eof{false};
+
+/// @brief Accept one client, complete the upgrade, then participate in the
+///        RFC 6455 closing handshake: read the client's close frame, echo a
+///        close reply, and record whether the client's transport reaches EOF.
+static void ws_close_handshake_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        printf("  WARNING: Could not create server on port %d\n", port);
+        ws_server_failed = true;
+        ws_server_ready = true;
+        return;
+    }
+
+    ws_server_failed = false;
+    ws_server_ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    // Read the HTTP upgrade request and complete the handshake.
+    char buf[4096];
+    int total = 0;
+    while (total < (int)sizeof(buf) - 1) {
+        rt_string line = rt_tcp_recv_str(client, 1);
+        if (!line)
+            break;
+        const char *c = rt_string_cstr(line);
+        if (c) {
+            buf[total] = c[0];
+            total++;
+        }
+        if (total >= 4 && buf[total - 4] == '\r' && buf[total - 3] == '\n' &&
+            buf[total - 2] == '\r' && buf[total - 1] == '\n')
+            break;
+    }
+    buf[total] = '\0';
+    ws_send_handshake(client, buf);
+
+    rt_tcp_set_recv_timeout(client, 5000);
+
+    // Read the client's masked close frame: [0x88][0x82][mask:4][code:2].
+    void *hdr = rt_tcp_recv(client, 2);
+    if (hdr && rt_bytes_len(hdr) == 2 && (rt_bytes_get(hdr, 0) & 0x0F) == 0x08) {
+        ws_close_server_saw_close_frame = true;
+        int payload_len = (int)(rt_bytes_get(hdr, 1) & 0x7F);
+        rt_tcp_recv(client, 4 + payload_len); // mask + payload (discard)
+
+        // Echo the close reply (unmasked, code 1000).
+        const uint8_t code[2] = {0x03, 0xE8};
+        ws_send_server_frame(client, 0x88, code, 2);
+
+        // The client must now close its transport deterministically: the
+        // next read observes EOF (empty bytes) rather than blocking until
+        // GC finalization.
+        void *tail = rt_tcp_recv(client, 16);
+        if (tail && rt_bytes_len(tail) == 0)
+            ws_close_server_saw_eof = true;
+    }
+
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
+/// @brief Close must complete the closing handshake and release the transport
+///        promptly instead of deferring socket/TLS teardown to the finalizer.
+static void test_ws_close_completes_handshake_and_releases_transport() {
+    printf("\nTesting WebSocket close handshake + deterministic transport release:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    ws_server_ready = false;
+    ws_server_failed = false;
+    ws_close_server_saw_close_frame = false;
+    ws_close_server_saw_eof = false;
+
+    std::thread server(ws_close_handshake_server_thread, port);
+
+    while (!ws_server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[64];
+    snprintf(url_buf, sizeof(url_buf), "ws://127.0.0.1:%d/", port);
+    void *ws = rt_ws_connect_for(rt_const_cstr(url_buf), 5000);
+    test_result("WebSocket connect succeeds", ws != nullptr);
+
+    auto start = std::chrono::steady_clock::now();
+    rt_ws_close(ws);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+
+    test_result("Close marks connection closed", rt_ws_is_open(ws) == 0);
+    test_result("Close code is 1000", rt_ws_close_code(ws) == 1000);
+    test_result("Close returns within its bounded wait (<3000ms)", elapsed < 3000);
+
+    server.join();
+    test_result("Server received the client close frame", ws_close_server_saw_close_frame);
+    test_result("Server observed prompt transport EOF", ws_close_server_saw_eof);
+}
+
 /// @brief Test recv_for and recv_bytes_for with NULL object.
 static void test_ws_null_object() {
     printf("\nTesting WebSocket timeout functions with NULL:\n");
@@ -844,6 +961,7 @@ int main() {
     test_ws_connect_protocol_negotiates_subprotocol();
     test_ws_fragmented_text_reassembly();
     test_ws_invalid_utf8_closes_with_1007();
+    test_ws_close_completes_handshake_and_releases_transport();
 
     printf("\nAll WebSocket tests passed.\n");
     return 0;

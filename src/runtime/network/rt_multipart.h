@@ -44,7 +44,17 @@ void *rt_multipart_build(void *mp);
 int64_t rt_multipart_count(void *mp);
 
 /// @brief Parse a multipart body given content-type and body bytes.
+///        Strict and atomic: malformed, truncated, or oversized input traps.
 void *rt_multipart_parse(rt_string content_type, void *body);
+
+/// @brief Non-trapping Parse: returns Result.Ok(Multipart) or Result.ErrStr.
+void *rt_multipart_parse_result(rt_string content_type, void *body);
+
+/// @brief True when a non-file field with the given name exists.
+int8_t rt_multipart_has_field(void *mp, rt_string name);
+
+/// @brief True when a file part with the given name exists.
+int8_t rt_multipart_has_file(void *mp, rt_string name);
 
 /// @brief Get a field value by name from a parsed multipart.
 rt_string rt_multipart_get_field(void *mp, rt_string name);

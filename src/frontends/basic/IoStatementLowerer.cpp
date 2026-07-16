@@ -20,6 +20,7 @@
 #include "RuntimeCallHelpers.hpp"
 #include "RuntimeNames.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 
@@ -180,10 +181,16 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt) {
 
                 Lowerer::RVal value = lowerer_.lowerExpr(*it.expr);
                 if (value.type.kind == IlType::Kind::Str) {
-                    // Check if expr is an lvalue (borrowed reference that needs retaining)
+                    // Check if expr is an lvalue (borrowed reference that needs retaining).
+                    // A member access that lowered to a runtime/instance property
+                    // getter returns an OWNED string already scheduled for a
+                    // statement-boundary release; retaining+releasing it here would
+                    // double-free (VDOC-180). Treat such values as non-borrowed.
                     bool isLvalue = as<const VarExpr>(*it.expr) ||
                                     as<const MemberAccessExpr>(*it.expr) ||
                                     as<const ArrayExpr>(*it.expr);
+                    if (isLvalue && lowerer_.emitter().isDeferredReleaseTemp(value.value))
+                        isLvalue = false;
 
                     if (isLvalue) {
                         // Retain borrowed value before passing to print

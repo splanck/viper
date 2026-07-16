@@ -209,7 +209,7 @@ void game3d_set_node_world_position(void *node, double world_pos[3]) {
     }
     {
         void *parent_world = rt_scene_node3d_get_world_matrix(parent);
-        void *parent_inv = parent_world ? rt_mat4_inverse(parent_world) : NULL;
+        void *parent_inv = parent_world ? rt_mat4_try_inverse(parent_world) : NULL;
         void *world_vec = rt_vec3_new(world_pos[0], world_pos[1], world_pos[2]);
         void *local =
             (parent_inv && world_vec) ? rt_mat4_transform_point(parent_inv, world_vec) : NULL;

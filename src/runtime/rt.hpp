@@ -126,6 +126,9 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
 /// @return Owned sequence of runtime strings.
 void *rt_str_split_fields_seq(rt_string line);
 
+/// @brief Strict-quoting companion: Result.Ok(Seq[str]) or Result.ErrStr.
+void *rt_str_split_fields_result(rt_string line);
+
 // =========================================================================
 // Viper.Terminal I/O Functions
 // =========================================================================

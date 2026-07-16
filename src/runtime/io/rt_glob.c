@@ -11,8 +11,9 @@
 //          cross-directory '**', '?' wildcards, and character classes '[...]'.
 //
 // Key invariants:
-//   - '*' is intended to stay within one component; after a preceding '**',
-//     the current matcher incorrectly lets later wildcards cross separators.
+//   - '*' stays within one component; '**' performs its own separator crossing,
+//     and tokens after a preceding '**' follow ordinary component rules
+//     (they do not cross separators).
 //   - '**' matches any sequence of characters including directory separators.
 //   - '?' matches exactly one character but not '/'.
 //   - '[...]' character classes follow POSIX semantics including negation '[!'.
@@ -250,8 +251,13 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
                     free(visited);
                     return 1;
                 }
+                // `**` itself performs the separator crossing by consuming
+                // text[ti..p]. The pattern token AFTER `**/` must then match
+                // with ORDINARY component rules — pushing allow_slash=1 here
+                // leaked the separator permission into a following `*`/`?`/
+                // class token (VDOC-186), letting e.g. `**/a?b` match `a/b`.
                 for (size_t p = ti; p <= text_len; ++p)
-                    glob_push_state(stack, &sp, visited, plane, cols, pi, p, 1);
+                    glob_push_state(stack, &sp, visited, plane, cols, pi, p, 0);
                 continue;
             }
 
@@ -313,8 +319,9 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
 ///
 /// Does not touch the filesystem — pure string pattern match. `**` spans
 /// directories. `*`, `?`, and classes normally stay within one component,
-/// but the current state machine leaks the separator permission from an earlier
-/// `**` into later tokens (VDOC-186). See the file header for the supported subset.
+/// with `**` performing the separator crossing itself — later tokens follow
+/// ordinary component rules and never cross separators (VDOC-186). See the file
+/// header for the supported subset.
 int8_t rt_glob_match(rt_string path, rt_string pattern) {
     if (!path || !pattern)
         return 0;

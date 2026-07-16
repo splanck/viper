@@ -1,5 +1,18 @@
 //===----------------------------------------------------------------------===//
-// Tests for Behavior composition system (Plan 06).
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/runtime/TestBehavior.cpp
+// Purpose: Tests for the Behavior composition system.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"

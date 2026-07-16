@@ -106,6 +106,20 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mouse_force_delta_f")
 // NavMesh internals (fps plan 08/E28-E29): off-mesh-link segment classifier
 // shared between the path smoother and NavAgent link traversal.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navmesh3d_segment_is_offmesh_link")
+// Narrow terminal helpers (VDOC-221): the script-facing ReadKeyFor/SetColor/
+// SetPosition now register the i64 wrappers (which clamp before narrowing); these
+// i32 variants remain the internal implementation and BASIC-lowering targets.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_getkey_timeout_i32")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_term_color_i32")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_term_locate_i32")
+// Non-trapping Mat4 inverse (VDOC-208): used internally by scene-graph controllers
+// and nav agents to invert parent transforms with graceful degradation; the
+// script-facing inverse is the trapping Mat4.Inverse.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mat4_try_inverse")
+// Monotonic clock ratchet (VDOC-223): shared by the Clock/Stopwatch/Countdown
+// POSIX CLOCK_REALTIME fallbacks to keep the exposed time sequence non-decreasing;
+// an internal helper, not a registered script-facing surface.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_time_monotonic_ratchet")
 // Quickhull core (fps plan 04/E14): consumed by Collider3D.NewConvexHullReduced;
 // the hull builder itself is not a script-facing API.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_quickhull3d_build")
@@ -656,7 +670,10 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_https_server_bind_handler_dispatch")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_server_process_request")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_conn_pool_clear")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_conn_pool_new")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_default_connection_pool")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_header_is_sensitive_for_cross_origin_redirect")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_header_map_remove_ci")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_header_map_set_ci")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_header_value_has_token")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_req_set_connection_pool")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_req_set_follow_redirects")

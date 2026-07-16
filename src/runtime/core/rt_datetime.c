@@ -728,16 +728,22 @@ rt_string rt_datetime_to_local(int64_t timestamp) {
 /// @note Automatically handles daylight saving time transitions.
 /// @note O(1) time complexity.
 ///
-/// @see rt_datetime_year For extracting components from a timestamp
-/// @see rt_datetime_to_iso For formatting timestamps
-int64_t rt_datetime_create(
-    int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second) {
+/// @brief Shared core for the sentinel and Option `Create` forms.
+/// @details Performs the full range check, `mktime` conversion, and round-trip
+///          field verification, writing the resulting instant to @p out. Kept
+///          separate from the public entry points so both the legacy sentinel
+///          form and the unambiguous Option form apply identical validation and
+///          neither has to encode success in the returned instant (VDOC-225).
+/// @param out Receives the Unix timestamp on success; untouched on failure.
+/// @return 1 when the civil input is valid and representable, 0 otherwise.
+static int dt_create_impl(int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute,
+                          int64_t second, int64_t *out) {
     int64_t year_offset;
     int64_t month_offset;
     if (dt_checked_sub_i64(year, 1900, &year_offset))
-        return -1;
+        return 0;
     if (dt_checked_sub_i64(month, 1, &month_offset))
-        return -1;
+        return 0;
 
     int tm_year;
     int tm_mon;
@@ -748,7 +754,7 @@ int64_t rt_datetime_create(
     if (!dt_i64_to_int(year_offset, &tm_year) || !dt_i64_to_int(month_offset, &tm_mon) ||
         !dt_i64_to_int(day, &tm_mday) || !dt_i64_to_int(hour, &tm_hour) ||
         !dt_i64_to_int(minute, &tm_min) || !dt_i64_to_int(second, &tm_sec))
-        return -1;
+        return 0;
 
     struct tm tm = {0};
     tm.tm_year = tm_year;
@@ -769,20 +775,46 @@ int64_t rt_datetime_create(
     errno = 0;
     time_t t = mktime(&tm);
     if (t == (time_t)-1 && errno != 0)
-        return -1;
+        return 0;
     struct tm check_buf;
     struct tm *check = rt_localtime_r(&t, &check_buf);
     if (!check)
-        return -1;
+        return 0;
     if (check->tm_year != orig_tm_year || check->tm_mon != orig_tm_mon ||
         check->tm_mday != orig_tm_mday || check->tm_hour != orig_tm_hour ||
         check->tm_min != orig_tm_min || check->tm_sec != orig_tm_sec)
-        return -1;
+        return 0;
 
+    return dt_time_t_to_i64(t, out) ? 1 : 0;
+}
+
+/// @see rt_datetime_year For extracting components from a timestamp
+/// @see rt_datetime_to_iso For formatting timestamps
+/// @see rt_datetime_create_option For the unambiguous Option-returning form
+/// @note Legacy sentinel form: `-1` marks failure but is also a valid instant
+///       (one second before the Unix epoch), so callers that must distinguish
+///       failure from a pre-epoch result should use @ref rt_datetime_create_option.
+int64_t rt_datetime_create(
+    int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second) {
     int64_t result;
-    if (!dt_time_t_to_i64(t, &result))
-        return -1;
-    return result;
+    return dt_create_impl(year, month, day, hour, minute, second, &result) ? result : -1;
+}
+
+/// @brief Create a Unix timestamp from civil components, returning an Option.
+/// @details Unambiguous replacement for the legacy sentinel @ref rt_datetime_create:
+///          returns `Some(i64)` for any valid, representable instant — including
+///          `-1`, the valid instant one second before the Unix epoch — and `None`
+///          for out-of-range, normalized, skipped-DST, or unrepresentable input,
+///          so callers can distinguish failure from a genuine pre-epoch result
+///          (VDOC-225). Components are interpreted in the local time zone,
+///          exactly as `Create`.
+/// @return Opaque Viper.Option holding the timestamp, or None on failure.
+void *rt_datetime_create_option(
+    int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second) {
+    int64_t result;
+    return dt_create_impl(year, month, day, hour, minute, second, &result)
+               ? rt_option_some_i64(result)
+               : rt_option_none();
 }
 
 /// @brief Adds seconds to a timestamp.

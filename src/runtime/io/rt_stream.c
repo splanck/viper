@@ -375,22 +375,30 @@ int64_t rt_stream_get_len(void *stream) {
     }
 }
 
-/// @brief Report EOF according to the backing type.
-/// @details Memory streams compare position with length. File streams expose BinFile's sticky
-///          flag, which becomes true only after a read encounters the end and is cleared by seek.
+/// @brief Report EOF with one position-based contract for both backings.
+/// @details `Stream.Eof` is true exactly when the current position is at or past
+///          the end of the stream (`pos >= size`), regardless of file vs memory
+///          backing (VDOC-188). Polymorphic Stream code then observes the same
+///          end-of-stream state for the same logical position — reading exactly
+///          the remaining bytes (including `ReadAll`) leaves `Eof` true on both.
+///          It intentionally does NOT use BinFile's sticky feof flag, which only
+///          becomes true after a read PASSES the end. (`BinFile.Eof` keeps its
+///          own C-stream sticky-flag semantics for direct BinFile use.)
 int8_t rt_stream_is_eof(void *stream) {
     stream_impl *s = stream_require_open(stream, "Stream.Eof: null stream");
     if (!s)
         return 1;
 
+    int64_t pos;
+    int64_t size;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
-        return rt_binfile_eof(s->wrapped);
+        pos = rt_binfile_pos(s->wrapped);
+        size = rt_binfile_size(s->wrapped);
     } else {
-        // MemStream: EOF when pos >= len
-        int64_t pos = rt_memstream_get_pos(s->wrapped);
-        int64_t len = rt_memstream_get_len(s->wrapped);
-        return pos >= len ? 1 : 0;
+        pos = rt_memstream_get_pos(s->wrapped);
+        size = rt_memstream_get_len(s->wrapped);
     }
+    return pos >= size ? 1 : 0;
 }
 
 //=============================================================================
@@ -572,21 +580,28 @@ void *rt_stream_as_binfile(void *stream) {
         return NULL;
 
     if (s->type == RT_STREAM_TYPE_BINFILE) {
+        // Return an OWNED reference so the typed backing object survives the
+        // Stream being closed/finalized — the previous borrowed return left a
+        // dangling handle after Close (VDOC-187). The caller releases it.
+        rt_obj_retain_maybe(s->wrapped);
         return s->wrapped;
     }
     rt_trap("Stream.AsBinFile: stream is not file-backed");
     return NULL;
 }
 
-/// @brief Borrow the underlying MemStream when the Stream is memory-backed.
-/// @details A wrong backing type traps. The returned reference has the same lifetime hazard as
-///          `rt_stream_as_binfile` (VDOC-187).
+/// @brief Return an owned reference to the underlying MemStream (memory-backed Streams only).
+/// @details A wrong backing type traps. The reference is retained, so it stays
+///          valid after the Stream is closed; the caller releases it.
 void *rt_stream_as_memstream(void *stream) {
     stream_impl *s = stream_require_open(stream, "Stream.AsMemStream: null stream");
     if (!s)
         return NULL;
 
     if (s->type == RT_STREAM_TYPE_MEMSTREAM) {
+        // Return an OWNED reference (see AsBinFile) so the MemStream survives
+        // the Stream's close/finalize instead of dangling (VDOC-187).
+        rt_obj_retain_maybe(s->wrapped);
         return s->wrapped;
     }
     rt_trap("Stream.AsMemStream: stream is not memory-backed");

@@ -119,8 +119,11 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
         return RtComponent::IoFs;
 
-    // Exec component
-    if (starts("rt_exec_") || starts("rt_process_") || starts("rt_machine_"))
+    // Exec component. rt_shutdown_* lives in the same rt_exec archive, so native
+    // programs using Viper.System.Shutdown must pull it in too — omitting it left
+    // every native Shutdown user with an undefined-symbol link error (VDOC-210).
+    if (starts("rt_exec_") || starts("rt_process_") || starts("rt_machine_") ||
+        starts("rt_shutdown_"))
         return RtComponent::Exec;
 
     // Threads component
@@ -226,7 +229,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     if (starts("Viper.Thread.") || starts("Viper.Channel.") || starts("Viper.Future."))
         return RtComponent::Threads;
     if (starts("Viper.System.Exec.") || starts("Viper.System.Machine.") ||
-        starts("Viper.System.Process."))
+        starts("Viper.System.Process.") || starts("Viper.System.Shutdown."))
         return RtComponent::Exec;
     if (starts("Viper.Debug."))
         return RtComponent::Base;

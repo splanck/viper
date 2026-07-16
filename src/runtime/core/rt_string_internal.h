@@ -74,6 +74,10 @@ size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_
 /// @return Number of bytes implied by the lead byte (1-4), or 0 for an invalid lead byte.
 size_t utf8_char_len(unsigned char c);
 
+/// @brief Strict UTF-8 step: bytes in the sequence (1-4), or 0 when invalid
+///        (bad lead/continuation, overlong, surrogate, > U+10FFFF).
+size_t rt_utf8_strict_step(const char *data, size_t remaining);
+
 /// @brief Validate that a byte span is well-formed UTF-8.
 /// @details Rejects invalid lead bytes, truncated/invalid continuation bytes,
 ///          overlong encodings, surrogate code points, and values above

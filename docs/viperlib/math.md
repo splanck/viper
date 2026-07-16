@@ -720,6 +720,10 @@ smooth interpolation via SLERP.
 - `Slerp` assumes unit inputs, chooses the shortest arc, and clamps `t` to `[0,1]`; a non-finite
   `t` traps. `Lerp` normalizes its result but extrapolates for `t` outside that range.
 - `Norm()` returns the zero quaternion for a zero-length or non-finite quaternion.
+- `Inverse()` traps only for a zero-length or non-finite quaternion; for any finite nonzero
+  quaternion — including extreme magnitudes near the `double` range limits — it returns a finite,
+  nonzero inverse (the squared-length reciprocal is computed with scaling to avoid overflow to
+  zero or underflow to infinity).
 - `FromAxisAngle` takes a `Vec3` axis and radians. A zero/non-finite axis or non-finite angle
   produces identity. `FromEuler` likewise returns identity for non-finite input.
 - `RotateVec3` and `ToMat4` assume a unit quaternion; call `Norm()` first for raw-component
@@ -934,9 +938,10 @@ not accepted by the current BASIC frontend.
 - `CatmullRom` and `Linear` require at least two points and copy each input Vec2's coordinates.
   The current Catmull-Rom implementation is the uniform `0.5`-tangent form with duplicated endpoint
   neighbors; it is not centripetal.
-- `t` is intended to be finite and in `[0,1]`. Linear and Catmull-Rom evaluation clamp finite
-  out-of-range values, while Bezier evaluation extrapolates. Non-finite `t` is unsafe for the
-  linear and Catmull-Rom implementations; see VDOC-201 in the review findings.
+- `t` is clamped to `[0,1]` for every spline kind (Linear, Bezier, and Catmull-Rom): values below
+  0 or `-Inf` map to the curve start, values above 1 or `+Inf` map to the curve end, and `NaN`
+  maps to the curve start. `Eval`, `Tangent`, and `ArcLength` apply this rule uniformly, so a
+  non-finite parameter is always well-defined and never extrapolates.
 - `Tangent` is not normalized: it is the active segment delta for a linear spline, the analytic
   derivative for Bezier, and a finite-difference derivative for Catmull-Rom.
 - `PointAt` traps outside `0..PointCount-1`. `ArcLength` uses at least one equal-parameter segment,
@@ -1063,9 +1068,9 @@ Perlin noise generator for procedural content generation. Produces smooth, conti
   returns 0. Persistence is accepted outside the usual `[0,1]` range, including negative values.
 - Coordinates must be finite and their floored cell index must fit a 32-bit C `int`; otherwise the
   sample returns 0. Higher octave counts add finer detail but increase computation cost.
-- The registry accepts an untyped object as the explicit receiver, but the implementation does not
-  validate that object before reading its permutation table; pass only the instance returned by
-  `PerlinNoise.New` (VDOC-202).
+- The runtime validates the explicit receiver's heap kind, class, and size before reading its
+  permutation table: a non-`PerlinNoise` object (or null) traps rather than being misread as
+  noise state. `PerlinNoise.New` returns a concretely typed `obj<Viper.Math.PerlinNoise>`.
 
 ### Zia Example
 
@@ -1205,12 +1210,14 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
   `0x`, `0b`, or `0o` prefixes. Invalid text returns null rather than trapping. Separators are
   permissive and may appear at the edges or repeatedly.
 - `ToInt` saturates to `INT64_MIN`/`INT64_MAX`; call `FitsInt` first when loss must be rejected.
-- Byte conversion uses signed big-endian two's-complement form. The current `ToBytes` encoder is
-  wrong for some negative values (for example, `-129` encodes as `7f` and round-trips as `127`),
-  so do not use it for negative serialization until VDOC-203 is fixed.
+- Byte conversion uses signed big-endian two's-complement form and is minimal: a leading `0xff`
+  (negative) or `0x00` (positive) sign byte is added exactly when the encoding would otherwise
+  read as the wrong sign. `ToBytes` / `FromBytes` round-trip every value in both signs, including
+  across the `0x80` magnitude boundaries (e.g. `-129` encodes as `ff 7f`).
 - `Div(a,b)` truncates toward zero and `Mod(a,b)` gives the remainder the dividend's sign; both
-  trap on a zero divisor. Consequently, `PowMod` can return a negative residue for a negative base
-  (VDOC-205); normalize it explicitly when a least-nonnegative residue is required.
+  trap on a zero divisor. `PowMod`, however, returns the least non-negative residue in `[0, |mod|)`
+  regardless of the base's sign (e.g. `PowMod(-2, 3, 5)` is `2`, not `-3`), so it is safe for
+  number-theory and modular-arithmetic use.
 - `Sqrt(n)` traps if n is negative.
 - `Pow(n,exp)` and `PowMod(n,exp,mod)` require non-negative exponents; `PowMod` also requires a
   nonzero modulus.
@@ -1218,8 +1225,10 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
 - Bitwise methods use arbitrary-width two's-complement semantics. `BitLength` measures magnitude;
   negative `TestBit` values have infinitely extended sign bits. Negative bit indexes return false
   or an unchanged clone, and negative shift counts leave the value unchanged.
-- BigInt operands are exposed as generic `Object` values and are not receiver-validated by the C
-  implementation. Passing any non-BigInt object can corrupt memory or crash (VDOC-204).
+- BigInt operands are exposed as generic `Object` values, but every operation validates each
+  operand's heap kind, class, and size at the boundary: passing a non-BigInt object traps with
+  `BigInt: invalid BigInt object` rather than being dereferenced as bigint state. (A null operand
+  keeps each operation's documented identity behavior — e.g. `Add(null, x)` returns a copy of x.)
 
 ### Zia Example
 
@@ -1357,8 +1366,9 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 - `Get` returns 0 for an out-of-range index; `Row` and `Col` return a zero Vec3.
 - `Rotate` returns identity for a non-finite angle. `Inverse` traps for a non-finite determinant or
   when `abs(det) < 1e-15`, not just for exact zero.
-- `Eq` substitutes `1e-9` when `eps <= 0` and accepts differences equal to the tolerance. NaN in a
-  matrix or in `eps` currently makes unequal elements compare equal (VDOC-207).
+- `Eq` substitutes `1e-9` when `eps <= 0` or when `eps` is non-finite (NaN/Inf), and accepts
+  differences equal to the tolerance. A NaN component makes a matrix unequal to any matrix
+  (including itself), matching IEEE semantics; signed zeros (`-0.0` vs `0.0`) compare equal.
 - All factory methods return a new matrix; matrices are immutable.
 
 ### Zia Example
@@ -1477,7 +1487,7 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 | `MulScalar(m, s)`   | `Object(Object, f64)`              | Multiply every element by scalar      |
 | `Neg(m)`            | `Object(Object)`                   | Negate every element                  |
 | `Transpose(m)`      | `Object(Object)`                   | Transpose rows and columns            |
-| `Inverse(m)`        | `Object(Object)`                   | Matrix inverse (identity fallback if singular) |
+| `Inverse(m)`        | `Object(Object)`                   | Matrix inverse (traps if singular)             |
 | `Det(m)`            | `f64(Object)`                      | Determinant                           |
 | `Eq(a, b, eps)`     | `Boolean(Object, Object, f64)`     | True if every absolute difference is at most the effective tolerance |
 
@@ -1499,10 +1509,12 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
   positive aspect and near plane, and `near < far`.
 - `TransformPoint` returns normalized-device coordinates after dividing by homogeneous `w`; it
   returns the zero vector for non-finite input/output or `abs(w) <= 1e-15`.
-- `Get` returns 0 for invalid indices. `Inverse` silently returns identity for a non-finite or
-  near-zero determinant (`abs(det) < 1e-15`), unlike `Mat3.Inverse` (VDOC-208).
-- `Eq` uses `1e-9` when `eps <= 0`, accepts equality at the tolerance, and has the same NaN false-
-  positive defect as `Mat3.Eq` (VDOC-207).
+- `Get` returns 0 for invalid indices. `Inverse` traps (`singular matrix`) for a null/invalid
+  receiver or a non-finite / near-zero determinant (`abs(det) < 1e-15`) — it never returns
+  identity as an error sentinel, so its failure contract matches `Mat3.Inverse`.
+- `Eq` uses `1e-9` when `eps <= 0` or non-finite, accepts equality at the tolerance, and treats a
+  NaN component as unequal (never equal, including to itself), the same NaN-safe contract as
+  `Mat3.Eq`.
 - Composing transforms: `Mul(B, A)` applies A first, then B (right-to-left).
 
 ### Zia Example

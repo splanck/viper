@@ -118,6 +118,50 @@ std::string capture_sgr(int fg, int bg) {
     return ""; // All retries failed
 }
 
+// Capture the SGR bytes emitted by the i64 public wrapper (rt_term_color),
+// which clamps its parameters before narrowing (VDOC-221).
+std::string capture_sgr_i64_once(int64_t fg, int64_t bg) {
+    int master = -1;
+    int slave = -1;
+    int rc = openpty(&master, &slave, nullptr, nullptr, nullptr);
+    assert(rc == 0);
+    struct termios tio;
+    tcgetattr(slave, &tio);
+    make_raw_termios(tio);
+    tcsetattr(slave, TCSANOW, &tio);
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0) {
+        close(master);
+        dup2(slave, STDOUT_FILENO);
+        close(slave);
+        rt_term_color(fg, bg); // i64 public wrapper (clamps)
+        _exit(0);
+    }
+    close(slave);
+    std::string result;
+    char buf[64];
+    while (true) {
+        ssize_t n = read(master, buf, sizeof(buf));
+        if (n <= 0)
+            break;
+        result.append(buf, static_cast<size_t>(n));
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    close(master);
+    return result;
+}
+
+std::string capture_sgr_i64(int64_t fg, int64_t bg) {
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        std::string r = capture_sgr_i64_once(fg, bg);
+        if (!r.empty())
+            return r;
+    }
+    return "";
+}
+
 } // namespace
 
 int main() {
@@ -145,6 +189,17 @@ int main() {
 
     std::string combined = capture_sgr(8, 8);
     assert(combined == "\x1b[1;30;100m");
+
+    // VDOC-221: a foreground value of 2^31 truncates to INT32_MIN (negative)
+    // under the old i32 path, which `rt_term_color_i32` rejects (`fg < -1`) and
+    // emits nothing. The i64 wrapper clamps it to INT32_MAX (positive) first, so
+    // a valid SGR is still emitted (non-empty) instead of being silently dropped
+    // by a sign flip. The equivalent small value 8 emits a real code.
+    std::string clamped = capture_sgr_i64(2147483648LL, -1);
+    assert(!clamped.empty());
+    // The wrapper matches the i32 path for in-range values.
+    std::string small = capture_sgr_i64(8, 8);
+    assert(small == "\x1b[1;30;100m");
 
     return 0;
 }

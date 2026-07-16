@@ -28,6 +28,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#include <string>
+
+// Portable "set TZ then reload the C library's zone state" used to make the
+// pre-epoch collision test deterministic on any host (VDOC-225).
+static void set_tz(const char *value) {
+#ifdef _WIN32
+    _putenv_s("TZ", value ? value : "");
+    _tzset();
+#else
+    if (value)
+        setenv("TZ", value, 1);
+    else
+        unsetenv("TZ");
+    tzset();
+#endif
+}
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -233,6 +251,50 @@ static void test_create_bounds(void) {
     check("Create rejects second overflow", rt_datetime_create(2024, 1, 1, 0, 0, 60) == -1);
 }
 
+// VDOC-225: FromParts returns -1 both for failure and for the valid instant one
+// second before the epoch. TryFromParts resolves the ambiguity via an Option.
+static void test_create_option(void) {
+    printf("rt_datetime create Option (VDOC-225):\n");
+
+    // Force UTC so the pre-epoch collision is deterministic regardless of the
+    // host zone; restore the prior setting afterward so later tests are unaffected.
+    const char *saved_tz = getenv("TZ");
+    bool had_tz = saved_tz != NULL;
+    std::string saved_copy = had_tz ? std::string(saved_tz) : std::string();
+    set_tz("UTC");
+
+    // The legacy sentinel form cannot distinguish this valid instant from failure.
+    int64_t sentinel = rt_datetime_create(1969, 12, 31, 23, 59, 59);
+    check("FromParts pre-epoch collides with -1 sentinel", sentinel == -1);
+
+    // The Option form reports the same valid instant as Some(-1), not None.
+    void *pre_epoch = rt_datetime_create_option(1969, 12, 31, 23, 59, 59);
+    check("TryFromParts pre-epoch is Some(-1)",
+          rt_option_is_some(pre_epoch) == 1 && rt_option_unwrap_i64(pre_epoch) == -1);
+
+    // The epoch itself round-trips as Some(0).
+    void *epoch = rt_datetime_create_option(1970, 1, 1, 0, 0, 0);
+    check("TryFromParts epoch is Some(0)",
+          rt_option_is_some(epoch) == 1 && rt_option_unwrap_i64(epoch) == 0);
+
+    // A valid post-epoch instant matches the sentinel form's value.
+    int64_t normal_sentinel = rt_datetime_create(2024, 6, 15, 12, 0, 0);
+    void *normal_option = rt_datetime_create_option(2024, 6, 15, 12, 0, 0);
+    check("TryFromParts matches FromParts for valid input",
+          rt_option_is_some(normal_option) == 1 &&
+              rt_option_unwrap_i64(normal_option) == normal_sentinel);
+
+    // Invalid civil inputs report None rather than a colliding sentinel.
+    check("TryFromParts rejects month overflow as None",
+          rt_option_is_none(rt_datetime_create_option(2024, 13, 1, 0, 0, 0)) == 1);
+    check("TryFromParts rejects invalid leap day as None",
+          rt_option_is_none(rt_datetime_create_option(2023, 2, 29, 0, 0, 0)) == 1);
+    check("TryFromParts rejects huge year as None",
+          rt_option_is_none(rt_datetime_create_option(INT64_MAX, 1, 1, 0, 0, 0)) == 1);
+
+    set_tz(had_tz ? saved_copy.c_str() : NULL);
+}
+
 static void test_checked_arithmetic(void) {
     printf("rt_datetime checked arithmetic:\n");
     check("AddSeconds normal case", rt_datetime_add_seconds(100, 25) == 125);
@@ -314,6 +376,7 @@ int main(void) {
     test_now();
     test_parsing();
     test_create_bounds();
+    test_create_option();
     test_checked_arithmetic();
     test_timezones();
     printf("All datetime tests passed.\n");

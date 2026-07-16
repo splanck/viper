@@ -10,7 +10,8 @@
 // Key invariants:
 //   - Routes matched in registration order (first match wins).
 //   - :name captures a single path segment; *name captures the rest.
-//   - Router operations are unsynchronized; callers must serialize adds and matches.
+//   - Internally synchronized: Add takes a write lock, Match/Count take a
+//     read lock, so concurrent registration and matching are safe.
 // Ownership/Lifetime:
 //   - Router and match objects are GC-managed.
 // Links: rt_http_router.h (API), rt_http_server.c (consumer)
@@ -30,9 +31,12 @@
 #include <string.h>
 
 #ifdef _WIN32
-#define strcasecmp _stricmp
-#else
-#include <strings.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif !defined(__viperdos__)
+#include <pthread.h>
 #endif
 
 #include "rt_trap.h"
@@ -66,6 +70,7 @@ typedef struct {
     route_t *routes;
     int route_count;
     int route_capacity;
+    void *rw_lock; ///< Platform rwlock (SRWLOCK / pthread_rwlock_t; NULL on ViperDOS)
 } rt_http_router_impl;
 
 typedef struct {
@@ -73,6 +78,96 @@ typedef struct {
     char *pattern;
     void *params; // Map of param name -> value
 } rt_route_match_impl;
+
+/// @brief True when @p value contains an embedded NUL (its C-string view
+///        would register/match a prefix of the caller's runtime string).
+static int router_string_has_embedded_nul(rt_string value) {
+    const char *cstr = value ? rt_string_cstr(value) : NULL;
+    int64_t len = value ? rt_str_len(value) : 0;
+    if (!cstr || len <= 0)
+        return 0;
+    return memchr(cstr, '\0', (size_t)len) != NULL;
+}
+
+//=============================================================================
+// Synchronization
+//=============================================================================
+// Adds take the write lock; Match/Count take the read lock, so concurrent
+// matching stays parallel while registration is exclusive (VDOC-143). Traps
+// are always raised OUTSIDE the locked region so a longjmp-based recovery
+// hook cannot leak a held lock. Same platform idiom as rt_type_registry.c.
+
+/// @brief Allocate and initialize the router's reader-writer lock.
+static void router_lock_init(rt_http_router_impl *router) {
+#ifdef _WIN32
+    SRWLOCK *lock = (SRWLOCK *)malloc(sizeof(SRWLOCK));
+    if (lock)
+        InitializeSRWLock(lock);
+    router->rw_lock = lock;
+#elif !defined(__viperdos__)
+    pthread_rwlock_t *lock = (pthread_rwlock_t *)malloc(sizeof(pthread_rwlock_t));
+    if (lock)
+        pthread_rwlock_init(lock, NULL);
+    router->rw_lock = lock;
+#else
+    router->rw_lock = NULL;
+#endif
+}
+
+/// @brief Destroy and free the router's lock (no contention at finalize time).
+static void router_lock_destroy(rt_http_router_impl *router) {
+    if (!router->rw_lock)
+        return;
+#if !defined(_WIN32) && !defined(__viperdos__)
+    pthread_rwlock_destroy((pthread_rwlock_t *)router->rw_lock);
+#endif
+    free(router->rw_lock);
+    router->rw_lock = NULL;
+}
+
+/// @brief Acquire the shared (read) lock. No-op when no lock exists.
+static void router_rdlock(rt_http_router_impl *router) {
+    if (!router->rw_lock)
+        return;
+#ifdef _WIN32
+    AcquireSRWLockShared((SRWLOCK *)router->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_rdlock((pthread_rwlock_t *)router->rw_lock);
+#endif
+}
+
+/// @brief Release the shared (read) lock. No-op when no lock exists.
+static void router_rdunlock(rt_http_router_impl *router) {
+    if (!router->rw_lock)
+        return;
+#ifdef _WIN32
+    ReleaseSRWLockShared((SRWLOCK *)router->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_unlock((pthread_rwlock_t *)router->rw_lock);
+#endif
+}
+
+/// @brief Acquire the exclusive (write) lock. No-op when no lock exists.
+static void router_wrlock(rt_http_router_impl *router) {
+    if (!router->rw_lock)
+        return;
+#ifdef _WIN32
+    AcquireSRWLockExclusive((SRWLOCK *)router->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_wrlock((pthread_rwlock_t *)router->rw_lock);
+#endif
+}
+
+/// @brief Release the exclusive (write) lock. No-op when no lock exists.
+static void router_wrunlock(rt_http_router_impl *router) {
+    if (!router->rw_lock)
+        return;
+#ifdef _WIN32
+    ReleaseSRWLockExclusive((SRWLOCK *)router->rw_lock);
+#elif !defined(__viperdos__)
+    pthread_rwlock_unlock((pthread_rwlock_t *)router->rw_lock);
+#endif
+}
 
 //=============================================================================
 // Parsing
@@ -156,12 +251,14 @@ static int reserve_routes(rt_http_router_impl *router, int needed) {
 ///          - **`SEG_WILDCARD`**: prefix `*` marks a multi-segment capture
 ///            that consumes the remainder of the path. E.g. `*path` in
 ///            `/static/*path` matches `assets/img/foo.png` and binds the
-///            full remainder to `path`. Wildcards should be last; neither the
-///            parser nor matcher rejects suffix segments, and the matcher
-///            returns immediately when it reaches the wildcard.
+///            full remainder to `path`. A wildcard must be the final
+///            segment; `add_route` rejects patterns with segments after a
+///            wildcard, and duplicate capture names, at registration time.
 ///
 ///          A leading `/` is skipped before parsing. Empty segments
-///          (consecutive slashes like `/users//profile`) are ignored.
+///          (consecutive slashes like `/users//profile`) are deliberately
+///          normalized away in PATTERNS only — request paths are matched
+///          segment-exactly aside from leading/trailing slashes.
 ///          Segment storage is allocated and grown on demand; on failure all
 ///          partially parsed segment values are freed and no truncated route is
 ///          registered.
@@ -357,6 +454,7 @@ static void rt_http_router_finalize(void *obj) {
     free(router->routes);
     router->routes = NULL;
     router->route_count = 0;
+    router_lock_destroy(router);
     router->route_capacity = 0;
 }
 
@@ -388,6 +486,7 @@ void *rt_http_router_new(void) {
         return NULL;
     }
     memset(router, 0, sizeof(*router));
+    router_lock_init(router);
     rt_obj_set_finalizer(router, rt_http_router_finalize);
     return router;
 }
@@ -406,28 +505,61 @@ static void *add_route(void *obj, const char *method, const char *pattern) {
     }
 
     rt_http_router_impl *router = (rt_http_router_impl *)obj;
-    if (!reserve_routes(router, router->route_count + 1)) {
-        rt_trap("HttpRouter: route storage allocation failed");
-        return obj;
-    }
 
-    route_t *route = &router->routes[router->route_count];
-    memset(route, 0, sizeof(*route));
-    route->method = strdup(method);
-    route->pattern = strdup(pattern);
-    if (!route->method || !route->pattern) {
-        free_route(route);
+    // Build the route fully detached so parsing/validation failures trap
+    // without holding the write lock.
+    route_t route;
+    memset(&route, 0, sizeof(route));
+    route.method = strdup(method);
+    route.pattern = strdup(pattern);
+    if (!route.method || !route.pattern) {
+        free_route(&route);
         rt_trap("HttpRouter: memory allocation failed");
         return obj;
     }
-    route->segment_count = parse_pattern(pattern, &route->segments);
-    if (route->segment_count < 0) {
-        free_route(route);
+    route.segment_count = parse_pattern(pattern, &route.segments);
+    if (route.segment_count < 0) {
+        free_route(&route);
         rt_trap("HttpRouter: invalid route pattern");
         return obj;
     }
 
+    // Registration-time grammar validation: a wildcard consumes the rest of
+    // the path, so suffix segments after it could never constrain a match —
+    // reject them instead of silently ignoring them. Duplicate capture names
+    // would overwrite each other in the params Map, so reject those too.
+    for (int i = 0; i < route.segment_count; i++) {
+        const segment_t *seg = &route.segments[i];
+        if (seg->type == SEG_WILDCARD && i != route.segment_count - 1) {
+            free_route(&route);
+            rt_trap("HttpRouter: wildcard segment must be terminal");
+            return obj;
+        }
+        if (seg->type == SEG_PARAM || seg->type == SEG_WILDCARD) {
+            for (int j = 0; j < i; j++) {
+                const segment_t *prev = &route.segments[j];
+                if ((prev->type == SEG_PARAM || prev->type == SEG_WILDCARD) &&
+                    strcmp(prev->value, seg->value) == 0) {
+                    free_route(&route);
+                    rt_trap("HttpRouter: duplicate capture name in pattern");
+                    return obj;
+                }
+            }
+        }
+    }
+
+    // Publish under the write lock so concurrent Match/Count never observe a
+    // reallocated routes array or a partially initialized entry.
+    router_wrlock(router);
+    if (!reserve_routes(router, router->route_count + 1)) {
+        router_wrunlock(router);
+        free_route(&route);
+        rt_trap("HttpRouter: route storage allocation failed");
+        return obj;
+    }
+    router->routes[router->route_count] = route;
     router->route_count++;
+    router_wrunlock(router);
     return obj;
 }
 
@@ -436,34 +568,54 @@ static void *add_route(void *obj, const char *method, const char *pattern) {
 void *rt_http_router_add(void *router, rt_string method, rt_string pattern) {
     const char *m = rt_string_cstr(method);
     const char *p = rt_string_cstr(pattern);
-    if (!m || !p)
+    if (!m || !p || router_string_has_embedded_nul(method) ||
+        router_string_has_embedded_nul(pattern)) {
         rt_trap("HttpRouter: NULL method or pattern");
+        return router;
+    }
     return add_route(router, m, p);
 }
 
 /// @brief Convenience: register a GET route. Equivalent to `_add(router, "GET", pattern)`.
 void *rt_http_router_get(void *router, rt_string pattern) {
+    if (router_string_has_embedded_nul(pattern)) {
+        rt_trap("HttpRouter: NULL method or pattern");
+        return router;
+    }
     return add_route(router, "GET", rt_string_cstr(pattern));
 }
 
 /// @brief Convenience: register a POST route.
 void *rt_http_router_post(void *router, rt_string pattern) {
+    if (router_string_has_embedded_nul(pattern)) {
+        rt_trap("HttpRouter: NULL method or pattern");
+        return router;
+    }
     return add_route(router, "POST", rt_string_cstr(pattern));
 }
 
 /// @brief Convenience: register a PUT route.
 void *rt_http_router_put(void *router, rt_string pattern) {
+    if (router_string_has_embedded_nul(pattern)) {
+        rt_trap("HttpRouter: NULL method or pattern");
+        return router;
+    }
     return add_route(router, "PUT", rt_string_cstr(pattern));
 }
 
 /// @brief Convenience: register a DELETE route.
 void *rt_http_router_delete(void *router, rt_string pattern) {
+    if (router_string_has_embedded_nul(pattern)) {
+        rt_trap("HttpRouter: NULL method or pattern");
+        return router;
+    }
     return add_route(router, "DELETE", rt_string_cstr(pattern));
 }
 
 /// @brief Find the first registered route that matches `(method, path)` and return a Match
-/// object with extracted params. Method comparison is **case-insensitive** (a runtime behavior,
-/// even though HTTP method tokens are ordinarily case-sensitive).
+/// object with extracted params. Method comparison is **case-sensitive**, matching HTTP's
+/// method-token semantics (RFC 9110 §9.1) — register methods in the exact case requests use
+/// (the convenience helpers register the canonical uppercase forms).
 /// Walks routes in registration order — earlier wins on ties. Returns NULL if no route matches
 /// (the server can then return 404). The returned Match object is GC-managed; caller releases.
 void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
@@ -473,14 +625,15 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
     rt_http_router_impl *router = (rt_http_router_impl *)obj;
     const char *m = rt_string_cstr(method);
     const char *p = rt_string_cstr(path);
-    if (!m || !p)
+    if (!m || !p || router_string_has_embedded_nul(method) || router_string_has_embedded_nul(path))
         return NULL;
 
+    router_rdlock(router);
     for (int i = 0; i < router->route_count; i++) {
         route_t *route = &router->routes[i];
 
-        // Check method match
-        if (strcasecmp(route->method, m) != 0)
+        // Check method match (case-sensitive per HTTP method-token semantics)
+        if (strcmp(route->method, m) != 0)
             continue;
 
         // Try path match
@@ -492,6 +645,7 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
             if (!match) {
                 if (rt_obj_release_check0(params))
                     rt_obj_free(params);
+                router_rdunlock(router);
                 return NULL;
             }
             memset(match, 0, sizeof(*match));
@@ -503,12 +657,15 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
                     rt_obj_free(params);
                 if (rt_obj_release_check0(match))
                     rt_obj_free(match);
+                router_rdunlock(router);
                 return NULL;
             }
             match->params = params;
+            router_rdunlock(router);
             return match;
         }
     }
+    router_rdunlock(router);
 
     return NULL; // No match
 }
@@ -517,7 +674,11 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
 int64_t rt_http_router_count(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_http_router_impl *)obj)->route_count;
+    rt_http_router_impl *router = (rt_http_router_impl *)obj;
+    router_rdlock(router);
+    int64_t count = router->route_count;
+    router_rdunlock(router);
+    return count;
 }
 
 /// @brief Look up a captured parameter from a Match object (e.g. for `/users/:id` with input

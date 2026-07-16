@@ -389,8 +389,8 @@ RT_FUNC(StreamReadByte,      rt_stream_read_byte,       "Viper.IO.Stream.ReadByt
 RT_FUNC(StreamWriteByte,     rt_stream_write_byte,      "Viper.IO.Stream.WriteByte",     "void(obj,i64)")
 RT_FUNC(StreamFlush,         rt_stream_flush,           "Viper.IO.Stream.Flush",         "void(obj)")
 RT_FUNC(StreamClose,         rt_stream_close,           "Viper.IO.Stream.Close",         "void(obj)")
-RT_FUNC(StreamAsBinFile,     rt_stream_as_binfile,      "Viper.IO.Stream.AsBinFile",     "obj(obj)")
-RT_FUNC(StreamAsMemStream,   rt_stream_as_memstream,    "Viper.IO.Stream.AsMemStream",   "obj(obj)")
+RT_FUNC(StreamAsBinFile,     rt_stream_as_binfile,      "Viper.IO.Stream.AsBinFile",     "obj<Viper.IO.BinFile>(obj)")
+RT_FUNC(StreamAsMemStream,   rt_stream_as_memstream,    "Viper.IO.Stream.AsMemStream",   "obj<Viper.IO.MemStream>(obj)")
 RT_FUNC(StreamToBytes,       rt_stream_to_bytes,        "Viper.IO.Stream.ToBytes",       "obj(obj)")
 
 //=============================================================================

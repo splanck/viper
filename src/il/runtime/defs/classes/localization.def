@@ -519,6 +519,7 @@ RT_CLASS_BEGIN("Viper.System.Shutdown", Shutdown, "none", none)
     RT_METHOD("Poll", "i64()", ShutdownPoll)
     RT_METHOD("IsPending", "i1()", ShutdownPending)
     RT_METHOD("Clear", "void()", ShutdownClear)
+    RT_METHOD("InstallSignalHandlers", "void()", ShutdownInstallSignals)
 RT_CLASS_END()
 
 // Viper.Text.Fmt - value formatting utilities

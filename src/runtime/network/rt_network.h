@@ -494,12 +494,19 @@ void *rt_http_delete_bytes(rt_string url);
 /// @return HttpReq object.
 void *rt_http_req_new(rt_string method, rt_string url);
 
-/// @brief Set request header.
+/// @brief Set a request header, replacing any existing case-insensitive match.
 /// @param obj HttpReq object.
 /// @param name Header name.
 /// @param value Header value.
 /// @return Same HttpReq object (for chaining).
 void *rt_http_req_set_header(void *obj, rt_string name, rt_string value);
+
+/// @brief Append a request header without replacing same-name fields.
+/// @param obj HttpReq object.
+/// @param name Header name.
+/// @param value Header value.
+/// @return Same HttpReq object (for chaining).
+void *rt_http_req_add_header(void *obj, rt_string name, rt_string value);
 
 /// @brief Set request body as bytes.
 /// @param obj HttpReq object.
@@ -789,6 +796,10 @@ void *rt_url_decode_query(rt_string query);
 /// @param url_str URL string to validate.
 /// @return 1 if valid, 0 otherwise.
 int8_t rt_url_is_valid(rt_string url_str);
+
+/// @brief Strict absolute NETWORK URL check: requires a scheme and a
+///        non-empty host in addition to rt_url_is_valid's reference rules.
+int8_t rt_url_is_valid_absolute(rt_string url_str);
 
 #ifdef __cplusplus
 }

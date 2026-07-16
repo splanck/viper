@@ -173,6 +173,9 @@ func testTypedConcreteReturns() {
     heap.Push(1, "only");
     assertEqInt(heap.ToSeq().Count, 1, "heap_to_seq_count");
 
+    // DefaultPool is typed as Pool, so Pool members chain fluently (VDOC-131).
+    assertGtInt(Viper.Threads.Parallel.DefaultPool().Size, 0, "default_pool_typed_chain");
+
     // Queue/Stack expose SetOwnsElements on the class surface (VDOC-087).
     var q = new Viper.Collections.Queue();
     q.SetOwnsElements(true);
@@ -182,6 +185,21 @@ func testTypedConcreteReturns() {
     st.SetOwnsElements(true);
     st.Push("kept");
     assertEqInt(st.Count, 1, "stack_owning_push");
+
+    // FromSingle formats with single-precision semantics through a matched
+    // f64 ABI on every dispatch path (VDOC-162; previously "0"/garbage).
+    assertEqStr(Viper.String.FromSingle(1.5), "1.5", "from_single_exact");
+    assertEqStr(Viper.String.FromSingle(3.14), "3.14000010490417", "from_single_narrowed");
+
+    // Narrow-parameter runtime calls lower with checked narrowing (VDOC-163).
+    assertEqStr(Viper.String.FromI16(42), "42", "from_i16_narrowed_call");
+    assertEqStr(Viper.String.FromI32(70000), "70000", "from_i32_narrowed_call");
+
+    // SplitFieldsResult enforces strict quoting (VDOC-164).
+    var goodSplit = Viper.String.SplitFieldsResult("a,\"b,c\",d");
+    assertTrue(goodSplit.IsOk, "split_fields_result_ok");
+    var badSplit = Viper.String.SplitFieldsResult("\"a,b");
+    assertTrue(badSplit.IsErr, "split_fields_result_err");
 
     // Template.Keys is a StringSet (deduplicated), typed as such (VDOC-044).
     var keys = Viper.Text.Template.Keys("{{a}} {{b}} {{a}}");

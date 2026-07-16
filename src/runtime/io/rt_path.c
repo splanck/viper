@@ -814,8 +814,9 @@ int64_t rt_path_is_abs(rt_string path) {
 /// @note O(n) time complexity where n is path length.
 /// @note Uses current working directory at time of call.
 /// @note Always returns normalized path (no redundant components).
-/// @note On Windows, drive-relative input such as `C:foo` is currently joined to
-///       the process CWD as ordinary relative text and can produce a malformed path.
+/// @note On Windows, resolution goes through `GetFullPathNameW`, so
+///       drive-relative input such as `C:foo` resolves against drive C's
+///       current directory exactly like the OS (VDOC-184).
 ///
 /// @see rt_path_is_abs For checking if path is absolute
 /// @see rt_path_norm For normalizing without making absolute
@@ -828,26 +829,43 @@ rt_string rt_path_abs(rt_string path) {
     if (rt_path_is_abs(path))
         return rt_path_norm(path);
 
-    // Get current working directory with a dynamic buffer so deep paths work.
 #ifdef _WIN32
-    DWORD needed = GetCurrentDirectoryW(0, NULL);
-    if (needed == 0) {
-        rt_trap("Path.Abs: failed to get current directory");
-        return rt_const_cstr("");
-    }
-    wchar_t *cwd_wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
-    if (!cwd_wide) {
+    // Resolve through the OS so drive-relative input (e.g. "C:foo") is anchored
+    // to that drive's current directory instead of being joined to the process
+    // CWD as ordinary relative text — the latter produced malformed paths like
+    // "D:\\work\\C:foo" (VDOC-184). GetFullPathNameW implements the full Windows
+    // relative/drive-relative resolution rules.
+    rt_string path_str_in = rt_string_from_bytes(data, len);
+    wchar_t *wide_in = rt_file_path_utf8_to_wide(rt_string_cstr(path_str_in));
+    rt_string_unref(path_str_in);
+    if (!wide_in) {
         rt_trap("Path.Abs: memory allocation failed");
         return rt_const_cstr("");
     }
-    DWORD written = GetCurrentDirectoryW(needed, cwd_wide);
-    if (written == 0 || written >= needed) {
-        free(cwd_wide);
-        rt_trap("Path.Abs: failed to get current directory");
+    DWORD full_needed = GetFullPathNameW(wide_in, 0, NULL, NULL);
+    if (full_needed == 0) {
+        free(wide_in);
+        rt_trap("Path.Abs: failed to resolve path");
         return rt_const_cstr("");
     }
-    rt_string cwd_str = rt_file_path_wide_to_string(cwd_wide);
-    free(cwd_wide);
+    wchar_t *full_wide = (wchar_t *)malloc((size_t)full_needed * sizeof(wchar_t));
+    if (!full_wide) {
+        free(wide_in);
+        rt_trap("Path.Abs: memory allocation failed");
+        return rt_const_cstr("");
+    }
+    DWORD full_written = GetFullPathNameW(wide_in, full_needed, full_wide, NULL);
+    free(wide_in);
+    if (full_written == 0 || full_written >= full_needed) {
+        free(full_wide);
+        rt_trap("Path.Abs: failed to resolve path");
+        return rt_const_cstr("");
+    }
+    rt_string resolved = rt_file_path_wide_to_string(full_wide);
+    free(full_wide);
+    rt_string result = rt_path_norm(resolved);
+    rt_string_unref(resolved);
+    return result;
 #else
     char *cwd = getcwd(NULL, 0);
     if (!cwd) {
@@ -858,7 +876,6 @@ rt_string rt_path_abs(rt_string path) {
     // Join cwd with path
     rt_string cwd_str = rt_string_from_bytes(cwd, strlen(cwd));
     free(cwd);
-#endif
     rt_string path_str = rt_string_from_bytes(data, len);
     rt_string joined = rt_path_join(cwd_str, path_str);
 
@@ -870,6 +887,7 @@ rt_string rt_path_abs(rt_string path) {
     rt_string_unref(joined);
 
     return result;
+#endif
 }
 
 /// @brief Normalize a path by removing redundant components.

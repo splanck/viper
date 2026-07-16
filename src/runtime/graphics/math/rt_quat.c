@@ -257,9 +257,14 @@ void *rt_quat_inverse(void *q) {
         rt_trap("Quat.Inverse: invalid quaternion length");
         return NULL;
     }
-    double len_sq = len * len;
-    double inv = 1.0 / len_sq;
-    return quat_alloc(-qv->x * inv, -qv->y * inv, -qv->z * inv, qv->w * inv);
+    // inverse = conjugate / |q|^2. Forming `len*len` overflows for large norms
+    // (e.g. 1e308 -> Inf, inverse collapses to 0) and underflows for tiny norms
+    // (e.g. 1e-308 -> 0, inverse blows up to +/-Inf) even though `len` itself is
+    // finite and nonzero (VDOC-206). Divide each conjugate component by `len`
+    // TWICE instead: the first divide normalizes it to ~unit magnitude, the
+    // second scales by 1/len, so no intermediate overflows or underflows.
+    double s = 1.0 / len;
+    return quat_alloc((-qv->x * s) * s, (-qv->y * s) * s, (-qv->z * s) * s, (qv->w * s) * s);
 }
 
 /// @brief Normalize `q` to unit length. Returns the zero quaternion (0,0,0,0) if `q` is zero

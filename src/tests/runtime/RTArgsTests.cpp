@@ -18,8 +18,11 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
+#include <atomic>
 #include <cassert>
 #include <cstring>
+#include <thread>
+#include <vector>
 
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, std::strlen(s));
@@ -84,6 +87,36 @@ int main() {
     rt_string_unref(env_name);
     rt_string_unref(env_value);
     rt_string_unref(roundtrip);
+
+    // VDOC-211: the legacy host-init flag is now an atomic once-init, so many
+    // threads reading the argument store concurrently observe a single stable
+    // count with no crash, corruption, or spin under contention. (The 0->1->2
+    // import is one-shot per process, so this exercises the atomic read/CAS path
+    // for regression rather than reproducing the original data race.)
+    {
+        rt_args_clear();
+        rt_args_push(make_str("alpha"));
+        rt_args_push(make_str("beta"));
+        const int64_t expected_count = rt_args_count();
+        assert(expected_count == 2);
+
+        std::atomic<bool> ok{true};
+        std::vector<std::thread> workers;
+        for (int t = 0; t < 8; ++t) {
+            workers.emplace_back([&]() {
+                for (int i = 0; i < 2000; ++i) {
+                    if (rt_args_count() != expected_count)
+                        ok.store(false);
+                    rt_string a = rt_args_get(0);
+                    if (a)
+                        rt_string_unref(a);
+                }
+            });
+        }
+        for (auto &w : workers)
+            w.join();
+        assert(ok.load());
+    }
 
     return 0;
 }

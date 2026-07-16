@@ -37,7 +37,7 @@ void *rt_http_client_put(void *client, rt_string url, rt_string body);
 void *rt_http_client_delete(void *client, rt_string url);
 /// @brief Set a default header sent on every request from this client.
 void rt_http_client_set_header(void *client, rt_string name, rt_string value);
-/// @brief Set the per-address/socket-operation timeout; zero currently leaves HttpReq's 30s default.
+/// @brief Set the per-address/socket-operation timeout; zero disables the timeout entirely.
 void rt_http_client_set_timeout(void *client, int64_t timeout_ms);
 /// @brief True if the client reuses keep-alive connections.
 int8_t rt_http_client_get_keep_alive(void *client);
@@ -53,6 +53,9 @@ int8_t rt_http_client_get_follow_redirects(void *client);
 void rt_http_client_set_follow_redirects(void *client, int8_t follow);
 /// @brief Inject an unvalidated domain cookie matching @p domain and its subdomains.
 void rt_http_client_set_cookie(void *client, rt_string domain, rt_string name, rt_string value);
+
+/// @brief Remove a stored cookie by exact domain and case-sensitive name.
+void rt_http_client_delete_cookie(void *client, rt_string domain, rt_string name);
 /// @brief Get all cookies the jar holds for @p domain (returns a Map[string, string]).
 void *rt_http_client_get_cookies(void *client, rt_string domain);
 

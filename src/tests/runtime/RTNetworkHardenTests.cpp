@@ -22,8 +22,11 @@
 #include "tests/common/PosixCompat.h"
 
 #include "rt_async_socket.h"
+#include "rt_box.h"
 #include "rt_bytes.h"
 #include "rt_error.h"
+#include "rt_list.h"
+#include "rt_map.h"
 #include "rt_future.h"
 #include "rt_internal.h"
 #include "rt_network.h"
@@ -576,7 +579,82 @@ static void test_async_connect_failure_surfaces_as_future_error() {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
+// ── URL grammar alignment (VDOC-135) ───────────────────────────────────────
+static void test_url_grammar_alignment() {
+    auto S = [](const char *c) { return rt_string_from_bytes(c, strlen(c)); };
+
+    // Parse now applies the same character rules as IsValid: an unencoded
+    // space is rejected instead of silently preserved.
+    rt_string spaced = S("http://exa mple.com");
+    assert(rt_url_is_valid(spaced) == 0);
+    EXPECT_TRAP(rt_url_parse(spaced));
+    rt_string_unref(spaced);
+
+    // Authority-less scheme forms parse a scheme (RFC `scheme:`).
+    rt_string mailto = S("mailto:user@example.com");
+    void *m = rt_url_parse(mailto);
+    rt_string scheme = rt_url_scheme(m);
+    assert(strcmp(rt_string_cstr(scheme), "mailto") == 0);
+    rt_string_unref(scheme);
+    rt_string_unref(mailto);
+
+    // host:port-looking spellings keep their pre-existing parse (no scheme).
+    rt_string hostport = S("localhost:8080");
+    void *hp = rt_url_parse(hostport);
+    rt_string hp_scheme = rt_url_scheme(hp);
+    assert(rt_string_cstr(hp_scheme)[0] == '\0');
+    rt_string_unref(hp_scheme);
+    rt_string_unref(hostport);
+
+    // Strict absolute network validation: scheme AND host required.
+    rt_string abs_ok = S("https://example.com/path");
+    assert(rt_url_is_valid_absolute(abs_ok) == 1);
+    rt_string_unref(abs_ok);
+    rt_string rel = S("abc");
+    assert(rt_url_is_valid(rel) == 1);          // permissive reference check
+    assert(rt_url_is_valid_absolute(rel) == 0); // strict network check
+    rt_string_unref(rel);
+    rt_string no_host = S("mailto:user@example.com");
+    assert(rt_url_is_valid_absolute(no_host) == 0);
+    rt_string_unref(no_host);
+
+    printf("  PASS: UrlGrammarAlignment -> Parse/IsValid/IsValidAbsolute agree\n");
+}
+
+// ── URL.EncodeQuery value stringification policy (VDOC-136) ────────────────
+static void test_url_encode_query_value_policy() {
+    auto S = [](const char *c) { return rt_string_from_bytes(c, strlen(c)); };
+
+    // Boxed scalars format with the canonical scalar formatting.
+    void *map = rt_map_new();
+    rt_map_set(map, S("s"), rt_box_str(S("a b")));
+    rt_map_set(map, S("i"), rt_box_i64(42));
+    rt_map_set(map, S("b"), rt_box_i1(1));
+    rt_string encoded = rt_url_encode_query(map);
+    const char *enc = rt_string_cstr(encoded);
+    assert(strstr(enc, "s=a%20b") != nullptr);
+    assert(strstr(enc, "i=42") != nullptr);
+    assert(strstr(enc, "b=true") != nullptr);
+    rt_string_unref(encoded);
+
+    // Raw string handles (Map[String,String] storage) still pass verbatim.
+    void *raw_map = rt_map_new();
+    rt_map_set(raw_map, S("k"), S("v"));
+    rt_string raw_encoded = rt_url_encode_query(raw_map);
+    assert(strcmp(rt_string_cstr(raw_encoded), "k=v") == 0);
+    rt_string_unref(raw_encoded);
+
+    // Arbitrary objects trap instead of being reinterpreted as string handles.
+    void *bad_map = rt_map_new();
+    rt_map_set(bad_map, S("obj"), rt_list_new());
+    EXPECT_TRAP(rt_url_encode_query(bad_map));
+
+    printf("  PASS: UrlEncodeQueryValuePolicy -> scalars format, objects trap\n");
+}
+
 int main() {
+    test_url_grammar_alignment();
+    test_url_encode_query_value_policy();
     net_init();
 
     test_connect_nonexistent_host();

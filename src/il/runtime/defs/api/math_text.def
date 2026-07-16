@@ -53,7 +53,7 @@ RT_FUNC(EaseInOutBounce, rt_ease_in_out_bounce, "Viper.Math.Easing.EaseInOutBoun
 // MATH - PERLIN NOISE
 //=============================================================================
 
-RT_FUNC(PerlinNew,       rt_perlin_new,       "Viper.Math.PerlinNoise.New",       "obj(i64)")
+RT_FUNC(PerlinNew,       rt_perlin_new,       "Viper.Math.PerlinNoise.New",       "obj<Viper.Math.PerlinNoise>(i64)")
 RT_FUNC(PerlinNoise2D,   rt_perlin_noise2d,   "Viper.Math.PerlinNoise.Noise2D",   "f64(obj,f64,f64)")
 RT_FUNC(PerlinNoise3D,   rt_perlin_noise3d,   "Viper.Math.PerlinNoise.Noise3D",   "f64(obj,f64,f64,f64)")
 RT_FUNC(PerlinOctave2D,  rt_perlin_octave2d,  "Viper.Math.PerlinNoise.Octave2D",  "f64(obj,f64,f64,i64,f64)")
@@ -278,6 +278,7 @@ RT_FUNC(UCase,          rt_str_ucase,            "Viper.String.ToUpper",     "st
 
 // String static utilities (Viper.Strings.*)
 RT_FUNC(SplitFields,           rt_str_split_fields_seq,  "Viper.String.SplitFields",       "seq<str>(str)")
+RT_FUNC(SplitFieldsResult,     rt_str_split_fields_result, "Viper.String.SplitFieldsResult", "obj<Viper.Result>(str)")
 RT_FUNC(StrEquals,             rt_str_eq,        "Viper.String.Equals",            "i1(str,str)")
 // Internal BASIC PRINT lowering targets for narrow numeric variable types.
 RT_INTERNAL_FUNC(StrFromI16,    rt_str_i16_alloc, "Viper.String.FromI16",           "str(i16)")
@@ -382,7 +383,7 @@ RT_FUNC(TermPrintBool, rt_term_print_bool,"Viper.Terminal.PrintBool","void(i1)")
 // Terminal input
 RT_FUNC(TermAskResult,      rt_term_ask_result,       "Viper.Terminal.AskResult",        "obj<Viper.Result>(str)")
 RT_FUNC(TermGetKey,         rt_getkey_str,            "Viper.Terminal.ReadKey",           "str()")
-RT_FUNC(TermGetKeyTimeout,  rt_getkey_timeout_i32,    "Viper.Terminal.ReadKeyFor",    "str(i64)")
+RT_FUNC(TermGetKeyTimeout,  rt_getkey_timeout,        "Viper.Terminal.ReadKeyFor",    "str(i64)")
 RT_FUNC(TermInKey,          rt_inkey_str,             "Viper.Terminal.PollKey",            "str()")
 RT_FUNC(TermReadLineResult, rt_term_read_line_result, "Viper.Terminal.ReadLineResult",   "obj<Viper.Result>()")
 RT_FUNC(TermTryAsk,         rt_term_try_ask,          "Viper.Terminal.TryAsk",           "obj<Viper.Option>(str)")
@@ -394,9 +395,9 @@ RT_INTERNAL_FUNC(TermReadLine, rt_term_read_line,     "Viper.Terminal.ReadLine",
 RT_FUNC(TermBell,             rt_bell,                    "Viper.Terminal.Bell",             "void()")
 RT_FUNC(TermClear,            rt_term_cls,                "Viper.Terminal.Clear",            "void()")
 RT_FUNC(TermSetAltScreen,     rt_term_alt_screen_i32,     "Viper.Terminal.SetAltScreen",     "void(i1)")
-RT_FUNC(TermSetColor,         rt_term_color_i32,          "Viper.Terminal.SetColor",         "void(i64,i64)")
+RT_FUNC(TermSetColor,         rt_term_color,              "Viper.Terminal.SetColor",         "void(i64,i64)")
 RT_FUNC(TermSetCursorVisible, rt_term_cursor_visible_i32, "Viper.Terminal.SetCursorVisible", "void(i1)")
-RT_FUNC(TermSetPosition,      rt_term_locate_i32,         "Viper.Terminal.SetPosition",      "void(i64,i64)")
+RT_FUNC(TermSetPosition,      rt_term_locate,             "Viper.Terminal.SetPosition",      "void(i64,i64)")
 
 // Terminal buffering control
 RT_FUNC(TermBeginBatch, rt_term_begin_batch, "Viper.Terminal.BeginBatch", "void()")

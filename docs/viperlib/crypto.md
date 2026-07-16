@@ -50,13 +50,17 @@ AES utilities: authenticated AES-128-GCM/AES-256-GCM for `Bytes` and password-en
 - `Encrypt`/`Decrypt` remain as AES-CBC compatibility helpers and are also available as `Viper.Crypto.Legacy.Aes.EncryptCBC` and `DecryptCBC`. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`.
 - `EncryptStr` rejects empty passwords, derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default, and authenticates its header as AAD
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
-- `DecryptStr` can read older `[IV(16)][AES-CBC ciphertext]` payloads, but the legacy/current
-  dispatch uses the first four random IV bytes as a format discriminator. A legacy IV equal to
-  `VAG1` is misclassified; this rare framing defect is tracked in
-  [VDOC-173](../documentation-review-findings.md#vdoc-173--random-legacy-ciphertext-prefixes-can-collide-with-current-format-magic).
-- The legacy CBC string KDF uses only the first 256 password bytes. Current `VAG1` encryption uses
-  the full password; migrate successfully decrypted legacy content immediately. See
-  [VDOC-178](../documentation-review-findings.md#vdoc-178--legacy-aes-string-decryption-truncates-passwords-at-256-bytes).
+- `DecryptStr` can read older `[IV(16)][AES-CBC ciphertext]` payloads, dispatching on the first
+  four IV bytes. A legacy IV that coincidentally equals `VAG1` (~1 in 2^32) is classified as
+  current and cannot be recovered: unlike the authenticated `Cipher` formats, legacy AES-CBC is
+  unauthenticated, so there is no safe automatic fallback (retrying CBC after a GCM
+  authentication failure would return unauthenticated garbage for tampered frames). Re-encrypt
+  legacy AES-CBC string data with the current authenticated `VAG1` format or `Viper.Crypto.Cipher`.
+- The legacy CBC string KDF uses a one-byte length prefix and only the first 256 password bytes:
+  passwords of 256 bytes or longer store a zero length prefix, and long passwords sharing their
+  first 256 bytes derive the same legacy key. This cannot be changed without breaking existing
+  legacy ciphertexts. Current `VAG1`/`Cipher` encryption uses the full password with PBKDF2 —
+  re-encrypt successfully decrypted legacy content immediately.
 - String plaintexts and passwords use the stored Viper string byte length, so embedded `NUL` bytes are significant
 - CBC helpers are disabled in approved mode
 - For higher-level authenticated encryption with automatic key management, use `Viper.Crypto.Cipher` instead
@@ -184,16 +188,20 @@ Approved-mode key encryption produces:
 - **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt and a 300,000-iteration default
 - Header bytes and caller-provided AAD are authenticated by the AEAD tag
 - Decryption verifies that the AEAD backend returned exactly the expected plaintext length. New robust code should prefer `DecryptResult`/`DecryptAADResult`/`DecryptWithKeyResult`/`DecryptWithKeyAADResult`, or the `TryDecrypt*` forms when diagnostics are intentionally discarded.
-- `Decrypt()` can read older unversioned PBKDF2/HKDF payloads; new payloads use `VCP2`. Because a
-  legacy random salt/nonce can equal a current four-byte magic prefix, this compatibility is not
-  absolute; see
-  [VDOC-173](../documentation-review-findings.md#vdoc-173--random-legacy-ciphertext-prefixes-can-collide-with-current-format-magic).
+- `Decrypt()`/`DecryptWithKey()` read older unversioned payloads; new payloads use `VCP2`/`VCK2`.
+  A legacy frame's random salt/nonce can coincidentally equal a current magic prefix, but in
+  compatibility mode the decryptor falls back to the legacy interpretation whenever the
+  current-format parse fails to authenticate. That fallback is safe because the legacy Cipher
+  format is itself AEAD-authenticated (it only yields plaintext for a genuinely valid legacy
+  frame) and never runs in approved mode, so backward compatibility for authenticated Cipher
+  formats is now unconditional.
 - Approved mode rejects compatibility and legacy ciphertext formats instead of silently decrypting with non-approved algorithms
 - Password strings use their stored byte length, so embedded `NUL` bytes are part of the password
 - Password mode derives a fresh key from an independently random 16-byte salt for each message.
-  Raw-key mode instead depends on nonce uniqueness under the caller-managed key. Its current
-  32-bit cross-process prefix is unsafe for a persistent key reused across enough restarts; see
-  [VDOC-172](../documentation-review-findings.md#vdoc-172--ciphers-raw-key-nonce-construction-has-only-a-32-bit-cross-process-margin).
+  Raw-key mode uses a full 96-bit CSPRNG nonce per message (independently random across processes
+  and restarts). Per NIST SP 800-38D random-nonce guidance, keep to roughly 2^32 messages per key
+  for a negligible (~2^-32) nonce-collision probability; rotate the key before that bound for
+  very high-volume use.
 - Byte-returning Cipher/Aes registry signatures are typed as `Viper.Collections.Bytes`, so
   properties such as `.Length` resolve directly on the result.
 
@@ -384,9 +392,9 @@ empty byte sequence.
 The `Fast`, `FastBytes`, and `FastInt` methods use SipHash-2-4 with a per-process CSPRNG seed. These
 are **non-cryptographic** hashes for hash-table and partitioning use. They are not stable across
 process launches and are not suitable for signatures, passwords, MACs, or persistent content IDs.
-Approved mode disables them. A returning entropy-failure trap hook and native-MSVC concurrent first
-use can currently break the seed guarantee; see
-[VDOC-176](../documentation-review-findings.md#vdoc-176--siphash-seed-initialization-can-publish-predictable-or-racily-accessed-state).
+Approved mode disables them. The seed is initialized exactly once with full CSPRNG entropy; if the
+OS CSPRNG is unavailable the process aborts rather than falling back to a predictable key, and
+first-use seeding is data-race-free on every platform.
 
 ```rust
 module FastHashDemo;
@@ -791,10 +799,10 @@ END SUB
   and periodically reseeded from that CSPRNG.
 - Output is intended for keys, salts, nonces, tokens, and secure selection; callers must still follow each protocol's
   size, uniqueness, and encoding requirements.
-- Approved-mode DRBG access and the direct platform RNG calls are serialized/thread-safe. The
-  cached `/dev/urandom` fallback currently has an unsynchronized first-use descriptor read, so a
-  blanket concurrency guarantee is not yet valid on that path; see
-  [VDOC-175](../documentation-review-findings.md#vdoc-175--the-unix-random-fallback-has-an-unsynchronized-first-use-descriptor-read).
+- Approved-mode DRBG access and the direct platform RNG calls are serialized/thread-safe,
+  including the cached `/dev/urandom` fallback: its descriptor cache is an atomic with a
+  lock-free acquire-load fast path and a release-store initialization under the mutex, so
+  concurrent first use is data-race-free.
 
 ---
 
@@ -807,10 +815,10 @@ TLS (Transport Layer Security) client for encrypted TCP connections. Uses TLS 1.
 **Constructors:**
 
 - `Viper.Crypto.Tls.ConnectResult(host, port)` - Connect with TLS and return `Ok(Tls)` or `Err(message)`
-- `Viper.Crypto.Tls.ConnectForResult(host, port, timeoutMs)` - Connect with a per-address/per-I/O timeout and return `Ok(Tls)` or `Err(message)`
+- `Viper.Crypto.Tls.ConnectForResult(host, port, timeoutMs)` - Connect with an overall connection deadline (post-connect I/O then uses it per-operation) and return `Ok(Tls)` or `Err(message)`
 - `Viper.Crypto.Tls.ConnectOptionsResult(host, port, caFile, alpn, verifyCert, timeoutMs)` - Connect with explicit trust bundle, ALPN preferences, verification policy, and timeout as a `Result`
 - `Viper.Crypto.Tls.Connect(host, port)` - Connect with TLS to host:port
-- `Viper.Crypto.Tls.ConnectFor(host, port, timeoutMs)` - Connect with a per-address/per-I/O timeout
+- `Viper.Crypto.Tls.ConnectFor(host, port, timeoutMs)` - Connect with an overall connection deadline (post-connect I/O then uses it per-operation)
 - `Viper.Crypto.Tls.ConnectOptions(host, port, caFile, alpn, verifyCert, timeoutMs)` - Connect with explicit trust bundle, ALPN preferences, verification policy, and timeout. Pass `""` for default CA bundle or no ALPN.
 
 ### Properties
@@ -867,10 +875,11 @@ The TLS implementation uses:
 - **Connection state:** `IsOpen` is true only while the TLS session is in the connected state
 - **Verification switch:** `verifyCert=false` skips trust-chain and hostname policy for local
   testing, but the TLS 1.3 CertificateVerify proof of private-key possession is still checked
-- **Timeout scope:** the configured value is reused for each resolved-address attempt and individual
-  socket read/write; it is not an overall connection or handshake deadline. Nonpositive values use
-  the 30-second default. See
-  [VDOC-179](../documentation-review-findings.md#vdoc-179--tls-connectfor-applies-its-timeout-repeatedly-instead-of-as-a-deadline).
+- **Timeout scope:** the configured value is one overall connection deadline covering DNS
+  resolution, every resolved-address connect attempt, and the TLS handshake — `ConnectFor(...,
+  5000)` completes (or fails) within about five seconds regardless of how many addresses DNS
+  returns. After the connection is established it becomes the per-operation timeout for
+  subsequent record reads/writes. Nonpositive values use the 30-second default.
 - **Concurrency:** TLS sessions contain mutable record buffers, keys, and sequence counters without
   an internal lock. Serialize all operations on one connection.
 - **Approved mode:** Current public TLS is compatibility-mode only because the wire handshake is still X25519/SHA-256 based. Approved mode fails closed for `Viper.Crypto.Tls` until the P-256/P-384 ECDHE TLS profile is wired into ClientHello, ServerHello, key schedule, and interop tests. The native P-256 ECDH primitive exists for that work.
@@ -921,7 +930,7 @@ DIM connResult AS OBJECT = Viper.Crypto.Tls.ConnectForResult("slow-server.com", 
 
 IF connResult.IsOk THEN
     DIM conn AS Viper.Crypto.Tls = connResult.Unwrap()
-    ' Each address attempt and later TLS I/O uses this timeout independently.
+    ' The 5000ms is an overall connect deadline; later I/O uses it per-operation.
     conn.SendStr("Hello, TLS!")
     DIM response AS STRING = conn.RecvStr(1024)
     conn.Close()
@@ -959,8 +968,9 @@ TLS wrapper methods use return values for routine failures:
 - `Connect()` / `ConnectFor()` / `ConnectOptions()` remain available for compatibility and return `NULL` on setup failure
 - `Error()` remains available as a compatibility diagnostic for an existing connection object
 - `ConnectFor()` rejects timeout values too large to fit the runtime socket timeout
-- A timeout at or below zero selects the 30-second default. Positive timeouts apply independently
-  to each address attempt and subsequent read/write operation, not to the whole call.
+- A timeout at or below zero selects the 30-second default. A positive timeout is one overall
+  connection deadline (resolution + all address attempts + handshake); after connecting it is the
+  per-operation read/write timeout.
 - Host strings containing embedded `NUL` bytes are rejected instead of being truncated
 - `Send()` / `SendStr()` return a negative value if the connection is closed or invalid
 - `Recv()` returns an empty `Bytes` on clean EOF and `NULL` on receive errors. `RecvStr()` returns an
@@ -1055,11 +1065,12 @@ salt, and derived key.
 - `Verify` parses the stored hash string to extract parameters before re-deriving
 - `Verify` accepts both `SCRYPT$...` and `PBKDF2$...` records in compatibility mode. Approved mode
   rejects scrypt records and verifies only PBKDF2.
-- `NeedsRehash` fully validates the stored numeric/Base64 fields. Approved mode accepts well-formed
-  PBKDF2 hashes at or above 300,000 iterations. Compatibility mode recommends upgrading every
-  PBKDF2 record and currently considers only the exact default scrypt tuple (`N=16384`, `r=8`,
-  `p=1`) current; even a stronger custom tuple is marked stale. This policy bug is tracked in
-  [VDOC-174](../documentation-review-findings.md#vdoc-174--passwordneedsrehash-marks-stronger-custom-scrypt-hashes-as-stale).
+- `NeedsRehash` fully validates the stored numeric/Base64 fields and uses a monotonic policy
+  comparison. Approved mode accepts well-formed PBKDF2 hashes at or above 300,000 iterations.
+  Compatibility mode recommends upgrading PBKDF2 records and marks a scrypt hash stale only when
+  any of its cost parameters falls *below* the policy minimum (`N=16384`, `r=8`, `p=1`);
+  deliberately stronger tuples (a larger `N`, `r`, or `p`) are considered current so they are not
+  rehashed — and downgraded — on every login.
 - `Verify` returns `false` for malformed, null, or non-canonical stored hashes instead of trapping
 - Stored password hashes require strict Base64 salt/hash fields with the expected decoded lengths
 - Use `HashIters` to increase iterations beyond the default when you have the latency budget
@@ -1103,7 +1114,7 @@ PRINT "Wrong: "; Viper.Crypto.Password.Verify("wrong", hash)        ' Output: 0
 DIM strongHash AS STRING = Viper.Crypto.Password.HashIters("secret123", 500000)
 PRINT "Strong hash: "; strongHash
 PRINT "Verify: "; Viper.Crypto.Password.Verify("secret123", strongHash)  ' Output: 1
-PRINT "Needs rehash: "; Viper.Crypto.Password.NeedsRehash(strongHash)    ' 1 in compatibility mode
+PRINT "Needs rehash: "; Viper.Crypto.Password.NeedsRehash(strongHash)    ' 0 — stronger than the policy minimum
 ```
 
 ### Security Recommendations

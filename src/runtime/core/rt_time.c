@@ -15,8 +15,10 @@
 //   - Sleep uses nanosleep() on POSIX and Sleep() on Windows; nanosleep is
 //     retried automatically on EINTR to sleep the full requested duration.
 //   - The tick counter prefers CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter
-//     (Windows). POSIX falls back to CLOCK_REALTIME when the monotonic query fails,
-//     so the fallback can move with wall-clock adjustments (VDOC-223).
+//     (Windows). POSIX falls back to CLOCK_REALTIME when the monotonic query fails;
+//     the fallback reading is passed through a process-local atomic floor (CAS-max)
+//     so the exposed sequence stays non-decreasing even if wall-clock time is
+//     adjusted backward (VDOC-223). The monotonic fast path holds no shared state.
 //   - Negative sleep durations are treated as 0 (no-op).
 //   - All functions are thread-safe; each call is independent with no shared
 //     mutable state.
@@ -33,6 +35,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
+
+#include "rt_atomic_compat.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -90,6 +94,29 @@ static int64_t rt_time_scale_seconds(int64_t seconds, int64_t scale, int64_t fra
         return 0;
     }
     return result;
+}
+
+/// @brief Clamp a wall-clock fallback reading up to a process-local floor.
+/// @details The CLOCK_REALTIME fallback (used only when CLOCK_MONOTONIC is
+///          unavailable) can jump backward when the system clock is adjusted,
+///          which would let elapsed calculations go negative. Routing the
+///          fallback reading through a per-call-site atomic floor makes the
+///          returned sequence non-decreasing: a lock-free CAS-max advances the
+///          floor when the candidate is newer and otherwise returns the retained
+///          floor (VDOC-223). The monotonic fast path never touches this state.
+///          Shared with the Stopwatch and Countdown fallbacks so all three
+///          Viper.Time surfaces ratchet identically.
+/// @param floor Process-local monotonic floor for this scale/call site.
+/// @param candidate Freshly sampled fallback value.
+/// @return The greater of the candidate and the retained floor.
+int64_t rt_time_monotonic_ratchet(int64_t *floor, int64_t candidate) {
+    int64_t prev = __atomic_load_n(floor, __ATOMIC_RELAXED);
+    while (candidate > prev) {
+        if (__atomic_compare_exchange_n(floor, &prev, candidate, 0, __ATOMIC_RELAXED,
+                                        __ATOMIC_RELAXED))
+            return candidate;
+    }
+    return prev;
 }
 
 #if defined(_WIN32)
@@ -312,10 +339,11 @@ void rt_sleep_ms(int32_t ms) {
 /// ```
 ///
 /// @return Milliseconds since the selected clock's epoch, or 0 on error. The
-///         realtime fallback is not monotonic.
+///         realtime fallback is ratcheted to stay non-decreasing.
 ///
 /// @note Uses clock_gettime() with CLOCK_MONOTONIC.
-/// @note Falls back to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable.
+/// @note Falls back to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable; that
+///       fallback is clamped to a process-local floor so it never decreases.
 /// @note Resolution is typically 1ms or better.
 ///
 /// @see rt_clock_ticks_us For microsecond resolution
@@ -330,9 +358,13 @@ int64_t rt_timer_ms(void) {
     }
 #endif
 
-    // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable
+    // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable. Ratchet the
+    // wall-clock reading so the exposed sequence never decreases (VDOC-223).
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000LL, (int64_t)ts.tv_nsec / 1000000LL);
+        static int64_t floor_ms = 0;
+        int64_t candidate =
+            rt_time_scale_seconds((int64_t)ts.tv_sec, 1000LL, (int64_t)ts.tv_nsec / 1000000LL);
+        return rt_time_monotonic_ratchet(&floor_ms, candidate);
     }
 
     // Last resort: return 0 if all clock sources fail
@@ -353,9 +385,11 @@ int64_t rt_timer_ms(void) {
 /// ```
 ///
 /// @return Microseconds since the selected clock's epoch, or 0 on error. The
-///         realtime fallback is not monotonic.
+///         realtime fallback is ratcheted to stay non-decreasing.
 ///
 /// @note Uses clock_gettime() with CLOCK_MONOTONIC.
+/// @note Falls back to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable; that
+///       fallback is clamped to a process-local floor so it never decreases.
 /// @note 1 millisecond = 1,000 microseconds.
 /// @note Typical resolution is 1 microsecond on modern systems.
 ///
@@ -371,9 +405,13 @@ int64_t rt_clock_ticks_us(void) {
     }
 #endif
 
-    // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable
+    // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable. Ratchet the
+    // wall-clock reading so the exposed sequence never decreases (VDOC-223).
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
+        static int64_t floor_us = 0;
+        int64_t candidate =
+            rt_time_scale_seconds((int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
+        return rt_time_monotonic_ratchet(&floor_us, candidate);
     }
 
     // Last resort: return 0 if all clock sources fail

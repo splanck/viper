@@ -27,8 +27,13 @@
 extern "C" {
 #endif
 
+/// @brief Number of spatial voices evicted since process start or last reset.
 int64_t rt_audio_diagnostics_get_spatial_voice_evictions(void);
+
+/// @brief Reset the spatial-voice eviction counter to zero.
 void rt_audio_diagnostics_reset_spatial_voice_evictions(void);
+
+/// @brief Record one spatial-voice eviction (saturates at INT64_MAX).
 void rt_audio_diag_record_spatial_voice_evicted(void);
 
 #ifdef __cplusplus

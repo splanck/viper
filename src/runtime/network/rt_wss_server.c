@@ -90,6 +90,9 @@ extern char *rt_ws_compute_accept_key(const char *key_cstr); // from rt_websocke
 //=============================================================================
 
 #define WS_SERVER_MAX_CLIENTS 128
+#define WS_MAX_HANDSHAKE_HEADERS 100
+#define WS_MAX_HANDSHAKE_LINE_BYTES (64u * 1024u)
+#define WS_CLIENT_SEND_TIMEOUT_MS 30000
 
 // WebSocket opcodes (duplicated from rt_websocket.c to avoid dependency)
 #define WS_OP_TEXT 0x01
@@ -113,14 +116,21 @@ static int64_t wss_server_default_worker_count(void) {
     int64_t cores = rt_machine_cores();
     if (cores < 1)
         cores = 1;
-    if (cores > 1024)
-        cores = 1024;
-    return cores;
+    // Each serviced client occupies a worker for its lifetime, so give small
+    // machines a floor and everyone headroom; the cap bounds thread count.
+    int64_t workers = cores * 2;
+    if (workers < 8)
+        workers = 8;
+    if (workers > 1024)
+        workers = 1024;
+    return workers;
 }
 
 typedef struct {
     void *tcp; // TLS connection
     bool active;
+    ws_mutex_t io; ///< Per-client write lock: broadcasts and worker control
+                   ///< frames serialize per socket, not globally (VDOC-149).
 } ws_client_t;
 
 typedef struct {
@@ -135,9 +145,8 @@ typedef struct {
     ws_client_t clients[WS_SERVER_MAX_CLIENTS];
     int client_count;
     ws_mutex_t lock;
-    ws_mutex_t io_lock;
     bool lock_initialized;
-    bool io_lock_initialized;
+    bool client_io_initialized;
 #ifdef _WIN32
     HANDLE accept_thread;
 #else
@@ -229,6 +238,11 @@ static rt_string ws_tls_recv_line(void *tcp) {
         if (ch == '\n')
             break;
         if (ch != '\r') {
+            if (len + 1 >= WS_MAX_HANDSHAKE_LINE_BYTES) {
+                // Bounded handshake parsing: reject rather than grow forever.
+                free(buf);
+                return NULL;
+            }
             if (len + 1 >= cap) {
                 size_t next_cap = cap * 2;
                 char *grown = (char *)realloc(buf, next_cap);
@@ -390,8 +404,12 @@ static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
     int saw_connection = 0;
     int saw_version = 0;
 
-    // Read headers
+    // Read headers (bounded: an unauthenticated peer must not be able to
+    // stream unlimited header lines at the handshake parser).
+    int header_lines = 0;
     while (1) {
+        if (++header_lines > WS_MAX_HANDSHAKE_HEADERS)
+            return 0;
         rt_string hdr = ws_tls_recv_line(tcp);
         if (!hdr)
             return 0;
@@ -510,17 +528,19 @@ static void rt_ws_server_finalize(void *obj) {
     if (s->worker_pool && rt_obj_release_check0(s->worker_pool))
         rt_obj_free(s->worker_pool);
     s->worker_pool = NULL;
-    if (s->io_lock_initialized)
-        WS_MUTEX_DESTROY(&s->io_lock);
+    if (s->client_io_initialized) {
+        for (int i = 0; i < WS_SERVER_MAX_CLIENTS; i++)
+            WS_MUTEX_DESTROY(&s->clients[i].io);
+    }
     if (s->lock_initialized)
         WS_MUTEX_DESTROY(&s->lock);
 }
 
 static void ws_server_remove_client(rt_ws_server_impl *s, int slot, void *tcp) {
-    if (!s || slot < 0)
+    if (!s || slot < 0 || slot >= WS_SERVER_MAX_CLIENTS)
         return;
 
-    WS_MUTEX_LOCK(&s->io_lock);
+    WS_MUTEX_LOCK(&s->clients[slot].io);
     WS_MUTEX_LOCK(&s->lock);
     if (slot < s->client_count && s->clients[slot].tcp == tcp) {
         ws_release_tcp(&s->clients[slot].tcp);
@@ -529,17 +549,19 @@ static void ws_server_remove_client(rt_ws_server_impl *s, int slot, void *tcp) {
         ws_release_tcp(&tcp);
     }
     WS_MUTEX_UNLOCK(&s->lock);
-    WS_MUTEX_UNLOCK(&s->io_lock);
+    WS_MUTEX_UNLOCK(&s->clients[slot].io);
 }
 
+/// @brief Send a frame under the client's own io lock so a slow TLS peer
+///        only stalls its own send, never other clients' (VDOC-149).
 static int ws_server_send_locked(
-    rt_ws_server_impl *s, void *tcp, uint8_t opcode, const void *data, size_t len) {
+    rt_ws_server_impl *s, int slot, void *tcp, uint8_t opcode, const void *data, size_t len) {
     int ok = 0;
-    if (!s || !tcp)
+    if (!s || !tcp || slot < 0 || slot >= WS_SERVER_MAX_CLIENTS)
         return 0;
-    WS_MUTEX_LOCK(&s->io_lock);
+    WS_MUTEX_LOCK(&s->clients[slot].io);
     ok = ws_server_send_frame(tcp, opcode, data, len);
-    WS_MUTEX_UNLOCK(&s->io_lock);
+    WS_MUTEX_UNLOCK(&s->clients[slot].io);
     return ok;
 }
 
@@ -547,7 +569,7 @@ static void ws_client_run(rt_ws_server_impl *s, int slot, void *tcp) {
     if (!s || !tcp || slot < 0)
         return;
 
-    while (s->running && ws_tls_is_open(tcp)) {
+    while (ws_server_is_running_locked(s) && ws_tls_is_open(tcp)) {
         uint8_t fin = 0;
         uint8_t opcode = 0;
         uint8_t *data = NULL;
@@ -557,7 +579,7 @@ static void ws_client_run(rt_ws_server_impl *s, int slot, void *tcp) {
             break;
 
         if (opcode == WS_OP_PING) {
-            if (!ws_server_send_locked(s, tcp, WS_OP_PONG, data, len)) {
+            if (!ws_server_send_locked(s, slot, tcp, WS_OP_PONG, data, len)) {
                 free(data);
                 break;
             }
@@ -571,27 +593,27 @@ static void ws_client_run(rt_ws_server_impl *s, int slot, void *tcp) {
         }
 
         if (opcode == WS_OP_CLOSE) {
-            ws_server_send_locked(s, tcp, WS_OP_CLOSE, data, len);
+            ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, data, len);
             free(data);
             break;
         }
 
         if (opcode == WS_OP_CONTINUATION) {
             free(data);
-            ws_server_send_locked(s, tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+            ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, "\x03\xEA", 2);
             break;
         }
 
         if (opcode == WS_OP_TEXT && fin && !ws_is_valid_utf8(data, len)) {
             free(data);
-            ws_server_send_locked(s, tcp, WS_OP_CLOSE, "\x03\xEF", 2);
+            ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, "\x03\xEF", 2);
             break;
         }
 
         free(data);
 
         if (!fin) {
-            while (s->running && ws_tls_is_open(tcp)) {
+            while (ws_server_is_running_locked(s) && ws_tls_is_open(tcp)) {
                 uint8_t next_fin = 0;
                 uint8_t next_opcode = 0;
                 uint8_t *next_data = NULL;
@@ -601,7 +623,7 @@ static void ws_client_run(rt_ws_server_impl *s, int slot, void *tcp) {
                     goto done;
 
                 if (next_opcode == WS_OP_PING) {
-                    int ok = ws_server_send_locked(s, tcp, WS_OP_PONG, next_data, next_len);
+                    int ok = ws_server_send_locked(s, slot, tcp, WS_OP_PONG, next_data, next_len);
                     free(next_data);
                     if (!ok)
                         goto done;
@@ -614,14 +636,14 @@ static void ws_client_run(rt_ws_server_impl *s, int slot, void *tcp) {
                 }
 
                 if (next_opcode == WS_OP_CLOSE) {
-                    ws_server_send_locked(s, tcp, WS_OP_CLOSE, next_data, next_len);
+                    ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, next_data, next_len);
                     free(next_data);
                     goto done;
                 }
 
                 if (next_opcode != WS_OP_CONTINUATION) {
                     free(next_data);
-                    ws_server_send_locked(s, tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+                    ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, "\x03\xEA", 2);
                     goto done;
                 }
 
@@ -662,6 +684,23 @@ static void ws_accept_task_run(void *arg) {
         return;
     }
 
+    // Bound writes to this client so a non-reading peer cannot block a
+    // broadcast (or Stop) indefinitely.
+    {
+        int fd = rt_tls_get_socket(tls);
+        if (fd >= 0) {
+#ifdef _WIN32
+            DWORD tv = (DWORD)WS_CLIENT_SEND_TIMEOUT_MS;
+            setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+#else
+            struct timeval tv;
+            tv.tv_sec = WS_CLIENT_SEND_TIMEOUT_MS / 1000;
+            tv.tv_usec = (WS_CLIENT_SEND_TIMEOUT_MS % 1000) * 1000;
+            setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+        }
+    }
+
     WS_MUTEX_LOCK(&s->lock);
     for (int i = 0; i < s->client_count; i++) {
         if (!s->clients[i].active) {
@@ -698,11 +737,11 @@ static void *ws_accept_loop(void *arg)
 {
     rt_ws_server_impl *s = (rt_ws_server_impl *)arg;
 
-    while (s->running) {
+    while (ws_server_is_running_locked(s)) {
         void *tcp = rt_tcp_server_accept_for(s->tcp_server, 1000);
         if (!tcp)
             continue;
-        if (!s->running) {
+        if (!ws_server_is_running_locked(s)) {
             ws_release_raw_tcp(&tcp);
             break;
         }
@@ -732,11 +771,11 @@ static void *ws_accept_loop(void *arg)
 // Public API
 //=============================================================================
 
-/// @brief Construct a WebSocket server bound (lazily) to `port`. Validates port range (1–65535)
+/// @brief Construct a WebSocket server bound (lazily) to `port`. Validates port range (0–65535; 0 requests an OS-assigned ephemeral port reported by `Port` after Start)
 /// up front; allocates the impl with mutex + finalizer, but does NOT bind the TCP socket — that
 /// happens on `_start`. Returns a GC-managed handle.
 void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
-    if (port < 1 || port > 65535) {
+    if (port < 0 || port > 65535) {
         rt_trap("WssServer: invalid port");
         return NULL;
     }
@@ -757,8 +796,20 @@ void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
             rt_obj_free(s);
         return NULL;
     }
-    s->cert_file = strdup(rt_string_cstr(cert_file));
-    s->key_file = strdup(rt_string_cstr(key_file));
+    const char *cert_cstr = cert_file ? rt_string_cstr(cert_file) : NULL;
+    const char *key_cstr = key_file ? rt_string_cstr(key_file) : NULL;
+    int64_t cert_len = cert_file ? rt_str_len(cert_file) : -1;
+    int64_t key_len = key_file ? rt_str_len(key_file) : -1;
+    if (!cert_cstr || !key_cstr || cert_len <= 0 || key_len <= 0 ||
+        memchr(cert_cstr, '\0', (size_t)cert_len) != NULL ||
+        memchr(key_cstr, '\0', (size_t)key_len) != NULL) {
+        rt_trap("WssServer: invalid certificate or key path");
+        if (rt_obj_release_check0(s))
+            rt_obj_free(s);
+        return NULL;
+    }
+    s->cert_file = strdup(cert_cstr);
+    s->key_file = strdup(key_cstr);
     if (!s->cert_file || !s->key_file) {
         rt_trap("WssServer: failed to copy certificate paths");
         if (rt_obj_release_check0(s))
@@ -781,8 +832,9 @@ void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
     }
     WS_MUTEX_INIT(&s->lock);
     s->lock_initialized = true;
-    WS_MUTEX_INIT(&s->io_lock);
-    s->io_lock_initialized = true;
+    for (int i = 0; i < WS_SERVER_MAX_CLIENTS; i++)
+        WS_MUTEX_INIT(&s->clients[i].io);
+    s->client_io_initialized = true;
     return s;
 }
 
@@ -813,7 +865,9 @@ void rt_wss_server_start(void *obj) {
             return;
         }
     }
+    WS_MUTEX_LOCK(&s->lock);
     s->running = true;
+    WS_MUTEX_UNLOCK(&s->lock);
 
 #ifdef _WIN32
     s->accept_thread = CreateThread(NULL, 0, ws_accept_loop, s, 0, NULL);
@@ -822,7 +876,9 @@ void rt_wss_server_start(void *obj) {
     s->thread_started = pthread_create(&s->accept_thread, NULL, ws_accept_loop, s) == 0;
 #endif
     if (!s->thread_started) {
+        WS_MUTEX_LOCK(&s->lock);
         s->running = false;
+        WS_MUTEX_UNLOCK(&s->lock);
         rt_tcp_server_close(s->tcp_server);
         if (rt_obj_release_check0(s->tcp_server))
             rt_obj_free(s->tcp_server);
@@ -839,7 +895,13 @@ void rt_wss_server_stop(void *obj) {
     if (!obj)
         return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
-    s->running = false;
+    if (s->lock_initialized) {
+        WS_MUTEX_LOCK(&s->lock);
+        s->running = false;
+        WS_MUTEX_UNLOCK(&s->lock);
+    } else {
+        s->running = false;
+    }
 
     if (s->tcp_server) {
         rt_tcp_server_close(s->tcp_server);
@@ -858,16 +920,18 @@ void rt_wss_server_stop(void *obj) {
         s->thread_started = false;
     }
 
-    WS_MUTEX_LOCK(&s->io_lock);
-    WS_MUTEX_LOCK(&s->lock);
-    for (int i = 0; i < s->client_count; i++) {
-        if (s->clients[i].active && s->clients[i].tcp)
+    for (int i = 0; i < WS_SERVER_MAX_CLIENTS; i++) {
+        WS_MUTEX_LOCK(&s->clients[i].io);
+        WS_MUTEX_LOCK(&s->lock);
+        if (i < s->client_count && s->clients[i].active && s->clients[i].tcp)
             ws_release_tcp(&s->clients[i].tcp);
         s->clients[i].active = false;
+        WS_MUTEX_UNLOCK(&s->lock);
+        WS_MUTEX_UNLOCK(&s->clients[i].io);
     }
+    WS_MUTEX_LOCK(&s->lock);
     s->client_count = 0;
     WS_MUTEX_UNLOCK(&s->lock);
-    WS_MUTEX_UNLOCK(&s->io_lock);
 
     if (s->worker_pool)
         rt_threadpool_wait(s->worker_pool);
@@ -915,7 +979,8 @@ void rt_wss_server_broadcast(void *obj, rt_string message) {
         return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     const char *msg = rt_string_cstr(message);
-    size_t len = msg ? strlen(msg) : 0;
+    int64_t len64 = message ? rt_str_len(message) : 0;
+    size_t len = (msg && len64 > 0) ? (size_t)len64 : 0; // full byte length: embedded NUL is data
     ws_broadcast_target_t targets[WS_SERVER_MAX_CLIENTS];
     int target_count = 0;
 
@@ -929,7 +994,7 @@ void rt_wss_server_broadcast(void *obj, rt_string message) {
     for (int i = 0; i < target_count; i++) {
         int should_send = 0;
         int ok = 1;
-        WS_MUTEX_LOCK(&s->io_lock);
+        WS_MUTEX_LOCK(&s->clients[targets[i].slot].io);
         WS_MUTEX_LOCK(&s->lock);
         if (targets[i].slot < s->client_count && s->clients[targets[i].slot].active &&
             s->clients[targets[i].slot].tcp == targets[i].tcp && ws_tls_is_open(targets[i].tcp)) {
@@ -947,7 +1012,7 @@ void rt_wss_server_broadcast(void *obj, rt_string message) {
             s->clients[targets[i].slot].active = false;
         }
         WS_MUTEX_UNLOCK(&s->lock);
-        WS_MUTEX_UNLOCK(&s->io_lock);
+        WS_MUTEX_UNLOCK(&s->clients[targets[i].slot].io);
     }
 }
 
@@ -979,7 +1044,7 @@ void rt_wss_server_broadcast_bytes(void *obj, void *data) {
     for (int i = 0; i < target_count; i++) {
         int should_send = 0;
         int ok = 1;
-        WS_MUTEX_LOCK(&s->io_lock);
+        WS_MUTEX_LOCK(&s->clients[targets[i].slot].io);
         WS_MUTEX_LOCK(&s->lock);
         if (targets[i].slot < s->client_count && s->clients[targets[i].slot].active &&
             s->clients[targets[i].slot].tcp == targets[i].tcp && ws_tls_is_open(targets[i].tcp)) {
@@ -997,7 +1062,7 @@ void rt_wss_server_broadcast_bytes(void *obj, void *data) {
             s->clients[targets[i].slot].active = false;
         }
         WS_MUTEX_UNLOCK(&s->lock);
-        WS_MUTEX_UNLOCK(&s->io_lock);
+        WS_MUTEX_UNLOCK(&s->clients[targets[i].slot].io);
     }
 }
 
@@ -1180,7 +1245,8 @@ static WSS_MAYBE_UNUSED void rt_wss_server_client_send(void *tcp, rt_string mess
     if (!tcp)
         return;
     const char *msg = rt_string_cstr(message);
-    size_t len = msg ? strlen(msg) : 0;
+    int64_t len64 = message ? rt_str_len(message) : 0;
+    size_t len = (msg && len64 > 0) ? (size_t)len64 : 0; // full byte length: embedded NUL is data
     if (!ws_server_send_frame(tcp, WS_OP_TEXT, msg, len))
         rt_tls_close((rt_tls_session_t *)tcp);
 }

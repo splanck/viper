@@ -76,7 +76,18 @@ void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
 const char *rt_trap_get_error(void);
 
+// When set, vm_trap RECORDS and RETURNS (like an embedder hook that resumes)
+// instead of aborting — this exercises the post-trap fall-through guards
+// (VDOC-200). No trap recovery (setjmp) is installed in that mode, so control
+// really does return through rt_trap into the runtime function under test.
+bool g_trap_returns = false;
+const char *g_last_returning_trap = nullptr;
+
 void vm_trap(const char *msg) {
+    if (g_trap_returns) {
+        g_last_returning_trap = msg;
+        return;
+    }
     rt_abort(msg);
 }
 }
@@ -476,6 +487,27 @@ int main() {
     expect_i64_handle_result(call_soundbank_count_result, kSoundBankClassId, 1, 0);
     expect_i64_handle_result(call_playlist_len_result, kPlaylistClassId, 1, 0);
     expect_i64_handle_result(call_musicgen_bpm_result, kMusicGenClassId, 1, 0);
+
+    // VDOC-200: under a RETURNING trap hook (no setjmp recovery), the Random
+    // instance methods must NOT dereference a wrong-class/null receiver — they
+    // trap and return a safe sentinel instead of crashing.
+    {
+        g_trap_returns = true;
+        void *fake = make_fake(RT_SEQ_CLASS_ID, 1); // wrong class for Random
+        g_last_returning_trap = nullptr;
+        assert(rt_rnd_method(fake) == 0.0);
+        assert(g_last_returning_trap != nullptr);
+        assert(rt_rand_int_method(fake, 10) == 0);
+        assert(rt_rand_range_method(fake, 1, 6) == 0);
+        rt_randomize_i64_method(fake, 42); // must not crash
+        // A null receiver is equally safe.
+        assert(rt_rnd_method(nullptr) == 0.0);
+        assert(rt_rand_int_method(nullptr, 10) == 0);
+        assert(rt_rand_range_method(nullptr, 1, 6) == 0);
+        rt_randomize_i64_method(nullptr, 42);
+        release_fake(fake);
+        g_trap_returns = false;
+    }
 
     std::printf("Handle validation tests: all passed\n");
     return 0;

@@ -26,6 +26,9 @@ extern "C" {
 #endif
 
 /// @brief Asynchronously connect to host:port. Returns a Future that resolves to a Tcp object.
+/// @brief Configure the shared worker-pool size (before the first async call).
+void rt_async_socket_set_pool_size(int64_t size);
+
 void *rt_async_connect(rt_string host, int64_t port);
 
 /// @brief Asynchronously connect to host:port with an explicit timeout.

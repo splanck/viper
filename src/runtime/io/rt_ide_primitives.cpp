@@ -28,6 +28,8 @@
 #include "rt_trap.h"
 #include "rt_watcher.h"
 
+#include "rt_hash_util.h" // rt_keyed_hash_bytes for unpredictable sidecar names (VDOC-196)
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -310,8 +312,27 @@ bool pathGlobMatch(std::string_view text, std::string_view pattern) {
             return ti == text.size();
         if (pi + 1 < pattern.size() && pattern[pi] == '*' && pattern[pi + 1] == '*') {
             size_t next = pi + 2;
-            if (next < pattern.size() && pattern[next] == '/')
+            bool hadSlash = false;
+            if (next < pattern.size() && pattern[next] == '/') {
                 next++;
+                hadSlash = true;
+            }
+            if (hadSlash) {
+                // `**/` consumes zero or more COMPLETE path components, so the
+                // remainder may only begin at a component boundary — the current
+                // position (zero components) or immediately after a '/'. Trying
+                // it at every byte offset let a pattern like `**/bar` match
+                // `foobar` mid-component (VDOC-192).
+                for (size_t i = ti; i <= text.size(); i++) {
+                    if (i == ti || text[i - 1] == '/') {
+                        if (rec(i, next))
+                            return true;
+                    }
+                }
+                return false;
+            }
+            // A bare `**` (no trailing slash, e.g. `a/**`) matches any run of
+            // characters including separators.
             for (size_t i = ti; i <= text.size(); i++) {
                 if (rec(i, next))
                     return true;
@@ -421,8 +442,7 @@ static void pruneGitignoreCacheLocked() {
 }
 
 /// @brief Return a file modification time truncated to whole seconds.
-/// @details This coarse value is used as the `.gitignore` cache key, so two rewrites within the
-///          same timestamp second can leave cached patterns stale (VDOC-193).
+/// @details Used for the human-facing `modified` field in enumeration maps.
 int64_t fileTimeSeconds(const fs::path &path) {
 #if RT_PLATFORM_WINDOWS
     struct _stat64i32 st{};
@@ -435,6 +455,47 @@ int64_t fileTimeSeconds(const fs::path &path) {
         return -1;
 #endif
     return static_cast<int64_t>(st.st_mtime);
+}
+
+/// @brief Return a content-derived cache identity for a `.gitignore` file.
+/// @details Hashes the raw file bytes (with the length folded in), so ANY edit
+///          changes the identity and invalidates the cache regardless of the
+///          modification timestamp's resolution — a whole-second mtime missed a
+///          same-second rewrite entirely (VDOC-193). `.gitignore` files are
+///          small, so reading them to hash is cheap. Returns -1 when the file
+///          does not exist (so callers keep treating a negative result as "no
+///          `.gitignore`").
+int64_t gitignoreCacheIdentity(const fs::path &path) {
+    std::error_code ec;
+    if (!fs::exists(path, ec) || ec)
+        return -1;
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return -1;
+
+    uint64_t h = 1469598103934665603ULL; // FNV-1a 64-bit offset basis
+    const uint64_t prime = 1099511628211ULL;
+    char buf[4096];
+    uint64_t total = 0;
+    while (in.good()) {
+        in.read(buf, sizeof(buf));
+        std::streamsize got = in.gcount();
+        for (std::streamsize i = 0; i < got; ++i) {
+            h ^= static_cast<unsigned char>(buf[i]);
+            h *= prime;
+        }
+        total += static_cast<uint64_t>(got);
+    }
+    // Fold the length so a truncation that leaves a hash-colliding prefix still
+    // changes the identity.
+    for (int i = 0; i < 8; ++i) {
+        h ^= (total >> (i * 8)) & 0xFFu;
+        h *= prime;
+    }
+    // Mask to non-negative so a present file never collides with the -1
+    // "absent" sentinel.
+    return static_cast<int64_t>(h & 0x7FFFFFFFFFFFFFFFULL);
 }
 
 /// @brief Mix one byte into a workspace file-index fingerprint.
@@ -501,7 +562,10 @@ std::vector<std::string> cachedGitignorePatterns(const fs::path &root) {
     if (ec)
         key = normalizeSlashes(root.lexically_normal().string());
 
-    const int64_t modified = fileTimeSeconds(root / ".gitignore");
+    // Use a high-resolution identity (mtime sec+subsec, size, inode) rather
+    // than a whole-second mtime, so a same-second `.gitignore` rewrite is not
+    // served from a stale cache (VDOC-193).
+    const int64_t modified = gitignoreCacheIdentity(root / ".gitignore");
     {
         GitignoreCacheLockGuard lock;
         for (GitignoreCacheEntry *entry = g_gitignoreCacheHead; entry; entry = entry->next) {
@@ -1631,12 +1695,26 @@ void *rt_asset_resolver_resolve(rt_string scene_path_s,
             projectRoot = ".";
         projectRoot = fs::absolute(projectRoot).lexically_normal();
 
+        // A relative scene path is project-relative, not process-CWD-relative:
+        // base it under projectRoot so the same project resolves identically no
+        // matter what the editor's current directory is (VDOC-197).
+        if (!scenePath.empty() && scenePath.is_relative())
+            scenePath = (projectRoot / scenePath).lexically_normal();
+
         mapSetStr(result, "path", "");
         mapSetStr(result, "displayPath", assetPath);
         mapSetStr(result, "source", "missing");
         mapSetStr(result, "diagnostic", "");
         rt_map_set_bool(result, rt_const_cstr("exists"), 0);
         rt_map_set_bool(result, rt_const_cstr("found"), 0);
+
+        // An empty asset name must not resolve to the project directory itself
+        // (`projectRoot / "" == projectRoot`, which exists) — reject it up front
+        // (VDOC-197).
+        if (assetPath.empty()) {
+            mapSetStr(result, "diagnostic", "empty asset name");
+            return result;
+        }
 
         std::vector<std::pair<std::string, fs::path>> candidates;
         fs::path asset(assetPath);
@@ -1702,6 +1780,12 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
         std::string section;
         void *sectionMap = nullptr;
         std::string sectionKind;
+        // True while inside an UNKNOWN [section]: its body directives must be
+        // ignored (with a diagnostic), not applied to the top level. Without
+        // this, `sectionMap == nullptr` was ambiguous between "top level" and
+        // "inside an unknown section", so unknown-section directives hijacked
+        // top-level defaults like `entry` (VDOC-194).
+        bool inUnknownSection = false;
 
         int64_t lineNo = 0;
         for (std::string line : readLines(toStd(text_s))) {
@@ -1718,6 +1802,7 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
                 sectionMap = rt_map_new();
                 mapSetStr(sectionMap, "name", section);
                 sectionKind.clear();
+                inUnknownSection = false;
                 if (section.rfind("run.", 0) == 0) {
                     sectionKind = "runConfigs";
                     mapSetStr(sectionMap, "name", section.substr(4));
@@ -1732,6 +1817,7 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
                                    "manifest.section");
                     releaseObject(sectionMap);
                     sectionMap = nullptr;
+                    inUnknownSection = true;
                 }
                 if (sectionMap)
                     appendConfigMap(manifest, sectionKind.c_str(), sectionMap);
@@ -1750,6 +1836,17 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
                     replaceStringSeq(sectionMap, key.c_str(), splitList(value));
                 else
                     mapSetStr(sectionMap, key.c_str(), value);
+                continue;
+            }
+            if (inUnknownSection) {
+                // Directives inside an unknown section are diagnosed and ignored;
+                // they must not fall through to mutate top-level defaults
+                // (VDOC-194).
+                pushDiagnostic(diagnostics,
+                               "ignoring directive '" + key + "' in unknown manifest section",
+                               "",
+                               lineNo,
+                               "manifest.directive");
                 continue;
             }
             if (canonical == "project" || canonical == "name")
@@ -1876,15 +1973,27 @@ struct PendingWorkspaceWrite {
     std::string file;
     std::string temp;
     std::string backup;
-    bool backupCreated{false};
+    bool backupReserved{false}; ///< Backup name exclusively reserved (empty placeholder on disk).
+    bool backupCreated{false};  ///< Original target has been renamed into the backup.
 };
 
+/// @brief Return an unpredictable per-process nonce for edit sidecar names.
+/// @details Folds the process-local atomic counter through the runtime's
+///          per-process keyed hash (SipHash seeded from the OS CSPRNG), so
+///          sidecar names cannot be predicted or pre-created by another process
+///          (VDOC-196). The counter guarantees uniqueness within the process;
+///          the keyed hash guarantees unpredictability across processes.
+static uint64_t workspaceEditNonce() {
+    uint64_t counter = ++g_workspaceEditTempCounter;
+    return rt_keyed_hash_bytes(&counter, sizeof(counter)) ^ counter;
+}
+
 /// @brief Create a same-directory temporary path for a workspace edit target.
-/// @details The path is derived from the target filename plus a process-local
-///          atomic counter. Content temps are opened with exclusive-create semantics,
-///          while backup candidates are not reserved before rename (VDOC-196).
-///          Same-directory renames keep successful replacements on the destination
-///          filesystem.
+/// @details The path is derived from the target filename plus an unpredictable
+///          nonce. Content temps are opened with exclusive-create semantics, and
+///          backups are exclusively reserved before rename (see
+///          `reserveWorkspaceEditBackup`). Same-directory renames keep successful
+///          replacements on the destination filesystem.
 /// @param file Target file path.
 /// @param suffix Suffix distinguishing content temps from rollback backups.
 /// @return Candidate temporary path.
@@ -1892,10 +2001,51 @@ static fs::path workspaceEditTempPath(const fs::path &file, const char *suffix) 
     fs::path dir = file.parent_path();
     if (dir.empty())
         dir = ".";
-    uint64_t id = ++g_workspaceEditTempCounter;
+    char nonce[17];
+    std::snprintf(nonce, sizeof(nonce), "%016llx",
+                  static_cast<unsigned long long>(workspaceEditNonce()));
     std::string leaf =
-        "." + file.filename().generic_string() + ".viper-edit-" + std::to_string(id) + suffix;
+        "." + file.filename().generic_string() + ".viper-edit-" + nonce + suffix;
     return dir / leaf;
+}
+
+/// @brief Exclusively reserve a fresh backup path in the target's directory.
+/// @details Generates unpredictable candidate names and creates each with
+///          exclusive-create (`O_EXCL` / `CREATE_NEW`) semantics, so a stale
+///          artifact or another process cannot make the later
+///          `rename(target, backup)` clobber unrelated data (VDOC-196). The
+///          reserved empty file is atomically replaced by the target during the
+///          commit rename. Returns false after exhausting its retry budget.
+static bool reserveWorkspaceEditBackup(const fs::path &target, std::string &reserved) {
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        fs::path candidate = workspaceEditTempPath(target, ".bak");
+#if RT_PLATFORM_WINDOWS
+        HANDLE handle = CreateFileW(candidate.wstring().c_str(),
+                                    GENERIC_WRITE,
+                                    0,
+                                    NULL,
+                                    CREATE_NEW,
+                                    FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+                                    NULL);
+        if (handle != INVALID_HANDLE_VALUE) {
+            CloseHandle(handle);
+            reserved = candidate.string();
+            return true;
+        }
+#else
+        int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_NOFOLLOW
+        flags |= O_NOFOLLOW;
+#endif
+        int fd = open(candidate.c_str(), flags, S_IRUSR | S_IWUSR);
+        if (fd >= 0) {
+            close(fd);
+            reserved = candidate.string();
+            return true;
+        }
+#endif
+    }
+    return false;
 }
 
 /// @brief Write a string to a newly created temporary file.
@@ -2025,6 +2175,11 @@ static void rollbackWorkspaceWrites(const std::vector<PendingWorkspaceWrite> &wr
             fs::rename(it->backup, it->file, ec);
             ec.clear();
             fs::remove(it->backup, ec);
+        } else if (it->backupReserved) {
+            // Reserved but never used: remove the empty placeholder we created
+            // (VDOC-196) so a failed apply leaves no stale sidecar.
+            fs::remove(it->backup, ec);
+            ec.clear();
         }
         ec.clear();
         fs::remove(it->temp, ec);
@@ -2034,9 +2189,12 @@ static void rollbackWorkspaceWrites(const std::vector<PendingWorkspaceWrite> &wr
 /// @brief Apply a validated workspace edit batch with best-effort rollback.
 /// @details This routine revalidates edits before staging, applies edits in
 ///          descending range order per file, stages every new file image into a
-///          same-directory temporary file, then commits via rename. It does not
-///          recheck a target after staging and before its backup rename, so an
-///          external write in that window can be overwritten (VDOC-195).
+///          same-directory temporary file, then commits via rename. Immediately
+///          before replacing each live target it re-reads the file and confirms
+///          it still matches the content validated earlier (optimistic
+///          concurrency), aborting the whole batch with a rollback if an
+///          external write changed it during staging, so newer content is never
+///          silently overwritten (VDOC-195).
 ///          If any backup or replacement fails, earlier replacements are
 ///          restored from their backups and staged temps are removed.
 /// @param edits Runtime Seq of edit maps.
@@ -2064,6 +2222,12 @@ static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
         return result;
     }
 
+    // Snapshot the validated original content of every target BEFORE applying
+    // edits, so the commit loop can confirm the file has not changed underneath
+    // us since validation (VDOC-195). The edit loop below mutates `contents` in
+    // place into the new image, so the originals must be copied first.
+    std::unordered_map<std::string, std::string> validatedOriginals = contents;
+
     std::map<std::string, std::vector<EditRecord>> byFile;
     for (const auto &record : records)
         byFile[record.file].push_back(record);
@@ -2083,7 +2247,19 @@ static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
         PendingWorkspaceWrite write;
         write.file = file;
         write.temp = workspaceEditTempPath(target, ".tmp").string();
-        write.backup = workspaceEditTempPath(target, ".bak").string();
+        // Exclusively reserve the backup name up front so no stale artifact or
+        // racing process can make the commit-time rename clobber unrelated data
+        // (VDOC-196). The reserved empty file is replaced by the target during
+        // the commit rename.
+        if (!reserveWorkspaceEditBackup(target, write.backup)) {
+            pushDiagnostic(
+                diagnostics, "cannot reserve backup for edit target", file, 0, "edit.write");
+            rt_map_set_bool(result, rt_const_cstr("success"), 0);
+            rollbackWorkspaceWrites(writes);
+            rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+            return result;
+        }
+        write.backupReserved = true;
         if (!writeWorkspaceEditTemp(write.temp, text)) {
             pushDiagnostic(
                 diagnostics, "cannot write temporary edit target", file, 0, "edit.write");
@@ -2099,6 +2275,31 @@ static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
     int64_t applied = 0;
     for (auto &write : writes) {
         std::error_code ec;
+        // Optimistic-concurrency recheck: confirm the live target still matches
+        // the content we validated, immediately before replacing it. An editor,
+        // formatter, or external process that wrote the file during staging
+        // would otherwise be silently overwritten (VDOC-195).
+        {
+            std::ifstream in(write.file, std::ios::binary);
+            std::string current;
+            if (in) {
+                std::ostringstream buffer;
+                buffer << in.rdbuf();
+                current = buffer.str();
+            }
+            auto expected = validatedOriginals.find(write.file);
+            if (!in || expected == validatedOriginals.end() || current != expected->second) {
+                pushDiagnostic(diagnostics,
+                               "edit target changed since validation",
+                               write.file,
+                               0,
+                               "edit.version");
+                rt_map_set_bool(result, rt_const_cstr("success"), 0);
+                rollbackWorkspaceWrites(writes);
+                rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+                return result;
+            }
+        }
         fs::rename(write.file, write.backup, ec);
         if (ec) {
             pushDiagnostic(diagnostics, "cannot back up edit target", write.file, 0, "edit.write");

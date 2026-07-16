@@ -397,8 +397,10 @@ This is distinct from `ToInt64(text)`, which parses a string.
 
 String manipulation class. Viper strings are immutable byte strings and commonly contain UTF-8.
 Most positions and lengths are bytes. `Mid`/`MidLen`, `Flip`, and the SQL-LIKE wildcards instead
-advance by UTF-8-shaped units; those helpers do not perform full Unicode scalar validation (see
-[VDOC-166](../documentation-review-findings.md#vdoc-166--flip-and-mid-treat-malformed-utf-8-as-characters)).
+advance by Unicode code points using one shared strict UTF-8 decoder: invalid lead or
+continuation bytes, overlong encodings, UTF-16 surrogates, and values above U+10FFFF trap with
+an invalid-UTF-8 diagnostic rather than being grouped as apparent characters. Byte-oriented
+methods (`Left`, `Right`, `Substr`, indexes, ...) continue to accept arbitrary bytes.
 
 **Type:** Instance (opaque*)
 
@@ -417,8 +419,8 @@ advance by UTF-8-shaped units; those helpers do not perform full Unicode scalar 
 | `Concat(other)`              | `String(String)`           | Concatenates another string and returns the result                            |
 | `Left(count)`                | `String(Integer)`          | Returns the leftmost `count` bytes; a negative count traps                     |
 | `Right(count)`               | `String(Integer)`          | Returns the rightmost `count` bytes; a negative count traps                    |
-| `Mid(start)`                 | `String(Integer)`          | Returns UTF-8-shaped units from one-based position `start`; `start < 1` traps  |
-| `MidLen(start, length)`      | `String(Integer, Integer)` | Returns `length` UTF-8-shaped units; invalid negative/range inputs trap or clamp as noted below |
+| `Mid(start)`                 | `String(Integer)`          | Returns Unicode code points from one-based position `start` (strictly validated); `start < 1` traps  |
+| `MidLen(start, length)`      | `String(Integer, Integer)` | Returns `length` Unicode code points (strictly validated); invalid negative/range inputs trap or clamp as noted below |
 | `Trim()`                     | `String()`                 | Removes leading and trailing ASCII whitespace                                 |
 | `TrimStart()`                | `String()`                 | Removes leading ASCII whitespace                                              |
 | `TrimEnd()`                  | `String()`                 | Removes trailing ASCII whitespace                                             |
@@ -450,10 +452,10 @@ start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and 
 | Method                         | Signature                 | Description                                                     |
 |--------------------------------|---------------------------|-----------------------------------------------------------------|
 | `Replace(needle, replacement)` | `String(String, String)`  | Replaces all occurrences of needle with replacement             |
-| `PadLeft(width, padChar)`      | `String(Integer, String)` | Pads to a byte width using the first byte of `padChar`           |
-| `PadRight(width, padChar)`     | `String(Integer, String)` | Pads to a byte width using the first byte of `padChar`           |
+| `PadLeft(width, padChar)`      | `String(Integer, String)` | Pads to a byte width with a single-byte `padChar` (multibyte traps) |
+| `PadRight(width, padChar)`     | `String(Integer, String)` | Pads to a byte width with a single-byte `padChar` (multibyte traps) |
 | `Repeat(count)`                | `String(Integer)`         | Repeats the string; a non-positive count returns empty           |
-| `Flip()`                       | `String()`                | Reverses UTF-8-shaped units while preserving each unit's bytes   |
+| `Flip()`                       | `String()`                | Reverses Unicode code points (strict UTF-8; malformed input traps)   |
 | `Split(delimiter)`             | `Seq(String)`             | Splits string by delimiter into a Seq of strings                |
 | `Lines()`                      | `Seq(String)`             | Splits into logical lines on `\n`, dropping a trailing `\r` (CRLF→LF); segment count matches `Split("\n")` |
 
@@ -473,7 +475,7 @@ start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and 
 
 | Method                | Signature          | Description                                               |
 |-----------------------|--------------------|-----------------------------------------------------------|
-| `LastIndexOf(search)` | `Integer(String)`  | Returns the last one-based byte position, or 0 if not found |
+| `LastIndexOf(search)` | `Integer(String)`  | Returns the last one-based byte position, or 0 if not found (empty needle: `Length + 1`) |
 | `RemovePrefix(prefix)`| `String(String)`   | Removes prefix if present, otherwise returns original     |
 | `RemoveSuffix(suffix)`| `String(String)`   | Removes suffix if present, otherwise returns original     |
 | `TrimChar(chars)`     | `String(String)`   | Removes repetitions of the first byte of `chars` from both ends |
@@ -492,7 +494,7 @@ start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and 
 
 | Method           | Signature         | Description                                              |
 |------------------|-------------------|----------------------------------------------------------|
-| `Like(pattern)`   | `Boolean(String)` | Whole-string SQL LIKE match (`%` = any sequence, `_` = one UTF-8-shaped unit) |
+| `Like(pattern)`   | `Boolean(String)` | Whole-string SQL LIKE match (`%` = any sequence, `_` = one Unicode code point) |
 | `LikeIgnoreCase(pattern)` | `Boolean(String)` | C-locale byte-folded SQL LIKE match                    |
 
 **Comparison:**
@@ -502,20 +504,20 @@ start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and 
 | `Cmp(other)`       | `Integer(String)` | Bytewise comparison, returning -1, 0, or 1                 |
 | `CompareIgnoreCase(other)` | `Integer(String)` | C-locale byte-folded comparison, returning -1, 0, or 1     |
 
-Empty needles are deliberately special but not uniform: `StartsWith`, `EndsWith`, and `Has` return
-true; `Count` returns 0; `Replace` returns the original; `IndexOf` returns 1; and `LastIndexOf`
-returns 0. The last two results are tracked as
-[VDOC-168](../documentation-review-findings.md#vdoc-168--string-index-methods-disagree-on-an-empty-needle).
+Empty needles follow one shared rule across the index family: an empty needle matches at every
+position `1..Length+1`, so `IndexOf` returns 1, `IndexOfFrom` returns its clamped start, and
+`LastIndexOf` returns `Length + 1` — never the 0 miss sentinel. Elsewhere, `StartsWith`,
+`EndsWith`, and `Has` return true; `Count` returns 0; and `Replace` returns the original.
 `Split` with an empty delimiter returns a one-element sequence containing the original string.
 
 The five identifier-style case conversions split only on space, tab, `_`, `-`, lower-to-upper
 transitions, and acronym boundaries. Digits remain in the surrounding byte word. Case
 classification is ASCII-only and locale-independent (bytes above 0x7F never fold or classify
-as letters), and embedded NUL bytes currently truncate their output (see
-[VDOC-165](../documentation-review-findings.md#vdoc-165--string-case-shape-methods-truncate-at-embedded-nul)).
-Passing a multibyte padding character can also create malformed UTF-8 because padding repeats only
-its first byte; see
-[VDOC-167](../documentation-review-findings.md#vdoc-167--string-padding-can-create-malformed-utf-8).
+as letters). The conversions honor the byte-string contract: embedded NUL bytes are ordinary
+word bytes and are preserved in the output.
+`PadLeft`/`PadRight` measure width in bytes and therefore require a single-byte padding string:
+multibyte padding traps (`padding must be a single byte`) instead of emitting malformed UTF-8;
+an empty padding string leaves the input unchanged.
 
 `Like` and `LikeIgnoreCase` match the whole string. A backslash quotes the next pattern byte; a final
 backslash is literal. See [Pattern Matching](text/patterns.md#stringlike--stringlikeci) for the full
@@ -531,18 +533,22 @@ contract and malformed-UTF-8 limitations.
 | `Viper.String.FromStr(text)`                   | `String(String)`           | Return the same immutable string handle with an owned reference |
 | `Viper.String.Join(separator, items)`          | `String(String, Seq<String>)` | Join string elements; null elements are empty and other types trap |
 | `Viper.String.SplitFields(text)`               | `Seq<String>(String)`      | Parse trimmed comma-separated fields, double quotes, and doubled quotes |
+| `Viper.String.SplitFieldsResult(text)`         | `Result(String)`           | Strict-quoting split: `Ok(Seq<String>)` or `ErrStr` on malformed quotes |
 
-`FromI16` and `FromI32` are registry-level narrow-integer surfaces. Zia currently emits an i64
-argument without narrowing and fails IL verification; BASIC also does not resolve the public
-`FromI16` name. See
-[VDOC-163](../documentation-review-findings.md#vdoc-163--stringfromi16-and-fromi32-reach-invalid-il-from-zia).
-runtime calls; see
-[VDOC-162](../documentation-review-findings.md#vdoc-162--stringfromsingle-has-a-mismatched-c-abi).
+`FromI16` and `FromI32` accept ordinary integer expressions in both languages: the frontends
+insert checked narrowing at the call site, so out-of-range values trap with a narrow-conversion
+diagnostic instead of wrapping. `FromSingle` accepts a Double and formats it with
+single-precision semantics (the value is narrowed to Float32 before formatting), identically on
+the VM and native backends.
 
-`SplitFields` trims each field with the process C character locale. Quoted fields may contain commas
-and doubled `""` becomes `"`; empty and trailing fields are preserved. The parser is permissive
-rather than RFC 4180-validating and currently accepts malformed/unclosed quote structure; see
-[VDOC-164](../documentation-review-findings.md#vdoc-164--stringsplitfields-silently-accepts-malformed-quoting).
+`SplitFields` trims each field with the process C character locale. Quoted fields may contain
+commas and doubled `""` becomes `"`; empty and trailing fields are preserved. The parser is
+deliberately lenient INPUT-style splitting: it tolerates unclosed quotes and quotes appearing
+after unquoted text rather than rejecting the record. When you need strict validation, use
+`SplitFieldsResult(text)`, which enforces quote structure — a quoted field must open at the
+field start, close exactly once, and be followed only by whitespace before the next comma;
+quotes may not appear inside unquoted text; the record may not end inside a quote — and returns
+`Ok(Seq<String>)` or `ErrStr` naming the violation.
 
 ### Zia Example
 

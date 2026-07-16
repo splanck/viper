@@ -101,8 +101,23 @@ rt_string rt_datetime_to_local(int64_t timestamp);
 /// @param minute Minute (0-59).
 /// @param second Second (0-59).
 /// @return Unix timestamp in seconds, or -1 if components are invalid or the local time is not
-/// representable. The sentinel collides with the valid instant one second before the epoch.
+/// representable. The sentinel collides with the valid instant one second before the epoch; use
+/// @ref rt_datetime_create_option when failure must be distinguished from a pre-epoch result.
 int64_t rt_datetime_create(
+    int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second);
+
+/// @brief Create timestamp from date/time components, returning an Option.
+/// @details Unambiguous replacement for @ref rt_datetime_create: `Some(i64)` for any valid,
+/// representable instant (including `-1`, one second before the epoch) and `None` on failure.
+/// @param year Year (e.g., 2025).
+/// @param month Month (1-12).
+/// @param day Day (1-31).
+/// @param hour Hour (0-23).
+/// @param minute Minute (0-59).
+/// @param second Second (0-59).
+/// @return Opaque Viper.Option holding the timestamp, or None when components are invalid or the
+/// local time is not representable.
+void *rt_datetime_create_option(
     int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second);
 
 /// @brief Add seconds to timestamp.

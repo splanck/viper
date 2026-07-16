@@ -138,6 +138,49 @@ static void test_bezier_endpoints() {
     printf("test_bezier_endpoints: PASSED\n");
 }
 
+/// @brief VDOC-201: every spline kind clamps t to [0,1] and maps a non-finite t
+///        to the curve start (0) — no NaN/Inf reaches a segment-index conversion
+///        (undefined in C), and Bezier now clamps like the others instead of
+///        extrapolating.
+static void test_param_sanitization_is_uniform() {
+    double xs[] = {0.0, 10.0};
+    double ys[] = {0.0, 20.0};
+    void *lin = rt_spline_linear(make_points(xs, ys, 2));
+
+    void *bez = rt_spline_bezier(rt_vec2_new(0.0, 0.0), rt_vec2_new(1.0, 2.0),
+                                 rt_vec2_new(3.0, 2.0), rt_vec2_new(4.0, 0.0));
+
+    void *splines[] = {lin, bez};
+    for (void *sp : splines) {
+        // NaN maps to the curve start (t=0) and is finite, not UB.
+        void *at_nan = rt_spline_eval(sp, std::nan(""));
+        void *at_zero = rt_spline_eval(sp, 0.0);
+        assert(std::isfinite(rt_vec2_x(at_nan)) && std::isfinite(rt_vec2_y(at_nan)));
+        assert(approx_eq(rt_vec2_x(at_nan), rt_vec2_x(at_zero)));
+        assert(approx_eq(rt_vec2_y(at_nan), rt_vec2_y(at_zero)));
+
+        // +Inf clamps to the curve end (t=1).
+        void *at_posinf = rt_spline_eval(sp, INFINITY);
+        void *at_end = rt_spline_eval(sp, 1.0);
+        assert(approx_eq(rt_vec2_x(at_posinf), rt_vec2_x(at_end)));
+        assert(approx_eq(rt_vec2_y(at_posinf), rt_vec2_y(at_end)));
+
+        // Out-of-range finite values clamp for ALL kinds (Bezier no longer
+        // extrapolates): t=2 == t=1, t=-1 == t=0.
+        void *at_two = rt_spline_eval(sp, 2.0);
+        assert(approx_eq(rt_vec2_x(at_two), rt_vec2_x(at_end)));
+        void *at_negone = rt_spline_eval(sp, -1.0);
+        assert(approx_eq(rt_vec2_x(at_negone), rt_vec2_x(at_zero)));
+
+        // Tangent and ArcLength stay finite for non-finite parameters too.
+        void *tan_nan = rt_spline_tangent(sp, std::nan(""));
+        assert(std::isfinite(rt_vec2_x(tan_nan)) && std::isfinite(rt_vec2_y(tan_nan)));
+        double arc = rt_spline_arc_length(sp, std::nan(""), INFINITY, 8);
+        assert(std::isfinite(arc));
+    }
+    printf("test_param_sanitization_is_uniform: PASSED\n");
+}
+
 static void test_bezier_midpoint() {
     /* Symmetric bezier: (0,0), (0,2), (4,2), (4,0) */
     void *p0 = rt_vec2_new(0.0, 0.0);
@@ -346,6 +389,7 @@ int main() {
     test_linear_clamp();
 
     /* Bezier */
+    test_param_sanitization_is_uniform();
     test_bezier_endpoints();
     test_bezier_midpoint();
 

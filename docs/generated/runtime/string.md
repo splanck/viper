@@ -53,6 +53,7 @@ operations including `Asc`, `CamelCase`, `Chr`, `Compare`.
 | <a id="viper-string-snakecase"></a>`SnakeCase` | `str()` | `Viper.String.SnakeCase` |
 | <a id="viper-string-split"></a>`Split` | `seq<str>(str)` | `Viper.String.Split` |
 | <a id="viper-string-splitfields"></a>`SplitFields` | `seq<str>(str)` | `Viper.String.SplitFields` |
+| <a id="viper-string-splitfieldsresult"></a>`SplitFieldsResult` | `obj<Viper.Result>(str)` | `Viper.String.SplitFieldsResult` |
 | <a id="viper-string-startswith"></a>`StartsWith` | `i1(str)` | `Viper.String.StartsWith` |
 | <a id="viper-string-substring"></a>`Substring` | `str(i64,i64)` | `Viper.String.Substring` |
 | <a id="viper-string-tolower"></a>`ToLower` | `str()` | `Viper.String.ToLower` |
@@ -114,6 +115,7 @@ operations including `Asc`, `CamelCase`, `Chr`, `Compare`.
 | `Viper.String.Trim` | `str(str)` | `rt_str_trim` |
 | `Viper.String.ToUpper` | `str(str)` | `rt_str_ucase` |
 | `Viper.String.SplitFields` | `seq<str>(str)` | `rt_str_split_fields_seq` |
+| `Viper.String.SplitFieldsResult` | `obj<Viper.Result>(str)` | `rt_str_split_fields_result` |
 | `Viper.String.Equals` | `i1(str,str)` | `rt_str_eq` |
 | `Viper.String.Join` | `str(str,obj)` | `rt_str_join` |
 | `Viper.String.Capitalize` | `str(str)` | `rt_str_capitalize` |

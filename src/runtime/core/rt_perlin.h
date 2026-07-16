@@ -28,6 +28,14 @@
 extern "C" {
 #endif
 
+/// @brief Stable heap class id for PerlinNoise instances.
+/// @details Used by rt_obj_new_i64 at construction and by the noise/octave
+///          readers to validate the receiver's kind/class/size before casting
+///          to the permutation-table struct (VDOC-202). Previously the object
+///          was allocated with class id 0 and the readers cast any non-null
+///          pointer, so an unrelated object could be read as a 512-byte table.
+#define RT_PERLIN_CLASS_ID INT64_C(-0x430701)
+
 /// @brief Create a new Perlin noise generator with the given seed.
 /// @param seed Random seed for permutation table.
 /// @return Pointer to PerlinNoise object.

@@ -22,8 +22,11 @@
 #include "rt_crypto.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -189,10 +192,13 @@ static const char *multipart_header_param_cstr(rt_string value,
         if (allow_null)
             return fallback;
         rt_trap(context);
+        return fallback; // returning trap hooks must not continue into a deref
     }
     const char *cstr = rt_string_cstr(value);
-    if (!cstr || multipart_string_has_embedded_nul(value))
+    if (!cstr || multipart_string_has_embedded_nul(value)) {
         rt_trap(context);
+        return fallback;
+    }
     return cstr;
 }
 
@@ -587,8 +593,10 @@ rt_string rt_multipart_content_type(void *obj) {
 /// is calculated up-front and a single buffer is allocated; no incremental growth. Caller pairs
 /// the result with `_content_type` for the matching Content-Type header.
 void *rt_multipart_build(void *obj) {
-    if (!obj)
+    if (!obj) {
+        rt_trap("Multipart: NULL multipart");
         return rt_bytes_new(0);
+    }
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
 
     // Calculate total size
@@ -599,33 +607,48 @@ void *rt_multipart_build(void *obj) {
         size_t escaped_name_len = 0;
         size_t escaped_filename_len = 0;
         if (!multipart_escaped_quoted_length(part->name, &escaped_name_len) ||
-            !multipart_escaped_quoted_length(part->filename, &escaped_filename_len))
+            !multipart_escaped_quoted_length(part->filename, &escaped_filename_len)) {
+            rt_trap("Multipart: message too large");
             return rt_bytes_new(0);
-        if (!multipart_size_add(&total, 2 + blen + 2))
+        }
+        if (!multipart_size_add(&total, 2 + blen + 2)) {
+            rt_trap("Multipart: message too large");
             return rt_bytes_new(0); // --boundary\r\n
+        }
         if (part->is_file) {
             if (!multipart_size_add(
                     &total,
                     strlen("Content-Disposition: form-data; name=\"\"; filename=\"\"\r\n"
                            "Content-Type: application/octet-stream\r\n\r\n")) ||
                 !multipart_size_add(&total, escaped_name_len) ||
-                !multipart_size_add(&total, escaped_filename_len))
+                !multipart_size_add(&total, escaped_filename_len)) {
+                rt_trap("Multipart: message too large");
                 return rt_bytes_new(0);
+            }
         } else {
             if (!multipart_size_add(&total,
                                     strlen("Content-Disposition: form-data; name=\"\"\r\n\r\n")) ||
-                !multipart_size_add(&total, escaped_name_len))
+                !multipart_size_add(&total, escaped_name_len)) {
+                rt_trap("Multipart: message too large");
                 return rt_bytes_new(0);
+            }
         }
-        if (!multipart_size_add(&total, part->data_len) || !multipart_size_add(&total, 2))
+        if (!multipart_size_add(&total, part->data_len) || !multipart_size_add(&total, 2)) {
+            rt_trap("Multipart: message too large");
             return rt_bytes_new(0); // \r\n
+        }
     }
-    if (!multipart_size_add(&total, 2 + blen + 4) || total > (size_t)INT64_MAX || total == SIZE_MAX)
+    if (!multipart_size_add(&total, 2 + blen + 4) || total > (size_t)INT64_MAX ||
+        total == SIZE_MAX) {
+        rt_trap("Multipart: message too large");
         return rt_bytes_new(0); // --boundary--\r\n
+    }
 
     uint8_t *buf = (uint8_t *)malloc(total + 1);
-    if (!buf)
+    if (!buf) {
+        rt_trap("Multipart: memory allocation failed");
         return rt_bytes_new(0);
+    }
 
     size_t pos = 0;
     for (int i = 0; i < mp->part_count; i++) {
@@ -637,6 +660,7 @@ void *rt_multipart_build(void *obj) {
             free(escaped_filename);
             free(escaped_name);
             free(buf);
+            rt_trap("Multipart: memory allocation failed");
             return rt_bytes_new(0);
         }
 
@@ -645,6 +669,7 @@ void *rt_multipart_build(void *obj) {
             free(escaped_filename);
             free(escaped_name);
             free(buf);
+            rt_trap("Multipart: serialization failed");
             return rt_bytes_new(0);
         }
 
@@ -661,6 +686,7 @@ void *rt_multipart_build(void *obj) {
                 free(escaped_filename);
                 free(escaped_name);
                 free(buf);
+                rt_trap("Multipart: serialization failed");
                 return rt_bytes_new(0);
             }
         } else {
@@ -672,6 +698,7 @@ void *rt_multipart_build(void *obj) {
                 free(escaped_filename);
                 free(escaped_name);
                 free(buf);
+                rt_trap("Multipart: serialization failed");
                 return rt_bytes_new(0);
             }
         }
@@ -684,10 +711,12 @@ void *rt_multipart_build(void *obj) {
             pos += part->data_len;
         } else if (part->data_len > 0) {
             free(buf);
+            rt_trap("Multipart: serialization failed");
             return rt_bytes_new(0);
         }
         if (!multipart_appendf(buf, total, &pos, "\r\n")) {
             free(buf);
+            rt_trap("Multipart: serialization failed");
             return rt_bytes_new(0);
         }
     }
@@ -695,10 +724,12 @@ void *rt_multipart_build(void *obj) {
     // Final boundary
     if (!multipart_appendf(buf, total, &pos, "--%s--\r\n", mp->boundary)) {
         free(buf);
+        rt_trap("Multipart: serialization failed");
         return rt_bytes_new(0);
     }
     if (pos > total) {
         free(buf);
+        rt_trap("Multipart: serialization failed");
         return rt_bytes_new(0);
     }
 
@@ -725,22 +756,33 @@ int64_t rt_multipart_count(void *obj) {
 ///          forms), then walks the body finding `--boundary` delimiters and per-part
 ///          `Content-Disposition` headers. Captures `name=` and optional `filename=` attributes;
 ///          presence of the latter flags the part as a file. The parser rejects bodies larger
-///          than @c MULTIPART_MAX_PARSED_BODY_BYTES to bound memory amplification. Missing,
-///          invalid, or oversized inputs return an empty Multipart object.
+///          than @c MULTIPART_MAX_PARSED_BODY_BYTES to bound memory amplification.
+///
+///          Parsing is STRICT and ATOMIC (VDOC-146): invalid content types or
+///          boundaries, oversized bodies, missing delimiters, malformed part
+///          headers, truncated bodies (no closing boundary), and allocation
+///          failures all trap instead of returning an empty or partial object,
+///          so a returned Multipart always represents the complete input. Use
+///          `ParseResult` for a non-trapping `Result`-returning variant.
 void *rt_multipart_parse(rt_string content_type, void *body) {
-    if (!body)
-        return rt_multipart_new();
+    if (!body) {
+        rt_trap("Multipart: NULL body");
+        return NULL;
+    }
 
     const char *ct = content_type ? rt_string_cstr(content_type) : NULL;
-    if (!ct || multipart_string_has_embedded_nul(content_type))
-        return rt_multipart_new();
+    if (!ct || multipart_string_has_embedded_nul(content_type)) {
+        rt_trap("Multipart: invalid content type");
+        return NULL;
+    }
 
     // Extract boundary from content-type
     char boundary[128] = {0};
-    if (!multipart_extract_param_value(ct, "boundary", boundary, sizeof(boundary)) || !boundary[0])
-        return rt_multipart_new();
-    if (!multipart_boundary_is_valid(boundary))
-        return rt_multipart_new();
+    if (!multipart_extract_param_value(ct, "boundary", boundary, sizeof(boundary)) ||
+        !boundary[0] || !multipart_boundary_is_valid(boundary)) {
+        rt_trap("Multipart: invalid or missing boundary");
+        return NULL;
+    }
 
     rt_multipart_impl *mp =
         (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
@@ -755,19 +797,25 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     // Parse body
     int64_t body_len = bytes_len_impl(body);
     const uint8_t *data = bytes_data(body);
-    if (!data || body_len <= 0)
-        return mp;
+    if (!data || body_len <= 0) {
+        rt_trap("Multipart: missing boundary delimiter");
+        return NULL;
+    }
     if ((uint64_t)body_len > (uint64_t)SIZE_MAX ||
-        (uint64_t)body_len > (uint64_t)MULTIPART_MAX_PARSED_BODY_BYTES)
-        return mp;
+        (uint64_t)body_len > (uint64_t)MULTIPART_MAX_PARSED_BODY_BYTES) {
+        rt_trap("Multipart: body too large");
+        return NULL;
+    }
 
     char delim[140];
     int dlen = snprintf(delim, sizeof(delim), "--%s", boundary);
     char next_delim[144];
     int next_dlen = snprintf(next_delim, sizeof(next_delim), "\r\n--%s", boundary);
     if (dlen <= 0 || next_dlen <= 0 || (size_t)dlen >= sizeof(delim) ||
-        (size_t)next_dlen >= sizeof(next_delim))
-        return mp;
+        (size_t)next_dlen >= sizeof(next_delim)) {
+        rt_trap("Multipart: invalid or missing boundary");
+        return NULL;
+    }
 
     // Find each part between boundaries
     const uint8_t *s = data;
@@ -775,13 +823,18 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
 
     // Skip to first boundary
     const uint8_t *p = find_bytes(s, (size_t)body_len, (const uint8_t *)delim, (size_t)dlen);
-    if (!p)
-        return mp;
+    if (!p) {
+        rt_trap("Multipart: missing boundary delimiter");
+        return NULL;
+    }
 
+    int saw_closing_boundary = 0;
     while (p && p < s_end) {
         p += dlen;
-        if (p + 1 < s_end && p[0] == '-' && p[1] == '-')
+        if (p + 1 < s_end && p[0] == '-' && p[1] == '-') {
+            saw_closing_boundary = 1;
             break; // End boundary
+        }
         if (p < s_end && *p == '\r')
             p++;
         if (p < s_end && *p == '\n')
@@ -791,8 +844,10 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         const uint8_t header_sep[] = {'\r', '\n', '\r', '\n'};
         const uint8_t *headers_end =
             find_bytes(p, (size_t)(s_end - p), header_sep, sizeof(header_sep));
-        if (!headers_end)
-            break;
+        if (!headers_end) {
+            rt_trap("Multipart: truncated body (incomplete part headers)");
+            return NULL;
+        }
 
         // Parse name from Content-Disposition
         char part_name[256] = {0};
@@ -801,11 +856,14 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         int is_file = 0;
         size_t header_len = (size_t)(headers_end - p);
         char *header_text = (char *)malloc(header_len + 1);
-        if (!header_text)
-            break;
+        if (!header_text) {
+            rt_trap("Multipart: memory allocation failed");
+            return NULL;
+        }
         if (memchr(p, '\0', header_len)) {
             free(header_text);
-            break;
+            rt_trap("Multipart: invalid part headers");
+            return NULL;
         }
         memcpy(header_text, p, header_len);
         header_text[header_len] = '\0';
@@ -825,22 +883,28 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         // Data starts after headers
         const uint8_t *data_start = headers_end + 4;
 
-        // Find next boundary
+        // Find next boundary. A part running to EOF without a boundary means
+        // the input was truncated — reject the whole parse instead of
+        // silently accepting a prefix.
         const uint8_t *next = find_bytes(data_start,
                                          (size_t)(s_end - data_start),
                                          (const uint8_t *)next_delim,
                                          (size_t)next_dlen);
-        if (!next)
-            next = s_end;
+        if (!next) {
+            rt_trap("Multipart: truncated body (missing closing boundary)");
+            return NULL;
+        }
 
         size_t data_size = (size_t)(next - data_start);
         if (!has_name || !part_name[0] || !multipart_header_param_is_valid(part_name) ||
             (is_file && !multipart_header_param_is_valid(part_filename))) {
-            p = next;
-            continue;
+            rt_trap("Multipart: malformed part header");
+            return NULL;
         }
-        if (!multipart_reserve_parts(mp, mp->part_count + 1))
-            break;
+        if (!multipart_reserve_parts(mp, mp->part_count + 1)) {
+            rt_trap("Multipart: memory allocation failed");
+            return NULL;
+        }
 
         char *name_copy = strdup(part_name);
         char *filename_copy = is_file ? strdup(part_filename) : NULL;
@@ -849,7 +913,8 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
             free(name_copy);
             free(filename_copy);
             free(data_copy);
-            break;
+            rt_trap("Multipart: memory allocation failed");
+            return NULL;
         }
         if (data_size > 0)
             memcpy(data_copy, data_start, data_size);
@@ -861,13 +926,71 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         part->data_len = data_size;
         part->is_file = is_file;
 
-        p = next;
+        // Re-enter just past the CRLF so the loop's `p += dlen` lands exactly
+        // after the boundary text and the closing `--` check can fire.
+        p = next + 2;
+    }
+
+    if (!saw_closing_boundary) {
+        rt_trap("Multipart: truncated body (missing closing boundary)");
+        return NULL;
     }
 
     return mp;
 }
 
+/// @brief Non-trapping companion to `rt_multipart_parse`: converts parse traps
+///        into `Result.ErrStr` and wraps a successful parse in `Result.Ok`.
+void *rt_multipart_parse_result(rt_string content_type, void *body) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        const char *msg = rt_trap_get_error();
+        if (!msg || !*msg)
+            msg = "Multipart: parse failed";
+        rt_string message = rt_string_from_bytes(msg, strlen(msg));
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
+    void *mp = rt_multipart_parse(content_type, body);
+    rt_trap_clear_recovery();
+    return rt_result_ok(mp);
+}
+
+/// @brief True when a non-file field with @p name exists (distinguishes a
+///        present-but-empty field from a missing one, VDOC-146).
+int8_t rt_multipart_has_field(void *obj, rt_string name) {
+    if (!obj)
+        return 0;
+    rt_multipart_impl *mp = (rt_multipart_impl *)obj;
+    const char *n = name ? rt_string_cstr(name) : NULL;
+    if (!n || multipart_string_has_embedded_nul(name))
+        return 0;
+    for (int i = 0; i < mp->part_count; i++) {
+        if (!mp->parts[i].is_file && mp->parts[i].name && strcmp(mp->parts[i].name, n) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief True when a file part with @p name exists (distinguishes a present
+///        zero-byte file from a missing one, VDOC-146).
+int8_t rt_multipart_has_file(void *obj, rt_string name) {
+    if (!obj)
+        return 0;
+    rt_multipart_impl *mp = (rt_multipart_impl *)obj;
+    const char *n = name ? rt_string_cstr(name) : NULL;
+    if (!n || multipart_string_has_embedded_nul(name))
+        return 0;
+    for (int i = 0; i < mp->part_count; i++) {
+        if (mp->parts[i].is_file && mp->parts[i].name && strcmp(mp->parts[i].name, n) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Look up a non-file field by name and return its value, or empty if not found.
+/// Use `HasField` to distinguish a missing field from a present empty one.
 rt_string rt_multipart_get_field(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);

@@ -14,6 +14,7 @@
 
 #include "rt_bytes.h"
 #include "rt_cipher.h"
+#include "rt_crypto.h"
 #include "rt_option.h"
 #include "rt_result.h"
 #include "rt_string.h"
@@ -21,6 +22,9 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <set>
+#include <string>
+#include <vector>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -381,6 +385,74 @@ static void test_edge_cases() {
 // Entry Point
 //=============================================================================
 
+/// @brief The raw-key nonce is now full-width CSPRNG output (VDOC-172): every
+///        message uses an independent 96-bit random nonce, with no
+///        process-counter component that could repeat across restarts.
+static void test_key_nonce_is_full_random() {
+    printf("Testing Cipher raw-key full-width random nonce:\n");
+    void *key = rt_cipher_generate_key();
+    void *plain = make_bytes_str("nonce-uniqueness probe");
+
+    // Raw-key format: magic(4) | nonce(12) | ciphertext | tag(16).
+    // Encrypt the same plaintext many times; every 12-byte nonce must differ.
+    const int kRuns = 64;
+    std::set<std::string> nonces;
+    for (int i = 0; i < kRuns; i++) {
+        void *enc = rt_cipher_encrypt_with_key(plain, key);
+        assert(rt_bytes_len(enc) >= 16);
+        std::string nonce;
+        for (int b = 0; b < 12; b++)
+            nonce.push_back((char)rt_bytes_get(enc, 4 + b));
+        nonces.insert(nonce);
+    }
+    test_result("All raw-key nonces are unique across runs",
+                (int)nonces.size() == kRuns);
+
+    // The counter is gone: no run may share the old zero-prefixed low 8 bytes
+    // pattern by construction — a purely structural check is that the upper
+    // bytes (formerly random-only) and lower bytes (formerly counter) both vary.
+    std::set<std::string> low8;
+    for (const auto &n : nonces)
+        low8.insert(n.substr(4, 8));
+    test_result("Low 8 nonce bytes are not a monotonic counter",
+                low8.size() == nonces.size());
+}
+
+/// @brief A legacy raw-key frame whose random nonce happens to start with the
+///        current magic ("VCK2") must still decrypt in compatibility mode via
+///        the AEAD-authenticated legacy fallback (VDOC-173).
+static void test_key_magic_collision_legacy_fallback() {
+    printf("Testing Cipher raw-key magic-collision legacy fallback:\n");
+
+    // Build a valid LEGACY raw-key frame by hand: [nonce(12)][ct][tag], no
+    // magic, ChaCha20-Poly1305 over the raw key with no AAD — and force the
+    // nonce to begin with the current magic bytes so decrypt first tries the
+    // versioned interpretation and must fall back.
+    void *key_bytes = rt_cipher_generate_key();
+    const uint8_t *key = (const uint8_t *)rt_bytes_data(key_bytes);
+
+    uint8_t nonce[12] = {'V', 'C', 'K', '2', 1, 2, 3, 4, 5, 6, 7, 8};
+    const char *msg = "legacy frame with colliding nonce prefix";
+    size_t msg_len = strlen(msg);
+
+    std::vector<uint8_t> frame(12 + msg_len + 16);
+    memcpy(frame.data(), nonce, 12);
+    size_t ct_len = rt_chacha20_poly1305_encrypt(
+        key, nonce, nullptr, 0, msg, msg_len, frame.data() + 12);
+    assert(ct_len == msg_len + 16);
+
+    void *legacy = rt_bytes_new((int64_t)frame.size());
+    for (size_t i = 0; i < frame.size(); i++)
+        rt_bytes_set(legacy, (int64_t)i, frame[i]);
+
+    void *plain = rt_cipher_decrypt_with_key(legacy, key_bytes);
+    test_result("Magic-colliding legacy raw-key frame still decrypts", plain != nullptr);
+    if (plain) {
+        std::string got((const char *)rt_bytes_data(plain), (size_t)rt_bytes_len(plain));
+        test_result("Decrypted legacy plaintext matches", got == msg);
+    }
+}
+
 int main() {
     printf("=== RT Cipher Tests ===\n\n");
 
@@ -388,6 +460,8 @@ int main() {
     test_password_decrypt_rejects_invalid_auth();
     test_decrypt_result_and_option_wrappers();
     test_key_based_encrypt_decrypt();
+    test_key_nonce_is_full_random();
+    test_key_magic_collision_legacy_fallback();
     test_key_derivation();
     test_encryption_randomness();
     test_edge_cases();

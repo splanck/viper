@@ -30,6 +30,7 @@
 #include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_map.h"
+#include "rt_network_http_internal.h"
 #include "rt_network_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -360,33 +361,6 @@ static int ensure_binding_capacity(rt_http_server_impl *server, int needed) {
     server->bindings = bindings;
     server->binding_cap = new_cap;
     return 1;
-}
-
-/// @brief Append a new route entry tagged with `tag` and return a
-///        writable pointer to it.
-///
-/// Reserves capacity via `ensure_route_capacity`, then `dup_cstr`s the
-/// tag into the new slot and increments `route_count`. Caller fills in
-/// the rest of the entry's fields (method, pattern). Returns NULL on
-/// any allocation failure (capacity grow OR tag duplication).
-///
-/// @param server Server impl.
-/// @param tag    Route tag (typically the route's display name); duplicated
-///               into the entry. Lifetime tied to the server.
-/// @return Pointer to the newly-allocated entry, or NULL on failure.
-static route_entry_t *append_route_entry(rt_http_server_impl *server, const char *tag) {
-    if (!server || !tag)
-        return NULL;
-    if (!ensure_route_capacity(server, server->route_count + 1))
-        return NULL;
-
-    route_entry_t *entry = &server->routes[server->route_count];
-    entry->tag = dup_cstr(tag);
-    if (!entry->tag)
-        return NULL;
-
-    server->route_count++;
-    return entry;
 }
 
 /// @brief Linear-search the binding array for an entry with matching tag.
@@ -1024,18 +998,39 @@ static void add_route_binding(void *obj,
         rt_trap("HttpServer: cannot add routes while running");
         return;
     }
-    if (!adder(server->router, pattern)) {
+
+    // Transactional registration (VDOC-144): validate the tag and reserve
+    // every allocation BEFORE touching the router, then commit the route
+    // entry with steps that cannot fail. A failure at any point leaves the
+    // router and the route-entry table consistent with each other.
+    const char *tag = NULL;
+    size_t tag_len = 0;
+    if (server_string_has_embedded_nul(handler_tag, &tag, &tag_len) || !tag || tag_len == 0) {
+        rt_trap("HttpServer: invalid route handler tag");
+        return;
+    }
+    if (!ensure_route_capacity(server, server->route_count + 1)) {
+        rt_trap("HttpServer: failed to register route");
+        return;
+    }
+    char *tag_copy = dup_cstr(tag);
+    if (!tag_copy) {
         rt_trap("HttpServer: failed to register route");
         return;
     }
 
-    const char *tag = NULL;
-    size_t tag_len = 0;
-    if (server_string_has_embedded_nul(handler_tag, &tag, &tag_len) || !tag || tag_len == 0 ||
-        !append_route_entry(server, tag)) {
+    // Last fallible step: the router add commits atomically inside the
+    // router (and traps on an invalid pattern before committing anything).
+    if (!adder(server->router, pattern)) {
+        free(tag_copy);
         rt_trap("HttpServer: failed to register route");
         return;
     }
+
+    route_entry_t *entry = &server->routes[server->route_count];
+    memset(entry, 0, sizeof(*entry));
+    entry->tag = tag_copy;
+    server->route_count++;
 }
 
 /// @brief `HttpServer.Get(pattern, handler_tag)` — register a GET route.
@@ -1536,7 +1531,7 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
             return obj;
         }
     }
-    rt_map_set(res->headers, name, (void *)value);
+    rt_http_header_map_set_ci(res->headers, name, (void *)value);
     return obj;
 }
 
@@ -1593,7 +1588,7 @@ void rt_server_res_json(void *obj, rt_string json_str) {
     }
     rt_string ct_key = rt_const_cstr("Content-Type");
     rt_string ct_val = rt_const_cstr("application/json");
-    rt_map_set(res->headers, ct_key, (void *)ct_val);
+    rt_http_header_map_set_ci(res->headers, ct_key, (void *)ct_val);
     rt_server_res_send(obj, json_str);
 }
 

@@ -95,6 +95,7 @@ extern void *rt_bytes_from_raw(const uint8_t *data, size_t len);
 
 // Type-dispatched decoder (rt_asset_decode.c)
 extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
+extern int rt_asset_extension_is_typed(const char *name);
 
 // Exe directory detection
 extern char *rt_path_exe_dir_cstr(void);
@@ -632,9 +633,12 @@ void rt_asset_init(const uint8_t *blob, uint64_t size) {
 // ─── rt_asset_load ──────────────────────────────────────────────────────────
 
 /// @brief Load an asset by name with automatic type dispatch based on file extension.
-/// @details Searches embedded blob → mounted packs (LIFO) → filesystem. Recognized
-///          image and audio extensions are offered to their typed decoder. Unknown
-///          extensions, and recognized formats whose decoder fails, return raw Bytes.
+/// @details Searches embedded blob → mounted packs (LIFO) → filesystem. A
+///          recognized image/audio extension returns its typed object (Pixels
+///          or Sound) or NULL when the bytes are malformed — it NEVER silently
+///          downgrades a recognized-but-corrupt asset to Bytes, so each
+///          recognized suffix has one stable result type (VDOC-181). Only
+///          UNRECOGNIZED extensions return raw Bytes.
 void *rt_asset_load(rt_string name) {
     if (!name)
         return NULL;
@@ -650,14 +654,22 @@ void *rt_asset_load(rt_string name) {
     if (!data)
         return NULL;
 
-    // Type dispatch by extension — try typed decode first, fall back to Bytes.
+    // Type dispatch by extension.
     void *result = rt_asset_decode_typed(cname, data, data_size);
     if (result) {
         free(data);
         return result;
     }
 
-    // Unknown extension or failed typed decode: return as raw Bytes.
+    // A recognized image/audio extension whose decode failed must NOT fall
+    // back to Bytes — that would make the same suffix return two different
+    // types depending on content validity (VDOC-181). Report failure instead.
+    if (rt_asset_extension_is_typed(cname)) {
+        free(data);
+        return NULL;
+    }
+
+    // Unrecognized extension: return the raw bytes.
     result = rt_bytes_from_raw(data, data_size);
     free(data);
     return result;

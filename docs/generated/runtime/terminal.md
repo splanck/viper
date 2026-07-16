@@ -62,7 +62,7 @@ construct the class directly. Its public surface exposes operations including `A
 | `Viper.Terminal.PrintBool` | `void(i1)` | `rt_term_print_bool` |
 | `Viper.Terminal.AskResult` | `obj<Viper.Result>(str)` | `rt_term_ask_result` |
 | `Viper.Terminal.ReadKey` | `str()` | `rt_getkey_str` |
-| `Viper.Terminal.ReadKeyFor` | `str(i64)` | `rt_getkey_timeout_i32` |
+| `Viper.Terminal.ReadKeyFor` | `str(i64)` | `rt_getkey_timeout` |
 | `Viper.Terminal.PollKey` | `str()` | `rt_inkey_str` |
 | `Viper.Terminal.ReadLineResult` | `obj<Viper.Result>()` | `rt_term_read_line_result` |
 | `Viper.Terminal.TryAsk` | `obj<Viper.Option>(str)` | `rt_term_try_ask` |
@@ -70,9 +70,9 @@ construct the class directly. Its public surface exposes operations including `A
 | `Viper.Terminal.Bell` | `void()` | `rt_bell` |
 | `Viper.Terminal.Clear` | `void()` | `rt_term_cls` |
 | `Viper.Terminal.SetAltScreen` | `void(i1)` | `rt_term_alt_screen_i32` |
-| `Viper.Terminal.SetColor` | `void(i64,i64)` | `rt_term_color_i32` |
+| `Viper.Terminal.SetColor` | `void(i64,i64)` | `rt_term_color` |
 | `Viper.Terminal.SetCursorVisible` | `void(i1)` | `rt_term_cursor_visible_i32` |
-| `Viper.Terminal.SetPosition` | `void(i64,i64)` | `rt_term_locate_i32` |
+| `Viper.Terminal.SetPosition` | `void(i64,i64)` | `rt_term_locate` |
 | `Viper.Terminal.BeginBatch` | `void()` | `rt_term_begin_batch` |
 | `Viper.Terminal.EndBatch` | `void()` | `rt_term_end_batch` |
 | `Viper.Terminal.Flush` | `void()` | `rt_term_flush` |

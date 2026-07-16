@@ -1402,6 +1402,10 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_network_harden test_rt_network_harden)
     viper_add_test_labels(test_rt_network_harden requires_local_bind)
 
+    viper_add_test(test_rt_trap_return_network ${VIPER_TESTS_DIR}/runtime/RTTrapReturnNetworkTests.cpp)
+    target_link_libraries(test_rt_trap_return_network PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_trap_return_network test_rt_trap_return_network)
+
     viper_add_test(test_rt_multipart ${VIPER_TESTS_DIR}/runtime/RTMultipartTests.cpp)
     target_link_libraries(test_rt_multipart PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_multipart test_rt_multipart)
@@ -1588,6 +1592,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_quat ${VIPER_TESTS_DIR}/runtime/RTQuatTests.cpp)
     target_link_libraries(test_rt_quat PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_quat test_rt_quat)
+
+    viper_add_test(test_rt_mat_eq ${VIPER_TESTS_DIR}/runtime/RTMatEqTests.cpp)
+    target_link_libraries(test_rt_mat_eq PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_mat_eq test_rt_mat_eq)
 
     viper_add_test(test_rt_spline ${VIPER_TESTS_DIR}/runtime/RTSplineTests.cpp)
     target_link_libraries(test_rt_spline PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

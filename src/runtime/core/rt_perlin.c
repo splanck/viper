@@ -47,6 +47,20 @@ typedef struct rt_perlin_impl {
     uint8_t perm[512]; // Doubled permutation table
 } rt_perlin_impl;
 
+/// @brief Validate a receiver as a PerlinNoise instance before reading its
+///        permutation table.
+/// @details Checks heap kind/class/size via rt_obj_is_instance and traps on a
+///          mismatch, returning NULL so callers stop rather than reading an
+///          unrelated object's memory as a 512-byte table (VDOC-202). Returns
+///          NULL (not the pointer) so a returning trap hook cannot fall through.
+static rt_perlin_impl *as_perlin(void *obj) {
+    if (!rt_obj_is_instance(obj, RT_PERLIN_CLASS_ID, sizeof(rt_perlin_impl))) {
+        rt_trap("PerlinNoise: invalid PerlinNoise object");
+        return NULL;
+    }
+    return (rt_perlin_impl *)obj;
+}
+
 /// @brief Ken Perlin's 6t⁵−15t⁴+10t³ fade curve for smooth interpolation.
 /// @details Smoothstep replacement chosen so the first AND second derivatives are zero
 ///          at t=0 and t=1 — produces visually continuous gradients across cell
@@ -122,7 +136,8 @@ static void rt_perlin_finalize(void *obj) {
 }
 
 void *rt_perlin_new(int64_t seed) {
-    rt_perlin_impl *p = (rt_perlin_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_perlin_impl));
+    rt_perlin_impl *p =
+        (rt_perlin_impl *)rt_obj_new_i64(RT_PERLIN_CLASS_ID, (int64_t)sizeof(rt_perlin_impl));
     if (!p)
         return NULL;
     p->vptr = NULL;
@@ -162,9 +177,9 @@ void *rt_perlin_new(int64_t seed) {
 /// @param y Y coordinate in noise space.
 /// @return Noise value (approximately [-1, 1]).
 double rt_perlin_noise2d(void *obj, double x, double y) {
-    if (!obj)
+    rt_perlin_impl *p = as_perlin(obj);
+    if (!p)
         return 0.0;
-    rt_perlin_impl *p = (rt_perlin_impl *)obj;
 
     int xi = 0;
     int yi = 0;
@@ -195,9 +210,9 @@ double rt_perlin_noise2d(void *obj, double x, double y) {
 /// @param z Z coordinate in noise space.
 /// @return Noise value (approximately [-1, 1]).
 double rt_perlin_noise3d(void *obj, double x, double y, double z) {
-    if (!obj)
+    rt_perlin_impl *p = as_perlin(obj);
+    if (!p)
         return 0.0;
-    rt_perlin_impl *p = (rt_perlin_impl *)obj;
 
     int xi = 0;
     int yi = 0;
@@ -246,7 +261,7 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z) {
 /// @return Summed noise value (range depends on octaves and persistence).
 double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence) {
     octaves = perlin_clamp_octaves(octaves);
-    if (!obj || octaves <= 0 || !isfinite(persistence))
+    if (!as_perlin(obj) || octaves <= 0 || !isfinite(persistence))
         return 0.0;
 
     double total = 0.0;
@@ -267,7 +282,7 @@ double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double
 double rt_perlin_octave3d(
     void *obj, double x, double y, double z, int64_t octaves, double persistence) {
     octaves = perlin_clamp_octaves(octaves);
-    if (!obj || octaves <= 0 || !isfinite(persistence))
+    if (!as_perlin(obj) || octaves <= 0 || !isfinite(persistence))
         return 0.0;
 
     double total = 0.0;

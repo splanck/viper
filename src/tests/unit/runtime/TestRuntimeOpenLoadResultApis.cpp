@@ -13,10 +13,15 @@
 
 #include "tests/TestHarness.hpp"
 
+#include <atomic>
+#include <thread>
+#include <vector>
+
 extern "C" {
 #include "rt_object.h"
 #include "rt_pty.h"
 #include "rt_result.h"
+#include "rt_seq.h"
 #include "rt_scene_editor.h"
 #include "rt_string.h"
 #include "rt_tls.h"
@@ -54,6 +59,61 @@ TEST(RuntimeOpenLoadResultApis, PtyOpenResultWrapsValidationTraps) {
     void *result = rt_pty_open_result(rt_const_cstr(""), nullptr, nullptr, nullptr, 80, 24);
     expect_err_with_message(result);
     release_obj(result);
+}
+
+// VDOC-213: a PTY whose program fails to exec must NOT report a valid session.
+// The exec-status pipe lets the parent observe the child's exec failure and
+// return Err instead of an apparently-open session that only fails later.
+TEST(RuntimeOpenLoadResultApis, PtyOpenSurfacesExecFailure) {
+    if (!rt_pty_is_supported())
+        return; // no PTY backend in this environment
+    void *result = rt_pty_open_result(
+        rt_const_cstr("/nonexistent/viper/pty/program/xyz"), nullptr, nullptr, nullptr, 80, 24);
+    expect_err_with_message(result);
+    release_obj(result);
+
+    // A bare program name with an explicit environment resolves via PATH and
+    // opens successfully (VDOC-213 PATH consistency).
+    void *env = rt_seq_new();
+    rt_seq_push(env, rt_const_cstr("PATH=/usr/bin:/bin"));
+    void *ok = rt_pty_open_result(rt_const_cstr("sh"), nullptr, nullptr, env, 80, 24);
+    EXPECT_EQ(rt_result_is_ok(ok), 1);
+
+    // VDOC-214: Resize returns TRUE only when the backend actually applied the
+    // new size. On a live session the TIOCSWINSZ succeeds, so Resize reports 1.
+    void *session = rt_result_unwrap(ok);
+    ASSERT_TRUE(session != nullptr);
+    EXPECT_EQ(rt_pty_resize(session, 120, 40), 1);
+    release_obj(ok);
+}
+
+// VDOC-215: the PTY LastError buffer is thread-local, so many threads triggering
+// PTY errors and reading LastError concurrently never tear or clobber each
+// other's diagnostic. Each thread reads back a non-empty error from its own
+// failing open.
+TEST(RuntimeOpenLoadResultApis, PtyLastErrorIsThreadLocal) {
+    std::atomic<bool> ok{true};
+    std::vector<std::thread> workers;
+    for (int t = 0; t < 8; ++t) {
+        workers.emplace_back([&]() {
+            for (int i = 0; i < 500; ++i) {
+                // An empty program is always a validation error, independent of
+                // PTY backend availability.
+                void *res = rt_pty_open_result(rt_const_cstr(""), nullptr, nullptr, nullptr, 80, 24);
+                release_obj(res);
+                rt_string err = rt_pty_last_error();
+                // This thread just failed, so its own LastError is non-empty and
+                // a readable string (no torn write from another thread).
+                if (!err || rt_str_len(err) <= 0)
+                    ok.store(false);
+                if (err)
+                    rt_string_unref(err);
+            }
+        });
+    }
+    for (auto &w : workers)
+        w.join();
+    EXPECT_EQ(ok.load() ? 1 : 0, 1);
 }
 
 TEST(RuntimeOpenLoadResultApis, SceneDocumentLoadJsonResultWrapsDiagnostics) {

@@ -427,25 +427,28 @@ rt_string rt_restclient_base_url(void *obj) {
     return client->base_url;
 }
 
-/// @brief Set a default header sent on every subsequent request. Repeated calls overwrite. Pair
-/// with `_del_header` to remove specific entries; map-managed lifetime handles release.
+/// @brief Set a default header sent on every subsequent request. Repeated calls overwrite,
+/// including differently cased spellings of the same name (HTTP field names are
+/// case-insensitive). Pair with `_del_header` to remove specific entries; map-managed
+/// lifetime handles release.
 void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
     if (!rest_header_name_is_token(name) || !rest_header_value_is_safe(value))
         return;
     rest_client *client = (rest_client *)obj;
-    rt_map_set(client->headers, name, (void *)value);
+    rt_http_header_map_set_ci(client->headers, name, (void *)value);
 }
 
-/// @brief Remove a default header so subsequent requests don't include it. No-op on missing keys.
+/// @brief Remove a default header (any case-insensitive spelling) so subsequent requests
+/// don't include it. No-op on missing keys.
 void rt_restclient_del_header(void *obj, rt_string name) {
     if (!obj)
         return;
     if (!rest_header_name_is_token(name))
         return;
     rest_client *client = (rest_client *)obj;
-    rt_map_remove(client->headers, name);
+    rt_http_header_map_remove_ci(client->headers, rt_string_cstr(name));
 }
 
 /// @brief Convenience: set the `Authorization: Bearer <token>` header. The token is appended

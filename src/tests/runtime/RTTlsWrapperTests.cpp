@@ -13,6 +13,7 @@
 #include "rt_tls.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <limits>
 
@@ -69,9 +70,28 @@ static void test_tls_wrapper_rejects_invalid_args_without_network() {
     printf("\n");
 }
 
+/// @brief ConnectFor honors its timeout as an overall connection deadline
+///        (VDOC-179): a blackhole address must fail within roughly the budget,
+///        not a per-address multiple of it.
+static void test_tls_connect_for_honors_deadline() {
+    printf("Testing TLS ConnectFor overall deadline:\n");
+    // TEST-NET-1 (RFC 5737) is not routable, so the connect blocks until the
+    // deadline expires. A 500 ms budget must return well under a few seconds.
+    rt_string blackhole = rt_const_cstr("192.0.2.1");
+    auto start = std::chrono::steady_clock::now();
+    void *session = rt_viper_tls_connect_for(blackhole, 443, 500);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+    test_result("Blackhole ConnectFor fails", session == nullptr);
+    test_result("ConnectFor returns within its overall deadline", elapsed < 3000);
+    printf("\n");
+}
+
 int main() {
     printf("=== RT TLS Wrapper Tests ===\n\n");
     test_tls_wrapper_rejects_invalid_args_without_network();
+    test_tls_connect_for_honors_deadline();
     printf("All TLS wrapper tests passed!\n");
     return 0;
 }

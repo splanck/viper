@@ -12,9 +12,9 @@
 //          Result, and Option variants.
 //
 // Key invariants:
-//   - Nonces are 12 bytes: a 4-byte CSPRNG prefix plus an 8-byte process-local
-//     atomic counter. The prefix is not persisted and gives only probabilistic
-//     cross-process separation for a reused raw key.
+//   - Nonces are 12 bytes drawn entirely from the CSPRNG (full 96-bit random
+//     AEAD nonce). Safe per-key message bound is ~2^32 messages (NIST SP
+//     800-38D random-nonce guidance).
 //   - Password format: [magic(4)][iterations(4)][salt(16)][nonce(12)]
 //     [ciphertext][tag(16)]. Raw-key format: [magic(4)][nonce(12)]
 //     [ciphertext][tag(16)].
@@ -24,7 +24,7 @@
 //     or AAD is detected and Decrypt returns NULL (not a trap).
 //   - Keys must be exactly 32 bytes (256-bit); wrong size traps.
 //   - Decryption verifies the active AEAD tag before returning plaintext.
-//   - Nonce allocation uses shared atomic state; other operation state is local.
+//   - Nonce allocation is stateless CSPRNG output; all operation state is local.
 //
 // Ownership/Lifetime:
 //   - Returned ciphertext/plaintext rt_bytes buffers are fresh allocations
@@ -76,7 +76,6 @@ static const uint8_t CIPHER_PW_MAGIC[4] = {'V', 'C', 'P', '2'};
 static const uint8_t CIPHER_KEY_MAGIC[4] = {'V', 'C', 'K', '2'};
 static const uint8_t CIPHER_PW_APPROVED_MAGIC[4] = {'V', 'C', 'A', '1'};
 static const uint8_t CIPHER_KEY_APPROVED_MAGIC[4] = {'V', 'K', 'A', '1'};
-static int64_t g_cipher_nonce_counter = 0;
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
@@ -461,33 +460,21 @@ static void write_be32(uint8_t *out, uint32_t v) {
 }
 
 /// @brief Write a 64-bit unsigned integer to @p out in big-endian byte order.
-/// @details Used by @ref cipher_random_nonce to encode the process-local
-///          nonce counter into the low 64 bits of the 96-bit AEAD nonce.
-static void write_be64(uint8_t *out, uint64_t v) {
-    out[0] = (uint8_t)(v >> 56);
-    out[1] = (uint8_t)(v >> 48);
-    out[2] = (uint8_t)(v >> 40);
-    out[3] = (uint8_t)(v >> 32);
-    out[4] = (uint8_t)(v >> 24);
-    out[5] = (uint8_t)(v >> 16);
-    out[6] = (uint8_t)(v >> 8);
-    out[7] = (uint8_t)v;
-}
-
-/// @brief Fill a 96-bit AEAD nonce with random-prefix/counter bytes.
-/// @details The first four bytes are CSPRNG output and the remaining eight
-///          bytes are a process-local atomic counter. This preserves the
-///          existing nonce size while preventing duplicate nonces within one
-///          process until counter exhaustion. The random prefix provides only
-///          32 bits of probabilistic separation across processes that reuse a
-///          key; it is not durable nonce state. The signed counter currently has
-///          no explicit exhaustion guard.
+/// @brief Fill a 96-bit AEAD nonce with full-width CSPRNG output.
+/// @details All 12 bytes are drawn from the CSPRNG, so every nonce is
+///          independently random per message AND per process (VDOC-172): the
+///          previous 4-byte-random + 8-byte-process-counter construction gave
+///          only 32 bits of cross-process separation, so two processes/restarts
+///          reusing the same raw key and drawing the same 32-bit prefix reused
+///          the entire AEAD nonce sequence. A full 96-bit random nonce restores
+///          the documented random-nonce space; per NIST SP 800-38D the safe
+///          per-key message bound for random nonces is ~2^32 messages (a
+///          ~2^-32 collision probability), which the API documents. Encryption
+///          is inherently non-deterministic, so this does not affect VM/native
+///          determinism for defined programs.
 /// @param nonce Destination buffer of exactly @c CIPHER_NONCE_SIZE bytes.
 static void cipher_random_nonce(uint8_t nonce[CIPHER_NONCE_SIZE]) {
-    rt_crypto_random_bytes(nonce, 4);
-    uint64_t counter =
-        (uint64_t)(__atomic_fetch_add(&g_cipher_nonce_counter, 1, __ATOMIC_RELAXED) + 1);
-    write_be64(nonce + 4, counter);
+    rt_crypto_random_bytes(nonce, CIPHER_NONCE_SIZE);
 }
 
 /// @brief Read a big-endian 32-bit unsigned integer from @p in.
@@ -790,13 +777,27 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         return NULL;
     }
 
+    // A legacy frame begins with a random salt, so its first four bytes can
+    // coincidentally equal current magic (~1 in 2^31). In compatibility mode
+    // such a collision must not make a valid legacy payload undecryptable
+    // (VDOC-173): if the current-format parse fails for ANY reason, fall
+    // through to the legacy attempt below. That fallback is safe — the legacy
+    // path is itself AEAD-authenticated, so it only yields plaintext for a
+    // genuinely valid legacy ciphertext, and it can never fire in approved
+    // mode (which rejected non-approved payloads above). A true current-format
+    // ciphertext authenticates on the first try and never reaches the fallback.
+    const int allow_legacy_fallback = !approved_payload && !rt_crypto_module_is_approved_mode();
     if (has_magic(ct_data, ct_len, CIPHER_PW_MAGIC) || approved_payload) {
         if (ct_len < CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE) {
+            if (allow_legacy_fallback)
+                goto try_legacy;
             rt_trap("Cipher.Decrypt: ciphertext too short");
             return NULL;
         }
         uint32_t iterations = read_be32(ct_data + 4);
         if (iterations < RT_PBKDF2_MIN_ITERATIONS || iterations > RT_PBKDF2_MAX_ITERATIONS) {
+            if (allow_legacy_fallback)
+                goto try_legacy;
             rt_trap("Cipher.Decrypt: unsupported PBKDF2 iteration count");
             return NULL;
         }
@@ -845,6 +846,11 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
             if (plain_len > 0)
                 cipher_secure_zero(plain_data, (size_t)plain_len);
             free(plain_data);
+            // Current-format authentication failed. In compatibility mode this
+            // may be a legacy frame whose random salt collided with the magic,
+            // so retry the (AEAD-authenticated) legacy interpretation.
+            if (allow_legacy_fallback)
+                goto try_legacy;
             return NULL;
         }
         void *result = rt_bytes_from_raw(plain_data, (size_t)plain_len);
@@ -854,6 +860,7 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         return result;
     }
 
+try_legacy:
     if (rt_crypto_module_is_approved_mode()) {
         rt_trap("Cipher.Decrypt: legacy cipher format is disabled in approved mode");
         return NULL;
@@ -944,8 +951,8 @@ void *rt_cipher_try_decrypt_aad(void *ciphertext, rt_string password, void *aad)
 /// @brief Encrypt data using a raw 256-bit key with the mode-selected AEAD.
 /// @details Like rt_cipher_encrypt but skips key derivation — the caller
 ///          provides a pre-derived 32-byte key (e.g., from rt_cipher_generate_key
-///          or rt_cipher_derive_key). A 4-byte-random-prefix/8-byte-counter nonce
-///          is generated per call.
+///          or rt_cipher_derive_key). A full 96-bit CSPRNG nonce is generated
+///          per call (VDOC-172).
 ///
 ///          Wire format: [magic(4) | nonce(12) | ciphertext | tag(16)].
 ///
@@ -1008,7 +1015,7 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     if (out_len == 0)
         return NULL;
 
-    // Generate a process-scoped random-prefix/counter nonce.
+    // Generate a full 96-bit CSPRNG nonce.
     uint8_t nonce[CIPHER_NONCE_SIZE];
     cipher_random_nonce(nonce);
 
@@ -1140,65 +1147,81 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
         return NULL;
     }
 
-    int versioned = has_magic(ct_data, ct_len, CIPHER_KEY_MAGIC) || approved_payload;
-    int64_t header_len = versioned ? CIPHER_KEY_HEADER_SIZE : CIPHER_NONCE_SIZE;
-    int64_t min_len = header_len + CIPHER_TAG_SIZE;
-    if (ct_len < min_len) {
-        rt_trap("Cipher.DecryptWithKey: ciphertext too short");
-        return NULL;
-    }
-    if (!versioned && aad) {
-        int64_t aad_len = bytes_len(aad);
-        if (aad_len < 0) {
-            rt_trap("Cipher.DecryptWithKey: invalid AAD length");
+    // A legacy raw-key frame has no magic (`[nonce(12)][ct][tag]`), so its
+    // random first four nonce bytes can coincidentally equal CIPHER_KEY_MAGIC
+    // (~1 in 2^31). When that happens, `versioned` parsing shifts the nonce and
+    // ciphertext boundary and the AEAD tag fails to verify. In compatibility
+    // mode we then retry the unversioned interpretation (VDOC-173): that retry
+    // is AEAD-authenticated, so it only ever yields plaintext for a genuinely
+    // valid legacy frame, and it never runs in approved mode.
+    int magic_versioned = has_magic(ct_data, ct_len, CIPHER_KEY_MAGIC) || approved_payload;
+    const int allow_legacy_fallback =
+        !approved_payload && !rt_crypto_module_is_approved_mode();
+
+    for (int versioned = magic_versioned;; versioned = 0) {
+        int64_t header_len = versioned ? CIPHER_KEY_HEADER_SIZE : CIPHER_NONCE_SIZE;
+        int64_t min_len = header_len + CIPHER_TAG_SIZE;
+        if (ct_len < min_len) {
+            if (versioned && allow_legacy_fallback)
+                continue; // retry as legacy
+            rt_trap("Cipher.DecryptWithKey: ciphertext too short");
             return NULL;
         }
-        if (aad_len > 0)
+        if (!versioned && aad) {
+            int64_t aad_len_in = bytes_len(aad);
+            if (aad_len_in < 0) {
+                rt_trap("Cipher.DecryptWithKey: invalid AAD length");
+                return NULL;
+            }
+            if (aad_len_in > 0)
+                return NULL;
+        }
+
+        const uint8_t *nonce = versioned ? ct_data + 4 : ct_data;
+        const uint8_t *encrypted = ct_data + header_len;
+        int64_t encrypted_len = ct_len - header_len;
+
+        int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
+        uint8_t *plain_data =
+            cipher_plain_temp_alloc(plain_len, "Cipher.DecryptWithKey: allocation failed");
+        if (!plain_data)
             return NULL;
-    }
 
-    const uint8_t *nonce = versioned ? ct_data + 4 : ct_data;
-    const uint8_t *encrypted = ct_data + header_len;
-    int64_t encrypted_len = ct_len - header_len;
+        const uint8_t *aad_data = NULL;
+        size_t aad_len = 0;
+        uint8_t *aad_alloc = NULL;
+        if (versioned)
+            aad_alloc = combine_aad(ct_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
+        if (aad_len == SIZE_MAX) {
+            cipher_secure_zero(plain_data, plain_len > 0 ? (size_t)plain_len : 1u);
+            free(plain_data);
+            return NULL;
+        }
 
-    int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
-    uint8_t *plain_data =
-        cipher_plain_temp_alloc(plain_len, "Cipher.DecryptWithKey: allocation failed");
-    if (!plain_data)
-        return NULL;
+        long decrypt_result =
+            approved_payload
+                ? rt_aes256_gcm_decrypt(
+                      key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data)
+                : rt_chacha20_poly1305_decrypt(
+                      key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data);
+        if (aad_alloc)
+            free(aad_alloc);
 
-    const uint8_t *aad_data = NULL;
-    size_t aad_len = 0;
-    uint8_t *aad_alloc = NULL;
-    if (versioned)
-        aad_alloc = combine_aad(ct_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
-    if (aad_len == SIZE_MAX) {
-        cipher_secure_zero(plain_data, plain_len > 0 ? (size_t)plain_len : 1u);
-        free(plain_data);
-        return NULL;
-    }
+        if (decrypt_result < 0 || decrypt_result != plain_len) {
+            if (plain_len > 0)
+                cipher_secure_zero(plain_data, (size_t)plain_len);
+            free(plain_data);
+            if (versioned && allow_legacy_fallback)
+                continue; // magic collision: retry as legacy
+            return NULL;
+        }
 
-    long decrypt_result =
-        approved_payload
-            ? rt_aes256_gcm_decrypt(
-                  key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data)
-            : rt_chacha20_poly1305_decrypt(
-                  key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data);
-    if (aad_alloc)
-        free(aad_alloc);
-
-    if (decrypt_result < 0 || decrypt_result != plain_len) {
+        void *result = rt_bytes_from_raw(plain_data, (size_t)plain_len);
         if (plain_len > 0)
             cipher_secure_zero(plain_data, (size_t)plain_len);
         free(plain_data);
-        return NULL;
+        return result;
     }
-
-    void *result = rt_bytes_from_raw(plain_data, (size_t)plain_len);
-    if (plain_len > 0)
-        cipher_secure_zero(plain_data, (size_t)plain_len);
-    free(plain_data);
-    return result;
 }
 
 /// @brief Decrypt raw-key encrypted data with AAD and return a Result.

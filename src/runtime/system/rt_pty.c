@@ -119,7 +119,11 @@ typedef struct rt_pty_impl {
 } rt_pty_impl;
 
 static void pty_finalize(void *obj);
-static char pty_last_error[PTY_LAST_ERROR_MAX];
+// Thread-local so concurrent Open/OpenResult/IsSupported calls on different
+// threads never tear each other's diagnostic or clobber it — the buffer was a
+// plain process-global written with snprintf from every path (VDOC-215). Each
+// thread reads back the error from the operation it just performed.
+static RT_THREAD_LOCAL char pty_last_error[PTY_LAST_ERROR_MAX];
 
 static rt_string empty_string(void) {
     return rt_string_from_bytes("", 0);
@@ -132,9 +136,10 @@ static rt_pty_impl *pty_checked(void *handle) {
 }
 
 /// @brief Store a bounded user-facing PTY diagnostic string.
-/// @details Uses a single process-local compatibility buffer. No main-thread
-///          assertion or synchronization protects it, so concurrent PTY calls
-///          can race and overwrite diagnostics (VDOC-215).
+/// @details Writes a thread-local buffer, so concurrent PTY calls on different
+///          threads keep independent diagnostics and cannot tear or clobber each
+///          other (VDOC-215). Read back the error on the same thread that
+///          performed the operation.
 /// @param message NUL-terminated diagnostic text; NULL clears the buffer.
 static void pty_set_last_error(const char *message) {
     if (!message) {
@@ -725,13 +730,18 @@ static void pty_poll_internal(rt_pty_impl *pty, int wait) {
     }
 }
 
-static void pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
+static int pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
     if (!pty || !pty->hpc || !pty_resize_pc)
-        return;
+        return 0;
     COORD size;
     size.X = (SHORT)cols;
     size.Y = (SHORT)rows;
-    pty_resize_pc(pty->hpc, size);
+    HRESULT hr = pty_resize_pc(pty->hpc, size);
+    if (FAILED(hr)) {
+        pty_set_last_error("ResizePseudoConsole failed"); // VDOC-214: report failure
+        return 0;
+    }
+    return 1;
 }
 
 static int64_t pty_write_impl(rt_pty_impl *pty, const char *bytes, size_t len) {
@@ -803,10 +813,11 @@ static void pty_poll_internal(rt_pty_impl *pty, int wait) {
     (void)wait;
 }
 
-static void pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
+static int pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
     (void)pty;
     (void)cols;
     (void)rows;
+    return 0; // no PTY backend on this platform: resize cannot succeed
 }
 
 static int64_t pty_write_impl(rt_pty_impl *pty, const char *bytes, size_t len) {
@@ -950,14 +961,18 @@ static void pty_wait_after_sigterm(rt_pty_impl *pty, int grace_ms) {
     }
 }
 
-static void pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
+static int pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
     if (!pty || pty->master_fd < 0)
-        return;
+        return 0;
     struct winsize ws;
     memset(&ws, 0, sizeof(ws));
     ws.ws_col = (unsigned short)cols;
     ws.ws_row = (unsigned short)rows;
-    (void)ioctl(pty->master_fd, TIOCSWINSZ, &ws);
+    if (ioctl(pty->master_fd, TIOCSWINSZ, &ws) != 0) {
+        pty_set_last_errno("TIOCSWINSZ failed"); // VDOC-214: report backend failure
+        return 0;
+    }
+    return 1;
 }
 
 static int64_t pty_write_impl(rt_pty_impl *pty, const char *bytes, size_t len) {
@@ -1057,9 +1072,32 @@ static rt_pty_impl *pty_open_impl(
     }
 #endif
 
+    // Exec-status pipe: the write end is close-on-exec, so a SUCCESSFUL exec
+    // closes it and the parent's read sees EOF. On any pre-exec failure the child
+    // writes its errno and _exit(127)s, so the parent can surface the startup
+    // failure by returning NULL instead of an apparently valid session that only
+    // fails later (VDOC-213).
+    int exec_pipe[2] = {-1, -1};
+    if (pipe(exec_pipe) != 0) {
+        pty_set_last_errno("pipe failed");
+        close(master);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        return NULL;
+    }
+#if defined(FD_CLOEXEC)
+    {
+        int f = fcntl(exec_pipe[1], F_GETFD, 0);
+        if (f >= 0)
+            (void)fcntl(exec_pipe[1], F_SETFD, f | FD_CLOEXEC);
+    }
+#endif
+
     pid_t pid = fork();
     if (pid < 0) {
         pty_set_last_errno("fork failed");
+        close(exec_pipe[0]);
+        close(exec_pipe[1]);
         close(master);
         free_string_vector(&envp);
         free_string_vector(&argv);
@@ -1068,10 +1106,14 @@ static rt_pty_impl *pty_open_impl(
 
     if (pid == 0) {
         // CHILD — only async-signal-safe calls until exec.
+        close(exec_pipe[0]);
         setsid();
         int slave = open(slave_name, O_RDWR);
-        if (slave < 0)
+        if (slave < 0) {
+            int e = errno;
+            (void)!write(exec_pipe[1], &e, sizeof(e));
             _exit(127);
+        }
 #if defined(TIOCSCTTY)
         (void)ioctl(slave, TIOCSCTTY, 0);
 #endif
@@ -1086,16 +1128,49 @@ static rt_pty_impl *pty_open_impl(
         if (slave > STDERR_FILENO)
             close(slave);
         close(master);
-        if (cwd_text && chdir(cwd_text) != 0)
+        if (cwd_text && chdir(cwd_text) != 0) {
+            int e = errno;
+            (void)!write(exec_pipe[1], &e, sizeof(e));
             _exit(127);
+        }
+        // Always PATH-search bare program names. For an explicit environment,
+        // adopt it as `environ` first so execvp searches ITS PATH and passes it
+        // to the child — previously the explicit-env branch used execve, which
+        // does no PATH search, so adding an environment turned a searchable bare
+        // name into exit code 127 (VDOC-213). This matches Process.Start*.
         if (envp.values)
-            execve(program_text, argv.values, envp.values);
-        else
-            execvp(program_text, argv.values);
+            environ = envp.values;
+        execvp(program_text, argv.values);
+        // exec failed: report errno to the parent (the CLOEXEC write end is
+        // still open because exec did not run).
+        {
+            int e = errno;
+            (void)!write(exec_pipe[1], &e, sizeof(e));
+        }
         _exit(127);
     }
 
     // PARENT
+    close(exec_pipe[1]);
+    // Block until the child either reports a startup error or successfully
+    // exec's (closing the CLOEXEC write end -> EOF). Retry on EINTR.
+    int child_errno = 0;
+    ssize_t status_read;
+    do {
+        status_read = read(exec_pipe[0], &child_errno, sizeof(child_errno));
+    } while (status_read < 0 && errno == EINTR);
+    close(exec_pipe[0]);
+    if (status_read > 0) {
+        // The child failed before/at exec (e.g. program not found on PATH).
+        (void)waitpid(pid, NULL, 0);
+        close(master);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        errno = child_errno;
+        pty_set_last_errno("child exec failed");
+        return NULL;
+    }
+
     set_nonblocking(master);
 #if defined(FD_CLOEXEC)
     {
@@ -1265,10 +1340,10 @@ int64_t rt_pty_resize(void *handle, int64_t cols, int64_t rows) {
     if (!pty || !pty->started || pty->destroyed)
         return 0;
     pty_clamp_size(&cols, &rows);
-    // Backend ioctl/HRESULT failures are discarded; TRUE currently means only
-    // that the session handle was valid (VDOC-214).
-    pty_resize_impl(pty, cols, rows);
-    return 1;
+    // Propagate the backend result: TRUE only when the OS actually applied the
+    // new size (TIOCSWINSZ / ResizePseudoConsole succeeded). Failures set the
+    // PTY LastError (VDOC-214).
+    return pty_resize_impl(pty, cols, rows) ? 1 : 0;
 }
 
 int64_t rt_pty_exit_code(void *handle) {

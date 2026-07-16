@@ -199,6 +199,7 @@ Poll-based graceful shutdown requests for long-running servers, games, and tools
 | `Poll()` | `Integer()` | Return and clear pending reason bits |
 | `Pending()` | `Boolean()` | Return `TRUE` when any reason is pending without clearing it |
 | `Clear()` | `Void()` | Clear pending reasons and the VM interrupt epoch |
+| `InstallSignalHandlers()` | `Void()` | Install OS signal/console handlers that publish shutdown requests (opt-in for native programs) |
 
 `Poll()` and `Pending()` arm graceful handling for the next VM interrupt. If Ctrl-C
 arrives after a loop has polled, the VM records `INTERRUPT` and lets the program reach
@@ -208,9 +209,11 @@ only publish atomic state and never run managed callbacks.
 
 Pending reasons are a process-wide atomic bitmask, not per-VM state. `Request` ignores bits other
 than `Interrupt` and `Terminate` and ORs repeated requests together; `Poll` returns and clears the
-accumulated mask. Automatic Ctrl-C, `SIGTERM`, and Windows console-event publication is currently
-wired by the VM. Native/AOT programs do not install equivalent handlers, so they receive only
-cooperative `Request` calls or requests published by an embedding host (VDOC-210).
+accumulated mask. The VM wires automatic Ctrl-C, `SIGTERM`, and Windows console-event publication
+for you. A native/AOT program calls `InstallSignalHandlers()` once at startup to opt in to the same
+OS integration — it is not automatic there, because the compiler and other tools also link the
+runtime and must keep the default signal behavior. After that call, Ctrl-C / termination are
+published through `Request` just like under the VM, so `Poll` observes `Interrupt` / `Terminate`.
 
 ### Zia Example
 
@@ -407,13 +410,14 @@ current environment or a `Seq` of `KEY=value` strings. `cwd` may be `NULL` or em
 directory.
 
 `StartWithEnv` replaces the child's entire environment; it does not overlay the listed entries on
-the parent environment. On POSIX, `Start*` uses `posix_spawn` rather than `posix_spawnp`, so supply
-an executable path—bare names are not searched through `PATH`. Startup/OS failures return `NULL`;
+the parent environment. On POSIX, `Start*` PATH-searches a bare program name (using the supplied environment's `PATH` when
+present, else the inherited one), so a bare name resolves the same way with or without an explicit
+environment. Startup/OS failures return `NULL`;
 invalid empty/NUL-containing inputs and malformed environment entries trap.
 
-The current Windows `StartWithEnv` path builds a UTF-16 environment block but does not pass
-`CREATE_UNICODE_ENVIRONMENT` to `CreateProcessW`. Explicit environments can therefore be
-misinterpreted on Windows; use inherited environment state until VDOC-212 is fixed.
+On Windows, `StartWithEnv` builds a UTF-16 environment block and passes `CREATE_UNICODE_ENVIRONMENT`
+to `CreateProcessW`, so explicit environments — including non-ASCII values — are delivered to the
+child intact (matching the PTY backend).
 
 ### Viper.System.Process.ProcessHandle
 
@@ -469,8 +473,9 @@ func start() {
 
 - `Start*` executes the program directly; it does not invoke a shell. Use an explicit shell executable only when shell
   syntax is required.
-- A spawn failure returns `NULL`. Unlike the PTY path, Process uses `posix_spawn`, so a failed POSIX
-  exec does not normally produce a live handle with code `126` or `127`.
+- A spawn failure returns `NULL`. Process resolves the program to a full path (PATH-searching bare
+  names) before `posix_spawn`, so an unresolvable name fails at start rather than producing a live
+  handle with code `126`/`127`.
 - `ReadStdout()` and `ReadStderr()` are non-blocking incremental reads intended for simple callers. They trap when the runtime had to truncate unread stream data.
 - `ReadStdoutResult()` and `ReadStderrResult()` are preferred for long-running tools and GUI frame loops. They return a map with `text` and `truncated` so callers can surface overflow without crashing.
 - `WriteStdin` uses non-blocking pipes on POSIX and may return a partial byte count; callers must
@@ -528,8 +533,10 @@ drop unread PTY output; `ReadResult()` reports that condition through the
 `truncated` flag.
 
 `args`, `cwd`, and `env` follow the Process conventions above; a non-null `env` replaces the full
-child environment. On POSIX, the inherited-environment path uses `execvp` and searches `PATH`, but
-the explicit-environment path switches to `execve` and requires an executable path (VDOC-213).
+child environment. On POSIX, both the inherited- and explicit-environment paths `PATH`-search bare program names via
+`execvp` (the explicit environment's `PATH` is used), matching `Process.Start*`. A program that
+fails to exec surfaces as a failed open (`Err` / `NULL`) rather than an apparently-valid session
+that only fails later.
 Initial and resized dimensions default to 80 columns by 24 rows when non-positive and clamp each
 dimension to 4096.
 
@@ -547,15 +554,17 @@ if opened.IsOk {
 ```
 
 On macOS and Linux the backend uses a controlling POSIX PTY; Windows requires ConPTY (Windows 10
-version 1809 or newer); ViperDOS is unsupported. `LastError` is a compatibility, process-global
-side channel and is unsafe under concurrent calls (VDOC-215). `Read`/`ReadResult` share one merged
+version 1809 or newer); ViperDOS is unsupported. `LastError` is a compatibility side channel stored
+in a thread-local buffer, so concurrent PTY calls on different threads keep independent diagnostics;
+read it on the same thread that performed the failing operation (prefer `OpenResult` for structured
+errors). `Read`/`ReadResult` share one merged
 stdout/stderr buffer capped at 16 MiB. `Write` can report a partial byte count, and POSIX exit codes
 use the same negative-signal convention as Process. `Destroy` uses the same POSIX 500 ms
 termination grace period.
 
-`Resize` currently returns `TRUE` whenever the session handle is valid, even if the underlying
-`ioctl` or ConPTY resize operation fails; it is an accepted-request indicator, not confirmation of
-an OS resize (VDOC-214).
+`Resize` returns `TRUE` only when the backend actually applied the new size (`TIOCSWINSZ` on POSIX,
+`ResizePseudoConsole` on Windows). A backend failure returns `FALSE` and records the OS diagnostic
+in `LastError`, so it is a real confirmation of the OS resize rather than an accepted-request flag.
 
 ---
 
@@ -578,7 +587,7 @@ System information queries providing read-only access to machine properties.
 | `Temp`     | `String`  | Path to system temporary directory                                       |
 | `Cores`    | `Integer` | Number of logical CPU cores                                              |
 | `MemTotal` | `Integer` | Total RAM in bytes                                                       |
-| `MemFree`  | `Integer` | Platform-specific free/reclaimable RAM estimate in bytes                 |
+| `MemFree`  | `Integer` | Available physical RAM in bytes (memory usable for new work without swapping) |
 | `PageSize` | `Integer` | Host memory page size in bytes                                           |
 | `PointerSize` | `Integer` | Native pointer width in bits                                           |
 | `Endian`   | `String`  | Byte order: `"little"` or `"big"`                                        |
@@ -651,31 +660,33 @@ END IF
 
 - **OS**: Returns a lowercase, compile-time platform identifier.
 - **OSVer**: macOS reads `kern.osproductversion`; Linux reads `VERSION_ID` from
-  `/etc/os-release`, with a `uname` fallback. Windows currently uses deprecated
-  `GetVersionExA`, whose result depends on the embedding executable's compatibility manifest;
-  unmanifested/custom hosts can receive a compatibility version instead of the real Windows
-  10/11 version (VDOC-216).
+  `/etc/os-release`, with a `uname` fallback. Windows uses `RtlGetVersion` (ntdll), which returns
+  the true OS version independent of the executable's compatibility manifest, so unmanifested and
+  custom hosts report the real Windows 10/11 version; it falls back to `GetVersionExA` only if
+  `RtlGetVersion` is unavailable.
 - **Host**: Uses `gethostname()` on Unix, `GetComputerName()` on Windows.
-- **User**: Uses `getpwuid()` on Unix and `GetUserNameA()` on Windows, with environment fallbacks.
+- **User**: Uses `getpwuid()` on Unix and `GetUserNameW()` on Windows (wide + UTF-8 conversion), with environment fallbacks.
 - **Home**: Uses `HOME` (then the passwd entry) on Unix; Windows tries `USERPROFILE`, then
   `HOMEDRIVE` + `HOMEPATH`.
-- **Temp**: Uses `TMPDIR`/`TMP`/`TEMP` on Unix (default `/tmp`). Windows uses `GetTempPathA` and
+- **Temp**: Uses `TMPDIR`/`TMP`/`TEMP` on Unix (default `/tmp`). Windows uses `GetTempPathW` (wide + UTF-8 conversion) and
   falls back to `C:\Temp`.
 - **Cores**: Returns logical (hyper-threaded) cores using `hw.logicalcpu` on macOS,
-  `sysconf(_SC_NPROCESSORS_ONLN)` on other Unix, and `GetSystemInfo()` on Windows. The macOS
-  fallback currently passes through `sysconf` failure as `-1` instead of applying the documented
-  safe minimum (VDOC-219).
+  `sysconf(_SC_NPROCESSORS_ONLN)` on other Unix, and `GetSystemInfo()` on Windows. Every platform
+  returns at least 1: a failed or non-positive probe (including a `-1` `sysconf` result) applies the
+  safe minimum, so callers sizing worker pools never receive zero or a negative count.
 - **Arch**: Returns `x86_64`, `arm64`, `x86`, `arm`, `wasm32`, or `unknown` from compile-time
   architecture macros. **PageSize** falls back to 4096 if the platform query fails;
   **PointerSize** is `sizeof(void*) * 8`.
-- **MemTotal/MemFree**: macOS uses `sysctl` and `host_statistics64`; Linux uses `sysinfo`;
-  Windows uses `GlobalMemoryStatusEx`. `MemFree` is not comparable across platforms: Linux returns
-  only `freeram`, macOS adds inactive pages, and Windows returns available physical memory
-  (VDOC-218).
+- **MemTotal/MemFree**: `MemFree` reports one portable "available memory" estimate — the memory
+  usable for new work without swapping, including reclaimable page cache — on every platform:
+  Windows uses `GlobalMemoryStatusEx.ullAvailPhys`, macOS uses `(free + inactive)` reclaimable
+  pages from `host_statistics64`, and Linux uses `MemAvailable` from `/proc/meminfo` (falling back
+  to `free + buffers` on kernels without it). The same threshold is now comparable across hosts.
 - **Endian**: Runtime detection via union trick. Most modern systems are little-endian.
-- Windows Host/User/Home/Temp queries use ANSI APIs or narrow environment strings rather than the
-  wide UTF-16 conversion used by `Environment`; non-ASCII names and paths are not guaranteed to be
-  valid UTF-8 (VDOC-217).
+- Windows Host/User/Home/Temp queries use the wide Win32 APIs (`GetComputerNameW`,
+  `GetUserNameW`, `GetTempPathW`, `_wgetenv`) and the same validated UTF-8 conversion as
+  `Viper.System.Environment`, so non-ASCII host names, user names, and paths round-trip as valid
+  UTF-8.
 
 `Viper.System.Machine` properties call these same
 Machine implementations and inherit all of their fallbacks and limitations.
@@ -974,17 +985,20 @@ explicit control or are working at the IL level.
 - Key input is byte-oriented. On Windows, extended keys arrive as `_getch` prefix/scan-code calls;
   on UTF-8 terminals, one Unicode character can require multiple calls. A failed/non-TTY blocking
   read can return the character with code zero rather than `""`.
-- `ReadKeyFor` is publicly typed with a 64-bit Integer but is registered to a 32-bit runtime
-  implementation. Use `-1` for an indefinite wait or `0..2147483647` milliseconds; larger values
-  narrow and can become negative (VDOC-221). `SetPosition` and `SetColor` likewise narrow Integer
-  arguments to 32 bits.
+- `ReadKeyFor`, `SetPosition`, and `SetColor` take 64-bit Integer arguments that are clamped to the
+  32-bit range before use rather than truncated: a value above `2147483647` saturates to
+  `2147483647` instead of wrapping to a negative one. So a very large `ReadKeyFor` timeout waits the
+  maximum instead of blocking indefinitely, and large cursor/color values no longer change sign.
+  Use `-1` for an indefinite `ReadKeyFor` wait.
 - Screen-control methods other than `Bell` are silent no-ops when stdout is not a TTY. `SetColor`
   ignores the entire request if either channel is below `-1`; values 0–15 select BASIC/bright
   colors, and values 16 or greater are emitted as ANSI 256-color indexes without a 255 clamp.
-- `SetAltScreen(TRUE)` also enables cached raw input and increments the output-batch depth;
-  `SetAltScreen(FALSE)` decrements the depth and restores input. Repeated enable calls are not
-  idempotent and can leave output batching active, and normal-exit cleanup restores raw mode but
-  does not explicitly exit the alternate screen (VDOC-220).
+- `SetAltScreen(TRUE)` enters the alternate screen once, enabling cached raw input and one level of
+  output batching; `SetAltScreen(FALSE)` exits and balances them. The toggle is idempotent — it
+  transitions (and adjusts batch depth) only on an actual state change, so repeated enable calls
+  cannot strand output in batch mode. Normal-exit cleanup is balanced: if the program is still on
+  the alternate screen, it ends the batch, emits the alternate-screen exit sequence, and restores
+  raw mode.
 - Batching is nested. It defers control-sequence flushes and the low-level `Print*` methods above;
   the higher-level `Print`, `PrintInt`, `PrintNum`, `PrintBool`, and `Say*` methods explicitly flush
   and therefore do not remain buffered.

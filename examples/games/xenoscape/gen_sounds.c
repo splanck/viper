@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/gen_sounds.c
+// Purpose: Procedural WAV sound-effect generator for the Xenoscape demo assets.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 // gen_sounds.c — Procedural WAV sound effect generator for sidescroller demo
 // Compile: cc -o gen_sounds gen_sounds.c -lm
 // Run:     ./gen_sounds

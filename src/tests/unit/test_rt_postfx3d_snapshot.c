@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_rt_postfx3d_snapshot.c
+// Purpose: Snapshot tests for the 3D post-processing pipeline output.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
 #endif

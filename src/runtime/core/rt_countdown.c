@@ -13,6 +13,10 @@
 //
 // Key invariants:
 //   - Time is measured in milliseconds using the platform monotonic clock.
+//     When the monotonic clock is unavailable and POSIX falls back to
+//     CLOCK_REALTIME, the reading is clamped to a process-local atomic floor
+//     (CAS-max) so the deadline cannot recede on a backward clock adjustment
+//     (VDOC-223).
 //   - A countdown in the STOPPED state accumulates no elapsed time.
 //   - Elapsed time is the sum of accumulated milliseconds from completed
 //     intervals plus the current running interval (if any).
@@ -46,6 +50,27 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "rt_atomic_compat.h"
+
+/// @brief Return the QPC frequency, caching it through an atomic slot.
+/// @details `QueryPerformanceFrequency` is fixed for the life of the system, so
+///          the value can be cached process-wide. Reading and publishing the
+///          cache slot with acquire/release atomics makes concurrent first use
+///          well-defined instead of a C data race (VDOC-224); duplicate stores
+///          write the identical constant, so no once primitive is needed.
+/// @return QPC ticks-per-second, or 0 when the counter is unavailable.
+static int64_t countdown_qpc_freq(void) {
+    static int64_t cached = 0; // 0 = not yet resolved
+    int64_t freq = __atomic_load_n(&cached, __ATOMIC_ACQUIRE);
+    if (freq != 0)
+        return freq;
+    LARGE_INTEGER f;
+    if (!QueryPerformanceFrequency(&f) || f.QuadPart <= 0)
+        return 0;
+    __atomic_store_n(&cached, (int64_t)f.QuadPart, __ATOMIC_RELEASE);
+    return (int64_t)f.QuadPart;
+}
 #else
 #include <time.h>
 #endif
@@ -157,25 +182,24 @@ static int64_t countdown_timespec_to_ms(struct timespec ts) {
 /// @return Milliseconds since unspecified epoch.
 static int64_t get_timestamp_ms(void) {
 #if defined(_WIN32)
-    // The constant result makes duplicate queries semantically equivalent, but
-    // this unsynchronized shared write is still a C data race (VDOC-224).
-    static LARGE_INTEGER freq = {0};
-    if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
+    // QPC frequency is constant; cache it through an atomic slot so concurrent
+    // first use is defined rather than a data race (VDOC-224).
+    int64_t freq = countdown_qpc_freq();
+    if (freq == 0)
         return countdown_tick_count_ms();
-    }
 
     LARGE_INTEGER counter;
     if (!QueryPerformanceCounter(&counter))
         return countdown_tick_count_ms();
 
-    int64_t whole = counter.QuadPart / freq.QuadPart;
-    int64_t rem = counter.QuadPart % freq.QuadPart;
+    int64_t whole = counter.QuadPart / freq;
+    int64_t rem = counter.QuadPart % freq;
     if (whole > INT64_MAX / 1000LL) {
         rt_trap_ovf();
         return 0;
     }
     int64_t whole_ms = whole * 1000LL;
-    int64_t rem_ms = (int64_t)(((long double)rem * 1000.0L) / (long double)freq.QuadPart);
+    int64_t rem_ms = (int64_t)(((long double)rem * 1000.0L) / (long double)freq);
     int64_t result;
     if (countdown_checked_add_i64(whole_ms, rem_ms, &result)) {
         rt_trap_ovf();
@@ -191,9 +215,12 @@ static int64_t get_timestamp_ms(void) {
         return countdown_timespec_to_ms(ts);
     }
 #endif
-    // Fallback to CLOCK_REALTIME
+    // Fallback to CLOCK_REALTIME. Ratchet the wall-clock reading through a
+    // process-local atomic floor so a backward system-clock adjustment on this
+    // failure path cannot make the countdown deadline recede (VDOC-223).
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        return countdown_timespec_to_ms(ts);
+        static int64_t floor_ms = 0;
+        return rt_time_monotonic_ratchet(&floor_ms, countdown_timespec_to_ms(ts));
     }
     rt_trap("Countdown: clock unavailable");
     return 0;

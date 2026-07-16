@@ -232,7 +232,8 @@ TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
     auto templateKeys = runtimeMethodIndex().find("Viper.Text.Template", "Keys", 1);
     ASSERT_TRUE(templateKeys.has_value());
     EXPECT_EQ(templateKeys->ret, BasicType::Object);
-    EXPECT_EQ(templateKeys->returnClassQName, std::string("Viper.Collections.Seq"));
+    // Template.Keys returns a deduplicated StringSet (VDOC-044).
+    EXPECT_EQ(templateKeys->returnClassQName, std::string("Viper.Collections.StringSet"));
 
     auto keys = runtimeMethodIndex().find("Viper.Collections.DefaultMap", "Keys", 0);
     ASSERT_TRUE(keys.has_value());

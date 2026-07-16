@@ -679,6 +679,68 @@ void *rt_str_split_fields_seq(rt_string line) {
     return seq;
 }
 
+/// @brief Validating companion to `rt_str_split_fields_seq` (VDOC-164).
+/// @details The plain splitter is deliberately lenient INPUT-style parsing.
+///          This variant first enforces strict quote structure — a quoted
+///          field must open at the field start, close exactly once, and be
+///          followed only by whitespace before the next comma; quotes may not
+///          appear inside unquoted text; the record may not end inside a
+///          quote — and reports violations as `Result.ErrStr` instead of
+///          silently merging columns.
+/// @return `Result.Ok(Seq[str])` or `Result.ErrStr(message)`.
+void *rt_str_split_fields_result(rt_string line) {
+    const char *data = "";
+    size_t len = 0;
+    if (line && line->data) {
+        data = line->data;
+        if (line->heap && line->heap != RT_SSO_SENTINEL)
+            len = rt_heap_len(line->data);
+        else
+            len = line->literal_len;
+    }
+
+    enum { FIELD_START, UNQUOTED, QUOTED, QUOTED_END } state = FIELD_START;
+    const char *err = NULL;
+    for (size_t i = 0; i < len && !err; ++i) {
+        char ch = data[i];
+        switch (state) {
+            case FIELD_START:
+                if (ch == '"')
+                    state = QUOTED;
+                else if (ch == ',')
+                    ; // empty field; stay at field start
+                else if (!rt_ascii_isspace((unsigned char)ch))
+                    state = UNQUOTED;
+                break;
+            case UNQUOTED:
+                if (ch == '"')
+                    err = "SplitFields: quote inside unquoted field";
+                else if (ch == ',')
+                    state = FIELD_START;
+                break;
+            case QUOTED:
+                if (ch == '"') {
+                    if (i + 1 < len && data[i + 1] == '"')
+                        ++i; // escaped ""
+                    else
+                        state = QUOTED_END;
+                }
+                break;
+            case QUOTED_END:
+                if (ch == ',')
+                    state = FIELD_START;
+                else if (!rt_ascii_isspace((unsigned char)ch))
+                    err = "SplitFields: text after closing quote";
+                break;
+        }
+    }
+    if (!err && state == QUOTED)
+        err = "SplitFields: unclosed quote";
+    if (err)
+        return rt_result_err_str(rt_const_cstr(err));
+    return rt_result_ok(rt_str_split_fields_seq(line));
+}
+
 /// @brief Determine whether a file channel has reached EOF.
 /// @details Consults cached EOF information and falls back to probing the file
 ///          descriptor via @ref lseek when necessary.  Updates the cached state

@@ -17,6 +17,7 @@
 
 #include <cassert>
 #include <csetjmp>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 
@@ -26,8 +27,12 @@ static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
+static bool g_trap_return = false; // when set, vm_trap records and RETURNS
+
 extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
+    if (g_trap_return)
+        return; // simulate an embedder hook that returns (VDOC-177)
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
@@ -468,6 +473,40 @@ static void test_rejects_non_bytes_objects() {
         rt_obj_free(obj);
 }
 
+/// @brief With a RETURNING trap hook installed, invalid-Bytes-handle methods
+///        must return a type-appropriate sentinel instead of dereferencing the
+///        NULL that the checked cast returns (VDOC-177).
+static void test_invalid_handle_with_returning_hook() {
+    // A runtime string handle is a valid object but NOT a Bytes instance, so
+    // rt_bytes_require traps and (with a returning hook) yields NULL.
+    void *not_bytes = (void *)rt_string_from_bytes("not bytes", 9);
+
+    g_trap_return = true;
+    g_last_trap = nullptr;
+
+    assert(rt_bytes_len(not_bytes) == 0);
+    assert(rt_bytes_is_empty(not_bytes) == 1);
+    assert(rt_bytes_get(not_bytes, 0) == 0);
+    rt_bytes_set(not_bytes, 0, 1); // must not crash
+    assert(rt_bytes_find(not_bytes, 42) == -1);
+    void *sliced = rt_bytes_slice(not_bytes, 0, 4);
+    assert(sliced != nullptr && rt_bytes_len(sliced) == 0);
+    void *cloned = rt_bytes_clone(not_bytes);
+    assert(cloned != nullptr && rt_bytes_len(cloned) == 0);
+    rt_string hex = rt_bytes_to_hex(not_bytes);
+    assert(rt_str_len(hex) == 0);
+    rt_string str = rt_bytes_to_str(not_bytes);
+    assert(rt_str_len(str) == 0);
+    rt_bytes_fill(not_bytes, 0); // must not crash
+    // Read/write helpers route through bounds check; also must not crash.
+    assert(rt_bytes_read_i32le(not_bytes, 0) == 0);
+    rt_bytes_write_i32le(not_bytes, 0, 5);
+
+    g_trap_return = false;
+    assert(g_last_trap != nullptr); // a trap was in fact raised each time
+    printf("test_invalid_handle_with_returning_hook: OK\n");
+}
+
 int main() {
     test_new_creates_zero_filled_bytes();
     test_new_with_zero_length();
@@ -509,6 +548,7 @@ int main() {
     test_from_raw_rejects_null_nonempty_data();
     test_extract_raw_requires_length_output();
     test_rejects_non_bytes_objects();
+    test_invalid_handle_with_returning_hook();
 
     return 0;
 }

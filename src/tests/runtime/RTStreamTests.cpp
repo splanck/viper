@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_binfile.h"
+#include "rt_memstream.h"
 #include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_stream.h"
@@ -217,6 +218,24 @@ static void test_stream_conversion() {
         EXPECT_TRAP(rt_stream_as_binfile(stream));
     }
 
+    // VDOC-187: AsMemStream returns an OWNED reference that survives closing
+    // the Stream — the previous borrowed return dangled after Close.
+    {
+        void *stream = rt_stream_open_memory();
+        rt_stream_write(stream, make_bytes_str("hello"));
+        void *ms = rt_stream_as_memstream(stream);
+        test_result("AsMemStream returns memstream", ms != NULL);
+
+        // Close the Stream; the returned MemStream must stay valid and usable.
+        rt_stream_close(stream);
+        test_result("MemStream usable after Stream close", rt_memstream_get_len(ms) == 5);
+
+        // The caller owns the reference and can release it without a dangle.
+        if (rt_obj_release_check0(ms))
+            rt_obj_free(ms);
+        test_result("Owned MemStream releases cleanly", true);
+    }
+
     // Test 2: FromMemStream (wrap existing)
     {
         void *original = rt_stream_open_memory();
@@ -261,6 +280,12 @@ static void test_file_stream_modes() {
     rt_stream_set_pos(reader, 0);
     void *read = rt_stream_read(reader, 4);
     test_result("rb read contents", bytes_equal(read, make_bytes_str("mode")));
+    // VDOC-188: Stream.Eof is position-based on BOTH backings — reading exactly
+    // the remaining bytes of a file-backed stream leaves Eof true, matching
+    // memory-backed streams (the old sticky feof flag left it false here).
+    test_result("file Eof true after reading all bytes", rt_stream_is_eof(reader) == 1);
+    rt_stream_set_pos(reader, 0);
+    test_result("file Eof false after seeking to start", rt_stream_is_eof(reader) == 0);
     rt_stream_close(reader);
 
     void *rw = rt_stream_open_file(path, rt_const_cstr("r+"));

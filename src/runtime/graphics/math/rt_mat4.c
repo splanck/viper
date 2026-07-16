@@ -21,7 +21,8 @@
 //   - Mat4 objects are immutable after creation; all operations return new
 //     objects allocated from the GC heap.
 //   - Inverse is computed via cofactor expansion; a non-finite determinant or
-//     |det| < 1e-15 silently returns the identity matrix.
+//     |det| < 1e-15 traps ("singular matrix"), consistent with Mat3.Inverse
+//     (VDOC-208) — it never returns identity as an ambiguous error sentinel.
 //   - Perspective projection uses a right-handed coordinate system, depth range
 //     [-1, 1] (OpenGL convention), with near/far clip planes.
 //
@@ -38,6 +39,7 @@
 #include "rt_mat4.h"
 
 #include "rt_object.h"
+#include "rt_trap.h"
 #include "rt_vec3.h"
 
 #include <math.h>
@@ -646,15 +648,12 @@ double rt_mat4_det(void *m) {
     return s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
 }
 
-/// @brief Compute the 4×4 inverse via the cofactor / adjugate formula. Returns identity for
-/// NULL input or a singular matrix (det ≈ 0). For affine-only transforms, often faster to
-/// invert the rotation+translation directly.
-void *rt_mat4_inverse(void *m) {
-    mat4_impl *mat = mat4_checked(m);
-    if (!mat)
-        return rt_mat4_identity();
-
-    const double *a = mat->m;
+/// @brief Compute the 4×4 inverse of `a` into a fresh Mat4, or return NULL when
+///        the matrix is singular (non-finite determinant or `|det| < 1e-15`).
+/// @details Shared core for the trapping public `rt_mat4_inverse` and the
+///          non-trapping internal `rt_mat4_try_inverse` (VDOC-208). Never
+///          fabricates an identity result on failure.
+static void *mat4_inverse_or_null(const double *a) {
     double inv[16];
     double det;
     double inv_det;
@@ -694,7 +693,7 @@ void *rt_mat4_inverse(void *m) {
 
     det = a[0] * inv[0] + a[1] * inv[4] + a[2] * inv[8] + a[3] * inv[12];
     if (!isfinite(det) || fabs(det) < 1e-15)
-        return rt_mat4_identity(); // Singular
+        return NULL; // singular / non-invertible
 
     inv_det = 1.0 / det;
     for (int i = 0; i < 16; i++)
@@ -716,6 +715,42 @@ void *rt_mat4_inverse(void *m) {
                        inv[13],
                        inv[14],
                        inv[15]);
+}
+
+/// @brief Compute the 4×4 inverse via the cofactor / adjugate formula. Traps on a null/invalid
+/// receiver or a singular matrix (non-finite determinant or `|det| < 1e-15`) rather than returning
+/// identity — identity is a valid transform and would silently move geometry, so failure must be
+/// explicit and consistent with `Mat3.Inverse` (VDOC-208). For affine-only transforms, often faster
+/// to invert the rotation+translation directly.
+void *rt_mat4_inverse(void *m) {
+    if (!m) {
+        rt_trap("Mat4.Inverse: null matrix");
+        return NULL;
+    }
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat) {
+        rt_trap("Mat4.Inverse: invalid matrix");
+        return NULL;
+    }
+    void *result = mat4_inverse_or_null(mat->m);
+    if (!result) {
+        rt_trap("Mat4.Inverse: singular matrix");
+        return NULL;
+    }
+    return result;
+}
+
+/// @brief Non-trapping inverse for internal engine use: returns NULL for a
+///        null/invalid/singular matrix instead of trapping, so callers can
+///        degrade gracefully (e.g. treat an uninvertible parent transform as
+///        the identity frame) rather than crashing (VDOC-208).
+void *rt_mat4_try_inverse(void *m) {
+    if (!m)
+        return NULL;
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
+        return NULL;
+    return mat4_inverse_or_null(mat->m);
 }
 
 /// @brief Element-wise negation (-m). Returns zero for invalid input.
@@ -756,7 +791,10 @@ int8_t rt_mat4_eq(void *a, void *b, double epsilon) {
     if (!a || !b)
         return (!a && !b) ? 1 : 0;
 
-    if (epsilon <= 0.0)
+    // Normalize non-positive AND non-finite epsilon: a NaN epsilon slips past
+    // `epsilon <= 0.0` and then `diff > NaN` is always false, making any two
+    // matrices compare equal (VDOC-207).
+    if (!(epsilon > 0.0) || !isfinite(epsilon))
         epsilon = 1e-9;
 
     mat4_impl *ma = mat4_checked(a);
@@ -765,7 +803,9 @@ int8_t rt_mat4_eq(void *a, void *b, double epsilon) {
         return 0;
 
     for (int i = 0; i < 16; i++) {
-        if (fabs(ma->m[i] - mb->m[i]) > epsilon)
+        // Negated `<=` so a NaN component difference counts as NOT equal — a
+        // matrix containing NaN is never equal to any matrix (VDOC-207).
+        if (!(fabs(ma->m[i] - mb->m[i]) <= epsilon))
             return 0;
     }
 

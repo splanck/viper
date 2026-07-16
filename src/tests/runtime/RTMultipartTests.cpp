@@ -12,16 +12,44 @@
 
 #include "rt_bytes.h"
 #include "rt_multipart.h"
+#include "rt_result.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
+
+// -- Trap interception (strict-parse tests, VDOC-146) ------------------------
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+static const char *g_last_trap = nullptr;
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    fprintf(stderr, "UNEXPECTED TRAP: %s\n", msg ? msg : "(null)");
+    exit(1);
+}
+
+/// Expect `expr` to trap; capture the message and continue.
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static void test_builder_escapes_header_params() {
     printf("Testing Multipart builder header escaping:\n");
@@ -115,27 +143,67 @@ static void test_parser_handles_direct_boundary_param() {
     rt_string_unref(field);
 }
 
-static void test_parser_skips_parts_without_name() {
-    printf("\nTesting Multipart parser skips unnamed parts:\n");
+/// @brief Strict atomic parsing (VDOC-146): malformed, truncated, and invalid
+///        inputs trap instead of yielding empty or partial objects, and
+///        ParseResult/HasField/HasFile disambiguate the remaining cases.
+static void test_parser_strict_and_distinguishable() {
+    printf("\nTesting Multipart strict parsing and presence checks:\n");
 
-    const char *raw_body = "--abc\r\n"
-                           "Content-Disposition: form-data; filename=\"x.txt\"\r\n"
-                           "\r\n"
-                           "ignored\r\n"
-                           "--abc\r\n"
-                           "Content-Disposition: form-data; name=\"field\"\r\n"
-                           "\r\n"
-                           "kept\r\n"
-                           "--abc--\r\n";
+    // Unnamed part is malformed form-data — the whole parse fails.
+    const char *unnamed_body = "--abc\r\n"
+                               "Content-Disposition: form-data; filename=\"x.txt\"\r\n"
+                               "\r\n"
+                               "ignored\r\n"
+                               "--abc--\r\n";
+    void *body = rt_bytes_from_str(rt_const_cstr(unnamed_body));
+    EXPECT_TRAP(rt_multipart_parse(rt_const_cstr("multipart/form-data; boundary=abc"), body));
+    test_result("Unnamed part traps as malformed",
+                g_last_trap && strstr(g_last_trap, "malformed") != nullptr);
 
-    void *body = rt_bytes_from_str(rt_const_cstr(raw_body));
-    void *mp = rt_multipart_parse(rt_const_cstr("multipart/form-data; boundary=abc"), body);
+    // Truncated body (no closing boundary) is rejected atomically.
+    const char *truncated_body = "--abc\r\n"
+                                 "Content-Disposition: form-data; name=\"a\"\r\n"
+                                 "\r\n"
+                                 "prefix-data-without-terminator";
+    body = rt_bytes_from_str(rt_const_cstr(truncated_body));
+    EXPECT_TRAP(rt_multipart_parse(rt_const_cstr("multipart/form-data; boundary=abc"), body));
+    test_result("Truncated body traps",
+                g_last_trap && strstr(g_last_trap, "truncated") != nullptr);
 
-    test_result("Unnamed part is ignored", rt_multipart_count(mp) == 1);
-    rt_string field = rt_multipart_get_field(mp, rt_const_cstr("field"));
-    test_result("Named field after unnamed part is preserved",
-                strcmp(rt_string_cstr(field), "kept") == 0);
-    rt_string_unref(field);
+    // Content-Type without a boundary parameter is rejected.
+    body = rt_bytes_from_str(rt_const_cstr("--abc--\r\n"));
+    EXPECT_TRAP(rt_multipart_parse(rt_const_cstr("multipart/form-data"), body));
+    test_result("Missing boundary parameter traps",
+                g_last_trap && strstr(g_last_trap, "boundary") != nullptr);
+
+    // ParseResult converts the trap into Result.ErrStr...
+    body = rt_bytes_from_str(rt_const_cstr("no delimiters here"));
+    void *res = rt_multipart_parse_result(
+        rt_const_cstr("multipart/form-data; boundary=abc"), body);
+    test_result("ParseResult reports rejected input as Err", rt_result_is_err(res) == 1);
+
+    // ...and wraps a valid parse in Result.Ok.
+    const char *good_body = "--abc\r\n"
+                            "Content-Disposition: form-data; name=\"empty\"\r\n"
+                            "\r\n"
+                            "\r\n"
+                            "--abc--\r\n";
+    body = rt_bytes_from_str(rt_const_cstr(good_body));
+    res = rt_multipart_parse_result(rt_const_cstr("multipart/form-data; boundary=abc"), body);
+    test_result("ParseResult wraps a valid parse in Ok", rt_result_is_ok(res) == 1);
+    void *mp = rt_result_unwrap(res);
+
+    // Presence checks distinguish present-but-empty from missing.
+    test_result("HasField sees the present empty field",
+                rt_multipart_has_field(mp, rt_const_cstr("empty")) == 1);
+    test_result("HasField rejects a missing name",
+                rt_multipart_has_field(mp, rt_const_cstr("missing")) == 0);
+    test_result("HasFile distinguishes fields from files",
+                rt_multipart_has_file(mp, rt_const_cstr("empty")) == 0);
+    rt_string empty_val = rt_multipart_get_field(mp, rt_const_cstr("empty"));
+    test_result("Present empty field still reads as empty string",
+                rt_string_cstr(empty_val)[0] == '\0');
+    rt_string_unref(empty_val);
 }
 
 static void test_builder_preserves_empty_parts_and_final_boundary() {
@@ -205,7 +273,7 @@ int main() {
     test_parser_handles_quoted_and_escaped_params();
     test_parser_handles_bare_token_params();
     test_parser_handles_direct_boundary_param();
-    test_parser_skips_parts_without_name();
+    test_parser_strict_and_distinguishable();
     test_builder_preserves_empty_parts_and_final_boundary();
     test_field_value_preserves_embedded_nul();
 

@@ -136,6 +136,17 @@ static void test_embedded_nul_name_traps() {
     printf("  test_embedded_nul_name_traps: PASSED\n");
 }
 
+/// @brief VDOC-199: Path.DataDir validates the runtime String's full byte
+///        length, so an app name with an embedded NUL (and bytes after it) is
+///        rejected rather than silently truncated at the NUL.
+static void test_data_dir_embedded_nul_name_traps() {
+    char name_bytes[] = {'a', 'p', 'p', '\0', 'x'};
+    rt_string name = rt_string_from_bytes(name_bytes, sizeof(name_bytes));
+    EXPECT_TRAP(rt_path_data_dir(name));
+    rt_string_unref(name);
+    printf("  test_data_dir_embedded_nul_name_traps: PASSED\n");
+}
+
 // ============================================================================
 // In-Memory Key-Value Operations
 // ============================================================================
@@ -628,6 +639,7 @@ int main() {
     test_null_safety();
     test_empty_name_traps();
     test_embedded_nul_name_traps();
+    test_data_dir_embedded_nul_name_traps();
 
     printf("\n--- Key-Value Operations ---\n");
     test_set_get_int();

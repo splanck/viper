@@ -8,8 +8,9 @@
 // by the Viper runtime and the Viper.Time.Clock surface.
 //
 // Key invariants:
-//   - Clock values prefer a monotonic source; POSIX uses adjustable realtime as
-//     a failure fallback, and all-source failure returns 0 (VDOC-223).
+//   - Clock values prefer a monotonic source; POSIX uses realtime as a failure
+//     fallback, ratcheted through a process-local floor so it stays
+//     non-decreasing, and all-source failure returns 0 (VDOC-223).
 //   - Negative sleep durations are clamped to 0.
 //   - All functions are thread-safe and have no shared mutable state.
 //
@@ -50,6 +51,16 @@ int64_t rt_clock_ticks(void);
 /// @return Microsecond tick count, or 0 if all clock queries fail. POSIX's
 /// realtime fallback is adjustable. Traps on signed 64-bit overflow.
 int64_t rt_clock_ticks_us(void);
+
+/// @brief Clamp a fallback clock reading up to a process-local monotonic floor.
+/// @details Internal helper shared by the Clock, Stopwatch, and Countdown POSIX
+/// CLOCK_REALTIME fallbacks. A lock-free CAS-max keeps the returned sequence
+/// non-decreasing even if wall-clock time is adjusted backward (VDOC-223). Not a
+/// registered runtime surface symbol.
+/// @param floor Caller-owned process-local floor for one scale/call site.
+/// @param candidate Freshly sampled fallback value.
+/// @return The greater of @p candidate and the retained floor.
+int64_t rt_time_monotonic_ratchet(int64_t *floor, int64_t candidate);
 
 #ifdef __cplusplus
 }

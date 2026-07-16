@@ -52,6 +52,17 @@ int8_t rt_shutdown_polling_enabled(void);
 /// @brief Non-enabling internal peek used by the VM interrupt path.
 int8_t rt_shutdown_has_pending(void);
 
+/// @brief Install OS signal/console handlers that publish shutdown requests.
+/// @details Wires SIGINT/SIGTERM (POSIX) or the console control handler
+///          (Windows) so an OS interrupt/termination becomes a
+///          `rt_shutdown_request`, letting `Shutdown.Poll` observe Ctrl-C and
+///          termination. Idempotent. The VM installs its own richer handler
+///          automatically; native/AOT programs call this to opt in to the same
+///          OS integration (they do not get it for free, since the compiler and
+///          tools also link the runtime and must keep default signal behavior)
+///          (VDOC-210). Exposed as `Viper.System.Shutdown.InstallSignalHandlers`.
+void rt_shutdown_install_signal_handlers(void);
+
 /// @brief Constant getters for runtime class properties.
 int64_t rt_shutdown_const_none(void);
 int64_t rt_shutdown_const_interrupt(void);

@@ -75,21 +75,25 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 ///          concurrent initialization.
 /// @return Non-negative file descriptor on success; -1 when opening failed.
 static int rand_urandom_fd(void) {
-    static int fd = -1;
+    static int fd = -1; // accessed only via __atomic_* (acquire/release)
     static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    if (fd >= 0)
-        return fd;
+    // Lock-free fast path: an acquire load synchronizes with the release store
+    // below, so a concurrent first-use read/write is data-race-free (VDOC-175).
+    int cached = __atomic_load_n(&fd, __ATOMIC_ACQUIRE);
+    if (cached >= 0)
+        return cached;
     pthread_mutex_lock(&lock);
-    if (fd < 0) {
+    cached = __atomic_load_n(&fd, __ATOMIC_RELAXED);
+    if (cached < 0) {
 #ifdef O_CLOEXEC
-        fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+        cached = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
 #else
-        fd = open("/dev/urandom", O_RDONLY);
+        cached = open("/dev/urandom", O_RDONLY);
 #endif
+        __atomic_store_n(&fd, cached, __ATOMIC_RELEASE);
     }
-    int result = fd;
     pthread_mutex_unlock(&lock);
-    return result;
+    return cached;
 }
 #endif
 

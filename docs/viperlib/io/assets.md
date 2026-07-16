@@ -55,10 +55,10 @@ Load an asset by name. Returns a typed object based on file extension:
 
 Returns null if not found.
 
-Typed decoding is selected from the extension. In the current implementation, a recognized image
-or audio decoder that cannot decode the bytes falls back to returning the raw `Bytes` object rather
-than trapping or returning null. This makes malformed known-format assets type-unstable; see
-VDOC-181 in the [documentation review log](../../documentation-review-findings.md).
+Each recognized extension has one stable result type: a recognized image/audio extension returns
+its typed object (`Pixels` or `Sound`), or `null` when the bytes are malformed — it never
+silently downgrades a corrupt known-format asset to `Bytes`. Only unrecognized extensions return
+raw `Bytes`. Use `LoadBytes` to read any asset (recognized or not) as raw bytes unconditionally.
 
 ### Assets.LoadBytes(name: String) -> Bytes?
 
@@ -94,15 +94,14 @@ Unmount first matches the canonical full path used at mount time. Passing only a
 
 ### Path.ExeDir() -> String
 
-Returns the directory containing the running executable. Uses platform-specific APIs:
-- macOS: `_NSGetExecutablePath()`
-- Windows: `GetModuleFileNameA()`
-- Linux: `readlink("/proc/self/exe")`
+Returns the directory containing the running executable. Uses platform-specific APIs with
+dynamically sized buffers and truncation detection:
+- macOS: `_NSGetExecutablePath()` (queries the required size), then `realpath`
+- Windows: `GetModuleFileNameW()` in a growing buffer (Unicode; truncation-detecting), then UTF-8
+- Linux: `readlink("/proc/self/exe")` in a growing buffer (truncation-detecting)
 
-The current adapters use fixed `PATH_MAX`/`MAX_PATH` buffers. Windows also uses the ANSI API.
-Long, unrepresentable, or failed lookups can therefore return `"."`; Linux can accept an
-exact-buffer truncation as a result. Callers that use this for discovery should treat `"."` as a
-fallback rather than proof of the executable's location (VDOC-185).
+Long and non-ASCII executable paths resolve to the real directory; `"."` is returned only when
+the OS lookup genuinely fails, so a non-`"."` result is a reliable executable location.
 
 ## Resolution Order
 
@@ -158,9 +157,9 @@ The returned `Map` includes:
 Resolution checks absolute paths first, then the scene's directory, then `projectRoot`, then each comma-separated asset root. If no filesystem candidate exists, the resolver checks mounted assets through `Viper.IO.Assets`.
 Filesystem resolution uses existence checks rather than regular-file checks, so
 editor callers that require a file should validate the returned path's kind.
-An empty `assetPath` currently resolves to the project directory when it exists. A relative
-`scenePath` is also interpreted relative to the process working directory, not automatically
-relative to `projectRoot`; pass an absolute scene path until VDOC-197 is repaired.
+An empty `assetPath` is rejected as not found with an `empty asset name` diagnostic (it does not
+resolve to the project directory). A relative `scenePath` is interpreted relative to `projectRoot`,
+so scene-relative resolution is independent of the editor's current working directory.
 
 ## See Also
 

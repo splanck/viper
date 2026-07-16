@@ -157,6 +157,23 @@ static void test_file_index_and_ignore() {
                root_s, rt_const_cstr("#literal.zia"), rt_const_cstr("\\#literal.zia")) == 1);
     assert(rt_workspace_file_index_should_ignore(
                root_s, rt_const_cstr("!literal.zia"), rt_const_cstr("\\!literal.zia")) == 1);
+
+    // VDOC-192: `**/` matches whole path components, not a mid-component suffix.
+    // A component that merely ENDS with the literal must NOT be ignored.
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("foobar"), rt_const_cstr("**/bar")) == 0);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("foo/xbar"), rt_const_cstr("foo/**/bar")) == 0);
+    // But a real component named `bar` at any depth (zero or more components) IS
+    // ignored.
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("bar"), rt_const_cstr("**/bar")) == 1);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("a/b/bar"), rt_const_cstr("**/bar")) == 1);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("foo/bar"), rt_const_cstr("foo/**/bar")) == 1);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("foo/x/bar"), rt_const_cstr("foo/**/bar")) == 1);
     rt_string_unref(root_s);
     fs::remove_all(root);
 }
@@ -184,6 +201,24 @@ static void test_asset_resolver_and_manifest() {
     assert(rt_map_get_bool(missing, rt_const_cstr("found")) == 0);
     assert(get_str(missing, "diagnostic").find("missing.png") != std::string::npos);
 
+    // VDOC-197: an empty asset name must not resolve to the project directory
+    // itself — it is rejected as not found with an explicit diagnostic.
+    void *empty_asset = rt_asset_resolver_resolve(
+        scene, project, rt_const_cstr("assets"), rt_const_cstr(""));
+    assert(rt_map_get_bool(empty_asset, rt_const_cstr("found")) == 0);
+    assert(rt_map_get_bool(empty_asset, rt_const_cstr("exists")) == 0);
+    assert(get_str(empty_asset, "diagnostic").find("empty asset name") != std::string::npos);
+
+    // VDOC-197: a RELATIVE scene path is resolved against the project root, not
+    // the process CWD, so scene-relative resolution is CWD-independent. Passing
+    // the project-relative scene path resolves the scene-local asset the same
+    // way the absolute scene path did above.
+    void *scene_relative_project = rt_asset_resolver_resolve(
+        rt_const_cstr("scenes/level.json"), project, rt_const_cstr("assets"),
+        rt_const_cstr("local.png"));
+    assert(rt_map_get_bool(scene_relative_project, rt_const_cstr("found")) == 1);
+    assert(get_str(scene_relative_project, "source") == "scene");
+
     rt_string manifest_text = rt_const_cstr("project Demo\n"
                                             "lang zia\n"
                                             "entry src/main.zia\n"
@@ -199,6 +234,23 @@ static void test_asset_resolver_and_manifest() {
     assert(get_str(manifest, "name") == "Demo");
     assert(get_str(manifest, "entry") == "src/main.zia");
     assert(rt_seq_len(rt_map_get(manifest, rt_const_cstr("runConfigs"))) == 1);
+
+    // VDOC-194: directives inside an UNKNOWN section must not leak into the
+    // top level. The top-level `entry` stays as set before the unknown section,
+    // the manifest is marked invalid, and no stray run/build config is created.
+    rt_string hijack_text = rt_const_cstr("project Guarded\n"
+                                          "entry real.zia\n"
+                                          "[unknown]\n"
+                                          "entry hijack.zia\n"
+                                          "sources evil\n");
+    void *hijacked = rt_project_manifest_parse_text(hijack_text);
+    assert(get_str(hijacked, "entry") == "real.zia");
+    assert(rt_map_get_bool(hijacked, rt_const_cstr("valid")) == 0);
+    assert(rt_seq_len(rt_map_get(hijacked, rt_const_cstr("runConfigs"))) == 0);
+    // The unknown section itself plus each of its two body directives are
+    // diagnosed (3 diagnostics), and none of `evil` reached the top-level
+    // sourceGlobs.
+    assert(rt_seq_len(rt_map_get(hijacked, rt_const_cstr("diagnostics"))) == 3);
 
     rt_string_unref(scene);
     rt_string_unref(project);
@@ -278,6 +330,13 @@ static void test_workspace_edits() {
     assert(read_file(a) == "one\nTWO\n");
     assert(read_file(b) == "ALPHA\nbeta\n");
 
+    // VDOC-196: a successful apply leaves no `.viper-edit-*` temp/backup sidecars
+    // behind (backups are reserved with unpredictable names and cleaned up).
+    for (const auto &entry : fs::directory_iterator(root)) {
+        const std::string name = entry.path().filename().string();
+        assert(name.find(".viper-edit-") == std::string::npos);
+    }
+
     write_file(a, "abcdef\n");
     void *overlap = rt_seq_new_owned();
     add_edit(overlap, a, 1, 1, 1, 4, "x");
@@ -313,10 +372,43 @@ static void test_workspace_edits() {
     fs::remove_all(root);
 }
 
+/// @brief VDOC-193: a `.gitignore` rewrite must invalidate the pattern cache
+///        even when the modification timestamp is unchanged (a same-second, or
+///        coarse-clock, save). The cache identity is content-derived, so the new
+///        patterns take effect immediately.
+static void test_gitignore_same_second_rewrite() {
+    fs::path root = temp_root();
+    write_file(root / ".gitignore", "*.tmp\n");
+    rt_string root_s = s(root.string());
+
+    // Prime the cache: *.tmp ignored, *.log not.
+    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.tmp"),
+                                                 rt_const_cstr("")) == 1);
+    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.log"),
+                                                 rt_const_cstr("")) == 0);
+
+    // Rewrite with different patterns, then force the ORIGINAL mtime back so the
+    // whole-second timestamp is identical to the primed version.
+    std::error_code ec;
+    auto mtime = fs::last_write_time(root / ".gitignore", ec);
+    write_file(root / ".gitignore", "*.log\n");
+    fs::last_write_time(root / ".gitignore", mtime, ec);
+
+    // Despite the unchanged mtime, the content-derived cache identity changed,
+    // so the new patterns are honored: *.log now ignored, *.tmp no longer.
+    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.log"),
+                                                 rt_const_cstr("")) == 1);
+    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.tmp"),
+                                                 rt_const_cstr("")) == 0);
+    rt_string_unref(root_s);
+    fs::remove_all(root);
+}
+
 int main() {
     test_file_index_and_ignore();
     test_asset_resolver_and_manifest();
     test_workspace_watcher_batch();
     test_workspace_edits();
+    test_gitignore_same_second_rewrite();
     return 0;
 }

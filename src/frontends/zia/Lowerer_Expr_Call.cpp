@@ -1104,7 +1104,23 @@ LowerResult Lowerer::emitRuntimeCallResult(const std::string &calleeName,
             callReturnType = ilSurfaceType;
     }
 
-    Value rawResult = emitCallRet(callReturnType, effectiveCallee, callArgs);
+    // Zia integer expressions are uniformly i64, but some runtime entry
+    // points declare narrow i16/i32 parameters (e.g. String.FromI16/FromI32).
+    // Insert checked narrowing conversions so those calls verify instead of
+    // reaching the IL verifier with mismatched argument types (VDOC-163).
+    std::vector<Value> adjustedArgs = callArgs;
+    if (const auto *desc = il::runtime::findRuntimeDescriptor(effectiveCallee)) {
+        const auto &params = desc->signature.paramTypes;
+        if (params.size() == adjustedArgs.size()) {
+            for (size_t i = 0; i < params.size(); ++i) {
+                if (params[i].kind == Type::Kind::I16 || params[i].kind == Type::Kind::I32)
+                    adjustedArgs[i] =
+                        emitUnary(Opcode::CastSiNarrowChk, params[i], adjustedArgs[i]);
+            }
+        }
+    }
+
+    Value rawResult = emitCallRet(callReturnType, effectiveCallee, adjustedArgs);
     if (callReturnType.kind == ilSurfaceType.kind)
         return {rawResult, ilSurfaceType};
 

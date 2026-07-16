@@ -32,6 +32,7 @@
 #include "rt_string.h"
 #include "rt_tls.h"
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -115,6 +116,18 @@ static void rt_smtp_finalize(void *obj) {
 
 /// @brief Replace the cached last-error message with an owned copy.
 /// @details Leaves the prior error intact if allocation fails and a custom trap handler returns.
+/// @brief True when @p value has bytes beyond its first NUL (C-string view
+///        would silently truncate the runtime string).
+static int smtp_string_has_embedded_nul(rt_string value) {
+    if (!value)
+        return 0;
+    const char *cstr = rt_string_cstr(value);
+    int64_t len = rt_str_len(value);
+    if (!cstr || len <= 0)
+        return 0;
+    return memchr(cstr, '\0', (size_t)len) != NULL;
+}
+
 static void set_error(rt_smtp_impl *s, const char *msg) {
     if (!s)
         return;
@@ -594,7 +607,8 @@ static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
 /// Returns a GC-managed handle wired to `rt_smtp_finalize`.
 void *rt_smtp_new(rt_string host, int64_t port) {
     const char *h = host ? rt_string_cstr(host) : NULL;
-    if (!h || port < 1 || port > 65535) {
+    int64_t host_len = host ? rt_str_len(host) : -1;
+    if (!h || host_len <= 0 || smtp_string_has_embedded_nul(host) || port < 1 || port > 65535) {
         rt_trap("SmtpClient: invalid host or port");
         return NULL;
     }
@@ -624,6 +638,10 @@ void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
+    if (smtp_string_has_embedded_nul(username) || smtp_string_has_embedded_nul(password)) {
+        rt_trap("SmtpClient: auth credentials must not contain NUL bytes");
+        return;
+    }
     const char *u = username ? rt_string_cstr(username) : NULL;
     const char *p = password ? rt_string_cstr(password) : NULL;
     char *new_username = u ? strdup(u) : NULL;
@@ -653,8 +671,8 @@ void rt_smtp_set_tls(void *obj, int8_t enable) {
 ///   1. Connect: implicit TLS via `rt_tls_connect` (port 465) or plain `rt_tcp_connect_for`.
 ///   2. Read 220 greeting; send `EHLO localhost`, expect 250.
 ///   3. If `use_tls && port != 465`: send STARTTLS (220), wrap the existing socket in a TLS
-///      session, and after a successful handshake detach the underlying TCP handle before
-///      re-issuing EHLO. The current handshake-failure path closes TLS before detaching TCP.
+///      session, detach the TCP wrapper as soon as the session owns the descriptor, then run
+///      the handshake — so a handshake failure closes the descriptor exactly once (via TLS).
 ///   4. If credentials are set: send AUTH LOGIN (334) → base64(username) (334) → base64(password)
 ///      (235). Each base64 step uses `rt_codec_base64_enc`, then `rt_string_unref`s the encoder
 ///      output to keep peak memory low.
@@ -726,6 +744,15 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
             }
             return -1;
         }
+        // The TLS session owns the descriptor from here on: detach the TCP
+        // wrapper BEFORE the handshake so a handshake-failure `rt_tls_close`
+        // (which closes the fd) cannot be followed by a second close of the
+        // same numeric descriptor via the still-open wrapper (VDOC-156).
+        rt_tcp_detach_socket(s->tcp);
+        if (rt_obj_release_check0(s->tcp))
+            rt_obj_free(s->tcp);
+        s->tcp = NULL;
+
         if (rt_tls_handshake(s->tls) != RT_TLS_OK) {
             const char *detail = rt_tls_get_error(s->tls);
             char msg[512];
@@ -740,10 +767,6 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
             return -1;
         }
 
-        rt_tcp_detach_socket(s->tcp);
-        if (rt_obj_release_check0(s->tcp))
-            rt_obj_free(s->tcp);
-        s->tcp = NULL;
         smtp_set_transport_timeouts(s, 30000);
 
         caps.supports_starttls = 0;
@@ -919,6 +942,12 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
         return 0;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
 
+    if (smtp_string_has_embedded_nul(from) || smtp_string_has_embedded_nul(to) ||
+        smtp_string_has_embedded_nul(subject) || smtp_string_has_embedded_nul(body)) {
+        set_error(s, "SmtpClient: message fields must not contain NUL bytes");
+        return 0;
+    }
+
     if (smtp_connect_and_handshake(s) < 0) {
         smtp_close_transport(s);
         return 0;
@@ -950,7 +979,20 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
 /// @return Viper.Result.OkI64(1) on success or Viper.Result.ErrStr(message) on failure.
 void *rt_smtp_send_result(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
+    // Transport setup (connect/TLS) can trap before the Boolean path returns;
+    // a Result-producing operation must convert those traps into ErrStr.
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        const char *msg = rt_trap_get_error();
+        if (!msg || !*msg)
+            msg = "SmtpClient.SendResult: send failed";
+        rt_string message = rt_string_from_bytes(msg, strlen(msg));
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
     int8_t ok = rt_smtp_send(obj, from, to, subject, body);
+    rt_trap_clear_recovery();
     return smtp_send_result_from_bool(ok, obj, "SmtpClient.SendResult: send failed");
 }
 
@@ -962,6 +1004,12 @@ int8_t rt_smtp_send_html(
     if (!obj)
         return 0;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
+
+    if (smtp_string_has_embedded_nul(from) || smtp_string_has_embedded_nul(to) ||
+        smtp_string_has_embedded_nul(subject) || smtp_string_has_embedded_nul(html_body)) {
+        set_error(s, "SmtpClient: message fields must not contain NUL bytes");
+        return 0;
+    }
 
     if (smtp_connect_and_handshake(s) < 0) {
         smtp_close_transport(s);
@@ -993,7 +1041,18 @@ int8_t rt_smtp_send_html(
 /// @return Viper.Result.OkI64(1) on success or Viper.Result.ErrStr(message) on failure.
 void *rt_smtp_send_html_result(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        const char *msg = rt_trap_get_error();
+        if (!msg || !*msg)
+            msg = "SmtpClient.SendHtmlResult: send failed";
+        rt_string message = rt_string_from_bytes(msg, strlen(msg));
+        rt_trap_clear_recovery();
+        return rt_result_err_str(message);
+    }
     int8_t ok = rt_smtp_send_html(obj, from, to, subject, html_body);
+    rt_trap_clear_recovery();
     return smtp_send_result_from_bool(ok, obj, "SmtpClient.SendHtmlResult: send failed");
 }
 

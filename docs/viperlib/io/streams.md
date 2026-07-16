@@ -32,7 +32,7 @@ Unified stream abstraction providing a common interface over file and memory str
 | `Type`   | Integer | Stream backing type: 0 = file, 1 = memory (read-only)    |
 | `Pos`    | Integer | Current stream position (read/write)                      |
 | `Length`    | Integer | Current data length in bytes (read-only)                  |
-| `Eof`    | Boolean | Memory: `Pos >= Length`; file: sticky EOF after a read passes the end |
+| `Eof`    | Boolean | `Pos >= Size` on both file and memory backings (position-based) |
 
 ### Methods
 
@@ -73,15 +73,12 @@ All operations except `Close()` trap on a null or already-closed stream. `FromBi
 
 `AsBinFile()` is valid only on file-backed streams. `AsMemStream()` and `ToBytes()` are valid only on memory-backed streams. Calling one of these conversion methods on the wrong backing type traps instead of returning null.
 
-The two `As*()` methods currently return a borrowed backing reference even though the registry
-does not encode that ownership. BASIC and Zia cannot safely keep the result after the Stream is
-closed and can undercount it while lowering an assignment. Avoid these methods until VDOC-187 is
-repaired; keep the original `BinFile`/`MemStream` when wrapping one, or use the Stream operations.
+The two `As*()` methods return an OWNED, concretely typed backing object (`BinFile` / `MemStream`)
+with a retained reference, so the result stays valid after the owning Stream is closed or
+finalized and the frontends account for its ownership correctly. The caller owns the returned
+object like any other constructor result.
 
-`Eof` is not fully polymorphic. A memory stream compares its cursor with its length, while a file
-stream exposes the C library's sticky EOF flag, which remains false after an exact read to the end
-until another read is attempted. Use a zero-length short read to terminate generic loops rather
-than assuming the flag has identical timing (VDOC-188).
+`Eof` is fully polymorphic: on both file and memory backings it is true exactly when the current position is at or past the end (`Pos >= Size`). Reading exactly the remaining bytes — including `ReadAll()` — leaves `Eof` true on either backing. (BinFile's own `Eof` property, for direct BinFile use, keeps C-stdio sticky-flag semantics; see [Files](files.md).)
 
 ### Zia Example
 
@@ -731,6 +728,10 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 - Unsigned readers zero-extend their declared width: `ReadU16*()` returns 0..65535 and `ReadU32*()` returns 0..4294967295.
 - Constructors and growth trap if the requested capacity exceeds the host platform's addressable allocation size.
 - `Reset()` clears position and logical length but retains allocated capacity for reuse.
+- A fixed-width write whose value is out of range traps *before* touching the buffer — no
+  truncated value is ever appended — and every property getter (`Pos`, `Length`, `ToBytes`,
+  `Reset`) is safe on an invalid receiver, so a recoverable trap that resumes never leaves the
+  buffer corrupted or dereferences a null receiver.
 - `NewCap` remains available as a compatibility alias for `NewCapacity`.
 
 ### Zia Example

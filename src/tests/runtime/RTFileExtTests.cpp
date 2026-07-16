@@ -26,6 +26,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
+#include <vector>
 #include <ctime>
 
 #include "tests/common/PosixCompat.h"
@@ -558,6 +560,47 @@ static void test_append_line() {
     rt_string content = rt_io_file_read_all_text(path);
     test_result("content matches", rt_str_eq(content, rt_const_cstr("Line 1\nLine 2\n")));
 
+    // Concurrency-hygiene (VDOC-182): many appenders each write their whole
+    // line (text + LF) in one atomic O_APPEND write, so no line is ever split
+    // by another appender's newline. Run several threads and verify every
+    // resulting line is intact ("thread-N") with no interleaving.
+    remove_file(file_path);
+    {
+        const int kThreads = 8;
+        const int kLines = 200;
+        std::vector<std::thread> workers;
+        for (int t = 0; t < kThreads; t++) {
+            workers.emplace_back([&, t]() {
+                char buf[32];
+                int n = snprintf(buf, sizeof(buf), "thread-%d", t);
+                rt_string rec = rt_string_from_bytes(buf, (size_t)n);
+                for (int i = 0; i < kLines; i++)
+                    rt_io_file_append_line(path, rec);
+                rt_string_unref(rec);
+            });
+        }
+        for (auto &w : workers)
+            w.join();
+
+        rt_string all = rt_io_file_read_all_text(path);
+        const char *text = rt_string_cstr(all);
+        int lineCount = 0;
+        bool allIntact = true;
+        for (const char *p2 = text; *p2;) {
+            const char *nl = strchr(p2, '\n');
+            size_t linelen = nl ? (size_t)(nl - p2) : strlen(p2);
+            // Every line must be exactly "thread-<digit>" — no split/merge.
+            if (linelen < 8 || strncmp(p2, "thread-", 7) != 0)
+                allIntact = false;
+            lineCount++;
+            if (!nl)
+                break;
+            p2 = nl + 1;
+        }
+        test_result("all concurrent lines are intact", allIntact);
+        test_result("all concurrent lines present", lineCount == kThreads * kLines);
+    }
+
     remove_file(file_path);
 
     printf("\n");
@@ -753,6 +796,14 @@ static void test_touch() {
     rt_file_touch(path);
     int64_t mtime2 = rt_file_modified(path);
     test_result("touch updates mtime", mtime2 >= mtime1);
+
+    // Touch must reject a directory operand (VDOC-183): it is a File
+    // operation and must not mutate directory timestamps.
+    char dir_path[512];
+    snprintf(dir_path, sizeof(dir_path), "%s_touch_dir", base);
+    mkdir_p(dir_path);
+    EXPECT_TRAP(rt_file_touch(rt_const_cstr(dir_path)));
+    test_result("touch rejects a directory", true);
 
     // Clean up
     remove_file(file_path);

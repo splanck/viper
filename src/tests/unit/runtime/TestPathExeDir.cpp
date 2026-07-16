@@ -45,6 +45,20 @@ TEST(PathExeDir, ReturnsDirectory) {
     free(dir);
 }
 
+// VDOC-185: the dynamic-buffer implementation must return the REAL executable
+// directory (an absolute path), not the "." truncation fallback.
+TEST(PathExeDir, ReturnsAbsoluteNotDotFallback) {
+    char *dir = rt_path_exe_dir_cstr();
+    ASSERT_TRUE(dir != nullptr);
+    // A valid resolved exe directory is absolute and never the bare "." that
+    // the old fixed-buffer path returned on long/non-ASCII paths.
+    EXPECT_TRUE(strcmp(dir, ".") != 0);
+#ifndef _WIN32
+    EXPECT_EQ(dir[0], '/');
+#endif
+    free(dir);
+}
+
 TEST(PathExeDir, RuntimeStringWorks) {
     rt_string str = rt_path_exe_dir_str();
     ASSERT_TRUE(str != nullptr);

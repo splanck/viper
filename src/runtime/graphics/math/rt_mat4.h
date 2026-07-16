@@ -229,11 +229,18 @@ void *rt_mat4_transpose(void *m);
 ///         indicates a singular (non-invertible) matrix.
 double rt_mat4_det(void *m);
 
-/// @brief Compute the inverse matrix (returns identity if singular).
+/// @brief Compute the inverse matrix. Traps on a null/invalid/singular matrix.
 /// @param m The Mat4 to invert.
-/// @return A new Mat4 that is the multiplicative inverse of @p m,
-///         or the identity matrix if @p m is singular.
+/// @return A new Mat4 that is the multiplicative inverse of @p m. Traps
+///         ("singular matrix") when @p m is non-invertible rather than returning
+///         identity (VDOC-208).
 void *rt_mat4_inverse(void *m);
+
+/// @brief Non-trapping inverse for internal engine use.
+/// @param m The Mat4 to invert.
+/// @return A new inverse Mat4, or NULL for a null/invalid/singular matrix (no
+///         trap), so callers can degrade gracefully (VDOC-208).
+void *rt_mat4_try_inverse(void *m);
 
 /// @brief Negate all elements: -m.
 /// @param m The Mat4 to negate.

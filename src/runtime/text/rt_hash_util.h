@@ -78,11 +78,15 @@ void rt_hash_ensure_seeded_(void);
 /// @return 64-bit SipHash-2-4 hash value.
 static inline uint64_t rt_siphash24(const void *data, size_t len) {
 #if defined(_MSC_VER) && !defined(__clang__)
-    if (!rt_siphash_seeded_)
+    // Real MSVC lacks __atomic_*; enter InitOnceExecuteOnce unconditionally
+    // rather than racily reading the plain `int` flag on the fast path
+    // (VDOC-176). InitOnceExecuteOnce is cheap after first completion and
+    // provides the acquire/release synchronization for the key itself.
+    rt_hash_ensure_seeded_();
 #else
     if (!__atomic_load_n(&rt_siphash_seeded_, __ATOMIC_ACQUIRE))
-#endif
         rt_hash_ensure_seeded_();
+#endif
 
     const uint8_t *bytes = (const uint8_t *)data;
     uint64_t k0 = rt_siphash_k0_;

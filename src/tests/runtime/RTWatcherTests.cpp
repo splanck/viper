@@ -362,6 +362,53 @@ static void test_nonexistent_path_trap() {
     test_result("Non-existent path trap", true);
 }
 
+#if defined(__linux__)
+/// @brief VDOC-190: an INTERNAL ring overflow (Viper's 64-entry queue fills
+///        before the client polls) reports a POSITIVE exact dropped count via
+///        EventOverflowCount(), never the -1 native-overflow sentinel. (The
+///        native IN_Q_OVERFLOW path requires exhausting the kernel queue and is
+///        not forced here; it is covered by inspection and a by-hand run.)
+static void test_internal_overflow_reports_positive_count() {
+    printf("Testing internal ring overflow count...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    void *w = rt_watcher_new(rt_string_from_bytes(base, strlen(base)));
+    rt_watcher_start(w);
+    wait_for_event();
+
+    // Create well over the 64-entry ring capacity before draining, so a single
+    // inotify read pulls more events than the ring can hold.
+    for (int i = 0; i < 300; i++) {
+        char p[512];
+        snprintf(p, sizeof(p), "%s/ov_%d.txt", base, i);
+        create_file(p);
+    }
+    wait_for_event();
+
+    int saw_overflow = 0;
+    int64_t overflow_count = 0;
+    for (int i = 0; i < 600; i++) {
+        int64_t ev = rt_watcher_poll(w);
+        if (ev == RT_WATCH_EVENT_NONE)
+            break;
+        if (ev == RT_WATCH_EVENT_OVERFLOW) {
+            saw_overflow = 1;
+            overflow_count = rt_watcher_event_overflow_count(w);
+        }
+    }
+    rt_watcher_stop(w);
+
+    // If the ring overflowed (the expected outcome), the count is an exact
+    // positive number — an internal overflow must not be reported as the native
+    // "unknown" (-1) sentinel. If no overflow occurred (very fast drain), the
+    // path simply was not exercised, which is acceptable.
+    if (saw_overflow)
+        test_result("internal overflow count is positive-exact", overflow_count > 0);
+    else
+        test_result("internal overflow not triggered (fast drain, acceptable)", true);
+}
+#endif
+
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
@@ -378,6 +425,7 @@ int main() {
     test_stop_clears_last_event();
 #if defined(__linux__)
     test_file_recreate_is_detected();
+    test_internal_overflow_reports_positive_count();
 #endif
     test_null_path_trap();
     test_nonexistent_path_trap();

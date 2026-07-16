@@ -455,7 +455,7 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | `PollFor(ms)`   | Integer | Wait using the requested platform timeout; returns event type |
 | `EventPath()`   | String  | Get the path for the last event, rooted at the supplied watch path |
 | `EventType()`   | Integer | Get the type of the last polled event                    |
-| `EventOverflowCount()` | Integer | Number of dropped events represented by the last overflow marker; otherwise 0 |
+| `EventOverflowCount()` | Integer | Exact dropped-event count for an internal ring overflow, `-1` for a native (kernel) overflow of unknown size, or 0 when the last event was not an overflow |
 
 ### Platform Implementation
 
@@ -542,19 +542,21 @@ watcher.Stop()
 - The watcher must be started with `Start()` before events can be received
 - `Poll()` returns immediately with `EventNone` if no event is pending
 - `PollFor(ms)` uses the specified milliseconds as its platform wait timeout; very large positive
-  values are clamped to the largest supported wait value. On Linux, an interrupted `poll(2)` is
-  retried with the complete original timeout, so repeated signals can extend the wall-clock wait
-  beyond the requested duration (VDOC-191).
+  values are clamped to the largest supported wait value. A positive timeout is honored as a wall-
+  clock bound: on Linux an interrupted `poll(2)` resumes with the remaining time against a single
+  monotonic deadline, so repeated signals cannot extend the wait beyond the requested duration.
 - A negative `PollFor` timeout waits indefinitely; zero is equivalent to non-blocking polling.
 - After receiving an event, use `EventPath()` and `EventType()` to get details. Event paths are
   absolute only when the path passed to `New()` was absolute; relative watch paths yield relative
   event paths.
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
 - The internal queue holds 64 events. If it overflows, a later `Poll()` returns `EventOverflow`;
-  `EventOverflowCount()` reports how many events the runtime queue marker represents. Treat any
-  overflow as a signal to rescan. Linux currently ignores the kernel's `IN_Q_OVERFLOW` event, and
-  Windows reports native notification-buffer overflow with a count of zero, so the count is not a
-  complete measure of every event lost below the runtime queue (VDOC-190).
+  treat any overflow as a signal to rescan. `EventOverflowCount()` distinguishes the two overflow
+  sources: for an **internal** ring overflow it returns the exact number of dropped events (and
+  coalesces upward while the queue stays full); for a **native** kernel overflow — Linux
+  `IN_Q_OVERFLOW` or a Windows change-buffer overflow — the OS does not report how many events
+  were lost, so it returns `-1` (unknown). Both backends now translate native overflow into an
+  `EventOverflow` so the rescan signal is never missed.
 - `Stop()` clears queued events and the last-event state. After `Stop()`, `EventType()` returns `EventNone` and `EventPath()` traps until a later successful `Poll()` after `Start()`.
 - Directory watches are non-recursive
 - On Linux and macOS, a transient descriptor/watch-limit failure during `Start()` can leave `IsWatching` false without a trap; callers that need guaranteed monitoring should check the property and fall back to rescanning.

@@ -67,14 +67,24 @@ static void test_password_hash_format() {
         test_result("Legacy PBKDF2 hash needs rehash", rt_password_needs_rehash(hash) == 1);
     }
 
-    // Test 3: Strong custom scrypt parameters are encoded and marked non-current
+    // Test 3: STRONGER custom scrypt parameters are current, not stale
+    // (VDOC-174): NeedsRehash uses a monotonic policy comparison, so a hash at
+    // or above the policy minimum must not be reported as needing a rehash.
     {
         rt_string password = rt_const_cstr("testpass");
         rt_string hash = rt_password_hash_scrypt_params(password, 16384, 8, 2);
         const char *hash_str = rt_string_cstr(hash);
 
         test_result("HashScryptParams encodes parameters", strstr(hash_str, "$14$8$2$") != nullptr);
-        test_result("Non-current scrypt hash needs rehash", rt_password_needs_rehash(hash) == 1);
+        test_result("Stronger p scrypt hash does NOT need rehash",
+                    rt_password_needs_rehash(hash) == 0);
+
+        // A larger N (32768 = 2^15) is also stronger than the default and current.
+        rt_string strong_n = rt_password_hash_scrypt_params(password, 32768, 8, 1);
+        test_result("HashScryptParams encodes a larger N",
+                    strstr(rt_string_cstr(strong_n), "$15$8$1$") != nullptr);
+        test_result("Larger-N scrypt hash does NOT need rehash",
+                    rt_password_needs_rehash(strong_n) == 0);
     }
 
     // Test 4: Different passwords produce different hashes

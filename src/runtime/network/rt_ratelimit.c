@@ -92,9 +92,14 @@ static double current_time_sec(void) {
 //=============================================================================
 
 /// @brief Internal rate limiter data.
+/// @details Capacity and whole-token balance are exact `int64_t` values so the
+///          constructor argument round-trips through `get_Max` for the entire
+///          Integer range (doubles lose integer precision above 2^53). Only
+///          the sub-token refill remainder is fractional.
 typedef struct {
-    double tokens;           ///< Current available tokens (fractional).
-    double max_tokens;       ///< Maximum token capacity.
+    int64_t tokens_whole;    ///< Current available whole tokens (exact).
+    int64_t max_tokens;      ///< Maximum token capacity (exact).
+    double tokens_frac;      ///< Fractional refill carry in [0, 1).
     double refill_per_sec;   ///< Tokens refilled per second.
     double last_refill_time; ///< Last time tokens were refilled.
 } rt_ratelimit_data;
@@ -103,11 +108,31 @@ typedef struct {
 static void refill_tokens(rt_ratelimit_data *data) {
     double now = current_time_sec();
     double elapsed = now - data->last_refill_time;
-    if (elapsed > 0.0) {
-        data->tokens += elapsed * data->refill_per_sec;
-        if (data->tokens > data->max_tokens)
-            data->tokens = data->max_tokens;
-        data->last_refill_time = now;
+    if (elapsed <= 0.0)
+        return;
+    data->last_refill_time = now;
+
+    double credit = elapsed * data->refill_per_sec + data->tokens_frac;
+    if (!(credit > 0.0)) // also rejects NaN
+        return;
+
+    // A credit this large cannot be cast to int64_t; the bucket is full
+    // regardless of the exact capacity.
+    if (credit >= 9.2e18) {
+        data->tokens_whole = data->max_tokens;
+        data->tokens_frac = 0.0;
+        return;
+    }
+
+    int64_t whole = (int64_t)credit;
+    // Both operands are non-negative with tokens_whole <= max_tokens, so the
+    // subtraction cannot overflow.
+    if (whole >= data->max_tokens - data->tokens_whole) {
+        data->tokens_whole = data->max_tokens;
+        data->tokens_frac = 0.0;
+    } else {
+        data->tokens_whole += whole;
+        data->tokens_frac = credit - (double)whole;
     }
 }
 
@@ -129,8 +154,9 @@ void *rt_ratelimit_new(int64_t max_tokens, double refill_per_sec) {
         rt_trap("RateLimiter: memory allocation failed");
         return NULL;
     }
-    data->max_tokens = (double)(max_tokens > 0 ? max_tokens : 1);
-    data->tokens = data->max_tokens;
+    data->max_tokens = max_tokens > 0 ? max_tokens : 1;
+    data->tokens_whole = data->max_tokens;
+    data->tokens_frac = 0.0;
     data->refill_per_sec = refill_per_sec > 0.0 ? refill_per_sec : 1.0;
     data->last_refill_time = current_time_sec();
     return data;
@@ -159,11 +185,8 @@ int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n) {
         return 0;
     rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
     refill_tokens(data);
-    if (data->tokens >= (double)n) {
-        data->tokens -= (double)n;
-        // RC-9: clamp to 0 to guard against floating-point precision underflow
-        if (data->tokens < 0.0)
-            data->tokens = 0.0;
+    if (data->tokens_whole >= n) {
+        data->tokens_whole -= n;
         return 1;
     }
     return 0;
@@ -174,13 +197,13 @@ int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n) {
 /// Refills tokens based on elapsed time before returning.
 ///
 /// @param limiter Rate limiter pointer.
-/// @return Number of available tokens (truncated to integer).
+/// @return Number of available whole tokens (exact).
 int64_t rt_ratelimit_available(void *limiter) {
     if (!limiter)
         return 0;
     rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
     refill_tokens(data);
-    return (int64_t)data->tokens;
+    return data->tokens_whole;
 }
 
 /// @brief Resets the limiter to full capacity.
@@ -192,7 +215,8 @@ void rt_ratelimit_reset(void *limiter) {
     if (!limiter)
         return;
     rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
-    data->tokens = data->max_tokens;
+    data->tokens_whole = data->max_tokens;
+    data->tokens_frac = 0.0;
     data->last_refill_time = current_time_sec();
 }
 
@@ -203,7 +227,7 @@ void rt_ratelimit_reset(void *limiter) {
 int64_t rt_ratelimit_get_max(void *limiter) {
     if (!limiter)
         return 0;
-    return (int64_t)((rt_ratelimit_data *)limiter)->max_tokens;
+    return ((rt_ratelimit_data *)limiter)->max_tokens;
 }
 
 /// @brief Gets the refill rate in tokens per second.

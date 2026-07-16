@@ -19,6 +19,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -326,6 +327,27 @@ static void test_sep() {
 }
 
 /// @brief Entry point for path tests.
+/// @brief Path.Absolute makes a relative path absolute and normalized (POSIX
+///        path — the Windows GetFullPathNameW resolution is covered by a
+///        Windows build). Guards the VDOC-184 refactor's POSIX branch.
+static void test_abs() {
+    printf("Testing rt_path_abs:\n");
+    rt_string rel = rt_const_cstr("a/b/../c/./file.txt");
+    rt_string abs = rt_path_abs(rel);
+    const char *result = rt_string_cstr(abs);
+    // Result is absolute (starts with '/') and the ./.. are normalized away.
+    test_result("relative becomes absolute", result[0] == '/');
+    test_result("relative is normalized",
+                strstr(result, "/a/c/file.txt") != nullptr && strstr(result, "..") == nullptr);
+    // An already-absolute path round-trips (normalized).
+    rt_string already = rt_const_cstr("/tmp/x/../y");
+    rt_string abs2 = rt_path_abs(already);
+    test_result("absolute normalizes in place",
+                strcmp(rt_string_cstr(abs2), "/tmp/y") == 0);
+    rt_string_unref(abs);
+    rt_string_unref(abs2);
+}
+
 int main() {
 #ifdef _WIN32
     // Skip on Windows: tests use Unix-style paths (/foo/bar) that have different
@@ -341,6 +363,7 @@ int main() {
     test_ext();
     test_with_ext();
     test_is_abs();
+    test_abs();
     test_norm();
     test_sep();
 

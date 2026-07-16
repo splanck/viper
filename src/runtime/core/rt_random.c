@@ -69,8 +69,14 @@ static RtContext *rt_random_context(void) {
 /// @param self Caller-supplied handle expected to be a `Random` object.
 /// @return Cast typed pointer; traps on mismatch before returning it.
 static rt_random_impl *as_random(void *self) {
-    if (!rt_obj_is_instance(self, RT_RANDOM_CLASS_ID, sizeof(rt_random_impl)))
+    if (!rt_obj_is_instance(self, RT_RANDOM_CLASS_ID, sizeof(rt_random_impl))) {
         rt_trap("Random: invalid Random object");
+        // Return NULL rather than the unchecked pointer so a returning trap hook
+        // (tests/embedders) cannot fall through into a null/wrong-class
+        // dereference; every caller must stop when this is NULL (VDOC-200,
+        // same trap-discipline class as VDOC-177/189).
+        return NULL;
+    }
     return (rt_random_impl *)self;
 }
 
@@ -275,6 +281,8 @@ void *rt_random_new(long long seed) {
 /// @brief Instance method for Random.Next/NextDouble.
 double rt_rnd_method(void *self) {
     rt_random_impl *rng = as_random(self);
+    if (!rng)
+        return 0.0;
     return rt_random_unit_from_state(&rng->state);
 }
 
@@ -283,12 +291,16 @@ long long rt_rand_int_method(void *self, long long max) {
     if (max <= 0)
         return 0;
     rt_random_impl *rng = as_random(self);
+    if (!rng)
+        return 0;
     return (long long)rt_random_bounded_u64_from_state(&rng->state, (uint64_t)max);
 }
 
 /// @brief Instance method for Random.Range(min, max).
 long long rt_rand_range_method(void *self, long long min, long long max) {
     rt_random_impl *rng = as_random(self);
+    if (!rng)
+        return 0;
     if (min > max) {
         long long tmp = min;
         min = max;
@@ -304,6 +316,8 @@ long long rt_rand_range_method(void *self, long long min, long long max) {
 /// @brief Instance method for Random.Seed(seed).
 void rt_randomize_i64_method(void *self, long long seed) {
     rt_random_impl *rng = as_random(self);
+    if (!rng)
+        return;
     rng->state = (uint64_t)seed;
 }
 

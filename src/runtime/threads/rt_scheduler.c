@@ -31,6 +31,8 @@
 
 #include "rt_scheduler.h"
 
+#include "rt_option.h"
+
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -473,6 +475,34 @@ int64_t rt_scheduler_generation_of(void *sched, rt_string name) {
     SCHED_UNLOCK(data);
     scheduler_release_object(sched);
     return -1;
+}
+
+/// @brief GenerationOf as an Option (VDOC-130): Some(generation) when the
+///        name is scheduled — including a stored generation of -1 — and None
+///        for a null name/scheduler or an unscheduled name, so -1 stays
+///        usable as ordinary data.
+void *rt_scheduler_generation_of_option(void *sched, rt_string name) {
+    if (!sched || !name)
+        return rt_option_none();
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return rt_option_none();
+    rt_obj_retain_maybe(sched);
+
+    SCHED_LOCK(data);
+    sched_entry *e = data->head;
+    while (e) {
+        if (scheduler_name_equals(e->name, name)) {
+            int64_t gen = e->generation;
+            SCHED_UNLOCK(data);
+            scheduler_release_object(sched);
+            return rt_option_some_i64(gen);
+        }
+        e = e->next;
+    }
+    SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
+    return rt_option_none();
 }
 
 /// @brief Polls for all due tasks.

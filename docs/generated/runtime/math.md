@@ -251,7 +251,7 @@ Constructor: `Viper.Math.PerlinNoise.New`
 | <a id="viper-math-perlinnoise-noise3d"></a>`Noise3D` | `f64(obj,f64,f64,f64)` | `Viper.Math.PerlinNoise.Noise3D` |
 | <a id="viper-math-perlinnoise-octave2d"></a>`Octave2D` | `f64(obj,f64,f64,i64,f64)` | `Viper.Math.PerlinNoise.Octave2D` |
 | <a id="viper-math-perlinnoise-octave3d"></a>`Octave3D` | `f64(obj,f64,f64,f64,i64,f64)` | `Viper.Math.PerlinNoise.Octave3D` |
-| <a id="viper-math-perlinnoise-new"></a>`New` | `obj(i64)` | `Viper.Math.PerlinNoise.New` |
+| <a id="viper-math-perlinnoise-new"></a>`New` | `obj<Viper.Math.PerlinNoise>(i64)` | `Viper.Math.PerlinNoise.New` |
 
 <a id="viper-math-easing"></a>
 ### `Viper.Math.Easing`
@@ -535,7 +535,7 @@ operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
 | `Viper.Math.Easing.EaseInBounce` | `f64(f64)` | `rt_ease_in_bounce` |
 | `Viper.Math.Easing.EaseOutBounce` | `f64(f64)` | `rt_ease_out_bounce` |
 | `Viper.Math.Easing.EaseInOutBounce` | `f64(f64)` | `rt_ease_in_out_bounce` |
-| `Viper.Math.PerlinNoise.New` | `obj(i64)` | `rt_perlin_new` |
+| `Viper.Math.PerlinNoise.New` | `obj<Viper.Math.PerlinNoise>(i64)` | `rt_perlin_new` |
 | `Viper.Math.PerlinNoise.Noise2D` | `f64(obj,f64,f64)` | `rt_perlin_noise2d` |
 | `Viper.Math.PerlinNoise.Noise3D` | `f64(obj,f64,f64,f64)` | `rt_perlin_noise3d` |
 | `Viper.Math.PerlinNoise.Octave2D` | `f64(obj,f64,f64,i64,f64)` | `rt_perlin_octave2d` |

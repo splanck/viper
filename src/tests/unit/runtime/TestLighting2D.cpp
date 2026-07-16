@@ -1,5 +1,18 @@
 //===----------------------------------------------------------------------===//
-// Tests for Viper.Game.Lighting2D edge cases.
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/runtime/TestLighting2D.cpp
+// Purpose: Tests for the 2D lighting runtime.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"

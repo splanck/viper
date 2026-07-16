@@ -1347,11 +1347,12 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
     }
 }
 
-/// @brief Finalizer for WebSocket connections.
-static void rt_ws_finalize(void *obj) {
-    if (!obj)
+/// @brief Deterministically close the TCP/TLS transport. Idempotent: leaves
+///        `tls == NULL` and `socket_fd == -1` so later calls (including the
+///        GC finalizer) no-op.
+static void ws_close_transport(rt_ws_impl *ws) {
+    if (!ws)
         return;
-    rt_ws_impl *ws = obj;
     if (ws->tls) {
         rt_tls_close(ws->tls);
         ws->tls = NULL;
@@ -1360,6 +1361,14 @@ static void rt_ws_finalize(void *obj) {
         close(ws->socket_fd);
         ws->socket_fd = -1;
     }
+}
+
+/// @brief Finalizer for WebSocket connections.
+static void rt_ws_finalize(void *obj) {
+    if (!obj)
+        return;
+    rt_ws_impl *ws = obj;
+    ws_close_transport(ws);
     free(ws->url);
     free(ws->subprotocol);
     free(ws->close_reason);
@@ -1801,9 +1810,12 @@ void rt_ws_close(void *obj) {
 /// @brief Send a close frame with a specific code and optional reason text.
 ///
 /// Builds a close payload of `[code:u16-be][reason]`, hands it to
-/// `ws_send_frame`, and clears `is_open`. Silently no-ops on NULL
-/// or already-closed connections. The TCP/TLS layer is left to be
-/// torn down by the GC finalizer (`rt_ws_finalize`).
+/// `ws_send_frame`, clears `is_open`, then completes the RFC 6455 §7.1.1
+/// closing handshake: waits (bounded, ~1s) for the peer's close reply,
+/// draining any in-flight data frames, and deterministically closes the
+/// TCP/TLS transport. Silently no-ops on NULL or already-closed
+/// connections. The GC finalizer (`rt_ws_finalize`) only releases memory
+/// after this and is a no-op on the already-closed transport.
 void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
     if (!obj)
         return;
@@ -1849,4 +1861,24 @@ void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
 
     ws->is_open = 0;
     ws->close_code = code;
+
+    // Complete the closing handshake: bounded wait for the peer's close
+    // reply, discarding any in-flight data frames, then close the transport
+    // instead of leaving the socket/TLS session to GC finalization. The
+    // frame cap bounds total time when a server streams tiny frames.
+    enum { WS_CLOSE_REPLY_TIMEOUT_MS = 1000, WS_CLOSE_DRAIN_MAX_FRAMES = 32 };
+    ws_set_recv_timeout(ws, WS_CLOSE_REPLY_TIMEOUT_MS);
+    for (int frames = 0; frames < WS_CLOSE_DRAIN_MAX_FRAMES; frames++) {
+        uint8_t fin = 0;
+        uint8_t opcode = 0;
+        uint8_t *data = NULL;
+        size_t data_len = 0;
+        if (!ws_recv_frame(ws, &fin, &opcode, &data, &data_len))
+            break; // timeout, EOF, or protocol error — stop waiting
+        int got_close = (opcode == WS_OP_CLOSE);
+        free(data);
+        if (got_close)
+            break;
+    }
+    ws_close_transport(ws);
 }

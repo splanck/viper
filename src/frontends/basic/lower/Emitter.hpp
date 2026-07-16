@@ -263,6 +263,20 @@ class Emitter {
     /// @brief Emit a void return instruction (no value).
     void emitRetVoid();
 
+    /// @brief True when @p v is already scheduled for a deferred release.
+    /// @details Lets a consumer (e.g. PRINT) tell an OWNED temporary — such as
+    ///          a runtime property getter's string result — apart from a
+    ///          BORROWED lvalue load, so it does not emit a second release that
+    ///          would double-free (VDOC-180).
+    [[nodiscard]] bool isDeferredReleaseTemp(Value v) const noexcept {
+        if (v.kind != Value::Kind::Temp)
+            return false;
+        for (const auto &t : deferredTemps_)
+            if (t.v.kind == Value::Kind::Temp && t.v.id == v.id)
+                return true;
+        return false;
+    }
+
   private:
     Lowerer &lowerer_;
     common::CommonLowering common_;

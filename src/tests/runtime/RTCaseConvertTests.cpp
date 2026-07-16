@@ -277,6 +277,33 @@ static void test_acronym_handling() {
     rt_string_unref(s);
 }
 
+// ---------------------------------------------------------------------------
+// Embedded NUL preservation (VDOC-165)
+// ---------------------------------------------------------------------------
+
+static bool bytes_eq(rt_string s, const char *expected, size_t expected_len) {
+    if (!s || (size_t)rt_str_len(s) != expected_len)
+        return false;
+    return memcmp(rt_string_cstr(s), expected, expected_len) == 0;
+}
+
+/// All five case-shape formatters must honor the byte-string contract: an
+/// embedded NUL is data, and the bytes after it survive the conversion.
+static void test_case_shapes_preserve_embedded_nul() {
+    rt_string s = rt_string_from_bytes("ab\0cd", 5);
+
+    rt_string camel = rt_str_camel_case(s);
+    assert(bytes_eq(camel, "ab\0cd", 5));
+    rt_string pascal = rt_str_pascal_case(s);
+    assert(bytes_eq(pascal, "Ab\0cd", 5));
+    rt_string snake = rt_str_snake_case(s);
+    assert(bytes_eq(snake, "ab\0cd", 5));
+    rt_string kebab = rt_str_kebab_case(s);
+    assert(bytes_eq(kebab, "ab\0cd", 5));
+    rt_string screaming = rt_str_screaming_snake(s);
+    assert(bytes_eq(screaming, "AB\0CD", 5));
+}
+
 int main() {
     // CamelCase
     test_camel_from_spaces();
@@ -312,5 +339,6 @@ int main() {
     test_mixed_separators();
     test_acronym_handling();
 
+    test_case_shapes_preserve_embedded_nul();
     return 0;
 }

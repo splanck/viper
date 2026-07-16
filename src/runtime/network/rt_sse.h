@@ -30,6 +30,10 @@ void *rt_sse_connect(rt_string url);
 rt_string rt_sse_recv(void *client);
 /// @brief Like `_recv`, with readiness and per-read timeout; this is not a whole-event deadline.
 rt_string rt_sse_recv_for(void *client, int64_t timeout_ms);
+
+/// @brief Result-shaped timed receive: Ok(data) on a dispatched event,
+///        ErrStr("SSE: timeout") / ErrStr("SSE: stream closed") otherwise.
+void *rt_sse_recv_for_result(void *client, int64_t timeout_ms);
 /// @brief True if the local SSE transport/session is still marked open (no remote-liveness probe).
 int8_t rt_sse_is_open(void *client);
 /// @brief Close the SSE connection.

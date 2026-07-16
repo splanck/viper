@@ -2522,8 +2522,10 @@ static void test_thread_start_safe_reports_bytecode_trap() {
 }
 
 /// Test that bytecode Async.Run retains its argument until the worker exits.
-static void test_async_run_retains_bytecode_argument() {
-    std::cout << "  test_async_run_retains_bytecode_argument: ";
+static void test_async_run_owned_retains_bytecode_argument() {
+    // Async.Run borrows its argument (native parity, VDOC-127); the retain
+    // contract this test verifies belongs to Async.RunOwned.
+    std::cout << "  test_async_run_owned_retains_bytecode_argument: ";
 
     BytecodeModule bcModule;
     bcModule.magic = kBytecodeModuleMagic;
@@ -2531,7 +2533,7 @@ static void test_async_run_retains_bytecode_argument() {
     bcModule.flags = 0;
 
     const uint16_t asyncRunIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Async.Run", 2, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Async.RunOwned", 2, true));
     const uint16_t futureGetIdx =
         static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Future.Get", 1, true));
     const uint16_t makeMarkerIdx =
@@ -2814,7 +2816,7 @@ int main() {
     test_array_fast_path_bytecode_ops();
     test_branch_arguments_are_atomic();
     test_thread_start_safe_reports_bytecode_trap();
-    test_async_run_retains_bytecode_argument();
+    test_async_run_owned_retains_bytecode_argument();
     test_thread_start_owned_retains_bytecode_argument();
 
     std::cout << "All bytecode VM tests PASSED!\n";

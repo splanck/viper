@@ -498,6 +498,39 @@ void rt_http_conn_pool_clear(void *obj) {
     HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
 }
 
+/// Process-wide connection pool backing standalone `HttpReq.SetKeepAlive(true)`
+/// requests. HttpClient/RestClient attach their own per-client pools; requests
+/// built through the public `HttpReq` surface previously had no way to obtain
+/// one, so the keep-alive flag could never reuse a socket. The global holds one
+/// permanent reference (process-lifetime singleton; the pool itself is
+/// mutex-guarded and safe to share across threads).
+static void *g_http_default_conn_pool = NULL;
+
+#if RT_PLATFORM_WINDOWS
+static INIT_ONCE g_http_default_pool_once = INIT_ONCE_STATIC_INIT;
+static BOOL CALLBACK http_default_pool_once_cb(PINIT_ONCE once, PVOID param, PVOID *ctx) {
+    (void)once;
+    (void)param;
+    (void)ctx;
+    g_http_default_conn_pool = rt_http_conn_pool_new(0);
+    return TRUE;
+}
+#else
+static pthread_once_t g_http_default_pool_once = PTHREAD_ONCE_INIT;
+static void http_default_pool_once_cb(void) {
+    g_http_default_conn_pool = rt_http_conn_pool_new(0);
+}
+#endif
+
+void *rt_http_default_connection_pool(void) {
+#if RT_PLATFORM_WINDOWS
+    InitOnceExecuteOnce(&g_http_default_pool_once, http_default_pool_once_cb, NULL, NULL);
+#else
+    pthread_once(&g_http_default_pool_once, http_default_pool_once_cb);
+#endif
+    return g_http_default_conn_pool;
+}
+
 /// @brief Evict idle HTTP keep-alive entries whose elapsed monotonic age exceeds the limit.
 /// @param pool Locked pool to sweep.
 /// @param now_ms Current monotonic milliseconds.
@@ -1444,6 +1477,53 @@ bool has_header(rt_http_req_t *req, const char *name) {
             return true;
     }
     return false;
+}
+
+/// @brief Remove every request header whose name case-insensitively equals @p name.
+void remove_header(rt_http_req_t *req, const char *name) {
+    if (!req || !name)
+        return;
+    http_header_t **link = &req->headers;
+    while (*link) {
+        http_header_t *h = *link;
+        if (strcasecmp(h->name, name) == 0) {
+            *link = h->next;
+            free(h->name);
+            free(h->value);
+            free(h);
+        } else {
+            link = &h->next;
+        }
+    }
+}
+
+/// @brief Remove every entry of a header-name-keyed Map whose key
+///        case-insensitively equals @p name. HTTP field names are
+///        case-insensitive, so `Authorization` and `authorization` must be
+///        treated as the same configuration slot.
+void rt_http_header_map_remove_ci(void *map, const char *name) {
+    if (!map || !name)
+        return;
+    void *keys = rt_map_keys(map);
+    int64_t len = rt_seq_len(keys);
+    for (int64_t i = 0; i < len; i++) {
+        rt_string key = (rt_string)rt_seq_get(keys, i); // borrowed
+        const char *key_cstr = key ? rt_string_cstr(key) : NULL;
+        if (key_cstr && strcasecmp(key_cstr, name) == 0)
+            rt_map_remove(map, key);
+    }
+    if (keys && rt_obj_release_check0(keys))
+        rt_obj_free(keys);
+}
+
+/// @brief Case-insensitive replace into a header-name-keyed Map: any existing
+///        key with a different spelling is removed before the new entry is
+///        stored, so the last caller's casing and value win.
+void rt_http_header_map_set_ci(void *map, rt_string name, void *value) {
+    if (!map || !name)
+        return;
+    rt_http_header_map_remove_ci(map, rt_string_cstr(name));
+    rt_map_set(map, name, value);
 }
 
 /// @brief Return true when a comma-separated HTTP header value contains @p token.

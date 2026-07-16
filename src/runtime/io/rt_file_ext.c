@@ -744,11 +744,19 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents) {
 
 /// What: Append @p text and a newline to @p path (creating it when missing).
 /// Why:  Provide a convenient "append line" helper for Viper.IO.File.
-/// How:  Opens with O_APPEND and writes the UTF-8 bytes followed by '\n'.
+/// How:  Opens with O_APPEND and writes the UTF-8 bytes plus '\n' as one buffer.
 /// @brief Append `text` and then an LF to the end of a file, creating it if absent.
-/// @details Uses O_APPEND, but the text write can require multiple system calls and the LF is a
-///          separate write. A complete logical line is therefore not atomic against concurrent
-///          writers and can interleave with them.
+/// @details The text and its trailing LF are combined into ONE buffer and
+///          emitted with a single `write()` on the `O_APPEND` fd. On POSIX each
+///          `write()` to an `O_APPEND` file appends atomically at end-of-file,
+///          so the whole line lands without interleaving another appender's
+///          bytes — as long as the line fits in one write (VDOC-182: this
+///          replaces the previous split text-then-newline writes, which could
+///          interleave between the two calls). A partial write (a line exceeding
+///          the OS single-write atomicity limit, or a signal) falls back to a
+///          loop that CAN interleave with concurrent writers; for guaranteed
+///          line-level atomicity across processes, use an explicit lock/record
+///          protocol.
 void rt_io_file_append_line(rt_string path, rt_string text) {
     const char *cpath =
         rt_io_file_require_path(path, "Viper.IO.File.AppendLine: invalid file path");
@@ -761,34 +769,44 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_require_view(text, &data, "Viper.IO.File.AppendLine: invalid text");
+
+    // Combine the text and its LF so the common case is a single atomic append.
+    if (len > SIZE_MAX - 1) {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.AppendLine: text too large");
+        return;
+    }
+    uint8_t *line = (uint8_t *)malloc(len + 1);
+    if (!line) {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.AppendLine: memory allocation failed");
+        return;
+    }
+    if (len > 0)
+        memcpy(line, data, len);
+    line[len] = '\n';
+
+    size_t total = len + 1;
     size_t written = 0;
-    while (written < len) {
-        ssize_t n = rt_posix_write(fd, data + written, len - written);
+    while (written < total) {
+        ssize_t n = rt_posix_write(fd, line + written, total - written);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
+            free(line);
             (void)close(fd);
             rt_trap("Viper.IO.File.AppendLine: failed to write file");
             return;
         }
         if (n == 0) {
+            free(line);
             (void)close(fd);
             rt_trap("Viper.IO.File.AppendLine: failed to write file");
             return;
         }
         written += (size_t)n;
     }
-
-    char nl = '\n';
-    ssize_t n;
-    do {
-        n = rt_posix_write(fd, &nl, 1);
-    } while (n < 0 && errno == EINTR);
-    if (n != 1) {
-        (void)close(fd);
-        rt_trap("Viper.IO.File.AppendLine: failed to write newline");
-        return;
-    }
+    free(line);
 
     rt_fileext_close_or_trap(fd, "Viper.IO.File.AppendLine: failed to close file");
 }
@@ -1429,6 +1447,16 @@ int64_t rt_file_modified(rt_string path) {
 /// doesn't exist. Mirrors the Unix `touch` command.
 void rt_file_touch(rt_string path) {
     const char *cpath = rt_io_file_require_path(path, "Viper.IO.File.Touch: invalid file path");
+
+    // Touch is a FILE operation: reject an existing directory rather than
+    // mutating its timestamps, matching the rest of the File surface which
+    // requires a regular-file operand (VDOC-183).
+    rt_fileext_stat_t existing;
+    if (rt_fileext_stat_path(cpath, &existing) == 0 &&
+        !rt_fileext_is_regular_mode(existing.st_mode)) {
+        rt_trap("Viper.IO.File.Touch: path is not a regular file");
+        return;
+    }
 
     // Try to update mtime (works if file exists)
     if (rt_fileext_utime(cpath, NULL) == 0)

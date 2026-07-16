@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: misc/benchmarks/reference/c/string_stress.c
+// Purpose: C reference for the string_stress benchmark kernel.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 /* string_stress.c — String manipulation benchmark (500K iterations).
    Equivalent to examples/il/benchmarks/string_stress.il */
 #include <stdint.h>

@@ -409,6 +409,15 @@ std::optional<bool> runtimeReturnNullable(std::string_view name, std::string_vie
         return std::nullopt;
     if (endsWith(sig.returnType, "?"))
         return true;
+    // System APIs that return NULL to signal startup/absence rather than a valid
+    // handle, so tools do not mistake absence for a live object (VDOC-222).
+    static constexpr std::string_view kNullableReturns[] = {
+        "Viper.System.Process.Start",
+        "Viper.System.Process.StartWithEnv",
+    };
+    for (auto n : kNullableReturns)
+        if (name == n)
+            return true;
     if (!isThreeDRuntimeName(name))
         return std::nullopt;
     return sig.returnType == "obj" || sig.returnType == "ptr" || startsWith(sig.returnType, "obj<");
@@ -547,11 +556,52 @@ bool isRuntimeSideChannelDiagnostic(std::string_view name, std::string_view leaf
 /// @param name Public runtime name or class-qualified member name.
 /// @param signature Compact runtime.def signature.
 /// @return Fallibility class.
+/// @brief Explicit fallibility contracts for IO/workspace/project entries whose
+///        trapping behavior the name/signature heuristics cannot infer.
+/// @details These allocate, open, or validate a backing resource and trap on
+///          failure, so the heuristic default of "infallible" was wrong
+///          (VDOC-198). Kept as an exact-name table so the correction is
+///          auditable and does not over-broaden the general rules.
+std::optional<std::string_view> explicitRuntimeFallibility(std::string_view name) {
+    static constexpr std::pair<std::string_view, std::string_view> kOverrides[] = {
+        {"Viper.IO.Stream.AsBinFile", "traps"},   // traps on wrong backing type
+        {"Viper.IO.Stream.AsMemStream", "traps"}, // traps on wrong backing type
+        {"Viper.IO.Stream.ToBytes", "traps"},     // traps on wrong backing type
+        {"Viper.IO.LineWriter.Append", "traps"},  // opens the file; traps on failure
+        {"Viper.IO.Watcher.New", "traps"},        // traps on watch resource failure
+        {"Viper.IO.Watcher.Start", "traps"},      // traps on watch resource failure
+        {"Viper.IO.Archive.Create", "traps"},     // opens the archive; traps on failure
+        // Math domain traps the name/signature heuristics cannot infer (VDOC-209):
+        {"Viper.Math.BigInt.Div", "traps"},          // traps on zero divisor
+        {"Viper.Math.BigInt.Mod", "traps"},          // traps on zero divisor
+        {"Viper.Math.BigInt.Pow", "traps"},          // traps on negative exponent
+        {"Viper.Math.BigInt.PowMod", "traps"},       // traps on negative exponent / zero modulus
+        {"Viper.Math.BigInt.Sqrt", "traps"},         // traps on a negative value
+        {"Viper.Math.BigInt.ToStringBase", "traps"}, // traps on a base outside 2..36
+        {"Viper.Math.Mat3.Inverse", "traps"},        // traps on a singular matrix
+        {"Viper.Math.Mat4.Inverse", "traps"},        // traps on a singular matrix
+        {"Viper.Math.Quat.Inverse", "traps"},        // traps on a zero/non-finite length
+        {"Viper.Math.Quat.Slerp", "traps"},          // traps on a non-finite t
+        {"Viper.Math.Vec3.Div", "traps"},            // traps on a zero/non-finite divisor
+        {"Viper.Math.Vec2.Div", "traps"},            // traps on a zero/non-finite divisor
+        // System entries the heuristic missed (VDOC-222):
+        {"Viper.Runtime.Unsafe.Release", "traps"},    // traps on an invalid/freed heap object
+        {"Viper.Runtime.Unsafe.ReleaseStr", "traps"}, // traps on an invalid string handle
+        {"Viper.System.Pty.PtySession.Resize", "status"}, // returns a boolean success indicator
+    };
+    for (const auto &[key, value] : kOverrides)
+        if (name == key)
+            return value;
+    return std::nullopt;
+}
+
 std::string inferRuntimeFallibility(std::string_view name, std::string_view signature) {
     const RuntimeApiSignatureParts sig = parseRuntimeApiSignature(signature);
     const std::string_view leaf = lastRuntimeNameSegment(name);
     if (isRuntimeSideChannelDiagnostic(name, leaf))
         return "side-channel";
+    if (auto explicitContract = explicitRuntimeFallibility(name))
+        return std::string(*explicitContract);
     if (isThreeDRuntimeName(name)) {
         if (startsWith(leaf, "Try") && sig.valid && sig.returnType == "i1")
             return "status";
@@ -623,6 +673,29 @@ std::string inferRuntimeOwnership(std::string_view name, std::string_view signat
     const std::string_view leaf = lastRuntimeNameSegment(name);
     if (startsWith(leaf, "New") || startsWith(leaf, "From") || startsWith(leaf, "Load") ||
         startsWith(leaf, "Open") || startsWith(leaf, "Create") || leaf == "Clone" || leaf == "Copy")
+        return "owned";
+    // A concretely typed sequence or object return is a freshly allocated GC
+    // value the caller owns a reference to (fresh Seq/Map/Bytes and typed
+    // wrappers like Stream.As*), not a borrowed handle — the previous default of
+    // "unknown" understated the contract (VDOC-198). Bare `obj`/`ptr` stays
+    // "unknown" because it can be borrowed.
+    if (startsWith(sig.returnType, "seq<") || startsWith(sig.returnType, "obj<"))
+        return "owned";
+    // A handful of typed returns are declared as bare `obj` but are documented
+    // owned allocations; annotate them explicitly.
+    static constexpr std::string_view kOwnedBareObj[] = {
+        "Viper.IO.LineWriter.Append", // returns a new owned LineWriter
+    };
+    for (auto entry : kOwnedBareObj)
+        if (name == entry)
+            return "owned";
+    // Math values are immutable and value-oriented: every operation that returns
+    // an object (BigInt, Vec*, Mat*, Quat, Spline result) allocates a fresh GC
+    // value the caller owns, even when the registry types it as bare `obj`. The
+    // previous "unknown" understated this for the exact APIs the inventory is
+    // meant to describe (VDOC-209).
+    if (startsWith(name, "Viper.Math.") &&
+        (sig.returnType == "obj" || startsWith(sig.returnType, "seq")))
         return "owned";
     return "unknown";
 }

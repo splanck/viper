@@ -8,6 +8,7 @@
 #include "rt_internal.h"
 #include "rt_heap.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_scheduler.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -300,7 +301,27 @@ static void test_plain_schedule_is_generation_zero() {
 }
 
 /// @brief Main.
+static void test_generation_of_option_disambiguates() {
+    // VDOC-130: generation -1 is valid data; the Option form separates it
+    // from absence.
+    void *sched = rt_scheduler_new();
+    rt_string name = rt_string_from_bytes("task", 4);
+
+    void *missing = rt_scheduler_generation_of_option(sched, name);
+    assert(rt_option_is_none(missing) == 1);
+
+    rt_scheduler_schedule_gen(sched, name, 1000, -1);
+    void *live = rt_scheduler_generation_of_option(sched, name);
+    assert(rt_option_is_some(live) == 1);
+    assert(rt_option_unwrap_i64(live) == -1);
+
+    // The legacy accessor still returns -1 for both cases (documented).
+    assert(rt_scheduler_generation_of(sched, name) == -1);
+    rt_string_unref(name);
+}
+
 int main() {
+    test_generation_of_option_disambiguates();
     test_new_scheduler();
     test_schedule_and_pending();
     test_cancel();

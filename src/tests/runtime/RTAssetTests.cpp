@@ -142,7 +142,37 @@ static void test_loose_symlink_asset_rejected() {
 }
 #endif
 
+/// @brief A recognized image/audio extension whose bytes fail to decode must
+///        return NULL, not silently downgrade to Bytes (VDOC-181), while an
+///        unrecognized extension still returns raw Bytes.
+static void test_recognized_decode_failure_returns_null() {
+    char png_path[512];
+    snprintf(png_path, sizeof(png_path), "viper_corrupt_asset_%d.png", (int)GETPID());
+    unlink_p(png_path);
+    write_file(png_path, "this is definitely not a valid PNG file");
+
+    rt_string png_name = rt_const_cstr(png_path);
+    // Recognized (.png) but malformed: Load must fail, not return Bytes.
+    void *typed = rt_asset_load(png_name);
+    assert(typed == nullptr);
+    // The raw-bytes accessor still returns the bytes unconditionally.
+    void *raw = rt_asset_load_bytes(png_name);
+    assert(raw != nullptr && rt_bytes_len(raw) > 0);
+    unlink_p(png_path);
+
+    // An unrecognized extension still returns Bytes from Load.
+    char bin_path[512];
+    snprintf(bin_path, sizeof(bin_path), "viper_unknown_asset_%d.dat", (int)GETPID());
+    unlink_p(bin_path);
+    write_file(bin_path, "arbitrary payload");
+    rt_string bin_name = rt_const_cstr(bin_path);
+    void *bytes = rt_asset_load(bin_name);
+    assert(bytes != nullptr && rt_bytes_len(bytes) > 0);
+    unlink_p(bin_path);
+}
+
 int main() {
+    test_recognized_decode_failure_returns_null();
     test_filesystem_zero_byte_asset();
     test_filesystem_directories_are_not_assets();
     test_missing_asset_size_sentinel();

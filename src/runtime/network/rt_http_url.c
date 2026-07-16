@@ -409,6 +409,37 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
         // Network-path reference (starts with //)
         p += 2;
         has_authority = true;
+    } else {
+        // Scheme without an authority (RFC 3986 `scheme:` form, e.g.
+        // mailto:user@example.com) — VDOC-135. To keep common
+        // "host:port/..." spellings parsing as before, the remainder must be
+        // non-empty and not start with a digit run that looks like a port.
+        const char *colon = p;
+        while (*colon && *colon != ':' && *colon != '/' && *colon != '?' && *colon != '#')
+            colon++;
+        if (*colon == ':' && colon > p && colon[1] != '\0' &&
+            rt_url_scheme_is_valid(p, (size_t)(colon - p))) {
+            const char *rest = colon + 1;
+            int all_digits = 1;
+            for (const char *d = rest; *d && *d != '/' && *d != '?' && *d != '#'; d++) {
+                if (*d < '0' || *d > '9') {
+                    all_digits = 0;
+                    break;
+                }
+            }
+            if (!all_digits) {
+                size_t scheme_len = (size_t)(colon - p);
+                result->scheme = rt_url_dup_slice_or_trap_cleanup(
+                    result, p, scheme_len, "URL.Parse: scheme allocation failed");
+                if (!result->scheme)
+                    return -1;
+                for (char *sch = result->scheme; *sch; sch++) {
+                    if (*sch >= 'A' && *sch <= 'Z')
+                        *sch = *sch + ('a' - 'A');
+                }
+                p = rest;
+            }
+        }
     }
 
     // Parse authority (userinfo@host:port) - only if we have a scheme or //
@@ -726,9 +757,12 @@ static void rt_url_finalize(void *obj) {
 // return fresh rt_string objects.
 // ===========================================================================
 
-/// @brief Parse the runtime's permissive URL-reference grammar into a Url object.
-/// @details A scheme is recognized only when followed by `://`; this parser is not a complete RFC
-/// 3986 validator and does not apply every check used by `rt_url_is_valid` or the field setters.
+/// @brief Parse the runtime's URL-reference grammar into a Url object.
+/// @details Recognizes `scheme://authority` and authority-less `scheme:` forms
+/// (e.g. mailto:), and rejects unencoded whitespace, control bytes, and
+/// backslashes with the same rules as IsValid and the component setters. It is
+/// still a reference parser, not a strict RFC 3986 validator — use
+/// rt_url_is_valid_absolute to require an absolute network URL.
 void *rt_url_parse(rt_string url_str) {
     const char *str = url_str ? rt_string_cstr(url_str) : NULL;
     if (!str) {
@@ -738,6 +772,16 @@ void *rt_url_parse(rt_string url_str) {
     if (rt_url_string_has_embedded_nul(url_str)) {
         rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
         return NULL;
+    }
+    // Parse applies the same character rules as IsValid and the component
+    // setters (VDOC-135): unencoded whitespace, control bytes, and
+    // backslashes are rejected instead of silently preserved.
+    for (const char *q = str; *q; q++) {
+        unsigned char c = (unsigned char)*q;
+        if (c < 0x20 || c == ' ' || c == '\\' || c == 0x7F) {
+            rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
+            return NULL;
+        }
     }
 
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(RT_URL_CLASS_ID, sizeof(rt_url_t));
@@ -1497,7 +1541,13 @@ rt_string rt_url_decode(rt_string text) {
     return result;
 }
 
-/// @brief Build a `name=value&…` query string from a `Map[String,String]`, URL-encoding each piece.
+/// @brief Build a `name=value&…` query string from a Map, URL-encoding each piece.
+/// @details Value stringification policy: raw string handles and boxed strings are used
+///          verbatim; boxed Integer/Double/Boolean values are formatted with the runtime's
+///          canonical scalar formatting (`rt_int_to_str`, `rt_f64_to_str`, `true`/`false`);
+///          NULL encodes as the empty string. Any other object value traps with
+///          `URL.EncodeQuery: unsupported value type` instead of being reinterpreted as a
+///          string handle.
 rt_string rt_url_encode_query(void *map) {
     if (!map)
         return rt_str_empty();
@@ -1527,13 +1577,36 @@ rt_string rt_url_encode_query(void *map) {
 
         const char *key_str = key ? rt_string_cstr(key) : "";
         size_t key_len = rt_url_string_len_or_trap(key, "URL.EncodeQuery: invalid key length");
-        rt_string value_str_handle = NULL;
-        if (value && rt_box_type(value) == RT_BOX_STR) {
-            value_str_handle = rt_unbox_str(value);
-        } else {
-            value_str_handle = (rt_string)value;
-            if (value_str_handle)
-                rt_string_ref(value_str_handle);
+        rt_string value_str_handle = NULL; // owned reference, released at loop tail
+        if (value) {
+            switch (rt_box_type(value)) {
+                case RT_BOX_STR:
+                    value_str_handle = rt_unbox_str(value);
+                    break;
+                case RT_BOX_I64:
+                    value_str_handle = rt_int_to_str(rt_unbox_i64(value));
+                    break;
+                case RT_BOX_F64:
+                    value_str_handle = rt_f64_to_str(rt_unbox_f64(value));
+                    break;
+                case RT_BOX_I1:
+                    value_str_handle = rt_const_cstr(rt_unbox_i1(value) ? "true" : "false");
+                    break;
+                default:
+                    if (rt_string_is_handle(value)) {
+                        value_str_handle = (rt_string)value;
+                        rt_string_ref(value_str_handle);
+                    } else {
+                        free(result);
+                        if (keys && rt_obj_release_check0(keys))
+                            rt_obj_free(keys);
+                        rt_url_trap_runtime(
+                            "URL.EncodeQuery: unsupported value type (expected String, "
+                            "Integer, Double, or Boolean)");
+                        return rt_str_empty();
+                    }
+                    break;
+            }
         }
         const char *value_str = value_str_handle ? rt_string_cstr(value_str_handle) : "";
         size_t value_len =
@@ -1738,4 +1811,25 @@ int8_t rt_url_is_valid(rt_string url_str) {
     free_url(&url);
 
     return result == 0 ? 1 : 0;
+}
+
+/// @brief Strict check for an absolute NETWORK URL (VDOC-135): the string
+///        must pass @ref rt_url_is_valid AND parse with both a scheme and a
+///        non-empty host. Relative references, scheme-less strings, and
+///        authority-less forms such as `mailto:` return 0. Use this — not
+///        IsValid — when validating URLs destined for network requests.
+int8_t rt_url_is_valid_absolute(rt_string url_str) {
+    if (!rt_url_is_valid(url_str))
+        return 0;
+    const char *str = rt_string_cstr(url_str);
+
+    rt_url_t url;
+    memset(&url, 0, sizeof(url));
+    if (parse_url_full(str, &url) != 0) {
+        free_url(&url);
+        return 0;
+    }
+    int8_t ok = (url.scheme && url.scheme[0] && url.host && url.host[0]) ? 1 : 0;
+    free_url(&url);
+    return ok;
 }

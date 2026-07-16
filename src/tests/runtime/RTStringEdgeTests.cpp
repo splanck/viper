@@ -16,7 +16,34 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+// -- Trap interception (strict UTF-8 tests, VDOC-166) ------------------------
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+static const char *g_last_trap = nullptr;
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    fprintf(stderr, "UNEXPECTED TRAP: %s\n", msg ? msg : "(null)");
+    exit(1);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
@@ -232,6 +259,31 @@ static void test_concat_empty() {
 // Main
 //===----------------------------------------------------------------------===//
 
+/// @brief Codepoint-aware operations reject malformed UTF-8 with the strict
+///        shared decoder instead of grouping unrelated bytes (VDOC-166).
+static void test_flip_and_mid_reject_malformed_utf8() {
+    // c2 41: lead byte promising a continuation, followed by ASCII 'A'.
+    rt_string bad_pair = rt_string_from_bytes("\xc2\x41", 2);
+    EXPECT_TRAP(rt_str_flip(bad_pair));
+    assert(g_last_trap && strstr(g_last_trap, "invalid UTF-8") != nullptr);
+    rt_string_unref(bad_pair);
+
+    // c0 80: overlong encoding of NUL — previously returned as one "character".
+    rt_string overlong = rt_string_from_bytes("\xc0\x80", 2);
+    EXPECT_TRAP(rt_str_mid_len(overlong, 1, 1));
+    assert(g_last_trap && strstr(g_last_trap, "invalid UTF-8") != nullptr);
+    EXPECT_TRAP(rt_str_flip(overlong));
+    rt_string_unref(overlong);
+
+    // Valid multibyte input still flips by codepoint.
+    rt_string ok = rt_string_from_bytes("a\xc3\xa9" "b", 4); // a, U+00E9, b
+    rt_string flipped = rt_str_flip(ok);
+    assert(rt_str_len(flipped) == 4);
+    assert(memcmp(rt_string_cstr(flipped), "b\xc3\xa9" "a", 4) == 0);
+    rt_string_unref(flipped);
+    rt_string_unref(ok);
+}
+
 int main() {
     test_empty_string();
     test_utf8_byte_length();
@@ -250,5 +302,6 @@ int main() {
     test_lcase_ascii_only();
     test_concat_empty();
 
+    test_flip_and_mid_reject_malformed_utf8();
     return 0;
 }

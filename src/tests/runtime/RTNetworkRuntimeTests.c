@@ -24,6 +24,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
+
+// -- Trap interception (VDOC-142 registration-validation tests) -------------
+static jmp_buf g_trap_jmp;
+static int g_trap_expected = 0;
+static const char *g_last_trap = NULL;
+
+void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    fprintf(stderr, "UNEXPECTED TRAP: %s\n", msg ? msg : "(null)");
+    exit(1);
+}
+
+/// Expect `expr` to trap; capture the message and continue.
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = 1;                                                                       \
+        g_last_trap = NULL;                                                                        \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            ASSERT(0 && "Expected trap did not occur");                                            \
+        }                                                                                          \
+        g_trap_expected = 0;                                                                       \
+    } while (0)
 
 static int tests_run = 0;
 static int tests_failed = 0;
@@ -154,6 +180,61 @@ static void test_http_router_returns_owned_params_and_trims_wildcards(void) {
 
     if (rt_obj_release_check0(router))
         rt_obj_free(router);
+}
+
+/// @brief Router grammar validation and method-token semantics (VDOC-142):
+///        wildcards must be terminal, capture names unique, methods compared
+///        case-sensitively.
+static void test_http_router_grammar_validation(void) {
+    void *router = rt_http_router_new();
+
+    // Non-terminal wildcards and duplicate capture names are rejected at
+    // registration instead of silently mismatching at dispatch time.
+    EXPECT_TRAP(rt_http_router_get(router, rt_const_cstr("/a/*x/c")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "wildcard") != NULL);
+    EXPECT_TRAP(rt_http_router_get(router, rt_const_cstr("/a/:id/b/:id")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "duplicate") != NULL);
+    ASSERT(rt_http_router_count(router) == 0);
+
+    // Embedded NUL in a pattern must reject the whole registration rather
+    // than registering a truncated prefix (VDOC-161).
+    rt_string nul_pattern = rt_string_from_bytes("/a\0/b", 5);
+    EXPECT_TRAP(rt_http_router_get(router, nul_pattern));
+    rt_string_unref(nul_pattern);
+    ASSERT(rt_http_router_count(router) == 0);
+
+    // Method tokens are case-sensitive per HTTP semantics.
+    rt_http_router_add(router, rt_const_cstr("get"), rt_const_cstr("/lower"));
+    void *match = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/lower"));
+    ASSERT(match == NULL);
+    match = rt_http_router_match(router, rt_const_cstr("get"), rt_const_cstr("/lower"));
+    ASSERT(match != NULL);
+    if (rt_obj_release_check0(match))
+        rt_obj_free(match);
+
+    if (rt_obj_release_check0(router))
+        rt_obj_free(router);
+}
+
+/// @brief Route registration must be transactional (VDOC-144): a rejected
+///        handler tag leaves no ghost route in the embedded router.
+static void test_http_server_route_registration_atomic(void) {
+    void *server = rt_http_server_new(0);
+
+    // Empty handler tag is rejected before anything is committed.
+    EXPECT_TRAP(rt_http_server_get(server, rt_const_cstr("/ghost"), rt_const_cstr("")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "handler tag") != NULL);
+
+    // The rejected pattern must not be routable: a request for it gets a
+    // clean 404 rather than a ghost-route dispatch into a missing handler.
+    rt_string wire = (rt_string)rt_http_server_process_request(
+        server, rt_const_cstr("GET /ghost HTTP/1.1\r\nHost: x\r\n\r\n"));
+    ASSERT(wire != NULL);
+    ASSERT(strncmp(rt_string_cstr(wire), "HTTP/1.1 404", 12) == 0);
+    rt_string_unref(wire);
+
+    if (rt_obj_release_check0(server))
+        rt_obj_free(server);
 }
 
 static void test_http_server_parses_exact_body(void) {
@@ -882,6 +963,8 @@ static void test_tls_extract_cn_uses_subject_not_issuer(void) {
 
 int main(void) {
     test_http_router_returns_owned_params_and_trims_wildcards();
+    test_http_router_grammar_validation();
+    test_http_server_route_registration_atomic();
     test_http_server_parses_exact_body();
     test_http_server_rejects_invalid_http_version();
     test_http_server_rejects_invalid_content_length();

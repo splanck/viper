@@ -199,6 +199,42 @@ endif ()
 if (NOT _api_out MATCHES "\"fallibility\":" OR NOT _api_out MATCHES "\"class_kind\":")
     message(FATAL_ERROR "--dump-runtime-api missing production contract metadata")
 endif ()
+# VDOC-198: IO conversion/allocation entries carry accurate trapping + owned
+# contracts (previously mislabeled infallible / unknown ownership).
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.IO.Stream.AsBinFile\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api Stream.AsBinFile contract regressed (expected traps/owned)")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.IO.LineWriter.Append\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api LineWriter.Append contract regressed (expected traps/owned)")
+endif ()
+# VDOC-209: trapping/allocating Math entries carry accurate traps + owned
+# contracts (were mislabeled infallible / unknown ownership).
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Math.Mat4.Inverse\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api Mat4.Inverse contract regressed (expected traps/owned)")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Math.BigInt.Div\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api BigInt.Div contract regressed (expected traps/owned)")
+endif ()
+# VDOC-222: System entries surface their hidden nulls, traps, and statuses.
+# Process spawns return NULL on failure (nullable return, not a live handle),
+# Unsafe releases trap on an invalid object, and PtySession.Resize returns a
+# boolean status rather than an infallible void.
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.System.Process.Start\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"infallible\"[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api Process.Start contract regressed (expected nullable return / owned)")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Runtime.Unsafe.Release\"[^\n]*\"fallibility\":\"traps\"")
+    message(FATAL_ERROR "--dump-runtime-api Unsafe.Release contract regressed (expected traps)")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.System.Pty.PtySession.Resize\"[^\n]*\"fallibility\":\"status\"")
+    message(FATAL_ERROR "--dump-runtime-api PtySession.Resize contract regressed (expected status)")
+endif ()
 if (NOT _api_out MATCHES
         "\"name\":\"Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"[^\n]*\"fallibility\":\"status\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"three-d-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api missing the allocation-reusing Canvas3D status contract")

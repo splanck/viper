@@ -442,6 +442,11 @@ static void test_last_index_of() {
     assert(rt_str_last_index_of(make_str("abcabc"), make_str("abc")) == 4);
     assert(rt_str_last_index_of(make_str("abcabc"), make_str("xyz")) == 0);
     assert(rt_str_last_index_of(make_str("aaa"), make_str("a")) == 3);
+    // Family-wide empty-needle rule (VDOC-168): an empty needle matches at
+    // every position; LastIndexOf reports the final one (Length + 1),
+    // distinguishable from the 0 miss sentinel.
+    assert(rt_str_last_index_of(make_str("x"), make_str("")) == 2);
+    assert(rt_str_last_index_of(make_str(""), make_str("")) == 1);
     assert(rt_str_last_index_of(make_str("hello"), make_str("hello")) == 1);
     assert(rt_str_last_index_of(make_str(""), make_str("a")) == 0);
 }
@@ -602,8 +607,40 @@ static void test_like_strict_utf8() {
     }
 }
 
+/// @brief Padding must be a single byte: multibyte padding would emit
+///        malformed UTF-8 under the byte-width contract (VDOC-167).
+static void test_pad_rejects_multibyte_padding() {
+    rt_string base = make_str("x");
+    const char kai[] = {(char)0xE7, (char)0x95, (char)0x8C, 0}; // 界
+    rt_string wide_pad = rt_string_from_bytes(kai, 3);
+
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    bool trapped = true;
+    if (setjmp(env) == 0) {
+        (void)rt_str_pad_left(base, 3, wide_pad);
+        trapped = false;
+    }
+    rt_trap_clear_recovery();
+    assert(trapped && "PadLeft must reject multibyte padding");
+
+    rt_trap_set_recovery(&env);
+    trapped = true;
+    if (setjmp(env) == 0) {
+        (void)rt_str_pad_right(base, 3, wide_pad);
+        trapped = false;
+    }
+    rt_trap_clear_recovery();
+    assert(trapped && "PadRight must reject multibyte padding");
+
+    // Single-byte padding still works.
+    rt_string padded = rt_str_pad_left(base, 3, make_str("0"));
+    assert(str_eq(padded, "00x"));
+}
+
 int main() {
     test_like_strict_utf8();
+    test_pad_rejects_multibyte_padding();
     // Replace tests
     test_replace_basic();
     test_replace_multiple();

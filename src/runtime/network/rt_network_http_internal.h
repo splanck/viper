@@ -76,6 +76,15 @@ int parse_url(const char *url_str, parsed_url_t *result);
 void free_headers(http_header_t *headers);
 void add_header(rt_http_req_t *req, const char *name, const char *value);
 bool has_header(rt_http_req_t *req, const char *name);
+void remove_header(rt_http_req_t *req, const char *name);
+
+/// @brief Case-insensitively remove all entries named @p name from a
+///        header-name-keyed Map (HTTP field names are case-insensitive).
+void rt_http_header_map_remove_ci(void *map, const char *name);
+
+/// @brief Case-insensitive replace into a header-name-keyed Map (removes any
+///        differently cased spelling before storing @p name → @p value).
+void rt_http_header_map_set_ci(void *map, rt_string name, void *value);
 void set_request_body_from_string(rt_http_req_t *req, rt_string body);
 rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining);
 int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *out);
@@ -85,6 +94,10 @@ void *rt_http_conn_pool_new(int64_t max_size);
 
 /// @brief Drop every idle connection from an internal HTTP connection pool.
 void rt_http_conn_pool_clear(void *pool);
+
+/// @brief Lazily created process-wide pool backing standalone keep-alive
+///        `HttpReq` sends (thread-safe once-init; never freed).
+void *rt_http_default_connection_pool(void);
 
 /// @brief Toggle keep-alive / pooled transport on a request.
 void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive);

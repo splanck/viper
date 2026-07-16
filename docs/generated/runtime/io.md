@@ -322,8 +322,8 @@ construct the class directly. Its public surface exposes properties such as `Typ
 | <a id="viper-io-stream-writebyte"></a>`WriteByte` | `void(i64)` | `Viper.IO.Stream.WriteByte` |
 | <a id="viper-io-stream-flush"></a>`Flush` | `void()` | `Viper.IO.Stream.Flush` |
 | <a id="viper-io-stream-close"></a>`Close` | `void()` | `Viper.IO.Stream.Close` |
-| <a id="viper-io-stream-asbinfile"></a>`AsBinFile` | `obj()` | `Viper.IO.Stream.AsBinFile` |
-| <a id="viper-io-stream-asmemstream"></a>`AsMemStream` | `obj()` | `Viper.IO.Stream.AsMemStream` |
+| <a id="viper-io-stream-asbinfile"></a>`AsBinFile` | `obj<Viper.IO.BinFile>()` | `Viper.IO.Stream.AsBinFile` |
+| <a id="viper-io-stream-asmemstream"></a>`AsMemStream` | `obj<Viper.IO.MemStream>()` | `Viper.IO.Stream.AsMemStream` |
 | <a id="viper-io-stream-tobytes"></a>`ToBytes` | `obj()` | `Viper.IO.Stream.ToBytes` |
 
 <a id="viper-io-linereader"></a>
@@ -669,8 +669,8 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | `Viper.IO.Stream.WriteByte` | `void(obj,i64)` | `rt_stream_write_byte` |
 | `Viper.IO.Stream.Flush` | `void(obj)` | `rt_stream_flush` |
 | `Viper.IO.Stream.Close` | `void(obj)` | `rt_stream_close` |
-| `Viper.IO.Stream.AsBinFile` | `obj(obj)` | `rt_stream_as_binfile` |
-| `Viper.IO.Stream.AsMemStream` | `obj(obj)` | `rt_stream_as_memstream` |
+| `Viper.IO.Stream.AsBinFile` | `obj<Viper.IO.BinFile>(obj)` | `rt_stream_as_binfile` |
+| `Viper.IO.Stream.AsMemStream` | `obj<Viper.IO.MemStream>(obj)` | `rt_stream_as_memstream` |
 | `Viper.IO.Stream.ToBytes` | `obj(obj)` | `rt_stream_to_bytes` |
 | `Viper.IO.LineReader.Close` | `void(obj)` | `rt_linereader_close` |
 | <a id="viper-io-linereader-get-eof"></a>`Viper.IO.LineReader.get_Eof` | `i1(obj)` | `rt_linereader_eof` |

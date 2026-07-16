@@ -162,28 +162,44 @@ static int binbuf_check_read(rt_binbuf_impl *buf, int64_t count) {
     return 1;
 }
 
-/// @brief Trap if @p value does not fit a signed 16-bit integer.
-static void binbuf_require_i16(int64_t value) {
-    if (value < INT16_MIN || value > INT16_MAX)
+// The width validators return 1 when @p value fits and 0 after trapping, so a
+// caller keeps writing only when the range is valid — a returning trap hook no
+// longer lets a truncated value reach the buffer (VDOC-189).
+
+/// @brief Return 1 if @p value fits a signed 16-bit integer; trap and return 0 otherwise.
+static int binbuf_require_i16(int64_t value) {
+    if (value < INT16_MIN || value > INT16_MAX) {
         rt_trap("BinaryBuffer: i16 value out of range");
+        return 0;
+    }
+    return 1;
 }
 
-/// @brief Trap if @p value does not fit an unsigned 16-bit integer.
-static void binbuf_require_u16(int64_t value) {
-    if (value < 0 || value > UINT16_MAX)
+/// @brief Return 1 if @p value fits an unsigned 16-bit integer; trap and return 0 otherwise.
+static int binbuf_require_u16(int64_t value) {
+    if (value < 0 || value > UINT16_MAX) {
         rt_trap("BinaryBuffer: u16 value out of range");
+        return 0;
+    }
+    return 1;
 }
 
-/// @brief Trap if @p value does not fit a signed 32-bit integer.
-static void binbuf_require_i32(int64_t value) {
-    if (value < INT32_MIN || value > INT32_MAX)
+/// @brief Return 1 if @p value fits a signed 32-bit integer; trap and return 0 otherwise.
+static int binbuf_require_i32(int64_t value) {
+    if (value < INT32_MIN || value > INT32_MAX) {
         rt_trap("BinaryBuffer: i32 value out of range");
+        return 0;
+    }
+    return 1;
 }
 
-/// @brief Trap if @p value does not fit an unsigned 32-bit integer.
-static void binbuf_require_u32(int64_t value) {
-    if (value < 0 || value > UINT32_MAX)
+/// @brief Return 1 if @p value fits an unsigned 32-bit integer; trap and return 0 otherwise.
+static int binbuf_require_u32(int64_t value) {
+    if (value < 0 || value > UINT32_MAX) {
         rt_trap("BinaryBuffer: u32 value out of range");
+        return 0;
+    }
+    return 1;
 }
 
 //=============================================================================
@@ -298,7 +314,8 @@ void rt_binbuf_write_byte(void *obj, int64_t value) {
 /// @brief Append a 16-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i16le(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_i16(value);
+    if (!buf || !binbuf_require_i16(value))
+        return;
     uint16_t raw = (uint16_t)value;
     if (!binbuf_ensure(buf, 2))
         return;
@@ -310,7 +327,8 @@ void rt_binbuf_write_i16le(void *obj, int64_t value) {
 /// @brief Append a 16-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i16be(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_i16(value);
+    if (!buf || !binbuf_require_i16(value))
+        return;
     uint16_t raw = (uint16_t)value;
     if (!binbuf_ensure(buf, 2))
         return;
@@ -322,7 +340,8 @@ void rt_binbuf_write_i16be(void *obj, int64_t value) {
 /// @brief Append a 16-bit unsigned integer in little-endian byte order.
 void rt_binbuf_write_u16le(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_u16(value);
+    if (!buf || !binbuf_require_u16(value))
+        return;
     uint16_t raw = (uint16_t)value;
     if (!binbuf_ensure(buf, 2))
         return;
@@ -334,7 +353,8 @@ void rt_binbuf_write_u16le(void *obj, int64_t value) {
 /// @brief Append a 16-bit unsigned integer in big-endian byte order.
 void rt_binbuf_write_u16be(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_u16(value);
+    if (!buf || !binbuf_require_u16(value))
+        return;
     uint16_t raw = (uint16_t)value;
     if (!binbuf_ensure(buf, 2))
         return;
@@ -346,7 +366,8 @@ void rt_binbuf_write_u16be(void *obj, int64_t value) {
 /// @brief Append a 32-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i32le(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_i32(value);
+    if (!buf || !binbuf_require_i32(value))
+        return;
     uint32_t raw = (uint32_t)value;
     if (!binbuf_ensure(buf, 4))
         return;
@@ -360,7 +381,8 @@ void rt_binbuf_write_i32le(void *obj, int64_t value) {
 /// @brief Append a 32-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i32be(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_i32(value);
+    if (!buf || !binbuf_require_i32(value))
+        return;
     uint32_t raw = (uint32_t)value;
     if (!binbuf_ensure(buf, 4))
         return;
@@ -374,7 +396,8 @@ void rt_binbuf_write_i32be(void *obj, int64_t value) {
 /// @brief Append a 32-bit unsigned integer in little-endian byte order.
 void rt_binbuf_write_u32le(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_u32(value);
+    if (!buf || !binbuf_require_u32(value))
+        return;
     uint32_t raw = (uint32_t)value;
     if (!binbuf_ensure(buf, 4))
         return;
@@ -388,7 +411,8 @@ void rt_binbuf_write_u32le(void *obj, int64_t value) {
 /// @brief Append a 32-bit unsigned integer in big-endian byte order.
 void rt_binbuf_write_u32be(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
-    binbuf_require_u32(value);
+    if (!buf || !binbuf_require_u32(value))
+        return;
     uint32_t raw = (uint32_t)value;
     if (!binbuf_ensure(buf, 4))
         return;
@@ -715,7 +739,12 @@ void *rt_binbuf_read_bytes(void *obj, int64_t count) {
 
 /// @brief Return the read/write cursor position in bytes from the buffer start. 0 for NULL.
 int64_t rt_binbuf_get_position(void *obj) {
-    return binbuf_require(obj)->position;
+    // binbuf_require traps and returns NULL on an invalid receiver; do not
+    // dereference NULL if a returning trap hook falls through (VDOC-189).
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    if (!buf)
+        return 0;
+    return buf->position;
 }
 
 /// @brief Seek the cursor to a byte offset in [0, len]; out-of-range input traps.
@@ -733,13 +762,19 @@ void rt_binbuf_set_position(void *obj, int64_t pos) {
 
 /// @brief Return the total written size in bytes (the high-water mark, not capacity).
 int64_t rt_binbuf_get_len(void *obj) {
-    return binbuf_require(obj)->len;
+    // See rt_binbuf_get_position: guard against a returning trap hook (VDOC-189).
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    if (!buf)
+        return 0;
+    return buf->len;
 }
 
 /// @brief Snapshot the buffer's full contents as a fresh Bytes blob (memcpy, not a view).
 /// Returns an empty Bytes for a NULL handle.
 void *rt_binbuf_to_bytes(void *obj) {
     rt_binbuf_impl *buf = binbuf_require(obj);
+    if (!buf)
+        return rt_bytes_new(0);
     void *result = rt_bytes_new(buf->len);
     // IO-M-2: use memcpy via raw pointer instead of O(n) rt_bytes_set() calls
     uint8_t *dst = rt_bytes_data(result);
@@ -753,6 +788,8 @@ void *rt_binbuf_to_bytes(void *obj) {
 /// backing buffer can be re-used for the next batch without reallocation.
 void rt_binbuf_reset(void *obj) {
     rt_binbuf_impl *buf = binbuf_require(obj);
+    if (!buf)
+        return;
     buf->position = 0;
     buf->len = 0;
 }

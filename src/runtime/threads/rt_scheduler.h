@@ -79,6 +79,10 @@ int8_t rt_scheduler_is_due_gen(void *sched, rt_string name, int64_t generation);
 /// @return The entry's generation, or -1 if @p name is not scheduled.
 int64_t rt_scheduler_generation_of(void *sched, rt_string name);
 
+/// @brief GenerationOf as an Option: Some(generation) for a scheduled name
+///        (even when the stored generation is -1), None otherwise.
+void *rt_scheduler_generation_of_option(void *sched, rt_string name);
+
 /// @brief Poll for all due tasks and return their names as a Seq.
 /// @param sched Scheduler pointer.
 /// @return Seq of task name strings that are due. Due tasks are removed.

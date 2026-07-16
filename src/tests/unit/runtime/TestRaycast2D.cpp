@@ -1,5 +1,18 @@
 //===----------------------------------------------------------------------===//
-// Tests for 2D Raycast + LineOfSight (Plan 05).
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/runtime/TestRaycast2D.cpp
+// Purpose: Tests for the 2D raycast runtime.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"

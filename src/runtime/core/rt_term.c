@@ -21,8 +21,9 @@
 //     ANSI sequences work in cmd.exe and PowerShell consoles.
 //   - INKEY$ uses select() with a zero timeout for non-blocking key reads on
 //     POSIX; on Windows it uses _kbhit().
-//   - Normal-exit cleanup restores cached POSIX raw mode. It does not emit an
-//     alternate-screen exit sequence or balance output batch depth (VDOC-220).
+//   - Normal-exit cleanup restores cached POSIX raw mode AND, if the program
+//     left the terminal on the alternate screen, ends the batch it started and
+//     emits the alternate-screen exit sequence (balanced cleanup, VDOC-220).
 //
 // Ownership/Lifetime:
 //   - Returned rt_string values from GETKEY$/INKEY$ are newly allocated;
@@ -101,9 +102,27 @@ static int g_stdin_fd = -1;
 /// @brief Whether atexit handler has been registered.
 static int g_atexit_registered = 0;
 
+/// @brief Whether the terminal is currently on the alternate screen buffer.
+/// @details Tracks one alt-screen state so SetAltScreen is an idempotent toggle
+///          (enter/exit and batch only on state changes) and the exit handler can
+///          balance the screen/batch on normal process exit (VDOC-220).
+static int g_alt_screen_active = 0;
+
+// Forward declaration: defined below, but the exit handler needs it (VDOC-220).
+static void out_str(const char *s);
+
 /// @brief Cleanup handler called on program exit.
-/// @details Ensures terminal is restored to original state if raw mode was active.
+/// @details Best-effort BALANCED restore: if the program left the terminal on the
+///          alternate screen, end the batch it started and emit the alt-screen
+///          exit sequence, then restore raw mode — otherwise a normal exit could
+///          strand the terminal on the alternate screen or in batch mode
+///          (VDOC-220).
 static void term_atexit_handler(void) {
+    if (g_alt_screen_active) {
+        rt_output_end_batch();
+        out_str("\x1b[?1049l");
+        g_alt_screen_active = 0;
+    }
     rt_term_disable_raw_mode();
 }
 
@@ -344,13 +363,22 @@ void rt_term_cursor_visible_i32(int32_t show) {
 void rt_term_alt_screen_i32(int32_t enable) {
     if (!stdout_isatty())
         return;
+    // Idempotent toggle: only transition (and adjust batch depth) on an actual
+    // state change, so repeated enable/disable calls stay balanced and cannot
+    // strand output in batch mode (VDOC-220).
     if (enable) {
+        if (g_alt_screen_active)
+            return;
         out_str("\x1b[?1049h");
         // Auto-enable raw mode for better INKEY$ performance in games
         rt_term_enable_raw_mode();
         // Also auto-enable batch mode for screen rendering
         rt_output_begin_batch();
+        g_alt_screen_active = 1;
     } else {
+        if (!g_alt_screen_active)
+            return;
+        g_alt_screen_active = 0;
         // End batch mode before exiting alt screen
         rt_output_end_batch();
         // Restore original terminal settings
@@ -728,24 +756,37 @@ void rt_term_flush(void) {
 // i64 Wrappers (for frontends that use 64-bit integers)
 // =============================================================================
 
-/// @brief Move cursor to position (i64 wrapper).
-void rt_term_locate(int64_t row, int64_t col) {
-    rt_term_locate_i32((int32_t)row, (int32_t)col);
+/// @brief Saturating narrow of a 64-bit terminal parameter to 32 bits.
+/// @details Clamps to `[INT32_MIN, INT32_MAX]` instead of taking the low 32 bits,
+///          so a large positive value cannot wrap to a negative one (which made a
+///          big timeout block forever and large cursor/color values change sign
+///          and take unrelated branches) (VDOC-221).
+static int32_t term_clamp_i32(int64_t v) {
+    if (v > INT32_MAX)
+        return INT32_MAX;
+    if (v < INT32_MIN)
+        return INT32_MIN;
+    return (int32_t)v;
 }
 
-/// @brief Set terminal colors (i64 wrapper).
+/// @brief Move cursor to position (i64 wrapper; clamps, does not wrap).
+void rt_term_locate(int64_t row, int64_t col) {
+    rt_term_locate_i32(term_clamp_i32(row), term_clamp_i32(col));
+}
+
+/// @brief Set terminal colors (i64 wrapper; clamps, does not wrap).
 void rt_term_color(int64_t fg, int64_t bg) {
-    rt_term_color_i32((int32_t)fg, (int32_t)bg);
+    rt_term_color_i32(term_clamp_i32(fg), term_clamp_i32(bg));
 }
 
 /// @brief Set foreground text color only.
 void rt_term_textcolor(int64_t fg) {
-    rt_term_color_i32((int32_t)fg, -1);
+    rt_term_color_i32(term_clamp_i32(fg), -1);
 }
 
 /// @brief Set background color only.
 void rt_term_textbg(int64_t bg) {
-    rt_term_color_i32(-1, (int32_t)bg);
+    rt_term_color_i32(-1, term_clamp_i32(bg));
 }
 
 /// @brief Hide cursor.
@@ -778,7 +819,9 @@ int64_t rt_keypressed_i64(void) {
     return (int64_t)rt_keypressed();
 }
 
-/// @brief Get key with timeout (i64 wrapper that narrows to signed 32 bits).
+/// @brief Get key with timeout (i64 wrapper; clamps a large timeout to
+///        INT32_MAX instead of wrapping to a negative value that would block
+///        indefinitely) (VDOC-221).
 rt_string rt_getkey_timeout(int64_t timeout_ms) {
-    return rt_getkey_timeout_i32((int32_t)timeout_ms);
+    return rt_getkey_timeout_i32(term_clamp_i32(timeout_ms));
 }

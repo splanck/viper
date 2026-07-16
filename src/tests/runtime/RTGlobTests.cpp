@@ -95,6 +95,37 @@ static void test_glob_match() {
         test_result("? doesn't match /", rt_glob_match(path, pattern) == 0);
     }
 
+    // VDOC-186: a leading ** must not leak separator permission into a later
+    // ?, *, or class token. `**/a?b` cannot match `a/b` because the trailing
+    // `?` follows ordinary component rules and cannot match the separator.
+    {
+        rt_string pattern = rt_const_cstr("**/a?b");
+        rt_string path = rt_const_cstr("a/b");
+        test_result("** does not leak / into later ?", rt_glob_match(path, pattern) == 0);
+    }
+    {
+        rt_string pattern = rt_const_cstr("**/a*b");
+        rt_string path = rt_const_cstr("a/b");
+        test_result("** does not leak / into later *", rt_glob_match(path, pattern) == 0);
+    }
+    {
+        rt_string pattern = rt_const_cstr("**/a[x/]b");
+        rt_string path = rt_const_cstr("a/b");
+        test_result("** does not leak / into later class", rt_glob_match(path, pattern) == 0);
+    }
+    // Legitimate ** matches still work after the fix.
+    {
+        rt_string pattern = rt_const_cstr("**/c");
+        rt_string path = rt_const_cstr("a/b/c");
+        test_result("** still crosses separators", rt_glob_match(path, pattern) == 1);
+    }
+    {
+        rt_string pattern = rt_const_cstr("**/x?z");
+        rt_string path = rt_const_cstr("a/b/xyz");
+        test_result("** then ? matches within the final component",
+                    rt_glob_match(path, pattern) == 1);
+    }
+
     // Test 10: Complex pattern
     {
         rt_string pattern = rt_const_cstr("src/**/*.c");

@@ -671,7 +671,9 @@ static void replace_cookie_locked(rt_http_client_impl *c, rt_http_cookie *incomi
     rt_http_cookie **link = &c->cookies;
     while (*link) {
         rt_http_cookie *cookie = *link;
-        if (strcasecmp(cookie->name, incoming->name) == 0 &&
+        // Cookie names are case-sensitive (RFC 6265): SID and sid coexist.
+        // Domains are DNS names and stay case-insensitive.
+        if (strcmp(cookie->name, incoming->name) == 0 &&
             strcasecmp(cookie->domain, incoming->domain) == 0 &&
             strcmp(cookie->path, incoming->path) == 0) {
             *link = cookie->next;
@@ -682,8 +684,9 @@ static void replace_cookie_locked(rt_http_client_impl *c, rt_http_cookie *incomi
         link = &cookie->next;
     }
 
-    if ((incoming->persistent && incoming->expires_at <= cookie_now_seconds()) ||
-        incoming->value[0] == '\0') {
+    // Empty values are valid cookies (RFC 6265); only an already-expired
+    // persistent cookie means "delete".
+    if (incoming->persistent && incoming->expires_at <= cookie_now_seconds()) {
         free_cookie_list(incoming);
         return;
     }
@@ -1155,34 +1158,44 @@ void *rt_http_client_new(void) {
 /// @brief Send a `GET` to `url`. Applies default headers + cookies; auto-follows redirects up to
 /// `max_redirects`. Returns an HttpRes for the FINAL response after any redirects.
 void *rt_http_client_get(void *obj, rt_string url) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HttpClient: NULL");
+        return NULL;
+    }
     return do_request((rt_http_client_impl *)obj, "GET", url, NULL);
 }
 
 /// @brief Send a `POST` with a string body. **Redirect semantics:** 301/302 with POST switch to
 /// GET (per common browser behavior); 303 always switches to GET; 307/308 preserve method+body.
 void *rt_http_client_post(void *obj, rt_string url, rt_string body) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HttpClient: NULL");
+        return NULL;
+    }
     return do_request((rt_http_client_impl *)obj, "POST", url, body);
 }
 
 /// @brief Send a `PUT` with a string body. Redirects preserve method+body for 307/308.
 void *rt_http_client_put(void *obj, rt_string url, rt_string body) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HttpClient: NULL");
+        return NULL;
+    }
     return do_request((rt_http_client_impl *)obj, "PUT", url, body);
 }
 
 /// @brief Send a `DELETE` (no body). Same redirect handling as `_get`.
 void *rt_http_client_delete(void *obj, rt_string url) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HttpClient: NULL");
+        return NULL;
+    }
     return do_request((rt_http_client_impl *)obj, "DELETE", url, NULL);
 }
 
 /// @brief Add or replace a default header that is sent with every request.
+/// Replacement is case-insensitive: setting `authorization` supersedes a stored
+/// `Authorization` (HTTP field names are case-insensitive).
 void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
@@ -1195,7 +1208,7 @@ void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     }
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
-    rt_map_set(c->default_headers, name, (void *)value);
+    rt_http_header_map_set_ci(c->default_headers, name, (void *)value);
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 }
 
@@ -1300,7 +1313,12 @@ void rt_http_client_set_follow_redirects(void *obj, int8_t follow) {
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 }
 
-/// @brief Store a cookie for a specific domain; sent automatically on matching requests.
+/// @brief Store a cookie for exactly the given host; sent automatically on matching requests.
+/// @details Manual cookies pass the SAME validation as response cookies: token-valid names,
+///          cookie-octet values, syntactically valid non-public-suffix domains. They are stored
+///          HOST-ONLY, so a cookie set for `example.com` is not sent to `sub.example.com`.
+///          Empty values are stored (they are valid cookies); use `DeleteCookie` to remove one.
+///          Invalid inputs trap instead of being silently dropped or stored unsafely.
 void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_string value) {
     const char *domain_cstr;
     const char *name_cstr;
@@ -1313,8 +1331,14 @@ void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_s
     value_cstr = value ? rt_string_cstr(value) : NULL;
     if (!domain_cstr || !*domain_cstr || !name_cstr || !*name_cstr || !value_cstr ||
         http_client_string_has_embedded_nul(domain) || http_client_string_has_embedded_nul(name) ||
-        http_client_string_has_embedded_nul(value))
+        http_client_string_has_embedded_nul(value)) {
+        rt_trap("HttpClient.SetCookie: invalid cookie");
         return;
+    }
+    if (!cookie_name_is_valid(name_cstr) || !cookie_value_is_valid(value_cstr)) {
+        rt_trap("HttpClient.SetCookie: invalid cookie name or value");
+        return;
+    }
 
     cookie = (rt_http_cookie *)calloc(1, sizeof(*cookie));
     if (!cookie)
@@ -1323,15 +1347,60 @@ void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_s
     cookie->value = strdup(value_cstr);
     cookie->domain = cookie_strdup_manual_domain(domain_cstr);
     cookie->path = strdup("/");
-    cookie->host_only = 0;
+    cookie->host_only = 1;
     if (!cookie->name || !cookie->value || !cookie->domain || !cookie->path || !*cookie->domain) {
         free_cookie_list(cookie);
+        return;
+    }
+    // Host-only storage already prevents supercookies (an exact-host cookie
+    // for "com" is only ever sent to the literal host "com"), so only the
+    // domain SYNTAX is validated here — single-label hosts like localhost
+    // remain usable.
+    if (!cookie_domain_is_valid(cookie->domain)) {
+        free_cookie_list(cookie);
+        rt_trap("HttpClient.SetCookie: invalid cookie domain");
         return;
     }
 
     HTTP_CLIENT_MUTEX_LOCK(&((rt_http_client_impl *)obj)->lock);
     replace_cookie_locked((rt_http_client_impl *)obj, cookie);
     HTTP_CLIENT_MUTEX_UNLOCK(&((rt_http_client_impl *)obj)->lock);
+}
+
+/// @brief Remove a manually or automatically stored cookie by exact domain and
+///        case-sensitive name. No-op when nothing matches.
+void rt_http_client_delete_cookie(void *obj, rt_string domain, rt_string name) {
+    const char *domain_cstr;
+    const char *name_cstr;
+    if (!obj)
+        return;
+    domain_cstr = domain ? rt_string_cstr(domain) : NULL;
+    name_cstr = name ? rt_string_cstr(name) : NULL;
+    if (!domain_cstr || !*domain_cstr || !name_cstr || !*name_cstr ||
+        http_client_string_has_embedded_nul(domain) || http_client_string_has_embedded_nul(name))
+        return;
+
+    char *normalized = cookie_strdup_manual_domain(domain_cstr);
+    if (!normalized || !*normalized) {
+        free(normalized);
+        return;
+    }
+
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    rt_http_cookie **link = &c->cookies;
+    while (*link) {
+        rt_http_cookie *cookie = *link;
+        if (strcmp(cookie->name, name_cstr) == 0 && strcasecmp(cookie->domain, normalized) == 0) {
+            *link = cookie->next;
+            cookie->next = NULL;
+            free_cookie_list(cookie);
+            continue;
+        }
+        link = &cookie->next;
+    }
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+    free(normalized);
 }
 
 /// @brief Return a cloned snapshot of all cookies stored for `domain` (key→value Map). Cloned so

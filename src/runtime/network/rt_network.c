@@ -330,8 +330,10 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
             rt_trap_net("Network: connection refused", Err_ConnectionRefused);
             return NULL;
         }
-        if (rt_socket_error_is_timeout(last_err))
+        if (rt_socket_error_is_timeout(last_err)) {
             rt_trap_net("Network: connection timeout", Err_Timeout);
+            return NULL;
+        }
         rt_trap_net("Network: connection failed", Err_NetworkError);
         return NULL;
     }
@@ -781,6 +783,7 @@ rt_string rt_tcp_recv_line(void *obj) {
             free(line);
             tcp->is_open = false;
             rt_trap_net("Network: connection closed before end of line", Err_ConnectionClosed);
+            return rt_str_empty();
         }
 
         if (c == '\n') {

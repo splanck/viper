@@ -440,8 +440,7 @@ void invokeRtCsngFromDouble(void **args, void *result) {
 
 void invokeRtStrFAlloc(void **args, void *result) {
     const auto xPtr = argSlot<const double>(args, 0);
-    const float value = static_cast<float>(*xPtr);
-    rt_string str = rt_str_f_alloc(value);
+    rt_string str = rt_str_f_alloc(*xPtr); // narrows to single precision internally
     detail::storeRequiredResult<rt_string>(result, str);
 }
 

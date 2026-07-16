@@ -27,7 +27,9 @@
 #include "rt_internal.h"
 #include "rt_network_http_internal.h"
 #include "rt_network_internal.h"
+#include "rt_time.h"
 #include "rt_object.h"
+#include "rt_result.h"
 #include "rt_string.h"
 #include "rt_threads.h"
 #include "rt_tls.h"
@@ -67,7 +69,36 @@ typedef struct {
     size_t read_buf_pos;
     int chunked;
     size_t chunk_remaining;
+    // Timed-receive state (VDOC-151): one monotonic deadline is carried
+    // through every transport read, and a timeout preserves — rather than
+    // corrupts — partial line and partial event state.
+    int64_t read_deadline_us; ///< 0 = untimed receive
+    int read_timed_out;       ///< last transport failure was a recv timeout
+    char *raw_pending;        ///< partial raw line preserved across a timeout
+    size_t raw_pending_len;
+    char *payload_pending; ///< partial payload line preserved across a timeout
+    size_t payload_pending_len;
+    char *event_data; ///< partial event accumulation preserved across a timeout
+    size_t event_len;
+    size_t event_cap;
+    int event_saw_data;
+    char *pending_event_type; ///< `event:` value for the event being built
+    int last_recv_delivered;  ///< 1 when the last receive dispatched an event
 } rt_sse_impl;
+
+/// @brief Drop any partial line/event state (stream restart or teardown).
+static void sse_reset_partial_state(rt_sse_impl *sse) {
+    free(sse->raw_pending);
+    sse->raw_pending = NULL;
+    sse->raw_pending_len = 0;
+    free(sse->payload_pending);
+    sse->payload_pending = NULL;
+    sse->payload_pending_len = 0;
+    sse->event_len = 0;
+    sse->event_saw_data = 0;
+    free(sse->pending_event_type);
+    sse->pending_event_type = NULL;
+}
 
 static int sse_host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
@@ -77,7 +108,9 @@ static int sse_header_value_is_valid(const char *value) {
     if (!value)
         return 0;
     for (const unsigned char *p = (const unsigned char *)value; *p; ++p) {
-        if (*p == '\r' || *p == '\n' || *p == 0x7Fu)
+        // Reject the full C0 control range plus DEL so stored IDs can never
+        // smuggle control bytes into the reconnect request header.
+        if (*p < 0x20u || *p == 0x7Fu)
             return 0;
     }
     return 1;
@@ -268,6 +301,10 @@ static void rt_sse_finalize(void *obj) {
         return;
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     sse_close_transport(sse);
+    sse_reset_partial_state(sse);
+    free(sse->event_data);
+    sse->event_data = NULL;
+    sse->event_cap = 0;
     free(sse->url);
     free(sse->last_event_type);
     free(sse->last_event_id);
@@ -318,9 +355,24 @@ static int sse_raw_recv_byte(rt_sse_impl *sse, uint8_t *byte) {
         return 1;
     }
 
+    // One monotonic deadline across every read of a timed receive: a peer
+    // trickling one byte per interval cannot extend the call past its budget.
+    if (sse->read_deadline_us > 0) {
+        int64_t remaining_ms = (sse->read_deadline_us - rt_clock_ticks_us()) / 1000;
+        if (remaining_ms <= 0) {
+            sse->read_timed_out = 1;
+            return 0;
+        }
+        if (remaining_ms > INT_MAX)
+            remaining_ms = INT_MAX;
+        sse_set_recv_timeout(sse, (int)remaining_ms);
+    }
+
     long n = sse_transport_read(sse, sse->read_buf, sizeof(sse->read_buf));
-    if (n <= 0)
+    if (n <= 0) {
+        sse->read_timed_out = (n < 0 && rt_socket_recv_timed_out()) ? 1 : 0;
         return 0;
+    }
 
     sse->read_buf_len = (size_t)n;
     sse->read_buf_pos = 0;
@@ -331,18 +383,44 @@ static int sse_raw_recv_byte(rt_sse_impl *sse, uint8_t *byte) {
 static rt_string sse_raw_recv_line(rt_sse_impl *sse) {
     size_t cap = 256;
     size_t len = 0;
-    char *line = (char *)malloc(cap);
-    if (!line)
-        return NULL;
+    char *line = NULL;
+
+    // Resume a partial line preserved across a retryable timeout so timeout
+    // recovery never turns a fragment into a complete logical line.
+    if (sse->raw_pending) {
+        line = sse->raw_pending;
+        len = sse->raw_pending_len;
+        cap = len + 256;
+        char *grown = (char *)realloc(line, cap);
+        if (!grown) {
+            free(line);
+            sse->raw_pending = NULL;
+            sse->raw_pending_len = 0;
+            return NULL;
+        }
+        line = grown;
+        sse->raw_pending = NULL;
+        sse->raw_pending_len = 0;
+    } else {
+        line = (char *)malloc(cap);
+        if (!line)
+            return NULL;
+    }
 
     while (1) {
         uint8_t byte = 0;
         if (!sse_raw_recv_byte(sse, &byte)) {
-            if (len == 0) {
-                free(line);
+            if (sse->read_timed_out && len > 0) {
+                // Retryable timeout mid-line: stash the fragment for resume.
+                sse->raw_pending = line;
+                sse->raw_pending_len = len;
                 return NULL;
             }
-            break;
+            // EOF / hard failure: an unterminated final fragment is discarded
+            // (per the EventSource incomplete-line rule) instead of being
+            // delivered as a complete line.
+            free(line);
+            return NULL;
         }
 
         if (byte == '\n') {
@@ -463,18 +541,44 @@ static int sse_payload_recv_byte(rt_sse_impl *sse, uint8_t *byte) {
 static rt_string sse_payload_recv_line(rt_sse_impl *sse) {
     size_t cap = 256;
     size_t len = 0;
-    char *line = (char *)malloc(cap);
-    if (!line)
-        return NULL;
+    char *line = NULL;
+
+    // Resume a partial line preserved across a retryable timeout so timeout
+    // recovery never turns a fragment into a complete logical line.
+    if (sse->payload_pending) {
+        line = sse->payload_pending;
+        len = sse->payload_pending_len;
+        cap = len + 256;
+        char *grown = (char *)realloc(line, cap);
+        if (!grown) {
+            free(line);
+            sse->payload_pending = NULL;
+            sse->payload_pending_len = 0;
+            return NULL;
+        }
+        line = grown;
+        sse->payload_pending = NULL;
+        sse->payload_pending_len = 0;
+    } else {
+        line = (char *)malloc(cap);
+        if (!line)
+            return NULL;
+    }
 
     while (1) {
         uint8_t byte = 0;
         if (!sse_payload_recv_byte(sse, &byte)) {
-            if (len == 0) {
-                free(line);
+            if (sse->read_timed_out && len > 0) {
+                // Retryable timeout mid-line: stash the fragment for resume.
+                sse->payload_pending = line;
+                sse->payload_pending_len = len;
                 return NULL;
             }
-            break;
+            // EOF / hard failure: an unterminated final fragment is discarded
+            // (per the EventSource incomplete-line rule) instead of being
+            // delivered as a complete line.
+            free(line);
+            return NULL;
         }
 
         if (byte == '\n') {
@@ -606,12 +710,14 @@ static int sse_open_url(
     char *request = NULL;
     char *redirect_location = NULL;
     rt_string status_line = NULL;
-    const char *last_event_id = (allow_resume && sse->last_event_id) ? sse->last_event_id : NULL;
+    const char *last_event_id =
+        (allow_resume && sse->last_event_id && *sse->last_event_id) ? sse->last_event_id : NULL;
     int redirects_left = 5;
     int status = -1;
     int is_secure;
     int saw_stream_type = 0;
     int unsupported_content_encoding = 0;
+    int unsupported_transfer_encoding = 0;
     int rlen;
     int64_t port;
     size_t path_len;
@@ -639,6 +745,7 @@ retry:
     sse->read_buf_pos = 0;
     saw_stream_type = 0;
     unsupported_content_encoding = 0;
+    unsupported_transfer_encoding = 0;
     status = -1;
 
     url = rt_string_from_bytes(current_url, strlen(current_url));
@@ -826,12 +933,25 @@ retry:
             const char *value = line_cstr + 13;
             while (*value == ' ' || *value == '\t')
                 value++;
-            saw_stream_type = strncasecmp(value, "text/event-stream", 17) == 0;
+            // Exact media type: parameters may follow, but longer type names
+            // such as text/event-streaming are rejected.
+            saw_stream_type = strncasecmp(value, "text/event-stream", 17) == 0 &&
+                              (value[17] == '\0' || value[17] == ';' || value[17] == ' ' ||
+                               value[17] == '\t');
         } else if (strncasecmp(line_cstr, "Transfer-Encoding:", 18) == 0) {
             const char *value = line_cstr + 18;
             while (*value == ' ' || *value == '\t')
                 value++;
-            sse->chunked = rt_http_header_value_has_token(value, "chunked");
+            // Only the exact `chunked` coding is implemented; any other (or
+            // additional) coding would be misparsed, so reject the stream.
+            size_t vlen = strlen(value);
+            while (vlen > 0 && (value[vlen - 1] == ' ' || value[vlen - 1] == '\t'))
+                vlen--;
+            if (vlen == 7 && strncasecmp(value, "chunked", 7) == 0) {
+                sse->chunked = 1;
+            } else {
+                unsupported_transfer_encoding = 1;
+            }
         } else if (strncasecmp(line_cstr, "Location:", 9) == 0) {
             free(redirect_location);
             redirect_location = sse_strdup_trimmed(line_cstr + 9);
@@ -909,6 +1029,12 @@ retry:
         goto fail;
     }
 
+    if (unsupported_transfer_encoding) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: unsupported Transfer-Encoding");
+        goto fail;
+    }
+
     if (!saw_stream_type) {
         if (err_msg && err_msg_cap > 0)
             snprintf(err_msg, err_msg_cap, "SSE: response is not text/event-stream");
@@ -982,15 +1108,21 @@ void *rt_sse_connect(rt_string url) {
         if (rt_obj_release_check0(sse))
             rt_obj_free(sse);
         rt_trap("SSE: OOM");
+        return NULL;
     }
 
     char err_msg[512];
     if (!sse_open_url(sse, url_str, 0, err_msg, sizeof(err_msg))) {
         if (rt_obj_release_check0(sse))
             rt_obj_free(sse);
-        if (strstr(err_msg, "TLS") != NULL)
+        // Exactly one categorized trap, then stop: a returning trap hook must
+        // not see a second generic trap or receive the freed pointer.
+        if (strstr(err_msg, "TLS") != NULL) {
             rt_trap_net(err_msg[0] ? err_msg : "SSE: TLS connection failed", Err_TlsError);
+            return NULL;
+        }
         rt_trap(err_msg[0] ? err_msg : "SSE: connection failed");
+        return NULL;
     }
     return sse;
 }
@@ -1011,9 +1143,10 @@ void *rt_sse_connect(rt_string url) {
 /// @param used_len Bytes already written into `*buf`.
 /// @param needed Non-NUL payload bytes required after the append.
 /// @return `true` when `*buf` can hold `needed + 1` bytes; `false` after trap on overflow/OOM.
-static bool sse_reserve_event_data(
-    char **buf, size_t *cap, char *stack_buf, size_t stack_cap, size_t used_len, size_t needed) {
-    if (!buf || !cap || !stack_buf || stack_cap == 0 || needed == SIZE_MAX || used_len > needed) {
+/// @brief Grow the connection's event-accumulation buffer to hold @p needed
+///        bytes (+NUL). Impl-owned so partial events survive a timed receive.
+static bool sse_reserve_event_data(rt_sse_impl *sse, size_t needed) {
+    if (!sse || needed == SIZE_MAX || sse->event_len > needed) {
         rt_trap("SSE.Recv: event data length overflow");
         return false;
     }
@@ -1022,24 +1155,17 @@ static bool sse_reserve_event_data(
         return false;
     }
     size_t required = needed + 1u;
-    while (required > *cap) {
-        size_t next_cap = *cap ? (*cap * 2u) : 4096u;
-        if (next_cap <= *cap || next_cap < required)
+    while (required > sse->event_cap) {
+        size_t next_cap = sse->event_cap ? (sse->event_cap * 2u) : 4096u;
+        if (next_cap <= sse->event_cap || next_cap < required)
             next_cap = required;
-        char *grown;
-        if (*buf == stack_buf) {
-            grown = (char *)malloc(next_cap);
-            if (grown && used_len > 0)
-                memcpy(grown, stack_buf, used_len);
-        } else {
-            grown = (char *)realloc(*buf, next_cap);
-        }
+        char *grown = (char *)realloc(sse->event_data, next_cap);
         if (!grown) {
             rt_trap("SSE.Recv: memory allocation failed");
             return false;
         }
-        *buf = grown;
-        *cap = next_cap;
+        sse->event_data = grown;
+        sse->event_cap = next_cap;
     }
     return true;
 }
@@ -1056,18 +1182,22 @@ rt_string rt_sse_recv(void *obj) {
     if (!sse->is_open || (sse->socket_fd == INVALID_SOCK && !sse->tls))
         return rt_str_empty();
 
-    // Accumulate "data:" lines until a blank line (event boundary).
-    char stack_buf[4096];
-    char *data_buf = stack_buf;
-    size_t cap = sizeof(stack_buf);
-    size_t len = 0;
-    int saw_data = 0;
+    sse->last_recv_delivered = 0;
 
+    // Accumulate "data:" lines until a blank line (event boundary). The
+    // accumulation lives on the connection so a timed receive that expires
+    // mid-event resumes exactly where it stopped instead of losing data.
     while (sse->is_open) {
         rt_string line = sse_payload_recv_line(sse);
         if (!line) {
-            len = 0; // Drop partial event fragments across reconnects.
-            saw_data = 0;
+            if (sse->read_timed_out) {
+                // Clean timeout: preserve partial line/event state for the
+                // next receive and report "no event yet".
+                sse->read_timed_out = 0;
+                return rt_str_empty();
+            }
+            // Transport ended: drop partial fragments across reconnects.
+            sse_reset_partial_state(sse);
             if (sse_try_reconnect(sse))
                 continue;
             sse->is_open = false;
@@ -1083,8 +1213,13 @@ rt_string rt_sse_recv(void *obj) {
         if (*l == '\0') {
             // Blank line = event boundary; deliver accumulated data
             rt_string_unref(line);
-            if (saw_data)
+            if (sse->event_saw_data) {
+                // Dispatch: the event's type is what THIS event declared.
+                free(sse->last_event_type);
+                sse->last_event_type = sse->pending_event_type;
+                sse->pending_event_type = NULL;
                 break;
+            }
             continue;
         }
 
@@ -1093,26 +1228,28 @@ rt_string rt_sse_recv(void *obj) {
             if (*val == ' ')
                 val++;
             size_t vlen = strlen(val);
-            size_t separator = len > 0 ? 1u : 0u;
-            if (vlen > SIZE_MAX - len - separator ||
-                !sse_reserve_event_data(
-                    &data_buf, &cap, stack_buf, sizeof(stack_buf), len, len + separator + vlen)) {
+            size_t separator = sse->event_len > 0 ? 1u : 0u;
+            if (vlen > SIZE_MAX - sse->event_len - separator ||
+                !sse_reserve_event_data(sse, sse->event_len + separator + vlen)) {
                 rt_string_unref(line);
-                len = 0;
-                saw_data = 0;
+                sse->event_len = 0;
+                sse->event_saw_data = 0;
                 break;
             }
-            if (len > 0)
-                data_buf[len++] = '\n'; // Multi-line data separated by \n
-            memcpy(data_buf + len, val, vlen);
-            len += vlen;
-            saw_data = 1;
+            if (sse->event_len > 0)
+                sse->event_data[sse->event_len++] = '\n'; // Multi-line data separated by \n
+            memcpy(sse->event_data + sse->event_len, val, vlen);
+            sse->event_len += vlen;
+            sse->event_saw_data = 1;
         } else if (strncmp(l, "event:", 6) == 0) {
             const char *val = l + 6;
             if (*val == ' ')
                 val++;
-            free(sse->last_event_type);
-            sse->last_event_type = strdup(val);
+            // Buffered until dispatch: an event without its own `event:`
+            // field reports the default (empty) type instead of leaking the
+            // previous event's type.
+            free(sse->pending_event_type);
+            sse->pending_event_type = strdup(val);
         } else if (strncmp(l, "id:", 3) == 0) {
             const char *val = l + 3;
             if (*val == ' ')
@@ -1150,32 +1287,64 @@ rt_string rt_sse_recv(void *obj) {
         rt_string_unref(line);
     }
 
-    rt_string result = rt_string_from_bytes(data_buf, len);
-    if (data_buf != stack_buf)
-        free(data_buf);
+    sse->last_recv_delivered = sse->event_saw_data ? 1 : 0;
+    rt_string result =
+        rt_string_from_bytes(sse->event_data ? sse->event_data : "", sse->event_len);
+    sse->event_len = 0;
+    sse->event_saw_data = 0;
     return result;
 }
 
 /// @brief Receive the next SSE event with a timeout, returning empty on timeout or error.
-/// @details Temporarily sets the socket recv timeout, reads one event, then clears the timeout.
+/// @details The timeout is one monotonic EVENT deadline carried through every
+///          transport read (a peer trickling bytes cannot extend the call), and
+///          a timeout is lossless: partially received lines and partially
+///          accumulated events are preserved on the connection and resumed by
+///          the next receive. `timeout_ms == 0` waits indefinitely (like
+///          `Recv`).
 rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return rt_str_empty();
     rt_sse_impl *sse = (rt_sse_impl *)obj;
-    int timeout_int = 0;
     if (!sse->is_open)
         return rt_str_empty();
     if (timeout_ms < 0 || timeout_ms > INT_MAX) {
         rt_trap("SSE: invalid timeout");
         return rt_str_empty();
     }
-    timeout_int = (int)timeout_ms;
-    if (!sse_wait_readable(sse, timeout_ms))
-        return rt_str_empty();
-    sse_set_recv_timeout(sse, timeout_int);
+    sse->last_recv_delivered = 0;
+    if (timeout_ms > 0) {
+        if (!sse_wait_readable(sse, timeout_ms))
+            return rt_str_empty();
+        sse->read_deadline_us = rt_clock_ticks_us() + timeout_ms * 1000;
+    }
+    sse->read_timed_out = 0;
     rt_string result = rt_sse_recv(obj);
+    sse->read_deadline_us = 0;
     sse_set_recv_timeout(sse, 30000);
     return result;
+}
+
+/// @brief Result-shaped timed receive (VDOC-152): distinguishes a delivered
+///        event (including one with empty data) from timeout and stream end.
+/// @return `Result.Ok(data)` when an event was dispatched, `Result.ErrStr`
+///         with "SSE: timeout" or "SSE: stream closed" otherwise.
+void *rt_sse_recv_for_result(void *obj, int64_t timeout_ms) {
+    if (!obj) {
+        rt_trap("SSE: NULL client");
+        return NULL;
+    }
+    rt_sse_impl *sse = (rt_sse_impl *)obj;
+    if (!sse->is_open)
+        return rt_result_err_str(rt_const_cstr("SSE: stream closed"));
+
+    rt_string data = rt_sse_recv_for(obj, timeout_ms);
+    if (sse->last_recv_delivered)
+        return rt_result_ok_str(data);
+    rt_string_unref(data);
+    if (!sse->is_open)
+        return rt_result_err_str(rt_const_cstr("SSE: stream closed"));
+    return rt_result_err_str(rt_const_cstr("SSE: timeout"));
 }
 
 /// @brief Return whether the local SSE state still owns an open-looking transport.

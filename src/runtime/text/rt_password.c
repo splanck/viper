@@ -900,8 +900,13 @@ int8_t rt_password_needs_rehash(rt_string hash) {
     if (!password_stored_scrypt_params(hash_str, &log2n_ll, &r_ll, &p_ll))
         return 1;
 
-    if (log2n_ll != PASSWORD_SCRYPT_N_LOG2 || r_ll != PASSWORD_SCRYPT_R ||
-        p_ll != PASSWORD_SCRYPT_P)
+    // Monotonic policy comparison (VDOC-174): a hash needs rehashing only when
+    // its cost is BELOW the current policy minimum. Deliberately stronger
+    // parameters (e.g. a larger N) are already at least as safe as a fresh
+    // default hash, so they must not be reported as stale — exact-equality
+    // would rehash them on every login and downgrade to the default tuple.
+    if (log2n_ll < (long long)PASSWORD_SCRYPT_MIN_N_LOG2 ||
+        r_ll < (long long)PASSWORD_SCRYPT_MIN_R || p_ll < (long long)PASSWORD_SCRYPT_MIN_P)
         return 1;
     return 0;
 }

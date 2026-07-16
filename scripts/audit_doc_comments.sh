@@ -33,6 +33,15 @@ audit_runtime_header() {
       # A bare identifier followed by an argument list is a call, not a C
       # declaration (which has a return type before the function name).
       if (candidate ~ /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(/) next
+      # Function-pointer struct members (and callback typedefs) are documented
+      # at the struct/typedef level; their lines are not prototypes.
+      is_fnptr = ($0 ~ /\(\*/) ? 1 : 0
+      for (i=NR-1; i>0 && !is_fnptr; --i) {
+        if (lines[i] ~ /\(\*/) { is_fnptr=1; break }
+        if (lines[i] ~ /;[[:space:]]*$/ || lines[i] ~ /[{}][[:space:]]*$/ ||
+            lines[i] ~ /^[[:space:]]*$/ || lines[i] ~ /^[[:space:]]*#/) break
+      }
+      if (is_fnptr) next
       has_doc=0
       # Walk back across a multiline declaration, but never borrow a comment
       # from the preceding declaration or section.

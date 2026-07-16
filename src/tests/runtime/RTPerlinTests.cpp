@@ -13,6 +13,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_perlin.h"
+#include "rt_seq.h"
 
 #include <cassert>
 #include <cmath>
@@ -31,6 +32,18 @@ extern "C" void vm_trap(const char *msg) {
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_trap_expected = false;                                                               \
+            assert(!"expected trap did not fire");                                                 \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
@@ -146,11 +159,26 @@ static void test_octave_single_equals_noise() {
     rt_release_obj(p);
 }
 
+// VDOC-202: an invalid receiver (null or wrong class) traps at the boundary
+// rather than casting the pointer and reading it as a 512-byte permutation
+// table. Under the default aborting hook, each call must reach the trap.
 static void test_null_safety() {
-    assert(rt_perlin_noise2d(nullptr, 0.0, 0.0) == 0.0);
-    assert(rt_perlin_noise3d(nullptr, 0.0, 0.0, 0.0) == 0.0);
-    assert(rt_perlin_octave2d(nullptr, 0.0, 0.0, 4, 0.5) == 0.0);
-    assert(rt_perlin_octave3d(nullptr, 0.0, 0.0, 0.0, 4, 0.5) == 0.0);
+    EXPECT_TRAP(rt_perlin_noise2d(nullptr, 0.0, 0.0));
+    EXPECT_TRAP(rt_perlin_noise3d(nullptr, 0.0, 0.0, 0.0));
+    EXPECT_TRAP(rt_perlin_octave2d(nullptr, 0.0, 0.0, 4, 0.5));
+    EXPECT_TRAP(rt_perlin_octave3d(nullptr, 0.0, 0.0, 0.0, 4, 0.5));
+}
+
+/// @brief VDOC-202: a non-PerlinNoise object (here a Seq) passed through the
+///        generic `obj` signature is rejected instead of being read as a
+///        permutation table.
+static void test_wrong_class_receiver_traps() {
+    void *seq = rt_seq_new();
+    EXPECT_TRAP(rt_perlin_noise2d(seq, 1.0, 2.0));
+    EXPECT_TRAP(rt_perlin_noise3d(seq, 1.0, 2.0, 3.0));
+    EXPECT_TRAP(rt_perlin_octave2d(seq, 1.0, 2.0, 4, 0.5));
+    EXPECT_TRAP(rt_perlin_octave3d(seq, 1.0, 2.0, 3.0, 4, 0.5));
+    rt_release_obj(seq);
 }
 
 static void test_octave_zero_returns_zero() {
@@ -212,6 +240,7 @@ int main() {
     test_octave3d_basic();
     test_octave_single_equals_noise();
     test_null_safety();
+    test_wrong_class_receiver_traps();
     test_octave_zero_returns_zero();
     test_invalid_coordinates_return_zero();
     test_octave_edge_cases_are_finite();

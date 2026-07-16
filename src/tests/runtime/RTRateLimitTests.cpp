@@ -9,6 +9,7 @@
 #include "rt_ratelimit.h"
 
 #include <cassert>
+#include <cstdint>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -111,6 +112,30 @@ static void test_tokens_never_go_negative() {
     }
 }
 
+/// @brief Integer capacities must round-trip exactly, including values above
+///        2^53 where double storage loses adjacent integers (VDOC-140).
+static void test_large_capacity_exact_roundtrip() {
+    const int64_t above_2_53 = 9007199254740993LL; // 2^53 + 1
+    void *rl = rt_ratelimit_new(above_2_53, 1.0);
+    assert(rt_ratelimit_get_max(rl) == above_2_53);
+    assert(rt_ratelimit_available(rl) == above_2_53);
+
+    const int64_t near_max = INT64_MAX - 1;
+    void *rl2 = rt_ratelimit_new(near_max, 1.0);
+    assert(rt_ratelimit_get_max(rl2) == near_max);
+    assert(rt_ratelimit_available(rl2) == near_max);
+
+    // Adjacent huge capacities stay distinguishable.
+    void *rl3 = rt_ratelimit_new(above_2_53 - 1, 1.0);
+    assert(rt_ratelimit_get_max(rl3) != rt_ratelimit_get_max(rl));
+
+    // Large acquisitions compare exactly: taking all but one token leaves one.
+    assert(rt_ratelimit_try_acquire_n(rl2, near_max - 1) == 1);
+    assert(rt_ratelimit_available(rl2) == 1);
+    assert(rt_ratelimit_try_acquire_n(rl2, 2) == 0);
+    assert(rt_ratelimit_try_acquire(rl2) == 1);
+}
+
 int main() {
     test_new_limiter();
     test_acquire_single();
@@ -120,5 +145,6 @@ int main() {
     test_acquire_n_invalid();
     test_null_safety();
     test_tokens_never_go_negative();
+    test_large_capacity_exact_roundtrip();
     return 0;
 }

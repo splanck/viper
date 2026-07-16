@@ -496,6 +496,17 @@ static void *load_via_tempfile(const uint8_t *data,
 /// @param data  Raw asset bytes.
 /// @param size  Size of data.
 /// @return Typed GC object, or NULL if the extension is unknown or decoding fails.
+/// @brief Return 1 when `name`'s extension has a registered typed decoder
+///        (image or audio), 0 otherwise. Lets `rt_asset_load` distinguish an
+///        UNRECOGNIZED extension from a RECOGNIZED decoder failure (VDOC-181).
+int rt_asset_extension_is_typed(const char *name) {
+    if (!name)
+        return 0;
+    return iext(name, ".jpg") || iext(name, ".jpeg") || iext(name, ".wav") ||
+           iext(name, ".ogg") || iext(name, ".mp3") || iext(name, ".png") ||
+           iext(name, ".bmp") || iext(name, ".gif");
+}
+
 void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size) {
     if (!name || !data || size == 0)
         return NULL;

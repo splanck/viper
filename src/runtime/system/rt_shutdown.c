@@ -20,6 +20,16 @@
 
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <string.h>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif !defined(__viperdos__)
+#include <signal.h>
+#endif
 
 static atomic_llong g_shutdown_pending;
 static atomic_bool g_shutdown_polling_enabled;
@@ -79,6 +89,55 @@ int8_t rt_shutdown_polling_enabled(void) {
 
 int8_t rt_shutdown_has_pending(void) {
     return atomic_load_explicit(&g_shutdown_pending, memory_order_acquire) != 0 ? 1 : 0;
+}
+
+#if defined(_WIN32)
+static BOOL WINAPI shutdown_win_ctrl_handler(DWORD ctrl_type) {
+    int64_t reason = RT_SHUTDOWN_REASON_INTERRUPT;
+    if (ctrl_type == CTRL_CLOSE_EVENT || ctrl_type == CTRL_LOGOFF_EVENT ||
+        ctrl_type == CTRL_SHUTDOWN_EVENT) {
+        reason = RT_SHUTDOWN_REASON_TERMINATE;
+    }
+    rt_shutdown_request(reason);
+    return TRUE;
+}
+#elif !defined(__viperdos__)
+// rt_shutdown_request only performs a lock-free atomic OR, so it is
+// async-signal-safe to call directly from these handlers.
+static void shutdown_posix_sigint(int sig) {
+    (void)sig;
+    rt_shutdown_request(RT_SHUTDOWN_REASON_INTERRUPT);
+}
+static void shutdown_posix_sigterm(int sig) {
+    (void)sig;
+    rt_shutdown_request(RT_SHUTDOWN_REASON_TERMINATE);
+}
+#endif
+
+void rt_shutdown_install_signal_handlers(void) {
+    static atomic_bool installed;
+    bool expected = false;
+    if (!atomic_compare_exchange_strong_explicit(
+            &installed, &expected, true, memory_order_acq_rel, memory_order_acquire)) {
+        return; // already installed
+    }
+#if defined(_WIN32)
+    SetConsoleCtrlHandler(shutdown_win_ctrl_handler, TRUE);
+#elif !defined(__viperdos__)
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = shutdown_posix_sigint;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; // resume interrupted syscalls where possible
+    sigaction(SIGINT, &sa, NULL);
+
+    struct sigaction ta;
+    memset(&ta, 0, sizeof(ta));
+    ta.sa_handler = shutdown_posix_sigterm;
+    sigemptyset(&ta.sa_mask);
+    ta.sa_flags = SA_RESTART;
+    sigaction(SIGTERM, &ta, NULL);
+#endif
 }
 
 int64_t rt_shutdown_const_none(void) {

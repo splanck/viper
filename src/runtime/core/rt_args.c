@@ -42,6 +42,7 @@
 #include "rt_internal.h"
 #include "rt_string_builder.h"
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,9 +59,26 @@
 LPWSTR *WINAPI CommandLineToArgvW(LPCWSTR lpCmdLine, int *pNumArgs);
 #elif defined(__APPLE__)
 #include <crt_externs.h>
+#include <sched.h>
+#else
+#include <sched.h>
 #endif
 
-static int g_legacy_args_host_init_state = 0; // 0 = no, 1 = initializing, 2 = done/suppressed
+// Legacy-context host-argv import state: 0 = uninitialized, 1 = a thread is
+// importing, 2 = done/suppressed. Atomic with acquire/release ordering so a
+// concurrent first read from another thread can never observe partially
+// populated arguments or spin on a value whose plain-int mutation was undefined
+// in C (VDOC-211).
+static atomic_int g_legacy_args_host_init_state; // zero-initialized = 0
+
+/// @brief Yield the CPU while spin-waiting for another thread's import.
+static void rt_args_spin_yield(void) {
+#ifdef _WIN32
+    SwitchToThread();
+#else
+    sched_yield();
+#endif
+}
 static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size);
 
 #ifdef _WIN32
@@ -94,8 +112,12 @@ static RtArgsState *rt_args_state_with_kind(int *is_legacy) {
 ///          population step. Used by manual mutation paths to suppress an
 ///          impending lazy host-argv import.
 static void rt_args_mark_legacy_host_initialized(void) {
-    if (g_legacy_args_host_init_state != 1)
-        g_legacy_args_host_init_state = 2;
+    // Move 0 -> 2 (suppress a not-yet-started lazy import). If the state is
+    // already 1 (another thread mid-import) or 2 (done), leave it: the CAS fails
+    // and we do not clobber the in-progress or completed state.
+    int expected = 0;
+    atomic_compare_exchange_strong_explicit(&g_legacy_args_host_init_state, &expected, 2,
+                                            memory_order_acq_rel, memory_order_acquire);
 }
 
 /// @brief Record that the user code has manually pushed/cleared arguments.
@@ -248,27 +270,32 @@ static void rt_args_populate_host(RtArgsState *state) {
 ///            - `0` → `1` → `2`: first caller runs the import.
 ///            - `2`: no-op.
 ///            - `1`: another caller appears to be mid-import; wait for `2`.
-///          The flag is not atomic, so this is not valid cross-thread
-///          synchronization; concurrent legacy first access remains a data race.
+///          The flag is an atomic with acquire/release ordering and the `0` → `1`
+///          claim is a single CAS, so exactly one thread imports and concurrent
+///          first readers safely observe the completed arguments (VDOC-211).
 /// @param state Legacy args state to populate (no-op when NULL).
 static void rt_args_ensure_legacy_host_initialized(RtArgsState *state) {
     if (!state)
         return;
-    if (g_legacy_args_host_init_state == 2)
+    if (atomic_load_explicit(&g_legacy_args_host_init_state, memory_order_acquire) == 2)
         return;
-    if (g_legacy_args_host_init_state == 0) {
-        g_legacy_args_host_init_state = 1;
+
+    // Claim the import with an atomic 0 -> 1 transition. Exactly one thread wins;
+    // it populates the args and publishes state 2 with release ordering so the
+    // populated arguments are visible to any thread that later acquire-loads 2.
+    int expected = 0;
+    if (atomic_compare_exchange_strong_explicit(&g_legacy_args_host_init_state, &expected, 1,
+                                                memory_order_acq_rel, memory_order_acquire)) {
         if (state->size == 0)
             rt_args_populate_host(state);
-        g_legacy_args_host_init_state = 2;
+        atomic_store_explicit(&g_legacy_args_host_init_state, 2, memory_order_release);
         return;
     }
 
-    while (g_legacy_args_host_init_state == 1) {
-#ifdef _WIN32
-        SwitchToThread();
-#endif
-    }
+    // Another thread is importing (or has finished). Wait — with a real yield on
+    // every platform — until it publishes state 2.
+    while (atomic_load_explicit(&g_legacy_args_host_init_state, memory_order_acquire) == 1)
+        rt_args_spin_yield();
 }
 
 /// @brief Resolve the active args state for a read, triggering lazy host-import.

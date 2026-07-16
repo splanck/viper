@@ -13,7 +13,8 @@ Reads, converts, parses, and formats Unix timestamps.
 
 Timestamps use signed Unix seconds except `NowMs`. Component access and `Create` use
 the host local zone; `ToISO` uses UTC, and named-zone operations use Viper's embedded subset.
-Parsing uses legacy numeric sentinels plus `TryParseOption`; checked arithmetic traps on
+Parsing uses legacy numeric sentinels plus `TryParseOption`; construction likewise offers the
+sentinel `FromParts` and the unambiguous `TryFromParts` Option form. Checked arithmetic traps on
 signed overflow.
 
 #### Methods
@@ -23,6 +24,7 @@ signed overflow.
 | <a id="viper-time-datetime-adddays"></a>`AddDays` | `i64(i64,i64)` | `Viper.Time.DateTime.AddDays` |
 | <a id="viper-time-datetime-addseconds"></a>`AddSeconds` | `i64(i64,i64)` | `Viper.Time.DateTime.AddSeconds` |
 | <a id="viper-time-datetime-fromparts"></a>`FromParts` | `i64(i64,i64,i64,i64,i64,i64)` | `Viper.Time.DateTime.FromParts` |
+| <a id="viper-time-datetime-tryfromparts"></a>`TryFromParts` | `obj<Viper.Option>(i64,i64,i64,i64,i64,i64)` | `Viper.Time.DateTime.TryFromParts` |
 | <a id="viper-time-datetime-day"></a>`Day` | `i64(i64)` | `Viper.Time.DateTime.Day` |
 | <a id="viper-time-datetime-dayofweek"></a>`DayOfWeek` | `i64(i64)` | `Viper.Time.DateTime.DayOfWeek` |
 | <a id="viper-time-datetime-diff"></a>`Diff` | `i64(i64,i64)` | `Viper.Time.DateTime.Diff` |
@@ -310,6 +312,7 @@ new objects and clamps month/year shifts to a valid day. Day-count conversion is
 | `Viper.Time.DateTime.ParseDate` | `i64(str)` | `rt_datetime_parse_date` |
 | `Viper.Time.DateTime.ParseTime` | `i64(str)` | `rt_datetime_parse_time` |
 | `Viper.Time.DateTime.TryParse` | `obj<Viper.Option>(str)` | `rt_datetime_try_parse_option` |
+| `Viper.Time.DateTime.TryFromParts` | `obj<Viper.Option>(i64,i64,i64,i64,i64,i64)` | `rt_datetime_create_option` |
 | `Viper.Time.TimeZone.Find` | `obj(str)` | `rt_tz_find` |
 | <a id="viper-time-timezone-get-name"></a>`Viper.Time.TimeZone.get_Name` | `str(obj)` | `rt_tz_name` |
 | `Viper.Time.TimeZone.OffsetAt` | `i64(obj,i64)` | `rt_tz_offset_at` |

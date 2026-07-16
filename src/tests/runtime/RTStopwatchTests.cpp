@@ -14,10 +14,13 @@
 #include "rt_object.h"
 #include "rt_stopwatch.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <setjmp.h>
+#include <thread>
+#include <vector>
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -343,10 +346,62 @@ static void test_null_receiver_traps() {
     printf("\n");
 }
 
+/// @brief Hammer the timestamp path from many threads on first use (VDOC-224).
+/// @details The QPC frequency cache is a process-global slot resolved lazily on
+///          the first `get_timestamp_*` call. Spawning threads that all read
+///          `elapsed_ns` concurrently before any prior read races that lazy
+///          initialization — exactly the Windows scenario the atomic cache
+///          fixes. On POSIX this exercises the monotonic path's thread safety.
+///          Each thread reads its own stopwatch, so there is no concurrent GC
+///          allocation, isolating the shared frequency cache. Every reading must
+///          be non-negative and non-decreasing per thread; a torn frequency
+///          would surface as a negative or wildly out-of-order value.
+static void test_concurrent_first_use() {
+    printf("Testing concurrent first-use timestamp race:\n");
+
+    constexpr int kThreads = 8;
+    constexpr int kReads = 2000;
+
+    void *watches[kThreads];
+    for (int i = 0; i < kThreads; ++i) {
+        watches[i] = rt_stopwatch_start_new();
+        assert(watches[i] != nullptr);
+    }
+
+    std::atomic<bool> ready{false};
+    std::atomic<int> failures{0};
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
+
+    for (int i = 0; i < kThreads; ++i) {
+        threads.emplace_back([&, i]() {
+            while (!ready.load(std::memory_order_acquire)) {
+                // Spin so every thread reaches the first read at roughly the
+                // same moment, maximizing the first-use overlap.
+            }
+            int64_t prev = 0;
+            for (int r = 0; r < kReads; ++r) {
+                int64_t now = rt_stopwatch_elapsed_ns(watches[i]);
+                if (now < 0 || now < prev)
+                    failures.fetch_add(1, std::memory_order_relaxed);
+                prev = now;
+            }
+        });
+    }
+
+    ready.store(true, std::memory_order_release);
+    for (auto &t : threads)
+        t.join();
+
+    test_result("no negative or out-of-order readings", failures.load() == 0);
+    printf("\n");
+}
+
 /// @brief Entry point for Stopwatch tests.
 int main() {
     printf("=== RT Stopwatch Tests ===\n\n");
 
+    test_concurrent_first_use();
     test_new();
     test_start_new();
     test_start_stop();

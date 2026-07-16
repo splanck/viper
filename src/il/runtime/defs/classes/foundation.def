@@ -935,12 +935,14 @@ RT_CLASS_END()
 /// @summary Reads, converts, parses, and formats Unix timestamps.
 /// @details Timestamps use signed Unix seconds except `NowMs`. Component access and `Create` use
 /// the host local zone; `ToISO` uses UTC, and named-zone operations use Viper's embedded subset.
-/// Parsing uses legacy numeric sentinels plus `TryParseOption`; checked arithmetic traps on
+/// Parsing uses legacy numeric sentinels plus `TryParseOption`; construction likewise offers the
+/// sentinel `FromParts` and the unambiguous `TryFromParts` Option form. Checked arithmetic traps on
 /// signed overflow.
 RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("AddDays", "i64(i64,i64)", DateTimeAddDays)
     RT_METHOD("AddSeconds", "i64(i64,i64)", DateTimeAddSeconds)
     RT_METHOD("FromParts", "i64(i64,i64,i64,i64,i64,i64)", DateTimeCreate)
+    RT_METHOD("TryFromParts", "obj<Viper.Option>(i64,i64,i64,i64,i64,i64)", DateTimeCreateOption)
     RT_METHOD("Day", "i64(i64)", DateTimeDay)
     RT_METHOD("DayOfWeek", "i64(i64)", DateTimeDayOfWeek)
     RT_METHOD("Diff", "i64(i64,i64)", DateTimeDiff)

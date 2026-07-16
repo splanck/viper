@@ -29,6 +29,7 @@
 #include "runtime/system/rt_shutdown.h"
 
 #include <cassert>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 
@@ -319,6 +320,27 @@ static void test_graceful_shutdown_poll_api() {
     printf("OK\n");
 }
 
+#if !defined(_WIN32) && !defined(__viperdos__)
+// VDOC-210: after rt_shutdown_install_signal_handlers, a real SIGINT/SIGTERM is
+// published through rt_shutdown_request so Poll observes it — the OS integration
+// that was previously VM-only is now available to native programs too.
+static void test_installed_signal_handlers_publish() {
+    printf("  test_installed_signal_handlers_publish ... ");
+    rt_shutdown_clear();
+    rt_shutdown_install_signal_handlers();
+
+    raise(SIGINT);
+    assert(rt_shutdown_poll() == RT_SHUTDOWN_REASON_INTERRUPT);
+
+    rt_shutdown_clear();
+    raise(SIGTERM);
+    assert(rt_shutdown_poll() == RT_SHUTDOWN_REASON_TERMINATE);
+
+    rt_shutdown_clear();
+    printf("OK\n");
+}
+#endif
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -331,6 +353,9 @@ int main() {
     test_legacy_context_shutdown();
     test_audio_shutdown_detaches_loaded_handles();
     test_graceful_shutdown_poll_api();
+#if !defined(_WIN32) && !defined(__viperdos__)
+    test_installed_signal_handlers_publish();
+#endif
 
     printf("All shutdown tests passed.\n");
     return 0;

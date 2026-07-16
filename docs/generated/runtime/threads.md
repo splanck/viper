@@ -401,7 +401,7 @@ construct the class directly. Its public surface exposes operations including `F
 | <a id="viper-threads-parallel-reduce"></a>`Reduce` | `obj(obj,obj,obj)` | `Viper.Threads.Parallel.Reduce` |
 | <a id="viper-threads-parallel-reducepool"></a>`ReducePool` | `obj(obj,obj,obj,obj)` | `Viper.Threads.Parallel.ReducePool` |
 | <a id="viper-threads-parallel-defaultworkers"></a>`DefaultWorkers` | `i64()` | `Viper.Threads.Parallel.DefaultWorkers` |
-| <a id="viper-threads-parallel-defaultpool"></a>`DefaultPool` | `obj()` | `Viper.Threads.Parallel.DefaultPool` |
+| <a id="viper-threads-parallel-defaultpool"></a>`DefaultPool` | `obj<Viper.Threads.Pool>()` | `Viper.Threads.Parallel.DefaultPool` |
 
 <a id="viper-threads-canceltoken"></a>
 ### `Viper.Threads.CancelToken`
@@ -512,6 +512,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-scheduler-isdue"></a>`IsDue` | `i1(str)` | `Viper.Threads.Scheduler.IsDue` |
 | <a id="viper-threads-scheduler-isduegeneration"></a>`IsDueGeneration` | `i1(str,i64)` | `Viper.Threads.Scheduler.IsDueGeneration` |
 | <a id="viper-threads-scheduler-generationof"></a>`GenerationOf` | `i64(str)` | `Viper.Threads.Scheduler.GenerationOf` |
+| <a id="viper-threads-scheduler-generationofoption"></a>`GenerationOfOption` | `obj<Viper.Option>(str)` | `Viper.Threads.Scheduler.GenerationOfOption` |
 | <a id="viper-threads-scheduler-poll"></a>`Poll` | `seq<str>()` | `Viper.Threads.Scheduler.Poll` |
 | <a id="viper-threads-scheduler-clear"></a>`Clear` | `void()` | `Viper.Threads.Scheduler.Clear` |
 | <a id="viper-threads-scheduler-new"></a>`New` | `obj()` | `Viper.Threads.Scheduler.New` |
@@ -569,6 +570,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | `Viper.Threads.Scheduler.IsDue` | `i1(obj,str)` | `rt_scheduler_is_due` |
 | `Viper.Threads.Scheduler.IsDueGeneration` | `i1(obj,str,i64)` | `rt_scheduler_is_due_gen` |
 | `Viper.Threads.Scheduler.GenerationOf` | `i64(obj,str)` | `rt_scheduler_generation_of` |
+| `Viper.Threads.Scheduler.GenerationOfOption` | `obj<Viper.Option>(obj,str)` | `rt_scheduler_generation_of_option` |
 | `Viper.Threads.Scheduler.Poll` | `seq<str>(obj)` | `rt_scheduler_poll` |
 | <a id="viper-threads-scheduler-get-pending"></a>`Viper.Threads.Scheduler.get_Pending` | `i64(obj)` | `rt_scheduler_pending` |
 | `Viper.Threads.Scheduler.Clear` | `void(obj)` | `rt_scheduler_clear` |
@@ -633,7 +635,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-pool-get-pending"></a>`Viper.Threads.Pool.get_Pending` | `i64(obj)` | `rt_threadpool_get_pending` |
 | <a id="viper-threads-pool-get-active"></a>`Viper.Threads.Pool.get_Active` | `i64(obj)` | `rt_threadpool_get_active` |
 | `Viper.Threads.Parallel.DefaultWorkers` | `i64()` | `rt_parallel_default_workers` |
-| `Viper.Threads.Parallel.DefaultPool` | `obj()` | `rt_parallel_default_pool` |
+| `Viper.Threads.Parallel.DefaultPool` | `obj<Viper.Threads.Pool>()` | `rt_parallel_default_pool` |
 | `Viper.Threads.Parallel.ForEach` | `void(obj,obj)` | `rt_parallel_foreach` |
 | `Viper.Threads.Parallel.ForEachPool` | `void(obj,obj,obj)` | `rt_parallel_foreach_pool` |
 | `Viper.Threads.Parallel.Map` | `obj(obj,obj)` | `rt_parallel_map` |

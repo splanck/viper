@@ -19,11 +19,16 @@
 
 #include "tests/common/NetworkTestCompat.hpp"
 
+#include "rt_async_socket.h"
+#include "rt_box.h"
 #include "rt_bytes.h"
+#include "rt_future.h"
+#include "rt_heap.h"
 #include "rt_compress.h"
 #include "rt_connpool.h"
 #include "rt_map.h"
 #include "rt_netutils.h"
+#include "rt_object.h"
 #include "rt_network.h"
 #include "rt_result.h"
 #include "rt_seq.h"
@@ -631,6 +636,205 @@ static void test_connection_pool_clamps_max_size_and_closes_overflow() {
     rt_connpool_clear(pool);
     server_thread.join();
     test_result("Server finished after overflow cleanup", server_done.load());
+}
+
+/// @brief One-shot echo helper for the stale-bytes probe: echoes a single
+///        payload and closes its side immediately, so the pool's later close
+///        of the client socket (which still has unread bytes and therefore
+///        RSTs) has no live peer recv to break.
+static void oneshot_echo_close_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    assert(server != nullptr);
+    server_ready = true;
+
+    void *client = rt_tcp_server_accept(server);
+    if (client) {
+        void *data = rt_tcp_recv(client, 1024);
+        if (get_bytes_len(data) > 0)
+            rt_tcp_send_all(client, data);
+        rt_tcp_close(client);
+    }
+    rt_tcp_server_close(server);
+    server_done = true;
+}
+
+/// @brief Ownership and reuse-hygiene contract (VDOC-145): pooled entries hold
+///        their own reference, Clear never closes checked-out handles, and a
+///        connection with unread bytes is not re-pooled.
+static void test_connection_pool_ownership_and_hygiene() {
+    printf("\nTesting ConnectionPool ownership and reuse hygiene:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: could not allocate local port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+    std::thread pending_server(oneshot_echo_close_server_thread, port);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    void *pool = rt_connpool_new(4);
+
+    // Part 1: releasing a connection with unread (stale) bytes must close it
+    // rather than re-pool it for the next caller.
+    void *conn = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port);
+    void *msg = make_bytes_str("four");
+    rt_tcp_send_all(conn, msg);
+    void *partial = rt_tcp_recv_exact(conn, 2); // leave 2 echoed bytes queued
+    test_result("Partial read succeeded", get_bytes_len(partial) == 2);
+    pending_server.join(); // server has echoed and closed; tail bytes are queued
+    rt_connpool_release(pool, conn);
+    test_result("Connection with pending bytes is not re-pooled",
+                rt_connpool_available(pool) == 0 && rt_connpool_size(pool) == 0);
+    if (rt_obj_release_check0(conn))
+        rt_obj_free(conn);
+
+    // Parts 2/3 use a fresh echo server on a fresh port.
+    const int port2 = (int)rt_netutils_get_free_port();
+    if (port2 <= 0) {
+        printf("  SKIP: could not allocate second local port\n");
+        return;
+    }
+    server_ready = false;
+    server_done = false;
+    std::thread server_thread(echo_server_thread, port2, 1);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // Part 2: a pooled entry must survive the caller dropping its reference.
+    void *conn2 = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port2);
+    void *msg2 = make_bytes_str("abc");
+    rt_tcp_send_all(conn2, msg2);
+    void *echo2 = rt_tcp_recv_exact(conn2, 3);
+    test_result("Round-trip before pooling succeeds",
+                memcmp(get_bytes_data(echo2), "abc", 3) == 0);
+    rt_connpool_release(pool, conn2);
+    if (rt_obj_release_check0(conn2)) // caller drops its reference (simulated GC)
+        rt_obj_free(conn2);
+    void *conn3 = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port2);
+    test_result("Pooled entry survives caller dropping its reference", conn3 != nullptr);
+    void *msg3 = make_bytes_str("xyz");
+    rt_tcp_send_all(conn3, msg3);
+    void *echo3 = rt_tcp_recv_exact(conn3, 3);
+    test_result("Reused connection still round-trips",
+                memcmp(get_bytes_data(echo3), "xyz", 3) == 0);
+
+    // Part 3: Clear must not close a checked-out handle.
+    rt_connpool_clear(pool);
+    test_result("Clear empties the tracked pool", rt_connpool_size(pool) == 0);
+    test_result("Checked-out handle stays open across Clear", rt_tcp_is_open(conn3) == 1);
+    void *msg4 = make_bytes_str("end");
+    rt_tcp_send_all(conn3, msg4);
+    void *echo4 = rt_tcp_recv_exact(conn3, 3);
+    test_result("Checked-out handle still round-trips after Clear",
+                memcmp(get_bytes_data(echo4), "end", 3) == 0);
+    rt_tcp_close(conn3);
+    if (rt_obj_release_check0(conn3))
+        rt_obj_free(conn3);
+
+    server_thread.join();
+    test_result("Server finished after hygiene checks", server_done.load());
+}
+
+/// @brief IsPortOpen probe contract (VDOC-147): validated host bytes, honest
+///        SO_ERROR handling, and one overall deadline across candidates.
+static void test_netutils_is_port_open_contract() {
+    printf("\nTesting NetUtils.IsPortOpen contract:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: could not allocate local port\n");
+        return;
+    }
+
+    // Open port reports true.
+    void *server = rt_tcp_server_listen(port);
+    test_result("Local listener created", server != nullptr);
+    test_result("IsPortOpen true for listening port",
+                rt_netutils_is_port_open(rt_const_cstr("127.0.0.1"), port, 2000) == 1);
+    rt_tcp_server_close(server);
+
+    // Closed port reports false.
+    const int closed_port = (int)rt_netutils_get_free_port();
+    if (closed_port > 0) {
+        test_result("IsPortOpen false for closed port",
+                    rt_netutils_is_port_open(rt_const_cstr("127.0.0.1"), closed_port, 2000) == 0);
+    }
+
+    // Embedded NUL must reject the whole host, not probe the prefix.
+    rt_string nul_host = rt_string_from_bytes("127.0.0.1\0evil", 14);
+    test_result("Embedded-NUL host is rejected",
+                rt_netutils_is_port_open(nul_host, port, 500) == 0);
+    rt_string_unref(nul_host);
+
+    // The timeout is a single overall deadline, not a per-candidate budget.
+    auto start = std::chrono::steady_clock::now();
+    rt_netutils_is_port_open(rt_const_cstr("192.0.2.1"), 81, 400);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+    test_result("Probe honors its overall deadline", elapsed < 3000);
+}
+
+/// @brief AsyncSocket lifetime and typing contract (VDOC-157/158): Future
+///        consumption owns the only remaining reference, and SendAsync
+///        resolves to a boxed Integer, not a pointer-cast count.
+static void test_async_socket_reference_transfer_and_boxed_send() {
+    printf("\nTesting AsyncSocket reference transfer and boxed send:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: could not allocate local port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+    std::thread server_thread(echo_server_thread, port, 1);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // ConnectAsync: the worker's producer reference must transfer to the
+    // Future; after consuming and dropping the Future, the caller holds the
+    // only reference.
+    void *cf = rt_async_connect_for(rt_const_cstr("127.0.0.1"), port, 3000);
+    rt_future_wait(cf);
+    void *tcp = rt_future_get(cf);
+    test_result("ConnectAsync resolves to a connection", tcp != nullptr);
+    if (rt_obj_release_check0(cf))
+        rt_obj_free(cf);
+    test_result("Connect result has exactly one owner after consumption",
+                rt_heap_hdr(tcp)->refcnt == 1);
+
+    // SendAsync resolves to a boxed Integer with the byte count.
+    void *payload = make_bytes_str("ping");
+    void *sf = rt_async_send(tcp, payload);
+    rt_future_wait(sf);
+    void *sent_box = rt_future_get(sf);
+    test_result("SendAsync result is a boxed Integer",
+                sent_box != nullptr && rt_box_type(sent_box) == 0 /* RT_BOX_I64 */);
+    test_result("SendAsync boxed count matches payload size", rt_unbox_i64(sent_box) == 4);
+    if (rt_obj_release_check0(sf))
+        rt_obj_free(sf);
+
+    // RecvAsync: the echoed Bytes are solely caller-owned after consumption.
+    void *rf = rt_async_recv(tcp, 16);
+    rt_future_wait(rf);
+    void *echoed = rt_future_get(rf);
+    test_result("RecvAsync resolves to the echoed bytes",
+                echoed != nullptr && get_bytes_len(echoed) == 4);
+    if (rt_obj_release_check0(rf))
+        rt_obj_free(rf);
+    test_result("Recv result has exactly one owner after consumption",
+                rt_heap_hdr(echoed)->refcnt == 1);
+
+    rt_tcp_close(tcp);
+    if (rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+    server_thread.join();
 }
 
 /// @brief Line server thread function - sends lines
@@ -2216,6 +2420,9 @@ int main() {
         test_connection_pool_reuses_live_connection();
         test_connection_pool_tracks_fresh_acquire();
         test_connection_pool_clamps_max_size_and_closes_overflow();
+        test_connection_pool_ownership_and_hygiene();
+        test_netutils_is_port_open_contract();
+        test_async_socket_reference_transfer_and_boxed_send();
         test_recv_line();
         test_connect_with_timeout();
 

@@ -21,6 +21,7 @@
 #include "rt_internal.h"
 #include "rt_socket_platform.h"
 #include "rt_string.h"
+#include "rt_time.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -41,13 +42,17 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     rt_net_init_wsa();
 
     const char *host_ptr = rt_string_cstr(host);
-    if (!host_ptr || port < 1 || port > 65535)
+    int64_t host_len = host ? rt_str_len(host) : -1;
+    if (!host_ptr || host_len <= 0 || port < 1 || port > 65535)
+        return 0;
+    // Reject embedded NUL so the probe targets the caller's full host string,
+    // not a C-string prefix of it.
+    if (memchr(host_ptr, '\0', (size_t)host_len) != NULL)
         return 0;
     if (timeout_ms <= 0)
         timeout_ms = 1000;
     if (timeout_ms > INT_MAX)
         return 0;
-    int timeout_int = (int)timeout_ms;
 
     struct addrinfo hints, *res, *rp;
     memset(&hints, 0, sizeof(hints));
@@ -60,13 +65,25 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     if (getaddrinfo(host_ptr, port_str, &hints, &res) != 0)
         return 0;
 
+    // One monotonic deadline across all resolved candidates so the total
+    // probe time honors timeout_ms instead of multiplying it per address.
+    int64_t deadline_us = rt_clock_ticks_us() + timeout_ms * 1000;
+
     for (rp = res; rp != NULL; rp = rp->ai_next) {
+        int64_t remaining_ms = (deadline_us - rt_clock_ticks_us()) / 1000;
+        if (remaining_ms <= 0)
+            break;
+
         socket_t sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sock == INVALID_SOCK)
             continue;
 
-        // Set non-blocking for timeout
-        rt_socket_set_nonblocking(sock, true);
+        // Set non-blocking for the timed connect; skip the candidate rather
+        // than risk a blocking connect that ignores the deadline.
+        if (!rt_socket_set_nonblocking(sock, true)) {
+            CLOSE_SOCKET(sock);
+            continue;
+        }
 
         int result = connect(sock, rp->ai_addr, (int)rp->ai_addrlen);
         if (result == 0) {
@@ -75,13 +92,14 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
             return 1;
         }
 
-        int ready = wait_socket(sock, timeout_int, true);
+        int ready = wait_socket(sock, (int)remaining_ms, true);
         if (ready > 0) {
             int so_error = 0;
             socklen_t len = sizeof(so_error);
-            getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
+            // A failed status read must not count as success.
+            int got_status = getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
             CLOSE_SOCKET(sock);
-            if (so_error == 0) {
+            if (got_status == 0 && so_error == 0) {
                 freeaddrinfo(res);
                 return 1;
             }
@@ -143,10 +161,21 @@ static bool parse_ipv4_addr(const char *str, uint32_t *out) {
 /// @brief Test whether `ip` falls within `cidr` (e.g. `192.168.1.5` ∈ `192.168.0.0/16`). Parses
 /// the prefix length, builds the mask via `~((1u << (32 - prefix)) - 1)`, and compares masked
 /// halves. Returns 1 for `/0` (match-all). IPv4 only — for IPv6 ranges use a separate path.
+/// @brief True when @p value has an embedded NUL (its C-string view would
+///        classify a prefix different from the caller's runtime string).
+static int netutils_string_has_embedded_nul(rt_string value) {
+    const char *cstr = value ? rt_string_cstr(value) : NULL;
+    int64_t len = value ? rt_str_len(value) : 0;
+    if (!cstr || len <= 0)
+        return 0;
+    return memchr(cstr, '\0', (size_t)len) != NULL;
+}
+
 int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr) {
     const char *ip_str = rt_string_cstr(ip);
     const char *cidr_str = rt_string_cstr(cidr);
-    if (!ip_str || !cidr_str)
+    if (!ip_str || !cidr_str || netutils_string_has_embedded_nul(ip) ||
+        netutils_string_has_embedded_nul(cidr))
         return 0;
 
     // Parse CIDR notation: "10.0.0.0/8"
@@ -188,7 +217,7 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr) {
 /// loopback (127/8). This is classification only, not a complete trust or special-use check.
 int8_t rt_netutils_is_private_ip(rt_string ip) {
     const char *ip_str = rt_string_cstr(ip);
-    if (!ip_str)
+    if (!ip_str || netutils_string_has_embedded_nul(ip))
         return 0;
 
     uint32_t addr;

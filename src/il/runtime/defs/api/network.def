@@ -108,6 +108,9 @@ RT_FUNC(MultipartContentType,    rt_multipart_content_type,    "Viper.Network.Mu
 RT_FUNC(MultipartBuild,          rt_multipart_build,           "Viper.Network.Multipart.Build",             "obj<Viper.Collections.Bytes>(obj)")
 RT_FUNC(MultipartCount,          rt_multipart_count,           "Viper.Network.Multipart.get_Count",         "i64(obj)")
 RT_FUNC(MultipartParse,          rt_multipart_parse,           "Viper.Network.Multipart.Parse",             "obj<Viper.Network.Multipart>(str,obj)")
+RT_FUNC(MultipartParseResult,    rt_multipart_parse_result,    "Viper.Network.Multipart.ParseResult",       "obj<Viper.Result>(str,obj)")
+RT_FUNC(MultipartHasField,       rt_multipart_has_field,       "Viper.Network.Multipart.HasField",          "i1(obj,str)")
+RT_FUNC(MultipartHasFile,        rt_multipart_has_file,        "Viper.Network.Multipart.HasFile",           "i1(obj,str)")
 RT_FUNC(MultipartGetField,       rt_multipart_get_field,       "Viper.Network.Multipart.GetField",          "str(obj,str)")
 RT_FUNC(MultipartGetFile,        rt_multipart_get_file,        "Viper.Network.Multipart.GetFile",           "obj<Viper.Collections.Bytes>(obj,str)")
 
@@ -158,6 +161,7 @@ RT_FUNC(WssServerIsRunning,      rt_wss_server_is_running,     "Viper.Network.Ws
 RT_FUNC(SseConnect,              rt_sse_connect,               "Viper.Network.SseClient.Connect",           "obj(str)")
 RT_FUNC(SseRecv,                 rt_sse_recv,                  "Viper.Network.SseClient.Recv",              "str(obj)")
 RT_FUNC(SseRecvFor,              rt_sse_recv_for,              "Viper.Network.SseClient.RecvFor",           "str(obj,i64)")
+RT_FUNC(SseRecvForResult,        rt_sse_recv_for_result,       "Viper.Network.SseClient.RecvForResult",     "obj<Viper.Result>(obj,i64)")
 RT_FUNC(SseIsOpen,               rt_sse_is_open,               "Viper.Network.SseClient.get_IsOpen",        "i1(obj)")
 RT_FUNC(SseClose,                rt_sse_close,                 "Viper.Network.SseClient.Close",             "void(obj)")
 RT_FUNC(SseLastEventType,        rt_sse_last_event_type,       "Viper.Network.SseClient.get_LastEventType", "str(obj)")
@@ -181,6 +185,7 @@ RT_FUNC(HttpClientSetMaxRedir,   rt_http_client_set_max_redirects,"Viper.Network
 RT_FUNC(HttpClientFollowRedirGet,rt_http_client_get_follow_redirects,"Viper.Network.HttpClient.get_FollowRedirects","i1(obj)")
 RT_FUNC(HttpClientFollowRedirSet,rt_http_client_set_follow_redirects,"Viper.Network.HttpClient.set_FollowRedirects","void(obj,i1)")
 RT_FUNC(HttpClientSetCookie,     rt_http_client_set_cookie,    "Viper.Network.HttpClient.SetCookie",        "void(obj,str,str,str)")
+RT_FUNC(HttpClientDeleteCookie,  rt_http_client_delete_cookie, "Viper.Network.HttpClient.DeleteCookie",     "void(obj,str,str)")
 RT_FUNC(HttpClientGetCookies,    rt_http_client_get_cookies,   "Viper.Network.HttpClient.GetCookies",       "obj<Viper.Collections.Map>(obj,str)")
 
 //=============================================================================
@@ -198,6 +203,7 @@ RT_FUNC(SmtpClose,               rt_smtp_close,                "Viper.Network.Sm
 // NETWORK - ASYNC SOCKET
 //=============================================================================
 
+RT_FUNC(AsyncSetPoolSize,        rt_async_socket_set_pool_size, "Viper.Network.AsyncSocket.SetPoolSize",     "void(i64)")
 RT_FUNC(AsyncConnect,            rt_async_connect,             "Viper.Network.AsyncSocket.ConnectAsync",    "obj<Viper.Threads.Future>(str,i64)")
 RT_FUNC(AsyncConnectFor,         rt_async_connect_for,         "Viper.Network.AsyncSocket.ConnectForAsync", "obj<Viper.Threads.Future>(str,i64,i64)")
 RT_FUNC(AsyncSend,               rt_async_send,                "Viper.Network.AsyncSocket.SendAsync",       "obj<Viper.Threads.Future>(obj,obj)")
@@ -272,6 +278,7 @@ RT_FUNC(HttpDelete, rt_http_delete, "Viper.Network.Http.Delete", "str(str)")
 RT_FUNC(HttpDeleteBytes, rt_http_delete_bytes, "Viper.Network.Http.DeleteBytes", "obj(str)")
 RT_FUNC(HttpReqNew, rt_http_req_new, "Viper.Network.HttpReq.New", "obj(str,str)")
 RT_FUNC(HttpReqSetHeader, rt_http_req_set_header, "Viper.Network.HttpReq.SetHeader", "obj(obj,str,str)")
+RT_FUNC(HttpReqAddHeader, rt_http_req_add_header, "Viper.Network.HttpReq.AddHeader", "obj(obj,str,str)")
 RT_FUNC(HttpReqSetBody, rt_http_req_set_body, "Viper.Network.HttpReq.SetBody", "obj(obj,obj)")
 RT_FUNC(HttpReqSetBodyStr, rt_http_req_set_body_str, "Viper.Network.HttpReq.SetBodyStr", "obj(obj,str)")
 RT_FUNC(HttpReqSetTimeout, rt_http_req_set_timeout, "Viper.Network.HttpReq.SetTimeout", "obj(obj,i64)")
@@ -319,6 +326,7 @@ RT_FUNC(UrlClone, rt_url_clone, "Viper.Network.Url.Clone", "obj(obj)")
 RT_FUNC(UrlEncodeQueryMap, rt_url_encode_query, "Viper.Network.Url.EncodeQuery", "str(obj)")
 RT_FUNC(UrlDecodeQueryStr, rt_url_decode_query, "Viper.Network.Url.DecodeQuery", "obj(str)")
 RT_FUNC(UrlIsValid, rt_url_is_valid, "Viper.Network.Url.IsValid", "i1(str)")
+RT_FUNC(UrlIsValidAbsolute, rt_url_is_valid_absolute, "Viper.Network.Url.IsValidAbsolute", "i1(str)")
 
 // WebSocket client
 RT_FUNC(WsConnect,     rt_ws_connect,       "Viper.Network.WebSocket.Connect",        "obj(str)")

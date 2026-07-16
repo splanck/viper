@@ -162,6 +162,31 @@ static void test_comparison(void) {
     bi_release(a);
 }
 
+/// @brief VDOC-203: ToBytes/FromBytes round-trips must preserve the exact value
+///        and sign across every 0x80 magnitude boundary in both signs — the old
+///        encoder decided the sign byte from the magnitude's high bit and could
+///        flip -129 to +127.
+static void test_to_from_bytes_roundtrip(void) {
+    printf("rt_bigint_to_bytes / rt_bigint_from_bytes round-trip:\n");
+    // Values straddling 8-bit and 16-bit two's-complement boundaries, both signs.
+    static const int64_t kValues[] = {
+        0,      1,      -1,     127,    128,    129,   -127,        -128,
+        -129,   -130,   255,    256,    257,    -255,  -256,        -257,
+        32767,  32768,  32769,  -32767, -32768, -32769, 65535,      65536,
+        -65535, -65536, 123456789LL,    -123456789LL};
+    for (size_t i = 0; i < sizeof(kValues) / sizeof(kValues[0]); i++) {
+        int64_t v = kValues[i];
+        void *bi = rt_bigint_from_i64(v);
+        void *bytes = rt_bigint_to_bytes(bi);
+        void *back = rt_bigint_from_bytes(bytes);
+        char label[64];
+        snprintf(label, sizeof(label), "roundtrip %lld", (long long)v);
+        check(label, rt_bigint_to_i64(back) == v);
+        bi_release(bi);
+        bi_release(back);
+    }
+}
+
 int main(void) {
     printf("=== RTBigintTests ===\n");
     test_from_i64();
@@ -169,6 +194,7 @@ int main(void) {
     test_from_str();
     test_arithmetic();
     test_comparison();
+    test_to_from_bytes_roundtrip();
     printf("All BigInt tests passed.\n");
     return 0;
 }

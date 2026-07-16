@@ -239,7 +239,7 @@ int64_t rt_str_count(rt_string str, rt_string needle) {
 /// @brief Pad string on the left to reach specified width.
 /// @param str Source string.
 /// @param width Target width.
-/// @param pad_str Padding character (first char used).
+/// @param pad_str Padding byte (must be exactly one byte).
 /// @return Newly allocated padded string.
 rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str) {
     if (!str)
@@ -249,6 +249,13 @@ rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str) {
 
     if (width <= 0 || !pad_str || rt_string_len_bytes(pad_str) == 0)
         return rt_string_ref(str);
+    // Width is a BYTE width, so the padding must be exactly one byte:
+    // repeating the first byte of a multibyte character would emit
+    // malformed UTF-8 (VDOC-167).
+    if (rt_string_len_bytes(pad_str) != 1) {
+        rt_trap("String.PadLeft: padding must be a single byte");
+        return NULL;
+    }
     uint64_t requested_width = (uint64_t)width;
     if (requested_width <= (uint64_t)str_len)
         return rt_string_ref(str);
@@ -275,7 +282,7 @@ rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str) {
 /// @brief Pad string on the right to reach specified width.
 /// @param str Source string.
 /// @param width Target width.
-/// @param pad_str Padding character (first char used).
+/// @param pad_str Padding byte (must be exactly one byte).
 /// @return Newly allocated padded string.
 rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str) {
     if (!str)
@@ -285,6 +292,10 @@ rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str) {
 
     if (width <= 0 || !pad_str || rt_string_len_bytes(pad_str) == 0)
         return rt_string_ref(str);
+    if (rt_string_len_bytes(pad_str) != 1) {
+        rt_trap("String.PadRight: padding must be a single byte");
+        return NULL;
+    }
     uint64_t requested_width = (uint64_t)width;
     if (requested_width <= (uint64_t)str_len)
         return rt_string_ref(str);
@@ -580,6 +591,49 @@ rt_string rt_str_repeat(rt_string str, int64_t count) {
     return result;
 }
 
+/// @brief Strictly measure the UTF-8 codepoint starting at @p data.
+/// @details Shared validator for codepoint-aware String operations
+///          (VDOC-166): rejects invalid lead bytes, missing/invalid
+///          continuation bytes, overlong encodings, UTF-16 surrogates, and
+///          code points above U+10FFFF. Non-trapping so each caller can
+///          raise its own contextual trap.
+/// @param data Pointer to the current byte (may be NULL only if remaining==0).
+/// @param remaining Bytes available from @p data.
+/// @return Sequence length in bytes (1-4), or 0 when the sequence is invalid.
+size_t rt_utf8_strict_step(const char *data, size_t remaining) {
+    if (!data || remaining == 0)
+        return 0;
+    unsigned char lead = (unsigned char)data[0];
+    if (lead < 0x80)
+        return 1;
+    size_t extra;
+    uint32_t cp;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        extra = 1;
+        cp = lead & 0x1Fu;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+        extra = 2;
+        cp = lead & 0x0Fu;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+        extra = 3;
+        cp = lead & 0x07u;
+    } else {
+        return 0; // 0x80..0xC1 (continuation/overlong lead) or 0xF5..0xFF
+    }
+    if (remaining - 1 < extra)
+        return 0;
+    for (size_t k = 1; k <= extra; k++) {
+        unsigned char ch = (unsigned char)data[k];
+        if ((ch & 0xC0u) != 0x80u)
+            return 0;
+        cp = (cp << 6) | (uint32_t)(ch & 0x3Fu);
+    }
+    if ((extra == 2 && cp < 0x800u) || (extra == 3 && cp < 0x10000u) ||
+        (cp >= 0xD800u && cp <= 0xDFFFu) || cp > 0x10FFFFu)
+        return 0;
+    return extra + 1;
+}
+
 /// @brief Convert a 1-based codepoint offset to a byte offset in a UTF-8 string.
 /// @param data Pointer to the string data.
 /// @param byte_len Total byte length of the string.
@@ -592,28 +646,13 @@ size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_
     size_t byte_off = 0;
     int64_t cp = 1;
     while (byte_off < byte_len && cp < char_pos) {
-        unsigned char c = (unsigned char)data[byte_off];
-        size_t clen = 1;
-        if ((c & 0x80) == 0)
-            clen = 1;
-        else if ((c & 0xE0) == 0xC0 && byte_off + 1 < byte_len &&
-                 ((unsigned char)data[byte_off + 1] & 0xC0) == 0x80)
-            clen = 2;
-        else if ((c & 0xF0) == 0xE0 && byte_off + 2 < byte_len &&
-                 ((unsigned char)data[byte_off + 1] & 0xC0) == 0x80 &&
-                 ((unsigned char)data[byte_off + 2] & 0xC0) == 0x80)
-            clen = 3;
-        else if ((c & 0xF8) == 0xF0 && byte_off + 3 < byte_len &&
-                 ((unsigned char)data[byte_off + 1] & 0xC0) == 0x80 &&
-                 ((unsigned char)data[byte_off + 2] & 0xC0) == 0x80 &&
-                 ((unsigned char)data[byte_off + 3] & 0xC0) == 0x80)
-            clen = 4;
-        else {
+        // Strict decoding (VDOC-166): overlong encodings, surrogates, and
+        // out-of-range scalars are malformed, not one-byte "characters".
+        size_t clen = rt_utf8_strict_step(data + byte_off, byte_len - byte_off);
+        if (clen == 0) {
             rt_trap("String: invalid UTF-8 sequence");
             return byte_len;
         }
-        if (byte_off + clen > byte_len)
-            clen = byte_len - byte_off;
         byte_off += clen;
         cp++;
     }
@@ -660,11 +699,9 @@ rt_string rt_str_flip(rt_string str) {
     // First pass: count characters and find their start positions
     size_t char_count = 0;
     for (size_t i = 0; i < len;) {
-        size_t clen = utf8_char_len((unsigned char)data[i]);
-        if (clen == 0)
-            return NULL;
-        if (i + clen > len) {
-            rt_trap("String.Flip: truncated UTF-8 sequence");
+        size_t clen = rt_utf8_strict_step(data + i, len - i);
+        if (clen == 0) {
+            rt_trap("String.Flip: invalid UTF-8 sequence");
             return NULL;
         }
         i += clen;
@@ -686,14 +723,10 @@ rt_string rt_str_flip(rt_string str) {
     size_t idx = 0;
     for (size_t i = 0; i < len;) {
         positions[idx++] = i;
-        size_t clen = utf8_char_len((unsigned char)data[i]);
+        size_t clen = rt_utf8_strict_step(data + i, len - i);
         if (clen == 0) {
             free(positions);
-            return NULL;
-        }
-        if (i + clen > len) {
-            free(positions);
-            rt_trap("String.Flip: truncated UTF-8 sequence");
+            rt_trap("String.Flip: invalid UTF-8 sequence");
             return NULL;
         }
         i += clen;

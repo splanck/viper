@@ -255,7 +255,7 @@ rt_string rt_str_d_alloc(double v);
 /// @brief Allocate a runtime string from a float value using standard formatting.
 /// @param v Single-precision value to convert.
 /// @return Newly allocated runtime string.
-rt_string rt_str_f_alloc(float v);
+rt_string rt_str_f_alloc(double v);
 
 /// @brief Allocate a runtime string from a 32-bit integer using standard formatting.
 /// @param v 32-bit integer value to convert.

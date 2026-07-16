@@ -37,17 +37,18 @@ File system operations.
 | `WriteLines(path, lines)`     | `Void(String, Seq(String))` | Atomically writes a sequence of strings as lines; traps on I/O errors                |
 | `WriteAllLines(path, lines)`  | `Void(String, Seq(String))` | Alias of `WriteLines`                                                               |
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file; traps on I/O errors                                               |
-| `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing; not line-atomic)             |
+| `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file in one atomic write (creates if missing)          |
 | `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n`, `\r`, or `\r\n` terminators (traps on I/O errors) |
 | `Modified(path)`              | `Integer(String)`      | Returns regular-file modification time as Unix timestamp, or -1 if missing or not a file  |
-| `Touch(path)`                 | `Void(String)`         | Creates a missing file or updates an existing path's modification time; currently accepts directories |
+| `Touch(path)`                 | `Void(String)`         | Creates a missing file or updates an existing regular file's modification time (traps on a directory) |
 
 ### Notes
 
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
-- `AppendLine` may perform several writes for the text and a separate write for the newline.
-  Concurrent appenders can therefore interleave records; synchronize externally when complete
-  lines must remain indivisible (VDOC-182).
+- `AppendLine` writes the text and its `\n` as one buffer in a single `write()` on an
+  `O_APPEND` file, so concurrent appenders do not split or interleave a line — as long as it
+  fits in one OS write. Lines large enough to require a partial write can still interleave;
+  synchronize externally when arbitrarily large records must remain indivisible.
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
 - Path strings with embedded NUL bytes are rejected before reaching platform file APIs.
 - `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories, special files, I/O errors, or unexpected short reads if the file changes while being read.
@@ -55,8 +56,9 @@ File system operations.
 - `Copy` and `Move` never overwrite an existing destination. `MoveOver` is the explicit replacement operation; it first attempts an in-place replace/rename and only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
 - `Copy` preserves regular-file permission bits and modification/access times where the platform exposes them. Cross-device `Move` uses the same copy path before deleting the source.
 - `Size` and `Modified` return `-1` for missing paths, directories, and special files. A real zero-byte file still reports size `0`.
-- `Touch` creates a regular file when the path is missing, but the current implementation updates
-  timestamps on an existing directory too (VDOC-183).
+- `Touch` creates a regular file when the path is missing and updates the modification time of an
+  existing regular file. It is a File operation and traps on a directory operand, matching the
+  rest of the `File` surface.
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
 - `WriteLines` / `WriteAllLines` append one LF byte after every sequence element, including the last. Their raw `seq<str>` argument is available to Zia but is currently rejected by safe BASIC; use `LineWriter` or whole-file text helpers from BASIC.
 - `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
@@ -209,9 +211,11 @@ Binary file stream for reading and writing raw bytes with random access capabili
 `Close()` and `Flush()` trap if the platform reports a delayed write or close failure.
 `BinFile` also normalizes the required C stdio transition between reads and writes on `"rw"`/`"r+"` streams, so switching direction does not rely on undefined buffered-stdio state.
 
-`Eof` follows C stream semantics rather than comparing `Pos` with `Size`. Reading exactly the last
-byte leaves it false; one more `Read` or `ReadByte` sets it. Use `Pos >= Size` when the question is
-whether the cursor is at the logical end. This differs from memory-backed `Stream.Eof` (VDOC-188).
+`BinFile.Eof` deliberately follows C stdio sticky-flag semantics rather than comparing `Pos` with
+`Size`: reading exactly the last byte leaves it false, and one more `Read`/`ReadByte` sets it. Use
+`Pos >= Size` when the question is whether the cursor is at the logical end. Note this is the
+low-level BinFile contract; the polymorphic `Stream.Eof` is position-based (`Pos >= Size`) on both
+file and memory backings, so prefer `Stream` when you want uniform end-of-stream behavior.
 
 ### Properties
 
@@ -630,9 +634,9 @@ written immediately:
 - **Linux:** `$XDG_DATA_HOME/<app>` when `XDG_DATA_HOME` is absolute, else `~/.local/share/<app>`
 
 The app name must be alphanumeric/dash/underscore (max 64 chars); anything
-else traps. With an unchanged environment, repeated calls return the same absolute path.
-The current entry point validates only bytes before an embedded NUL, so distinct runtime Strings
-can alias one directory until VDOC-199 is fixed; do not pass binary-derived app names.
+else traps. Validation covers the runtime String's full stored byte length, so an embedded NUL
+(and any bytes after it) is rejected rather than silently truncated — distinct Strings cannot
+alias one directory. With an unchanged environment, repeated calls return the same absolute path.
 `Abs()` and `Norm()` are lexical operations: they do not require the path to
 exist and do not resolve symbolic links.
 
@@ -725,11 +729,12 @@ The `Norm()` function performs the following transformations:
 | Example absolute path   | `/home/user`    | `C:\Users\user`           |
 
 Windows drive-relative paths such as `C:logs\app.txt` are not absolute. `Path.Normalize()` preserves the `C:` relative prefix instead of converting it to `C:\`, and `Path.Join()` treats drive-rooted, UNC, and root-relative right-hand paths as absolute.
-The current Windows `Path.Absolute()` implementation does not correctly resolve a drive-relative path;
-it can join `C:logs` underneath another drive's current directory and produce an invalid result
-(VDOC-184). Resolve that form with a platform-aware caller or avoid it.
-`Path.ExeDir()` uses fixed platform buffers and can return `"."` on long or non-ANSI executable
-paths; see VDOC-185 and the detailed warning in [Assets](assets.md).
+`Path.Absolute()` resolves through the OS (`GetFullPathNameW`) on Windows, so a drive-relative
+path like `C:logs` is anchored to drive C's current directory exactly like the shell, rather than
+being joined under another drive's current directory.
+`Path.ExeDir()` resolves the executable path with dynamically sized platform APIs and detects
+truncation, so long or non-ASCII executable paths return the real directory; `"."` is returned
+only on a genuine lookup failure.
 On POSIX, `Path.Name("a\\b.txt")` returns `"a\\b.txt"` and `Path.Directory("a\\b.txt")` returns `"."`, because the backslash is part of the filename rather than a directory separator.
 `Path.WithExtension("", "txt")` returns `.txt`, matching the behavior of applying an extension to an empty stem.
 
@@ -785,9 +790,10 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 - On Windows, both `/` and `\` are treated as path separators for `*`, `?`, `**`, and literal separator matching.
 - On POSIX, only `/` is a path separator for glob matching; backslash is matched as a normal character.
 - `**` matching is memoized, so very deep path strings are handled without a fixed recursion attempt limit.
-- A current matcher defect lets ordinary wildcards after an earlier `**` cross separators. For
-  example, `Match("a/b", "**/a?b")` incorrectly returns true (VDOC-186); avoid mixing `**` with
-  later `?`, `*`, or character classes when separator boundaries matter.
+- `**` crosses separators itself; `*`, `?`, and character classes after an earlier `**` follow
+  ordinary component rules and do not cross separators. For example, `Match("a/b", "**/a?b")`
+  returns false (the trailing `?` cannot match the `/`), while `Match("a/b/xyz", "**/x?z")`
+  returns true.
 - Recursive traversal does not follow symbolic-link directories or Windows reparse points. Result order follows filesystem enumeration and is not sorted.
 
 ### Zia Example
@@ -863,10 +869,12 @@ Workspace file inventory helper for IDEs and editor tools.
   is ASCII case-insensitive even on case-sensitive filesystems.
 - The `id` field is a stable 63-bit hash of the absolute, lexically normalized path for quick UI identity, not a persistent filesystem inode.
 - Enumeration is capped at 100,000 matching entries. `Enumerate` stops at the cap; `Page` and `Status` expose `maxEntries` / `truncated` so callers can report it.
-- The current `**/` ignore matcher can match a literal suffix inside a component—for example,
-  `**/bar` also ignores `foobar` (VDOC-192).
-- `.gitignore` cache invalidation uses whole-second modification times only. A quick same-second
-  rewrite can leave old rules cached with no public reset hook (VDOC-193).
+- The `**/` ignore matcher spans whole path components: it matches zero or more complete
+  directory components, so `**/bar` ignores a component named exactly `bar` at any depth (`bar`,
+  `a/b/bar`) but not a component that merely ends with it (`foobar` is kept).
+- `.gitignore` cache invalidation is content-derived: the cache identity is a hash of the file's
+  bytes, so any edit (including a same-second or coarse-clock rewrite that leaves the modification
+  timestamp unchanged) takes effect on the next lookup.
 
 ---
 
@@ -882,7 +890,7 @@ Batch wrapper over `Viper.IO.Watcher` for per-frame IDE polling.
 |--------|-----------|-------------|
 | `PollBatch(watcher, maxEvents)` | `Seq(Object, Integer)` | Drain up to `maxEvents` queued watcher events into structured maps |
 
-Each event map includes `path`, `typeName`, `type`, `overflowCount`, and `requiresRescan`. `requiresRescan` is true for overflow events so an IDE can discard incremental state and re-enumerate the workspace. A non-positive `maxEvents` drains at most 64 events.
+Each event map includes `path`, `typeName`, `type`, `overflowCount`, and `requiresRescan`. `requiresRescan` is true for overflow events so an IDE can discard incremental state and re-enumerate the workspace. `overflowCount` is the exact dropped-event count for an internal ring overflow or `-1` when a native (kernel) overflow lost an unknown number of events — either way `requiresRescan` is the reliable signal. A non-positive `maxEvents` drains at most 64 events.
 
 `Viper.IO.Watcher` remains non-recursive; use one watcher per watched directory or pair this helper with a workspace index rescan policy.
 
@@ -920,13 +928,12 @@ entry src/main.zia
 args --dev, --scene=one
 ```
 
-Unknown directives or sections add diagnostic records instead of trapping. Defaults are normally
-retained, subject to the unknown-section exception below.
-Build-only directives outside this tooling subset, such as `embed`, `pack`, and
+Unknown directives or sections add diagnostic records instead of trapping, and defaults are
+retained. Build-only directives outside this tooling subset, such as `embed`, `pack`, and
 `pack-compressed`, therefore appear as diagnostics rather than being expanded.
-There is one current exception to the safe-default rule: directives following an unknown section
-are parsed as top-level directives until the next section header. Always reject `valid=false`
-results rather than consuming their fields (VDOC-194).
+Directives inside an unknown `[section]` are each diagnosed and ignored until the next section
+header — they do not fall through to mutate top-level fields — so a `valid=false` manifest never
+carries values injected by an unsupported section.
 
 ---
 
@@ -948,11 +955,15 @@ Transactional multi-file text edit validation and application.
 Each edit record is a `Map` with `file`, `startLine`, `startColumn`, `endLine`, `endColumn`, `newText`, and optional `expectedMtime` / `expectedSize`. Line and column values are 1-based byte positions. Validation results contain `success`, `editCount`, and `diagnostics`; apply results add `appliedFiles`.
 
 Validation rejects missing files, invalid ranges, overlapping edits in the same file, and stale expected metadata. Apply revalidates immediately before writing, stages every changed file beside its target, and commits each replacement with same-directory renames. If a later commit fails, rollback is best-effort; callers must still inspect `success` and diagnostics rather than treating a multi-file batch as a crash-proof filesystem transaction.
-The current commit phase does not recheck a target after all replacement files have been staged,
-so an external edit during that window can be overwritten (VDOC-195). Backup names are also based
-on a predictable process counter and are not exclusively reserved before rename on POSIX
-(VDOC-196). Serialize edits against other writers and inspect the target directory for stale
-sidecars until those defects are repaired.
+Immediately before replacing each live target the commit phase re-reads the file and confirms it
+still matches the content validated earlier; if an external editor, formatter, or process changed
+it during staging, the whole batch is aborted with an `edit target changed since validation`
+diagnostic and rolled back, so newer content is not silently overwritten. (The recheck is
+content-based; a rooted transaction whose path *component* is swapped for another during the
+window is not yet fully guarded — full protection needs handle-relative commits.) Temp and backup sidecar names are unpredictable (a per-process keyed hash of an atomic counter),
+and each backup is exclusively reserved (`O_EXCL` / `CREATE_NEW`) before the commit rename, so a
+stale artifact or racing process cannot make the rename clobber unrelated data; a successful apply
+leaves no sidecars behind.
 
 ---
 

@@ -31,10 +31,16 @@ namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+// When true, vm_trap RECORDS the message and RETURNS (like an embedder trap
+// hook that resumes) instead of longjmp/abort — this is what exercises the
+// post-trap fall-through guards (VDOC-189).
+static bool g_trap_returns = false;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
+    if (g_trap_returns)
+        return;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
@@ -485,6 +491,45 @@ static void test_structured_protocol_encode_decode() {
     assert(rt_binbuf_read_i64le(bb) == (int64_t)0xCAFEBABELL);
 }
 
+/// VDOC-189: with a RETURNING trap hook (an embedder that resumes after a
+/// recoverable trap), operations must not dereference a NULL receiver or write
+/// an out-of-range value. Getters on an invalid receiver return safe sentinels,
+/// and a fixed-width write of an out-of-range value leaves the buffer untouched.
+static void test_returning_trap_hook_is_safe() {
+    g_trap_returns = true;
+
+    // Getters on an invalid (non-BinaryBuffer) receiver must not crash and must
+    // return safe sentinels rather than dereferencing the trapped NULL.
+    int bogus = 0;
+    void *not_a_buffer = &bogus;
+    g_last_trap = nullptr;
+    assert(rt_binbuf_get_position(not_a_buffer) == 0);
+    assert(g_last_trap != nullptr);
+    assert(rt_binbuf_get_len(not_a_buffer) == 0);
+    void *empty = rt_binbuf_to_bytes(not_a_buffer);
+    assert(empty != nullptr && rt_bytes_len(empty) == 0);
+    rt_binbuf_reset(not_a_buffer); // must not crash
+
+    // An out-of-range fixed-width write must NOT append a truncated value after
+    // the range validator traps-and-returns.
+    void *bb = rt_binbuf_new();
+    int64_t len_before = rt_binbuf_get_len(bb);
+    g_last_trap = nullptr;
+    rt_binbuf_write_i16le(bb, 70000); // > INT16_MAX
+    assert(g_last_trap != nullptr);
+    assert(rt_binbuf_get_len(bb) == len_before); // nothing written
+    g_last_trap = nullptr;
+    rt_binbuf_write_u16be(bb, -1); // < 0 for unsigned
+    assert(g_last_trap != nullptr);
+    assert(rt_binbuf_get_len(bb) == len_before);
+
+    // A valid write after the trapped ones still works (buffer not corrupted).
+    g_trap_returns = false;
+    rt_binbuf_write_i16le(bb, 1234);
+    rt_binbuf_set_position(bb, 0);
+    assert(rt_binbuf_read_i16le(bb) == 1234);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -517,6 +562,7 @@ int main() {
     test_write_read_bytes();
     test_write_invalid_payloads_trap();
     test_write_bytes_invalid_data_preserves_buffer();
+    test_returning_trap_hook_is_safe();
 
     // Cursor semantics
     test_position_advances_on_write();

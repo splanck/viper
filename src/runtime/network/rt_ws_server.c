@@ -8,8 +8,12 @@
 // File: src/runtime/network/rt_ws_server.c
 // Purpose: WebSocket server with broadcast and per-client messaging.
 // Key invariants:
-//   - Accept loop runs in background thread.
-//   - Clients tracked in a fixed-size array protected by mutex.
+//   - Accept loop runs in background thread; each accepted client is serviced
+//     by a worker-pool frame loop (ping/pong, close echo, framing validation),
+//     mirroring rt_wss_server.c so the two transports cannot drift.
+//   - Clients tracked in a fixed-size array protected by mutex; a per-client
+//     io mutex serializes frame writes between that client's worker and
+//     broadcasts without a global write bottleneck.
 //   - WebSocket framing reuses logic from rt_websocket.c.
 // Ownership/Lifetime:
 //   - Server GC-managed. Stop() or finalizer closes all clients.
@@ -27,8 +31,12 @@
 #include "rt_object.h"
 #include "rt_socket_platform.h"
 #include "rt_string.h"
+#include "rt_threadpool.h"
+#include "rt_trap.h"
+#include "system/rt_machine.h"
 
 #include <limits.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,6 +86,8 @@ extern ws_socket_t rt_tcp_socket_fd(void *obj);
 //=============================================================================
 
 #define WS_SERVER_MAX_CLIENTS 128
+#define WS_MAX_HANDSHAKE_HEADERS 100
+#define WS_CLIENT_SEND_TIMEOUT_MS 30000
 
 // WebSocket opcodes (duplicated from rt_websocket.c to avoid dependency)
 #define WS_OP_TEXT 0x01
@@ -94,10 +104,13 @@ extern ws_socket_t rt_tcp_socket_fd(void *obj);
 typedef struct {
     void *tcp; // TCP connection
     bool active;
+    ws_mutex_t io; ///< Per-client write lock: broadcasts and worker control
+                   ///< frames serialize per socket, not globally (VDOC-149).
 } ws_client_t;
 
 typedef struct {
     void *tcp_server;
+    void *worker_pool;
     int64_t port;
     char *subprotocol;
     bool running;
@@ -105,6 +118,7 @@ typedef struct {
     int client_count;
     ws_mutex_t lock;
     bool lock_initialized;
+    bool client_io_initialized;
 #ifdef _WIN32
     HANDLE accept_thread;
 #else
@@ -112,6 +126,16 @@ typedef struct {
 #endif
     bool thread_started;
 } rt_ws_server_impl;
+
+typedef struct {
+    rt_ws_server_impl *server;
+    void *tcp;
+} ws_accept_task_t;
+
+typedef struct {
+    int slot;
+    void *tcp;
+} ws_broadcast_target_t;
 
 #include "rt_ws_shared.inc"
 
@@ -122,6 +146,35 @@ static void ws_release_tcp(void **tcp_ptr) {
     if (rt_obj_release_check0(*tcp_ptr))
         rt_obj_free(*tcp_ptr);
     *tcp_ptr = NULL;
+}
+
+/// @brief Compute the internal worker-pool size for WS server instances.
+/// @details Mirrors the WSS server: CPU-aware default clamped to the range
+///          accepted by @ref rt_threadpool_new.
+/// @return Worker count in the inclusive range 1..1024.
+static int64_t ws_server_default_worker_count(void) {
+    int64_t cores = rt_machine_cores();
+    if (cores < 1)
+        cores = 1;
+    // Each serviced client occupies a worker for its lifetime, so give small
+    // machines a floor and everyone headroom; the cap bounds thread count.
+    int64_t workers = cores * 2;
+    if (workers < 8)
+        workers = 8;
+    if (workers > 1024)
+        workers = 1024;
+    return workers;
+}
+
+/// @brief Read the server's running flag under its state mutex.
+static int ws_server_is_running_locked(rt_ws_server_impl *s) {
+    int running;
+    if (!s)
+        return 0;
+    WS_MUTEX_LOCK(&s->lock);
+    running = s->running ? 1 : 0;
+    WS_MUTEX_UNLOCK(&s->lock);
+    return running;
 }
 
 static int ws_server_send_raw(void *tcp, const void *data, size_t len) {
@@ -313,8 +366,12 @@ static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
     int saw_connection = 0;
     int saw_version = 0;
 
-    // Read headers
+    // Read headers (bounded: an unauthenticated peer must not be able to
+    // stream unlimited header lines at the handshake parser).
+    int header_lines = 0;
     while (1) {
+        if (++header_lines > WS_MAX_HANDSHAKE_HEADERS)
+            return 0;
         rt_string hdr = rt_tcp_recv_line(tcp);
         if (!hdr)
             return 0;
@@ -427,8 +484,220 @@ static void rt_ws_server_finalize(void *obj) {
     rt_ws_server_stop(s);
     free(s->subprotocol);
     s->subprotocol = NULL;
+    if (s->worker_pool && rt_obj_release_check0(s->worker_pool))
+        rt_obj_free(s->worker_pool);
+    s->worker_pool = NULL;
+    if (s->client_io_initialized) {
+        for (int i = 0; i < WS_SERVER_MAX_CLIENTS; i++)
+            WS_MUTEX_DESTROY(&s->clients[i].io);
+    }
     if (s->lock_initialized)
         WS_MUTEX_DESTROY(&s->lock);
+}
+
+//=============================================================================
+// Client Servicing (VDOC-148: parity with rt_wss_server.c)
+//=============================================================================
+
+/// @brief Deactivate a client slot and release its TCP handle (slot io lock +
+///        state lock held so a concurrent broadcast cannot write to a handle
+///        being torn down). Lock order: slot io, then state.
+static void ws_server_remove_client(rt_ws_server_impl *s, int slot, void *tcp) {
+    if (!s || slot < 0 || slot >= WS_SERVER_MAX_CLIENTS)
+        return;
+
+    WS_MUTEX_LOCK(&s->clients[slot].io);
+    WS_MUTEX_LOCK(&s->lock);
+    if (slot < s->client_count && s->clients[slot].tcp == tcp) {
+        ws_release_tcp(&s->clients[slot].tcp);
+        s->clients[slot].active = false;
+    } else {
+        ws_release_tcp(&tcp);
+    }
+    WS_MUTEX_UNLOCK(&s->lock);
+    WS_MUTEX_UNLOCK(&s->clients[slot].io);
+}
+
+/// @brief Send a frame under the client's own io lock so worker control
+///        frames and broadcasts never interleave on one socket — without a
+///        global write lock that would let one slow peer stall every other
+///        client's sends (VDOC-149).
+static int ws_server_send_locked(
+    rt_ws_server_impl *s, int slot, void *tcp, uint8_t opcode, const void *data, size_t len) {
+    int ok = 0;
+    if (!s || !tcp || slot < 0 || slot >= WS_SERVER_MAX_CLIENTS)
+        return 0;
+    WS_MUTEX_LOCK(&s->clients[slot].io);
+    ok = ws_server_send_frame(tcp, opcode, data, len);
+    WS_MUTEX_UNLOCK(&s->clients[slot].io);
+    return ok;
+}
+
+/// @brief Per-client frame loop: answers PING with PONG, echoes CLOSE,
+///        validates framing/UTF-8, drains data frames, and deactivates the
+///        slot on disconnect — the same protocol servicing as the WSS server.
+/// @details The TCP receive helpers trap on connection errors, so the loop
+///          installs a trap-recovery point and treats any trap as an orderly
+///          disconnect for this client (worker threads must never abort the
+///          process because a peer vanished).
+static void ws_client_run(rt_ws_server_impl *s, int slot, void *tcp) {
+    if (!s || !tcp || slot < 0)
+        return;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        ws_server_remove_client(s, slot, tcp);
+        return;
+    }
+
+    while (ws_server_is_running_locked(s) && rt_tcp_is_open(tcp)) {
+        uint8_t fin = 0;
+        uint8_t opcode = 0;
+        uint8_t *data = NULL;
+        size_t len = 0;
+
+        if (!ws_server_recv_frame(tcp, &fin, &opcode, &data, &len))
+            break;
+
+        if (opcode == WS_OP_PING) {
+            if (!ws_server_send_locked(s, slot, tcp, WS_OP_PONG, data, len)) {
+                free(data);
+                break;
+            }
+            free(data);
+            continue;
+        }
+
+        if (opcode == WS_OP_PONG) {
+            free(data);
+            continue;
+        }
+
+        if (opcode == WS_OP_CLOSE) {
+            ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, data, len);
+            free(data);
+            break;
+        }
+
+        if (opcode == WS_OP_CONTINUATION) {
+            free(data);
+            ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+            break;
+        }
+
+        if (opcode == WS_OP_TEXT && fin && !ws_is_valid_utf8(data, len)) {
+            free(data);
+            ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, "\x03\xEF", 2);
+            break;
+        }
+
+        free(data);
+
+        if (!fin) {
+            while (ws_server_is_running_locked(s) && rt_tcp_is_open(tcp)) {
+                uint8_t next_fin = 0;
+                uint8_t next_opcode = 0;
+                uint8_t *next_data = NULL;
+                size_t next_len = 0;
+
+                if (!ws_server_recv_frame(tcp, &next_fin, &next_opcode, &next_data, &next_len))
+                    goto done;
+
+                if (next_opcode == WS_OP_PING) {
+                    int ok = ws_server_send_locked(s, slot, tcp, WS_OP_PONG, next_data, next_len);
+                    free(next_data);
+                    if (!ok)
+                        goto done;
+                    continue;
+                }
+
+                if (next_opcode == WS_OP_PONG) {
+                    free(next_data);
+                    continue;
+                }
+
+                if (next_opcode == WS_OP_CLOSE) {
+                    ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, next_data, next_len);
+                    free(next_data);
+                    goto done;
+                }
+
+                if (next_opcode != WS_OP_CONTINUATION) {
+                    free(next_data);
+                    ws_server_send_locked(s, slot, tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+                    goto done;
+                }
+
+                free(next_data);
+                if (next_fin)
+                    break;
+            }
+        }
+    }
+
+done:
+    rt_trap_clear_recovery();
+    ws_server_remove_client(s, slot, tcp);
+}
+
+/// @brief Worker-pool task: handshake an accepted socket, register the client,
+///        then run its frame-servicing loop.
+static void ws_accept_task_run(void *arg) {
+    ws_accept_task_t *task = (ws_accept_task_t *)arg;
+    rt_ws_server_impl *s = task ? task->server : NULL;
+    void *tcp = task ? task->tcp : NULL;
+    int slot = -1;
+
+    free(task);
+    if (!s || !tcp || !ws_server_is_running_locked(s)) {
+        ws_release_tcp(&tcp);
+        return;
+    }
+
+    // The handshake reads via trapping TCP helpers; a peer vanishing
+    // mid-handshake must reject the client, not abort the process.
+    jmp_buf hs_recovery;
+    rt_trap_set_recovery(&hs_recovery);
+    if (setjmp(hs_recovery) != 0) {
+        rt_trap_clear_recovery();
+        ws_release_tcp(&tcp);
+        return;
+    }
+    int handshake_ok = ws_server_handshake(tcp, s->subprotocol);
+    rt_trap_clear_recovery();
+    if (!handshake_ok) {
+        ws_release_tcp(&tcp);
+        return;
+    }
+
+    // Bound writes to this client so a non-reading peer cannot block a
+    // broadcast (or Stop) indefinitely.
+    rt_tcp_set_send_timeout(tcp, WS_CLIENT_SEND_TIMEOUT_MS);
+
+    WS_MUTEX_LOCK(&s->lock);
+    for (int i = 0; i < s->client_count; i++) {
+        if (!s->clients[i].active) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0 && s->client_count < WS_SERVER_MAX_CLIENTS)
+        slot = s->client_count++;
+
+    if (slot >= 0) {
+        s->clients[slot].tcp = tcp;
+        s->clients[slot].active = true;
+    }
+    WS_MUTEX_UNLOCK(&s->lock);
+
+    if (slot < 0) {
+        ws_release_tcp(&tcp);
+        return;
+    }
+
+    ws_client_run(s, slot, tcp);
 }
 
 //=============================================================================
@@ -443,40 +712,28 @@ static void *ws_accept_loop(void *arg)
 {
     rt_ws_server_impl *s = (rt_ws_server_impl *)arg;
 
-    while (s->running) {
+    while (ws_server_is_running_locked(s)) {
         void *tcp = rt_tcp_server_accept_for(s->tcp_server, 1000);
         if (!tcp)
             continue;
-        if (!s->running) {
+        if (!ws_server_is_running_locked(s)) {
             ws_release_tcp(&tcp);
             break;
         }
 
-        // Perform WebSocket handshake
-        if (!ws_server_handshake(tcp, s->subprotocol)) {
+        // Hand the socket to a worker: handshake + register + frame loop.
+        ws_accept_task_t *task = (ws_accept_task_t *)malloc(sizeof(*task));
+        if (!task) {
             ws_release_tcp(&tcp);
             continue;
         }
-
-        // Add client
-        WS_MUTEX_LOCK(&s->lock);
-        int slot = -1;
-        for (int i = 0; i < s->client_count; i++) {
-            if (!s->clients[i].active) {
-                slot = i;
-                break;
-            }
-        }
-        if (slot < 0 && s->client_count < WS_SERVER_MAX_CLIENTS)
-            slot = s->client_count++;
-
-        if (slot >= 0) {
-            s->clients[slot].tcp = tcp;
-            s->clients[slot].active = true;
-        } else {
+        task->server = s;
+        task->tcp = tcp;
+        if (!s->worker_pool ||
+            !rt_threadpool_submit(s->worker_pool, (void *)ws_accept_task_run, task)) {
+            free(task);
             ws_release_tcp(&tcp);
         }
-        WS_MUTEX_UNLOCK(&s->lock);
     }
 
 #ifdef _WIN32
@@ -490,11 +747,11 @@ static void *ws_accept_loop(void *arg)
 // Public API
 //=============================================================================
 
-/// @brief Construct a WebSocket server bound (lazily) to `port`. Validates port range (1–65535)
+/// @brief Construct a WebSocket server bound (lazily) to `port`. Validates port range (0–65535; 0 requests an OS-assigned ephemeral port reported by `Port` after Start)
 /// up front; allocates the impl with mutex + finalizer, but does NOT bind the TCP socket — that
 /// happens on `_start`. Returns a GC-managed handle.
 void *rt_ws_server_new(int64_t port) {
-    if (port < 1 || port > 65535) {
+    if (port < 0 || port > 65535) {
         rt_trap("WsServer: invalid port");
         return NULL;
     }
@@ -508,8 +765,18 @@ void *rt_ws_server_new(int64_t port) {
     memset(s, 0, sizeof(*s));
     rt_obj_set_finalizer(s, rt_ws_server_finalize);
     s->port = port;
+    s->worker_pool = rt_threadpool_new(ws_server_default_worker_count());
+    if (!s->worker_pool) {
+        rt_trap("WsServer: worker pool allocation failed");
+        if (rt_obj_release_check0(s))
+            rt_obj_free(s);
+        return NULL;
+    }
     WS_MUTEX_INIT(&s->lock);
     s->lock_initialized = true;
+    for (int i = 0; i < WS_SERVER_MAX_CLIENTS; i++)
+        WS_MUTEX_INIT(&s->clients[i].io);
+    s->client_io_initialized = true;
     return s;
 }
 
@@ -529,7 +796,20 @@ void rt_ws_server_start(void *obj) {
         return;
     }
     s->port = rt_tcp_server_port(s->tcp_server);
+    if (!s->worker_pool) {
+        s->worker_pool = rt_threadpool_new(ws_server_default_worker_count());
+        if (!s->worker_pool) {
+            rt_tcp_server_close(s->tcp_server);
+            if (rt_obj_release_check0(s->tcp_server))
+                rt_obj_free(s->tcp_server);
+            s->tcp_server = NULL;
+            rt_trap("WsServer: worker pool allocation failed");
+            return;
+        }
+    }
+    WS_MUTEX_LOCK(&s->lock);
     s->running = true;
+    WS_MUTEX_UNLOCK(&s->lock);
 
 #ifdef _WIN32
     s->accept_thread = CreateThread(NULL, 0, ws_accept_loop, s, 0, NULL);
@@ -538,7 +818,9 @@ void rt_ws_server_start(void *obj) {
     s->thread_started = pthread_create(&s->accept_thread, NULL, ws_accept_loop, s) == 0;
 #endif
     if (!s->thread_started) {
+        WS_MUTEX_LOCK(&s->lock);
         s->running = false;
+        WS_MUTEX_UNLOCK(&s->lock);
         rt_tcp_server_close(s->tcp_server);
         if (rt_obj_release_check0(s->tcp_server))
             rt_obj_free(s->tcp_server);
@@ -555,7 +837,13 @@ void rt_ws_server_stop(void *obj) {
     if (!obj)
         return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
-    s->running = false;
+    if (s->lock_initialized) {
+        WS_MUTEX_LOCK(&s->lock);
+        s->running = false;
+        WS_MUTEX_UNLOCK(&s->lock);
+    } else {
+        s->running = false;
+    }
 
     if (s->tcp_server) {
         rt_tcp_server_close(s->tcp_server);
@@ -574,14 +862,21 @@ void rt_ws_server_stop(void *obj) {
         s->thread_started = false;
     }
 
-    WS_MUTEX_LOCK(&s->lock);
-    for (int i = 0; i < s->client_count; i++) {
-        if (s->clients[i].active && s->clients[i].tcp)
+    for (int i = 0; i < WS_SERVER_MAX_CLIENTS; i++) {
+        WS_MUTEX_LOCK(&s->clients[i].io);
+        WS_MUTEX_LOCK(&s->lock);
+        if (i < s->client_count && s->clients[i].active && s->clients[i].tcp)
             ws_release_tcp(&s->clients[i].tcp);
         s->clients[i].active = false;
+        WS_MUTEX_UNLOCK(&s->lock);
+        WS_MUTEX_UNLOCK(&s->clients[i].io);
     }
+    WS_MUTEX_LOCK(&s->lock);
     s->client_count = 0;
     WS_MUTEX_UNLOCK(&s->lock);
+
+    if (s->worker_pool)
+        rt_threadpool_wait(s->worker_pool);
 }
 
 void rt_ws_server_set_subprotocol(void *obj, rt_string subprotocol) {
@@ -620,24 +915,49 @@ rt_string rt_ws_server_subprotocol(void *obj) {
 
 /// @brief Send a TEXT frame to every connected client. Clients whose send fails are marked
 /// inactive and their TCP handles released — handles dead-client cleanup as a side effect.
-/// Holds the client-list mutex during the entire broadcast (caller blocks on long sends).
+/// Snapshots the client list, then sends per client under that client's io
+/// mutex so broadcast bytes never interleave with its worker's PONG/CLOSE
+/// frames — and a slow peer only stalls its own send, not other clients.
 void rt_ws_server_broadcast(void *obj, rt_string message) {
     if (!obj)
         return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     const char *msg = rt_string_cstr(message);
-    size_t len = msg ? strlen(msg) : 0;
+    int64_t len64 = message ? rt_str_len(message) : 0;
+    size_t len = (msg && len64 > 0) ? (size_t)len64 : 0; // full byte length: embedded NUL is data
+    ws_broadcast_target_t targets[WS_SERVER_MAX_CLIENTS];
+    int target_count = 0;
 
     WS_MUTEX_LOCK(&s->lock);
     for (int i = 0; i < s->client_count; i++) {
-        if (s->clients[i].active && s->clients[i].tcp && rt_tcp_is_open(s->clients[i].tcp)) {
-            if (!ws_server_send_frame(s->clients[i].tcp, WS_OP_TEXT, msg, len)) {
-                ws_release_tcp(&s->clients[i].tcp);
-                s->clients[i].active = false;
-            }
-        }
+        if (s->clients[i].active && s->clients[i].tcp)
+            targets[target_count++] = (ws_broadcast_target_t){i, s->clients[i].tcp};
     }
     WS_MUTEX_UNLOCK(&s->lock);
+
+    for (int i = 0; i < target_count; i++) {
+        int should_send = 0;
+        int ok = 1;
+        WS_MUTEX_LOCK(&s->clients[targets[i].slot].io);
+        WS_MUTEX_LOCK(&s->lock);
+        if (targets[i].slot < s->client_count && s->clients[targets[i].slot].active &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp && rt_tcp_is_open(targets[i].tcp)) {
+            should_send = 1;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+
+        if (should_send)
+            ok = ws_server_send_frame(targets[i].tcp, WS_OP_TEXT, msg, len);
+
+        WS_MUTEX_LOCK(&s->lock);
+        if (!ok && targets[i].slot < s->client_count &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp) {
+            ws_release_tcp(&s->clients[targets[i].slot].tcp);
+            s->clients[targets[i].slot].active = false;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+        WS_MUTEX_UNLOCK(&s->clients[targets[i].slot].io);
+    }
 }
 
 /// @brief Binary-frame variant of `_broadcast`. `data` is interpreted as a `(int64 length, uint8*)`
@@ -655,16 +975,39 @@ void rt_ws_server_broadcast_bytes(void *obj, void *data) {
     int64_t len = ((bi *)data)->l;
     uint8_t *ptr = ((bi *)data)->d;
 
+    ws_broadcast_target_t targets[WS_SERVER_MAX_CLIENTS];
+    int target_count = 0;
+
     WS_MUTEX_LOCK(&s->lock);
     for (int i = 0; i < s->client_count; i++) {
-        if (s->clients[i].active && s->clients[i].tcp && rt_tcp_is_open(s->clients[i].tcp)) {
-            if (!ws_server_send_frame(s->clients[i].tcp, WS_OP_BINARY, ptr, (size_t)len)) {
-                ws_release_tcp(&s->clients[i].tcp);
-                s->clients[i].active = false;
-            }
-        }
+        if (s->clients[i].active && s->clients[i].tcp)
+            targets[target_count++] = (ws_broadcast_target_t){i, s->clients[i].tcp};
     }
     WS_MUTEX_UNLOCK(&s->lock);
+
+    for (int i = 0; i < target_count; i++) {
+        int should_send = 0;
+        int ok = 1;
+        WS_MUTEX_LOCK(&s->clients[targets[i].slot].io);
+        WS_MUTEX_LOCK(&s->lock);
+        if (targets[i].slot < s->client_count && s->clients[targets[i].slot].active &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp && rt_tcp_is_open(targets[i].tcp)) {
+            should_send = 1;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+
+        if (should_send)
+            ok = ws_server_send_frame(targets[i].tcp, WS_OP_BINARY, ptr, (size_t)len);
+
+        WS_MUTEX_LOCK(&s->lock);
+        if (!ok && targets[i].slot < s->client_count &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp) {
+            ws_release_tcp(&s->clients[targets[i].slot].tcp);
+            s->clients[targets[i].slot].active = false;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+        WS_MUTEX_UNLOCK(&s->clients[targets[i].slot].io);
+    }
 }
 
 /// @brief Count active clients (only counts slots flagged active — slots from disconnected
@@ -846,7 +1189,8 @@ void rt_ws_server_client_send(void *tcp, rt_string message) {
     if (!tcp)
         return;
     const char *msg = rt_string_cstr(message);
-    size_t len = msg ? strlen(msg) : 0;
+    int64_t len64 = message ? rt_str_len(message) : 0;
+    size_t len = (msg && len64 > 0) ? (size_t)len64 : 0; // full byte length: embedded NUL is data
     if (!ws_server_send_frame(tcp, WS_OP_TEXT, msg, len))
         rt_tcp_close(tcp);
 }

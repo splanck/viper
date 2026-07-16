@@ -80,54 +80,110 @@ static void strip_filename(char *path) {
 ///         or "." for macOS/ViperDOS/unknown-platform fallback.
 char *rt_path_exe_dir_cstr(void) {
 #if defined(_WIN32)
-    // Windows: GetModuleFileNameA
-    char buf[MAX_PATH];
-    DWORD len = GetModuleFileNameA(NULL, buf, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH)
-        return NULL;
-    buf[len] = '\0';
-    strip_filename(buf);
-    return strdup(buf);
+    // Windows: GetModuleFileNameW into a growing buffer so long paths and paths
+    // not representable in the ANSI code page are handled, with explicit
+    // truncation detection (VDOC-185). When the return equals the buffer size
+    // the path was truncated (GetLastError() == ERROR_INSUFFICIENT_BUFFER).
+    DWORD cap = 256;
+    for (;;) {
+        wchar_t *wbuf = (wchar_t *)malloc((size_t)cap * sizeof(wchar_t));
+        if (!wbuf)
+            return NULL;
+        DWORD len = GetModuleFileNameW(NULL, wbuf, cap);
+        if (len == 0) {
+            free(wbuf);
+            return NULL;
+        }
+        if (len >= cap) {
+            free(wbuf);
+            if (cap > (DWORD)0x40000000u)
+                return NULL; // refuse to grow without bound
+            cap *= 2;
+            continue;
+        }
+        wbuf[len] = L'\0';
+        int u8_len = WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, NULL, 0, NULL, NULL);
+        if (u8_len <= 0) {
+            free(wbuf);
+            return NULL;
+        }
+        char *u8 = (char *)malloc((size_t)u8_len);
+        if (!u8) {
+            free(wbuf);
+            return NULL;
+        }
+        WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, u8, u8_len, NULL, NULL);
+        free(wbuf);
+        strip_filename(u8);
+        return u8;
+    }
 
 #elif defined(__APPLE__)
-    // macOS: use /proc/self alternative — _NSGetExecutablePath
-    // via dlsym to avoid native linker binding issues.
+    // macOS: _NSGetExecutablePath via dlsym (avoids native linker binding
+    // issues). It reports the required size when the buffer is too small, so we
+    // size dynamically instead of falling back to "." on long paths (VDOC-185).
     {
         typedef int (*nsget_fn)(char *, uint32_t *);
         void *handle = dlopen(NULL, RTLD_LAZY);
         if (!handle)
-            return strdup(".");
+            return NULL;
         nsget_fn fn = (nsget_fn)dlsym(handle, "_NSGetExecutablePath");
         if (!fn) {
             dlclose(handle);
-            return strdup(".");
+            return NULL;
         }
 
-        char raw[PATH_MAX];
-        uint32_t size = sizeof(raw);
-        if (fn(raw, &size) != 0) {
+        uint32_t size = 0;
+        fn(NULL, &size); // query required size (returns -1, sets size)
+        if (size == 0)
+            size = PATH_MAX;
+        char *raw = (char *)malloc(size);
+        if (!raw) {
             dlclose(handle);
-            return strdup(".");
+            return NULL;
+        }
+        if (fn(raw, &size) != 0) {
+            free(raw);
+            dlclose(handle);
+            return NULL;
         }
         dlclose(handle);
 
-        char resolved[PATH_MAX];
-        if (!realpath(raw, resolved))
-            return strdup(".");
-
+        char *resolved = realpath(raw, NULL); // NULL => malloc'd result
+        free(raw);
+        if (!resolved)
+            return NULL;
         strip_filename(resolved);
-        return strdup(resolved);
+        return resolved; // realpath's buffer is malloc'd; caller frees
     }
 
 #elif defined(__linux__)
-    // Linux: readlink("/proc/self/exe") → dirname
-    char buf[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len <= 0)
-        return NULL;
-    buf[len] = '\0';
-    strip_filename(buf);
-    return strdup(buf);
+    // Linux: readlink("/proc/self/exe") into a growing buffer with truncation
+    // detection — a return equal to the buffer size may be truncated, so grow
+    // and retry (VDOC-185).
+    {
+        size_t cap = 256;
+        for (;;) {
+            char *buf = (char *)malloc(cap);
+            if (!buf)
+                return NULL;
+            ssize_t len = readlink("/proc/self/exe", buf, cap);
+            if (len <= 0) {
+                free(buf);
+                return NULL;
+            }
+            if ((size_t)len == cap) {
+                free(buf);
+                if (cap > (size_t)0x40000000u)
+                    return NULL; // refuse to grow without bound
+                cap *= 2;
+                continue;
+            }
+            buf[len] = '\0';
+            strip_filename(buf);
+            return buf;
+        }
+    }
 
 #elif defined(__viperdos__)
     // ViperDOS: no meaningful exe path; return current directory.

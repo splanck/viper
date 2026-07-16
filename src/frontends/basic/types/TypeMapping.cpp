@@ -28,6 +28,10 @@ namespace il::frontends::basic::types {
 std::optional<Type> mapIlToBasic(const il::core::Type &ilType) {
     using K = il::core::Type::Kind;
     switch (ilType.kind) {
+        case K::I16:
+            // Map 16-bit integers to BASIC integer type (64-bit internal);
+            // call lowering inserts a checked narrow at the call site.
+            return Type::I64;
         case K::I32:
             // Map 32-bit integers to BASIC integer type (64-bit internal).
             return Type::I64;
@@ -46,7 +50,7 @@ std::optional<Type> mapIlToBasic(const il::core::Type &ilType) {
             // Semantic/OOP layers handle object identity and method resolution.
             return Type::I64;
         default:
-            return std::nullopt; // Unsupported (i16/i32/ptr/error/resumetok)
+            return std::nullopt; // Unsupported (error/resumetok)
     }
 }
 

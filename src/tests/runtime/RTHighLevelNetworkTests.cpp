@@ -23,23 +23,28 @@
 #include "rt_bytes.h"
 #include "rt_http2.h"
 #include "rt_http_client.h"
+#include "rt_http_router.h"
 #include "rt_http_server.h"
 #include "rt_https_server.h"
 #include "rt_map.h"
 #include "rt_netutils.h"
 #include "rt_network.h"
 #include "rt_object.h"
+#include "rt_restclient.h"
 #include "rt_result.h"
 #include "rt_smtp.h"
 #include "rt_sse.h"
 #include "rt_string.h"
 #include "rt_tls.h"
 #include "rt_websocket.h"
+#include "rt_ws_server.h"
 #include "rt_wss_server.h"
 
 #include <atomic>
 #include <cassert>
+#include <cctype>
 #include <chrono>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -72,6 +77,31 @@ static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
+
+// -- Trap interception (validation-strictness tests) -------------------------
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+static const char *g_last_trap = nullptr;
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    fprintf(stderr, "UNEXPECTED TRAP: %s\n", msg ? msg : "(null)");
+    _exit(1);
+}
+
+/// Expect `expr` to trap; capture the message and continue.
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static std::atomic<bool> api_server_ready{false};
 static std::atomic<bool> api_server_failed{false};
@@ -632,6 +662,95 @@ static void sse_plain_server_thread(int port) {
     rt_tcp_server_close(server);
 }
 
+/// @brief Responds with a caller-chosen header block and closes (for
+///        validation-strictness probes).
+static std::string sse_bad_header_response;
+static void sse_bad_header_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+    api_server_failed = false;
+    api_server_ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (client) {
+        read_http_request_headers(client);
+        send_text(client, sse_bad_header_response.c_str());
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        rt_tcp_close(client);
+    }
+    rt_tcp_server_close(server);
+}
+
+/// @brief Two events (typed then untyped), a quiet gap, then close — for
+///        dispatch-type reset and Result-shaped receive probes.
+static void sse_two_event_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+    api_server_failed = false;
+    api_server_ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (client) {
+        read_http_request_headers(client);
+        send_text(client,
+                  "HTTP/1.1 200 OK\r\n"
+                  "Content-Type: text/event-stream\r\n"
+                  "Connection: close\r\n"
+                  "\r\n"
+                  "retry: 50\r\n"
+                  "event: greet\r\n"
+                  "data: hello\r\n"
+                  "\r\n"
+                  "data: second\r\n"
+                  "\r\n");
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+        rt_tcp_close(client);
+    }
+    rt_tcp_server_close(server);
+}
+
+/// @brief Sends a partial `data:` line, pauses past the client's timed
+///        receive, then completes the event (VDOC-151 lossless-timeout probe).
+static void sse_partial_then_complete_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+
+    api_server_failed = false;
+    api_server_ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    read_http_request_headers(client);
+    send_text(client,
+              "HTTP/1.1 200 OK\r\n"
+              "Content-Type: text/event-stream\r\n"
+              "Connection: close\r\n"
+              "\r\n"
+              "data: par"); // deliberately unterminated
+    std::this_thread::sleep_for(std::chrono::milliseconds(900));
+    send_text(client, "tial\r\n\r\n");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
 static void sse_chunked_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
     if (!server) {
@@ -807,6 +926,81 @@ static void smtp_no_starttls_server_thread(int port) {
 static void smtp_forwarding_rcpt_server_thread(int port) {
     smtp_server_thread(
         port, "250-localhost\r\n250 SIZE 1024\r\n", "251 User not local; will forward\r\n", true);
+}
+
+/// @brief Advertises STARTTLS, accepts the upgrade command, then answers the
+///        TLS ClientHello with garbage so the handshake fails (VDOC-156).
+static void smtp_broken_starttls_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+    api_server_failed = false;
+    api_server_ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (client) {
+        send_text(client, "220 localhost ESMTP ready\r\n");
+        rt_string line = rt_tcp_recv_line(client); // EHLO
+        rt_string_unref(line);
+        send_text(client, "250-localhost\r\n250 STARTTLS\r\n");
+        line = rt_tcp_recv_line(client); // STARTTLS
+        rt_string_unref(line);
+        send_text(client, "220 Ready to start TLS\r\n");
+        // Not a TLS ServerHello: the client handshake must fail cleanly.
+        send_text(client, "this is definitely not TLS\r\n");
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        rt_tcp_close(client);
+    }
+    rt_tcp_server_close(server);
+}
+
+/// @brief STARTTLS handshake failure must fail the send cleanly with a single
+///        descriptor close and leave the client reusable (VDOC-156).
+static void test_smtp_starttls_handshake_failure_is_clean() {
+    printf("\nTesting SmtpClient STARTTLS handshake-failure cleanup:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(smtp_broken_starttls_server_thread, port);
+    while (!api_server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *client = rt_smtp_new(rt_const_cstr("127.0.0.1"), port);
+    rt_smtp_set_tls(client, 1);
+    void *res = rt_smtp_send_result(client,
+                                    rt_const_cstr("a@example.com"),
+                                    rt_const_cstr("b@example.com"),
+                                    rt_const_cstr("s"),
+                                    rt_const_cstr("b"));
+    test_result("Handshake failure surfaces as Err", rt_result_is_err(res) == 1);
+    rt_string err = rt_result_unwrap_err_str(res);
+    test_result("Error names the TLS handshake",
+                strstr(rt_string_cstr(err), "TLS") != nullptr);
+    rt_string_unref(err);
+    server.join();
+
+    // The client object remains usable after the failed upgrade (no dangling
+    // transport state): a follow-up send fails cleanly too instead of
+    // crashing on a double-closed descriptor.
+    void *res2 = rt_smtp_send_result(client,
+                                     rt_const_cstr("a@example.com"),
+                                     rt_const_cstr("b@example.com"),
+                                     rt_const_cstr("s"),
+                                     rt_const_cstr("b"));
+    test_result("Client survives for a follow-up attempt", rt_result_is_err(res2) == 1);
 }
 
 static void http_cookie_scope_server_thread(int port) {
@@ -1031,6 +1225,157 @@ static void test_sse_chunked_event() {
     server.join();
 }
 
+/// @brief WssServer constructor validates credential handles (VDOC-161).
+static void test_wss_server_credential_validation() {
+    printf("\nTesting WssServer credential-path validation:\n");
+    EXPECT_TRAP(rt_wss_server_new(9443, nullptr, rt_const_cstr("key.pem")));
+    test_result("NULL certificate handle traps",
+                g_last_trap && strstr(g_last_trap, "certificate") != nullptr);
+    rt_string nul_path = rt_string_from_bytes("cert.pem\0.bak", 13);
+    EXPECT_TRAP(rt_wss_server_new(9443, nul_path, rt_const_cstr("key.pem")));
+    test_result("Embedded-NUL certificate path traps",
+                g_last_trap && strstr(g_last_trap, "certificate") != nullptr);
+    rt_string_unref(nul_path);
+}
+
+/// @brief Validation strictness and dispatch-state fixes (VDOC-152): exact
+///        media/transfer codings, per-event type reset, Result-shaped receive.
+static void test_sse_validation_and_dispatch_state() {
+    printf("\nTesting SseClient validation and dispatch state:\n");
+
+    // Round 1: text/event-streaming is NOT text/event-stream.
+    int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    api_server_ready = false;
+    api_server_failed = false;
+    sse_bad_header_response = "HTTP/1.1 200 OK\r\n"
+                              "Content-Type: text/event-streaming\r\n"
+                              "Connection: close\r\n"
+                              "\r\n";
+    std::thread bad_type_server(sse_bad_header_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        bad_type_server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    char url_buf[128];
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/bad", port);
+    EXPECT_TRAP(rt_sse_connect(rt_const_cstr(url_buf)));
+    test_result("text/event-streaming is rejected",
+                g_last_trap && strstr(g_last_trap, "text/event-stream") != nullptr);
+    bad_type_server.join();
+
+    // Round 2: unsupported Transfer-Encoding is rejected.
+    port = (int)rt_netutils_get_free_port();
+    api_server_ready = false;
+    api_server_failed = false;
+    sse_bad_header_response = "HTTP/1.1 200 OK\r\n"
+                              "Content-Type: text/event-stream\r\n"
+                              "Transfer-Encoding: gzip, chunked\r\n"
+                              "Connection: close\r\n"
+                              "\r\n";
+    std::thread bad_te_server(sse_bad_header_server_thread, port);
+    wait_for_server();
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/badte", port);
+    EXPECT_TRAP(rt_sse_connect(rt_const_cstr(url_buf)));
+    test_result("Unsupported Transfer-Encoding is rejected",
+                g_last_trap && strstr(g_last_trap, "Transfer-Encoding") != nullptr);
+    bad_te_server.join();
+
+    // Round 3: dispatch-type reset + Result-shaped receive outcomes.
+    port = (int)rt_netutils_get_free_port();
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread stream_server(sse_two_event_server_thread, port);
+    wait_for_server();
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/events", port);
+    void *sse = rt_sse_connect(rt_const_cstr(url_buf));
+    test_result("SSE connection opens", sse != nullptr && rt_sse_is_open(sse) == 1);
+
+    void *r1 = rt_sse_recv_for_result(sse, 2000);
+    test_result("First event arrives as Ok", rt_result_is_ok(r1) == 1);
+    rt_string t1 = rt_sse_last_event_type(sse);
+    test_result("First event type is greet", strcmp(rt_string_cstr(t1), "greet") == 0);
+    rt_string_unref(t1);
+
+    void *r2 = rt_sse_recv_for_result(sse, 2000);
+    test_result("Second event arrives as Ok", rt_result_is_ok(r2) == 1);
+    rt_string d2 = rt_result_unwrap_str(r2);
+    test_result("Second event data matches", strcmp(rt_string_cstr(d2), "second") == 0);
+    rt_string t2 = rt_sse_last_event_type(sse);
+    test_result("Untyped event resets the dispatch type", rt_string_cstr(t2)[0] == '\0');
+    rt_string_unref(t2);
+
+    // Quiet stream: a timed receive reports timeout, not an empty event.
+    void *r3 = rt_sse_recv_for_result(sse, 300);
+    test_result("Quiet stream reports Err timeout", rt_result_is_err(r3) == 1);
+
+    // After the server closes (retry: 50 keeps the reconnect attempt fast),
+    // the outcome is a closed-stream error, distinct from timeout.
+    void *r4 = rt_sse_recv_for_result(sse, 3000);
+    test_result("Stream end reports Err", rt_result_is_err(r4) == 1);
+    rt_string err4 = rt_result_unwrap_err_str(r4);
+    test_result("Stream-end error names the closed stream",
+                strstr(rt_string_cstr(err4), "closed") != nullptr);
+    rt_string_unref(err4);
+
+    rt_sse_close(sse);
+    stream_server.join();
+}
+
+/// @brief RecvFor is a real event deadline and a timeout is lossless
+///        (VDOC-151): the partial line survives and the next receive
+///        delivers the complete event.
+static void test_sse_timed_recv_is_lossless() {
+    printf("\nTesting SseClient lossless timed receive:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(sse_partial_then_complete_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/slow", port);
+    void *sse = rt_sse_connect(rt_const_cstr(url_buf));
+    test_result("SSE connection opens", sse != nullptr && rt_sse_is_open(sse) == 1);
+
+    // The server sent only "data: par" — this timed receive must expire
+    // within its budget and must NOT deliver the fragment as an event.
+    auto start = std::chrono::steady_clock::now();
+    rt_string first = rt_sse_recv_for(sse, 400);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+    test_result("Timed receive returns empty on timeout", rt_string_cstr(first)[0] == '\0');
+    test_result("Timed receive honors its event deadline", elapsed < 800);
+    test_result("Connection survives the timeout", rt_sse_is_open(sse) == 1);
+    rt_string_unref(first);
+
+    // The completed line must resume from the preserved fragment.
+    rt_string second = rt_sse_recv_for(sse, 3000);
+    test_result("Next receive delivers the complete event",
+                strcmp(rt_string_cstr(second), "partial") == 0);
+    rt_string_unref(second);
+
+    rt_sse_close(sse);
+    server.join();
+}
+
 static void test_sse_resume_after_disconnect() {
     printf("\nTesting SseClient reconnect and resume:\n");
 
@@ -1130,6 +1475,53 @@ static void test_sse_redirect_to_stream() {
     rt_sse_close(sse);
     rt_http_server_stop(redirect_server);
     target_server.join();
+}
+
+/// @brief SmtpClient error-model fixes (VDOC-155): constructor validation and
+///        trap-free Result sends.
+static void test_smtp_validation_and_result_model() {
+    printf("\nTesting SmtpClient validation and Result model:\n");
+
+    // Constructor rejects empty and NUL-truncating hosts.
+    EXPECT_TRAP(rt_smtp_new(rt_const_cstr(""), 25));
+    test_result("Empty host is rejected",
+                g_last_trap && strstr(g_last_trap, "invalid host") != nullptr);
+    rt_string nul_host = rt_string_from_bytes("smtp.example.com\0evil", 21);
+    EXPECT_TRAP(rt_smtp_new(nul_host, 25));
+    test_result("Embedded-NUL host is rejected",
+                g_last_trap && strstr(g_last_trap, "invalid host") != nullptr);
+    rt_string_unref(nul_host);
+
+    // SendResult converts transport traps (connection refused) into ErrStr.
+    const int closed_port = (int)rt_netutils_get_free_port();
+    if (closed_port <= 0) {
+        printf("  SKIP: could not allocate local port\n");
+        return;
+    }
+    void *client = rt_smtp_new(rt_const_cstr("127.0.0.1"), closed_port);
+    void *res = rt_smtp_send_result(client,
+                                    rt_const_cstr("a@example.com"),
+                                    rt_const_cstr("b@example.com"),
+                                    rt_const_cstr("subject"),
+                                    rt_const_cstr("body"));
+    test_result("Transport failure surfaces as Err (no trap)", rt_result_is_err(res) == 1);
+    rt_string err = rt_result_unwrap_err_str(res);
+    test_result("Err message is non-empty", rt_string_cstr(err)[0] != '\0');
+    rt_string_unref(err);
+
+    // NUL-truncating message fields fail cleanly instead of sending a prefix.
+    rt_string nul_subject = rt_string_from_bytes("hi\0jacked", 9);
+    void *res2 = rt_smtp_send_result(client,
+                                     rt_const_cstr("a@example.com"),
+                                     rt_const_cstr("b@example.com"),
+                                     nul_subject,
+                                     rt_const_cstr("body"));
+    test_result("NUL-truncating field surfaces as Err", rt_result_is_err(res2) == 1);
+    rt_string err2 = rt_result_unwrap_err_str(res2);
+    test_result("NUL rejection names the cause",
+                strstr(rt_string_cstr(err2), "NUL") != nullptr);
+    rt_string_unref(err2);
+    rt_string_unref(nul_subject);
 }
 
 static void test_smtp_plain_send_sanitizes_and_dot_stuffs() {
@@ -1360,6 +1752,56 @@ static void test_http_client_manual_cookie_is_host_only() {
                 http_cookie_headers[2].find("manualToken=hostonly") != std::string::npos);
 }
 
+/// @brief Manual cookie-jar safety rules (VDOC-153): response-grade
+///        validation, host-only scope, case-sensitive names, empty values,
+///        and explicit deletion.
+static void test_http_client_cookie_jar_rules() {
+    printf("\nTesting HttpClient cookie jar safety rules:\n");
+
+    void *client = rt_http_client_new();
+
+    // The finding's supercookie probe: a cookie set for "com" must never be
+    // visible to example.com (host-only storage), and header-syntax
+    // injection is rejected outright.
+    rt_http_client_set_cookie(
+        client, rt_const_cstr("com"), rt_const_cstr("super"), rt_const_cstr("cookie"));
+    void *super_scope = rt_http_client_get_cookies(client, rt_const_cstr("example.com"));
+    test_result("No supercookie: 'com' cookie invisible to example.com",
+                rt_map_len(super_scope) == 0);
+    EXPECT_TRAP(rt_http_client_set_cookie(
+        client, rt_const_cstr("example.com"), rt_const_cstr("bad;name"), rt_const_cstr("v")));
+    test_result("Separator in cookie name traps",
+                g_last_trap && strstr(g_last_trap, "name or value") != nullptr);
+    EXPECT_TRAP(rt_http_client_set_cookie(
+        client, rt_const_cstr("example.com"), rt_const_cstr("n"), rt_const_cstr("a;b")));
+    test_result("Semicolon in cookie value traps",
+                g_last_trap && strstr(g_last_trap, "name or value") != nullptr);
+
+    // Manual cookies are host-only: not visible to subdomains.
+    rt_http_client_set_cookie(
+        client, rt_const_cstr("example.com"), rt_const_cstr("SID"), rt_const_cstr("one"));
+    void *sub = rt_http_client_get_cookies(client, rt_const_cstr("sub.example.com"));
+    test_result("Manual cookie is host-only", rt_map_len(sub) == 0);
+    void *exact = rt_http_client_get_cookies(client, rt_const_cstr("example.com"));
+    test_result("Manual cookie visible on the exact host", rt_map_len(exact) == 1);
+
+    // Cookie names are case-sensitive: SID and sid coexist.
+    rt_http_client_set_cookie(
+        client, rt_const_cstr("example.com"), rt_const_cstr("sid"), rt_const_cstr("two"));
+    void *both = rt_http_client_get_cookies(client, rt_const_cstr("example.com"));
+    test_result("Case-distinct cookie names coexist", rt_map_len(both) == 2);
+
+    // Empty values are stored, and deletion is explicit.
+    rt_http_client_set_cookie(
+        client, rt_const_cstr("example.com"), rt_const_cstr("empty"), rt_const_cstr(""));
+    void *with_empty = rt_http_client_get_cookies(client, rt_const_cstr("example.com"));
+    test_result("Empty-valued cookie is stored", rt_map_len(with_empty) == 3);
+    rt_http_client_delete_cookie(client, rt_const_cstr("example.com"), rt_const_cstr("SID"));
+    rt_http_client_delete_cookie(client, rt_const_cstr("example.com"), rt_const_cstr("empty"));
+    void *after_delete = rt_http_client_get_cookies(client, rt_const_cstr("example.com"));
+    test_result("DeleteCookie removes exactly the named cookies", rt_map_len(after_delete) == 1);
+}
+
 static void test_http_client_cross_origin_redirect_strips_sensitive_headers() {
     printf("\nTesting HttpClient cross-origin redirect credential stripping:\n");
 
@@ -1500,6 +1942,236 @@ static void test_http_client_keepalive_reuse() {
                 http_keepalive_connection_headers[0].find("keep-alive") != std::string::npos);
     test_result("HttpClient second request advertises keep-alive",
                 http_keepalive_connection_headers[1].find("keep-alive") != std::string::npos);
+}
+
+// ── Router concurrency (VDOC-143) ──────────────────────────────────────────
+
+/// @brief Concurrent Add and Match on one router must be safe: Add publishes
+///        under a write lock while Match holds a read lock.
+static void test_router_concurrent_add_and_match() {
+    printf("\nTesting HttpRouter concurrent add/match:\n");
+
+    void *router = rt_http_router_new();
+    rt_http_router_get(router, rt_const_cstr("/warm/:id"));
+
+    std::atomic<bool> stop{false};
+    std::atomic<long> matches{0};
+    auto matcher = [&]() {
+        while (!stop.load()) {
+            void *m =
+                rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/warm/7"));
+            assert(m != nullptr);
+            if (rt_obj_release_check0(m))
+                rt_obj_free(m);
+            matches.fetch_add(1);
+        }
+    };
+    std::thread t1(matcher);
+    std::thread t2(matcher);
+
+    const int kRoutes = 2000;
+    for (int i = 0; i < kRoutes; i++) {
+        char pat[64];
+        int n = snprintf(pat, sizeof(pat), "/route%d/:x", i);
+        rt_string pattern = rt_string_from_bytes(pat, (size_t)n);
+        rt_http_router_get(router, pattern);
+        rt_string_unref(pattern);
+    }
+
+    stop = true;
+    t1.join();
+    t2.join();
+
+    test_result("Concurrent adds all registered",
+                rt_http_router_count(router) == kRoutes + 1);
+    test_result("Matcher threads made progress during registration", matches.load() > 0);
+    if (rt_obj_release_check0(router))
+        rt_obj_free(router);
+}
+
+// ── Header canonicalization (VDOC-139) ─────────────────────────────────────
+
+static std::string http_header_capture_raw;
+
+/// @brief Accept one client, capture the raw request head (through the blank
+///        line) into `http_header_capture_raw`, and answer 200/close.
+static void http_header_capture_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+
+    api_server_failed = false;
+    api_server_ready = true;
+    http_header_capture_raw.clear();
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    std::string raw;
+    while (raw.size() < 16384) {
+        rt_string ch = rt_tcp_recv_str(client, 1);
+        if (!ch)
+            break;
+        const char *c = rt_string_cstr(ch);
+        if (!c || !*c) {
+            rt_string_unref(ch);
+            break;
+        }
+        raw.push_back(c[0]);
+        rt_string_unref(ch);
+        if (raw.size() >= 4 && raw.compare(raw.size() - 4, 4, "\r\n\r\n") == 0)
+            break;
+    }
+    http_header_capture_raw = raw;
+
+    send_text(client,
+              "HTTP/1.1 200 OK\r\n"
+              "Content-Length: 2\r\n"
+              "Connection: close\r\n"
+              "\r\n"
+              "ok");
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
+/// @brief Count case-insensitive occurrences of a header name at field starts.
+static int count_header_fields_ci(const std::string &raw, const char *name) {
+    std::string lowered(raw);
+    for (char &c : lowered)
+        c = (char)tolower((unsigned char)c);
+    std::string needle = std::string("\r\n") + name + ":";
+    for (char &c : needle)
+        c = (char)tolower((unsigned char)c);
+    int count = 0;
+    size_t pos = 0;
+    while ((pos = lowered.find(needle, pos)) != std::string::npos) {
+        count++;
+        pos += needle.size();
+    }
+    return count;
+}
+
+/// @brief `SetHeader` must replace case-insensitively while `AddHeader`
+///        appends; RestClient defaults and `ClearAuth` must be
+///        case-insensitive (VDOC-139).
+static void test_header_case_insensitive_configuration() {
+    printf("\nTesting case-insensitive header configuration:\n");
+
+    // Round 1: HttpReq SetHeader replace vs AddHeader append.
+    int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(http_header_capture_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/headers", port);
+    void *req = rt_http_req_new(rt_const_cstr("GET"), rt_const_cstr(url_buf));
+    rt_http_req_set_header(req, rt_const_cstr("X-Test"), rt_const_cstr("first"));
+    rt_http_req_set_header(req, rt_const_cstr("x-test"), rt_const_cstr("second"));
+    rt_http_req_add_header(req, rt_const_cstr("X-Multi"), rt_const_cstr("1"));
+    rt_http_req_add_header(req, rt_const_cstr("x-multi"), rt_const_cstr("2"));
+    void *res = rt_http_req_send(req);
+    test_result("Header request succeeds", rt_http_res_status(res) == 200);
+    server.join();
+
+    test_result("SetHeader replaces across casings",
+                count_header_fields_ci(http_header_capture_raw, "X-Test") == 1);
+    test_result("SetHeader keeps the last value",
+                http_header_capture_raw.find("second") != std::string::npos &&
+                    http_header_capture_raw.find("first") == std::string::npos);
+    test_result("AddHeader appends repeated fields",
+                count_header_fields_ci(http_header_capture_raw, "X-Multi") == 2);
+
+    // Round 2: RestClient mixed-case defaults and ClearAuth.
+    port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable for RestClient round\n");
+        return;
+    }
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server2(http_header_capture_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server2.join();
+        printf("  SKIP: local bind unavailable for RestClient round\n");
+        return;
+    }
+
+    char base_buf[128];
+    snprintf(base_buf, sizeof(base_buf), "http://127.0.0.1:%d", port);
+    void *rest = rt_restclient_new(rt_const_cstr(base_buf));
+    rt_restclient_set_header(rest, rt_const_cstr("Authorization"), rt_const_cstr("Bearer one"));
+    rt_restclient_set_header(rest, rt_const_cstr("authorization"), rt_const_cstr("Bearer two"));
+    rt_restclient_clear_auth(rest);
+    rt_restclient_set_header(rest, rt_const_cstr("X-Keep"), rt_const_cstr("yes"));
+    void *rest_res = rt_restclient_get(rest, rt_const_cstr("/auth"));
+    test_result("RestClient request succeeds",
+                rest_res != nullptr && rt_http_res_status(rest_res) == 200);
+    server2.join();
+
+    test_result("ClearAuth removes every Authorization casing",
+                count_header_fields_ci(http_header_capture_raw, "Authorization") == 0);
+    test_result("Unrelated defaults survive ClearAuth",
+                count_header_fields_ci(http_header_capture_raw, "X-Keep") == 1);
+}
+
+/// @brief Standalone `HttpReq.SetKeepAlive(true)` must reuse a pooled socket
+///        via the process-wide default connection pool (VDOC-138).
+static void test_standalone_httpreq_keepalive_reuse() {
+    printf("\nTesting standalone HttpReq keep-alive reuse:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(http_keepalive_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/standalone-reuse", port);
+
+    void *req1 = rt_http_req_new(rt_const_cstr("GET"), rt_const_cstr(url_buf));
+    rt_http_req_set_keep_alive(req1, 1);
+    void *res1 = rt_http_req_send(req1);
+    test_result("Standalone first keep-alive request succeeds", rt_http_res_status(res1) == 200);
+
+    void *req2 = rt_http_req_new(rt_const_cstr("GET"), rt_const_cstr(url_buf));
+    rt_http_req_set_keep_alive(req2, 1);
+    void *res2 = rt_http_req_send(req2);
+    test_result("Standalone second keep-alive request succeeds", rt_http_res_status(res2) == 200);
+
+    server.join();
+
+    test_result("Standalone requests reused a single accepted socket",
+                http_keepalive_reused.load());
+    test_result("Standalone keep-alive did not require a second accept",
+                http_keepalive_accept_count.load() == 1);
 }
 
 static void test_http_server_keepalive_response() {
@@ -1873,6 +2545,232 @@ static void test_https_server_rsa_roundtrip_with_verification() {
     rt_https_server_stop(server);
 }
 
+// ── Plain WsServer frame servicing (VDOC-148) ──────────────────────────────
+
+/// @brief Send a masked client frame over a raw runtime TCP handle.
+static bool tcp_send_ws_client_frame(void *tcp,
+                                     uint8_t opcode,
+                                     const uint8_t *payload,
+                                     size_t len) {
+    if (!tcp || len > 125)
+        return false;
+    uint8_t frame[2 + 4 + 125];
+    frame[0] = (uint8_t)(0x80 | opcode);
+    frame[1] = (uint8_t)(0x80 | len);
+    const uint8_t mask[4] = {0x11, 0x22, 0x33, 0x44};
+    memcpy(frame + 2, mask, 4);
+    for (size_t i = 0; i < len; i++)
+        frame[6 + i] = (uint8_t)(payload[i] ^ mask[i % 4]);
+    rt_tcp_send_all_raw(tcp, frame, (int64_t)(6 + len));
+    return true;
+}
+
+/// @brief Receive one (small, unmasked) server frame from a raw TCP handle.
+static bool tcp_recv_ws_frame(void *tcp, uint8_t *opcode, std::vector<uint8_t> *payload) {
+    void *hdr = rt_tcp_recv_exact(tcp, 2);
+    if (!hdr || rt_bytes_len(hdr) != 2)
+        return false;
+    *opcode = (uint8_t)(rt_bytes_get(hdr, 0) & 0x0F);
+    size_t len = (size_t)(rt_bytes_get(hdr, 1) & 0x7F);
+    payload->clear();
+    if (len > 0) {
+        void *data = rt_tcp_recv_exact(tcp, (int64_t)len);
+        if (!data || (size_t)rt_bytes_len(data) != len)
+            return false;
+        for (size_t i = 0; i < len; i++)
+            payload->push_back((uint8_t)rt_bytes_get(data, i));
+    }
+    return true;
+}
+
+/// @brief The plain WsServer must service inbound frames exactly like the WSS
+///        server: answer PING, echo CLOSE, and clear the client count.
+static void test_ws_server_services_client_frames() {
+    printf("\nTesting plain WsServer frame servicing:\n");
+
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *server = rt_ws_server_new(port);
+    rt_ws_server_start(server);
+    if (!wait_for_condition([&]() { return rt_ws_server_is_running(server) == 1; }, 1000)) {
+        rt_ws_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *tcp = rt_tcp_connect(rt_const_cstr("127.0.0.1"), port);
+    test_result("Raw TCP client connects to WsServer", tcp != nullptr);
+
+    const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char request[512];
+    snprintf(request,
+             sizeof(request),
+             "GET /chat HTTP/1.1\r\n"
+             "Host: 127.0.0.1:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: %s\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "\r\n",
+             port,
+             ws_key);
+    rt_tcp_send_all_raw(tcp, request, (int64_t)strlen(request));
+
+    rt_string status = rt_tcp_recv_line(tcp);
+    test_result("WsServer returns 101 Switching Protocols",
+                strcmp(rt_string_cstr(status), "HTTP/1.1 101 Switching Protocols") == 0);
+    rt_string_unref(status);
+    // Drain the remaining response headers.
+    for (;;) {
+        rt_string line = rt_tcp_recv_line(tcp);
+        bool done = rt_string_cstr(line)[0] == '\0';
+        rt_string_unref(line);
+        if (done)
+            break;
+    }
+
+    test_result("WsServer tracks the connected client",
+                wait_for_condition([&]() { return rt_ws_server_client_count(server) == 1; }, 2000));
+
+    // The differentiator: the background server must answer PING with PONG.
+    const uint8_t ping_payload[2] = {'h', 'i'};
+    test_result("Client PING sent", tcp_send_ws_client_frame(tcp, 0x09, ping_payload, 2));
+    uint8_t opcode = 0;
+    std::vector<uint8_t> payload;
+    test_result("WsServer answers PING", tcp_recv_ws_frame(tcp, &opcode, &payload));
+    test_result("WsServer PONG opcode", opcode == 0x0A);
+    test_result("WsServer PONG echoes the payload",
+                payload.size() == 2 && payload[0] == 'h' && payload[1] == 'i');
+
+    // Broadcasts still reach the serviced client.
+    rt_ws_server_broadcast(server, rt_const_cstr("news"));
+    payload.clear();
+    test_result("WsServer broadcast text frame received", tcp_recv_ws_frame(tcp, &opcode, &payload));
+    test_result("WsServer broadcast opcode", opcode == 0x01);
+    test_result("WsServer broadcast payload matches",
+                std::string(payload.begin(), payload.end()) == "news");
+
+    // Text broadcasts carry the full runtime byte length: embedded NUL is
+    // data, not a terminator (VDOC-161).
+    rt_string nul_msg = rt_string_from_bytes("a\0b", 3);
+    rt_ws_server_broadcast(server, nul_msg);
+    rt_string_unref(nul_msg);
+    payload.clear();
+    test_result("NUL-bearing broadcast received", tcp_recv_ws_frame(tcp, &opcode, &payload));
+    test_result("NUL-bearing broadcast keeps its full byte length",
+                payload.size() == 3 && payload[0] == 'a' && payload[1] == '\0' &&
+                    payload[2] == 'b');
+
+    // Orderly close: server echoes the close frame and drops the client slot.
+    const uint8_t close_payload[2] = {0x03, 0xE8};
+    test_result("Client CLOSE sent", tcp_send_ws_client_frame(tcp, 0x08, close_payload, 2));
+    payload.clear();
+    test_result("WsServer echoes CLOSE", tcp_recv_ws_frame(tcp, &opcode, &payload));
+    test_result("WsServer CLOSE opcode", opcode == 0x08);
+    test_result("WsServer clears the client count after close",
+                wait_for_condition([&]() { return rt_ws_server_client_count(server) == 0; }, 2000));
+
+    rt_tcp_close(tcp);
+    if (rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+    rt_ws_server_stop(server);
+}
+
+/// @brief Port 0 requests an ephemeral port; `Port` reports the bound value
+///        after Start (VDOC-150), matching TcpServer/HttpServer behavior.
+static void test_ws_server_ephemeral_port() {
+    printf("\nTesting WsServer ephemeral port zero:\n");
+
+    void *server = rt_ws_server_new(0);
+    test_result("WsServer.New(0) is accepted", server != nullptr);
+    rt_ws_server_start(server);
+    if (!wait_for_condition([&]() { return rt_ws_server_is_running(server) == 1; }, 1000)) {
+        rt_ws_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    int64_t bound = rt_ws_server_port(server);
+    test_result("Port reports the OS-assigned value after Start", bound >= 1 && bound <= 65535);
+
+    // The reported port is genuinely reachable.
+    void *tcp = rt_tcp_connect(rt_const_cstr("127.0.0.1"), bound);
+    test_result("Reported ephemeral port accepts a connection", tcp != nullptr);
+    rt_tcp_close(tcp);
+    if (rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+    rt_ws_server_stop(server);
+}
+
+/// @brief Handshake parsing is bounded (VDOC-149): a peer streaming endless
+///        header lines is rejected instead of fed to an unbounded parser.
+static void test_ws_server_bounded_handshake() {
+    printf("\nTesting WsServer bounded handshake parsing:\n");
+
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *server = rt_ws_server_new(port);
+    rt_ws_server_start(server);
+    if (!wait_for_condition([&]() { return rt_ws_server_is_running(server) == 1; }, 1000)) {
+        rt_ws_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *tcp = rt_tcp_connect(rt_const_cstr("127.0.0.1"), port);
+    test_result("Raw TCP client connects", tcp != nullptr);
+
+    char request[256];
+    snprintf(request, sizeof(request), "GET /chat HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n", port);
+    rt_tcp_send_all_raw(tcp, request, (int64_t)strlen(request));
+    for (int i = 0; i < 150; i++) {
+        char junk[64];
+        int n = snprintf(junk, sizeof(junk), "X-Filler-%d: value\r\n", i);
+        rt_tcp_send_all_raw(tcp, junk, n);
+    }
+
+    // The flooded connection must never become a registered client, and the
+    // server must stay healthy enough to upgrade a well-formed client next.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    test_result("Header flood never registers a client",
+                rt_ws_server_client_count(server) == 0);
+    rt_tcp_close(tcp);
+    if (rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+
+    void *good = rt_tcp_connect(rt_const_cstr("127.0.0.1"), port);
+    const char *ws_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char upgrade[512];
+    snprintf(upgrade,
+             sizeof(upgrade),
+             "GET /chat HTTP/1.1\r\n"
+             "Host: 127.0.0.1:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: %s\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "\r\n",
+             port,
+             ws_key);
+    rt_tcp_send_all_raw(good, upgrade, (int64_t)strlen(upgrade));
+    rt_string status = rt_tcp_recv_line(good);
+    test_result("Server still upgrades a well-formed client after the flood",
+                strcmp(rt_string_cstr(status), "HTTP/1.1 101 Switching Protocols") == 0);
+    rt_string_unref(status);
+
+    rt_tcp_close(good);
+    if (rt_obj_release_check0(good))
+        rt_obj_free(good);
+    rt_ws_server_stop(server);
+}
+
 static void test_wss_server_broadcast() {
     printf("\nTesting WssServer TLS upgrade and broadcast:\n");
 
@@ -2165,23 +3063,35 @@ static void test_wss_server_subprotocol_negotiation() {
 
 int main() {
     test_sse_plain_event();
+    test_sse_timed_recv_is_lossless();
+    test_sse_validation_and_dispatch_state();
+    test_wss_server_credential_validation();
     test_sse_chunked_event();
     test_sse_resume_after_disconnect();
     test_sse_redirect_to_stream();
     test_http_client_cookie_scope();
     test_http_client_manual_cookie_is_host_only();
+    test_http_client_cookie_jar_rules();
     test_http_client_cross_origin_redirect_strips_sensitive_headers();
     test_http_client_consumes_informational_responses();
     test_http_client_keepalive_reuse();
+    test_standalone_httpreq_keepalive_reuse();
+    test_header_case_insensitive_configuration();
+    test_router_concurrent_add_and_match();
     test_http_server_keepalive_response();
     test_http_server_pipelined_keepalive_requests();
     test_https_server_roundtrip();
     test_https_server_http2_roundtrip();
     test_https_server_rsa_roundtrip_with_verification();
+    test_ws_server_services_client_frames();
+    test_ws_server_bounded_handshake();
+    test_ws_server_ephemeral_port();
     test_wss_server_broadcast();
     test_wss_server_rejects_invalid_sec_websocket_key();
     test_wss_server_rejects_invalid_host_header();
     test_wss_server_subprotocol_negotiation();
+    test_smtp_validation_and_result_model();
+    test_smtp_starttls_handshake_failure_is_clean();
     test_smtp_plain_send_sanitizes_and_dot_stuffs();
     test_smtp_requires_starttls_capability();
     test_smtp_accepts_forwarding_recipient_codes();

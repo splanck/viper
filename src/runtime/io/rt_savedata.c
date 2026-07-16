@@ -1505,12 +1505,17 @@ rt_string rt_savedata_get_path(void *obj) {
 /// @param app_name Application folder name (alphanumeric/dash/underscore).
 /// @return GC-managed absolute path string (no trailing separator).
 rt_string rt_path_data_dir(rt_string app_name) {
-    const char *name = app_name ? rt_string_cstr(app_name) : NULL;
-    if (!name || !*name) {
+    int64_t raw_name_len = app_name ? rt_str_len(app_name) : 0;
+    if (!app_name || raw_name_len == 0) {
         rt_trap("Path.DataDir: app name must be non-empty");
         return NULL;
     }
-    if (!is_safe_game_name(name)) {
+    const char *name = rt_string_cstr(app_name);
+    // Validate the runtime String's full stored byte length (not strlen), so
+    // bytes after an embedded NUL cannot bypass the charset/64-byte checks and
+    // then be silently truncated when composing the directory name (VDOC-199).
+    // The safe charset excludes NUL, so a length-aware check also rejects it.
+    if (!name || !is_safe_game_name_bytes(name, (size_t)raw_name_len)) {
         rt_trap("Path.DataDir: app name must be alphanumeric, dash, or underscore (max 64 chars)");
         return NULL;
     }

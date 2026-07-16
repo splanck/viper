@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: misc/benchmarks/reference/c/branch_stress.c
+// Purpose: C reference for the branch_stress benchmark kernel.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 /* branch_stress.c — Branch-heavy loop benchmark (20M iterations).
    Equivalent to examples/il/benchmarks/branch_stress.il */
 #include <stdint.h>

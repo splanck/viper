@@ -295,6 +295,25 @@ property accessors, and methods include resolved constructor/getter/setter/metho
 C symbols (an absent constructor or accessor is reported as `null`). Graphics3D and Game3D
 rows additionally carry explicit return nullability, ownership, and
 fallibility contracts with `contract_source: "three-d-boundary-policy"`.
+`fallibility` and `ownership` are otherwise derived from name/signature
+heuristics with explicit overrides for entries the heuristics cannot infer: a
+concretely typed `seq<…>` / `obj<…>` return is reported `ownership: "owned"`
+(a freshly allocated value the caller owns, not a borrowed handle), and IO
+conversion/open/allocation entries that trap on failure — such as
+`Stream.AsBinFile` / `AsMemStream` / `ToBytes`, `LineWriter.Append`,
+`Watcher.New` / `Start`, and `Archive.Create` — report `fallibility: "traps"`
+rather than the heuristic default of `infallible`. The same explicit overrides
+cover the trapping `Viper.Math.*` operations (`BigInt.Div` / `Mod` / `Pow` /
+`PowMod` / `Sqrt` / `ToStringBase`, `Mat3.Inverse` / `Mat4.Inverse`,
+`Quat.Inverse` / `Slerp`, and `Vec2.Div` / `Vec3.Div`), and every `Viper.Math.*`
+operation that returns an object reports `ownership: "owned"` (math values are
+immutable, freshly allocated results). The `Viper.System.*` surface is covered
+the same way: process spawns (`Process.Start` / `StartWithEnv`) mark their
+handle return `nullable: true` because a failed spawn yields `NULL` rather than
+a live object, the unmanaged `Unsafe.Release` / `ReleaseStr` primitives report
+`fallibility: "traps"` (they trap on an invalid or already-freed handle), and
+`PtySession.Resize` reports `fallibility: "status"` because it returns a boolean
+success indicator instead of an infallible void.
 Together, the canonical name, compact signature, C symbol, and complete class
 member bindings form the live ABI manifest used by contract tests. The C
 symbols are available to Viper's embedding and VM layers, but they are not a

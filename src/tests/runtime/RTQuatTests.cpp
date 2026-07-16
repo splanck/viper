@@ -136,6 +136,33 @@ static void test_mul_inverse() {
     printf("test_mul_inverse: PASSED\n");
 }
 
+// VDOC-206: Quat.Inverse must stay finite and nonzero for extreme finite norms.
+// Forming |q|^2 = len*len overflowed for large norms (inverse collapsed to 0)
+// and underflowed for tiny norms (inverse blew up to +/-Inf); the scaled
+// (c/len)/len form avoids both.
+static void test_inverse_extreme_norms() {
+    // Very large norm: inverse X ~ -1e-308, finite and nonzero (was 0). Use a
+    // relative bound since absolute EPSILON is meaningless at this scale.
+    void *big = rt_quat_new(1e308, 0.0, 0.0, 0.0);
+    void *big_inv = rt_quat_inverse(big);
+    double bx = rt_quat_x(big_inv);
+    assert(std::isfinite(bx) && bx < 0.0);
+    assert(bx > -2e-308 && bx < -5e-309); // ~ -1e-308
+
+    // Very small norm: inverse X ~ -1e308, finite (was -Inf).
+    void *small = rt_quat_new(1e-308, 0.0, 0.0, 0.0);
+    void *small_inv = rt_quat_inverse(small);
+    double sx = rt_quat_x(small_inv);
+    assert(std::isfinite(sx));
+    assert(sx < -5e307 && sx > -1.6e308); // ~ -1e308
+
+    // Sanity: a normal quaternion's inverse still satisfies q * q^-1 = identity.
+    void *q2 = rt_quat_new(0.0, 0.0, 0.0, 2.0);
+    void *qi = rt_quat_inverse(q2);
+    assert(approx_eq(rt_quat_w(qi), 0.5));
+    printf("test_inverse_extreme_norms: PASSED\n");
+}
+
 static void test_conjugate() {
     void *q = rt_quat_new(1.0, 2.0, 3.0, 4.0);
     void *c = rt_quat_conjugate(q);
@@ -321,6 +348,7 @@ int main() {
     /* Operations */
     test_mul_identity();
     test_mul_inverse();
+    test_inverse_extreme_norms();
     test_conjugate();
     test_norm();
     test_len();

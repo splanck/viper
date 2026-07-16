@@ -240,14 +240,18 @@ rt_string rt_str_d_alloc(double v) {
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-/// @brief Format a float value as a runtime string.
-/// @details Promotes to double so @ref rt_format_f64 can be reused, guaranteeing
-///          the same rounding behaviour as other BASIC numeric printers.
-/// @param v Float value to format.
+/// @brief Format a value with single-precision (Float32) semantics.
+/// @details Accepts a C `double` so the exported ABI matches the registered
+///          `str(f64)` signature on every dispatch path (VDOC-162: taking a
+///          C `float` here made direct symbol dispatch read the wrong bit
+///          layout). The value is narrowed to `float` first so the output
+///          reflects single precision, then formatted through
+///          @ref rt_format_f64 for consistent rounding.
+/// @param v Value to format (narrowed to single precision).
 /// @return Newly allocated runtime string with the formatted value.
-rt_string rt_str_f_alloc(float v) {
+rt_string rt_str_f_alloc(double v) {
     char buf[64];
-    rt_format_f64((double)v, buf, sizeof(buf));
+    rt_format_f64((double)(float)v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
 }
 

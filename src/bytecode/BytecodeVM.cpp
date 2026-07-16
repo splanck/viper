@@ -6934,46 +6934,6 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Threads.Async.Run",
                             reinterpret_cast<void *>(&unified_async_run_handler),
                             gPriorAsyncRunHandler);
-        {
-            il::vm::ExternDesc ext;
-            ext.name = "Viper.Threads.Async.RunOwned";
-            ext.signature =
-                make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
-            ext.fn = reinterpret_cast<void *>(&unified_async_run_owned_handler);
-            il::vm::RuntimeBridge::registerExtern(ext);
-        }
-        {
-            il::vm::ExternDesc ext;
-            ext.name = "Viper.Threads.Async.RunCancellable";
-            ext.signature = make_signature(
-                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
-            ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_handler);
-            il::vm::RuntimeBridge::registerExtern(ext);
-        }
-        {
-            il::vm::ExternDesc ext;
-            ext.name = "Viper.Threads.Async.RunCancellableOwned";
-            ext.signature = make_signature(
-                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
-            ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_owned_handler);
-            il::vm::RuntimeBridge::registerExtern(ext);
-        }
-        {
-            il::vm::ExternDesc ext;
-            ext.name = "Viper.Threads.Async.Map";
-            ext.signature = make_signature(
-                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
-            ext.fn = reinterpret_cast<void *>(&unified_async_map_handler);
-            il::vm::RuntimeBridge::registerExtern(ext);
-        }
-        {
-            il::vm::ExternDesc ext;
-            ext.name = "Viper.Threads.Async.MapOwned";
-            ext.signature = make_signature(
-                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
-            ext.fn = reinterpret_cast<void *>(&unified_async_map_owned_handler);
-            il::vm::RuntimeBridge::registerExtern(ext);
-        }
         capturePriorHandler("Viper.Network.HttpServer.BindHandler",
                             reinterpret_cast<void *>(&unified_http_server_bind_handler),
                             gPriorHttpBindHandler);
@@ -7119,6 +7079,45 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Async.RunOwned";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_async_run_owned_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Async.RunCancellable";
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Async.RunCancellableOwned";
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_owned_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Async.Map";
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_async_map_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Async.MapOwned";
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_async_map_owned_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
         ext.name = "Viper.Network.HttpServer.BindHandler";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_http_server_bind_handler);
@@ -7196,6 +7195,14 @@ void registerUnifiedVmRuntimeHandlers() {
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
         ext.fn = reinterpret_cast<void *>(&unified_pool_submit_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Pool.SubmitOwned";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
+        ext.fn = reinterpret_cast<void *>(&unified_pool_submit_owned_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {

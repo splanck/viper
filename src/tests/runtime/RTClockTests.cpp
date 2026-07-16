@@ -15,12 +15,62 @@
 #include "viper/runtime/rt.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
+
+// Internal monotonic-clock ratchet shared by the Clock/Stopwatch/Countdown POSIX
+// CLOCK_REALTIME fallbacks (VDOC-223). Declared directly here because it is an
+// internal helper, not part of the public rt.h surface.
+extern "C" int64_t rt_time_monotonic_ratchet(int64_t *floor, int64_t candidate);
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
+}
+
+/// @brief Verify the fallback ratchet never lets the exposed sequence decrease.
+/// @details Directly exercises the CLOCK_REALTIME failure path's clamp without
+///          having to defeat CLOCK_MONOTONIC: a backward-jumping candidate stream
+///          must still produce a non-decreasing output, and forward jumps must
+///          pass through unclamped (VDOC-223).
+static void test_ratchet_non_decreasing() {
+    printf("Testing monotonic fallback ratchet:\n");
+
+    int64_t floor = 0;
+
+    // First reading advances the floor from its initial zero.
+    test_result("first reading passes through", rt_time_monotonic_ratchet(&floor, 1000) == 1000);
+
+    // A forward jump advances the floor and returns the new value.
+    test_result("forward jump advances", rt_time_monotonic_ratchet(&floor, 1500) == 1500);
+
+    // A backward jump (simulated wall-clock adjustment) is clamped to the floor,
+    // so the returned value does not decrease.
+    test_result("backward jump clamped", rt_time_monotonic_ratchet(&floor, 200) == 1500);
+    test_result("equal reading holds", rt_time_monotonic_ratchet(&floor, 1500) == 1500);
+
+    // After a clamp, a genuine forward move past the floor advances again.
+    test_result("recovery advances past floor", rt_time_monotonic_ratchet(&floor, 1600) == 1600);
+
+    // Feed a decreasing stream and confirm the output is monotonic throughout.
+    int64_t prev = rt_time_monotonic_ratchet(&floor, 5000);
+    bool monotonic = true;
+    for (int64_t c = 5000; c >= 1000; c -= 137) {
+        int64_t out = rt_time_monotonic_ratchet(&floor, c);
+        if (out < prev)
+            monotonic = false;
+        prev = out;
+    }
+    test_result("decreasing stream stays monotonic", monotonic);
+
+    // Independent floors do not interfere (mirrors the per-scale call sites).
+    int64_t floor_a = 0;
+    int64_t floor_b = 0;
+    rt_time_monotonic_ratchet(&floor_a, 9000);
+    test_result("independent floor unaffected", rt_time_monotonic_ratchet(&floor_b, 42) == 42);
+
+    printf("\n");
 }
 
 /// @brief Test that Ticks returns a non-negative value.
@@ -166,6 +216,10 @@ static void test_ticks_us_precision() {
 
 /// @brief Entry point for Clock tests.
 int main() {
+    // The ratchet is pure arithmetic (no wall-clock dependency), so exercise it
+    // on every platform before the timing tests bail out on Windows.
+    test_ratchet_non_decreasing();
+
 #ifdef _WIN32
     // Skip on Windows: timing tests have platform-specific quirks that need investigation
     VIPER_PLATFORM_SKIP("Clock tests need Windows-specific calibration");

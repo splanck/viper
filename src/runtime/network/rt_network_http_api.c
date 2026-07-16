@@ -963,33 +963,64 @@ void *rt_http_req_new(rt_string method, rt_string url) {
     return req;
 }
 
-/// @brief Append a request header. Silently ignores NULL name/value.
-/// @return `obj` (for fluent chaining).
-void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
+/// @brief Validate header name/value for a request. Traps on NULL request,
+///        embedded NUL, non-token names, or CR/LF in the value.
+/// @return 1 when valid (with the c-strings written to the out params),
+///         0 when the pair should be silently ignored (NULL name/value).
+static int http_req_header_args_valid(
+    void *obj, rt_string name, rt_string value, const char **name_out, const char **value_out) {
     if (!obj) {
         rt_trap("HTTP: NULL request");
-        return NULL;
+        return 0;
     }
 
-    rt_http_req_t *req = (rt_http_req_t *)obj;
     const char *name_str = name ? rt_string_cstr(name) : NULL;
     const char *value_str = value ? rt_string_cstr(value) : NULL;
 
     if (!name_str || !value_str)
-        return obj;
+        return 0;
     if (http_rt_string_has_embedded_nul(name) || http_rt_string_has_embedded_nul(value) ||
         !http_method_is_token(name_str)) {
         rt_trap("HTTP: invalid header");
-        return obj;
+        return 0;
     }
     for (const char *p = value_str; *p; ++p) {
         if (*p == '\r' || *p == '\n') {
             rt_trap("HTTP: invalid header");
-            return obj;
+            return 0;
         }
     }
-    add_header(req, name_str, value_str);
+    *name_out = name_str;
+    *value_out = value_str;
+    return 1;
+}
 
+/// @brief Set a request header, replacing any existing field with the same
+///        case-insensitive name. Silently ignores NULL name/value.
+/// @return `obj` (for fluent chaining).
+void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
+    const char *name_str = NULL;
+    const char *value_str = NULL;
+    if (!http_req_header_args_valid(obj, name, value, &name_str, &value_str))
+        return obj;
+
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    remove_header(req, name_str);
+    add_header(req, name_str, value_str);
+    return obj;
+}
+
+/// @brief Append a request header without replacing existing same-name
+///        fields (for legitimately repeatable fields). Silently ignores
+///        NULL name/value.
+/// @return `obj` (for fluent chaining).
+void *rt_http_req_add_header(void *obj, rt_string name, rt_string value) {
+    const char *name_str = NULL;
+    const char *value_str = NULL;
+    if (!http_req_header_args_valid(obj, name, value, &name_str, &value_str))
+        return obj;
+
+    add_header((rt_http_req_t *)obj, name_str, value_str);
     return obj;
 }
 
@@ -1153,6 +1184,9 @@ void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
 }
 
 /// @brief Toggle keep-alive / pooled transport for this request.
+/// @details Standalone requests (no HttpClient/RestClient pool attached) get
+///          the process-wide default connection pool at send time, so the
+///          flag enables real socket reuse on the public `HttpReq` surface.
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive) {
     if (!obj) {
@@ -1218,6 +1252,12 @@ void *rt_http_req_send(void *obj) {
     }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
+
+    // Standalone keep-alive requests attach the process-wide default pool so
+    // SetKeepAlive(true) actually reuses connections; HttpClient/RestClient
+    // inject their own per-client pools before this point.
+    if (req->keep_alive && !req->connection_pool)
+        rt_http_req_set_connection_pool(obj, rt_http_default_connection_pool());
 
     // Add Content-Type for POST with body if not set
     if (req->body && req->body_len > 0 && !has_header(req, "Content-Type")) {

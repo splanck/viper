@@ -462,7 +462,11 @@ int8_t rt_mat3_eq(void *a, void *b, double epsilon) {
     if (!a || !b)
         return (!a && !b) ? 1 : 0;
 
-    if (epsilon <= 0.0)
+    // A non-finite epsilon (NaN/Inf) is not a usable tolerance: NaN slips past
+    // `epsilon <= 0.0` and then `diff > NaN` is always false, making any two
+    // matrices compare equal (VDOC-207). Normalize non-positive AND non-finite
+    // epsilon to the default.
+    if (!(epsilon > 0.0) || !isfinite(epsilon))
         epsilon = 1e-9;
 
     mat3_impl *ma = mat3_checked(a, "Mat3.Eq: invalid matrix");
@@ -471,7 +475,10 @@ int8_t rt_mat3_eq(void *a, void *b, double epsilon) {
         return (!a && !b) ? 1 : 0;
 
     for (int i = 0; i < 9; i++) {
-        if (fabs(ma->m[i] - mb->m[i]) > epsilon)
+        // Use the negated `<=` so a NaN component difference (NaN <= eps is
+        // false) counts as NOT equal — a matrix containing NaN is never equal
+        // to any matrix, matching IEEE semantics (VDOC-207).
+        if (!(fabs(ma->m[i] - mb->m[i]) <= epsilon))
             return 0;
     }
 

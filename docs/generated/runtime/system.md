@@ -192,6 +192,7 @@ including `Request`, `Poll`, `IsPending`, `Clear`.
 | <a id="viper-system-shutdown-poll"></a>`Poll` | `i64()` | `Viper.System.Shutdown.Poll` |
 | <a id="viper-system-shutdown-ispending"></a>`IsPending` | `i1()` | `Viper.System.Shutdown.IsPending` |
 | <a id="viper-system-shutdown-clear"></a>`Clear` | `void()` | `Viper.System.Shutdown.Clear` |
+| <a id="viper-system-shutdown-installsignalhandlers"></a>`InstallSignalHandlers` | `void()` | `Viper.System.Shutdown.InstallSignalHandlers` |
 
 <a id="viper-system-machine"></a>
 ### `Viper.System.Machine`
@@ -278,6 +279,7 @@ construct the class directly. Its public surface exposes properties such as `Arc
 | `Viper.System.Shutdown.Poll` | `i64()` | `rt_shutdown_poll` |
 | `Viper.System.Shutdown.IsPending` | `i1()` | `rt_shutdown_pending` |
 | `Viper.System.Shutdown.Clear` | `void()` | `rt_shutdown_clear` |
+| `Viper.System.Shutdown.InstallSignalHandlers` | `void()` | `rt_shutdown_install_signal_handlers` |
 | <a id="viper-system-shutdown-get-none"></a>`Viper.System.Shutdown.get_None` | `i64()` | `rt_shutdown_const_none` |
 | <a id="viper-system-shutdown-get-interrupt"></a>`Viper.System.Shutdown.get_Interrupt` | `i64()` | `rt_shutdown_const_interrupt` |
 | <a id="viper-system-shutdown-get-terminate"></a>`Viper.System.Shutdown.get_Terminate` | `i64()` | `rt_shutdown_const_terminate` |

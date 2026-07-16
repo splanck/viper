@@ -15,8 +15,9 @@
 //   - Poll/IsRunning reap the process once and preserve the exit code.
 //   - Destroy is idempotent and closes all OS handles.
 //   - A non-null environment sequence replaces the complete child environment.
-//   - The Windows explicit-environment path currently passes a UTF-16 block
-//     without CREATE_UNICODE_ENVIRONMENT (VDOC-212).
+//   - The Windows explicit-environment path passes a UTF-16 block with
+//     CREATE_UNICODE_ENVIRONMENT so Unicode/non-ASCII values are delivered
+//     intact (VDOC-212).
 //
 // Ownership/Lifetime:
 //   - Handles are rt_obj_new_i64-allocated and GC-managed.
@@ -841,14 +842,20 @@ static rt_process_impl *process_start_impl(rt_string program,
     si.startup.StartupInfo.hStdOutput = stdout_write;
     si.startup.StartupInfo.hStdError = stderr_write;
 
-    // BUG(VDOC-212): env_block is UTF-16, but this call omits
-    // CREATE_UNICODE_ENVIRONMENT and can interpret it as an ANSI block.
+    // `env_block` is a UTF-16 (wide) environment block, so CreateProcessW must be
+    // told with CREATE_UNICODE_ENVIRONMENT — otherwise Windows interprets it as
+    // an ANSI block and the variables are truncated / parsed as alternating
+    // one-byte strings (VDOC-212). Only set the flag when an explicit block is
+    // supplied; a NULL block inherits the parent environment.
+    DWORD creation_flags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT;
+    if (env_block)
+        creation_flags |= CREATE_UNICODE_ENVIRONMENT;
     BOOL ok = CreateProcessW(wprogram,
                              wcmdline,
                              NULL,
                              NULL,
                              TRUE,
-                             CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
+                             creation_flags,
                              env_block,
                              wcwd,
                              &si.startup.StartupInfo,
@@ -1096,6 +1103,74 @@ static void process_wait_after_sigterm(rt_process_impl *proc, int grace_ms) {
     }
 }
 
+/// @brief Look up a `KEY` in a NULL-terminated `KEY=value` environment vector.
+static const char *process_env_lookup(char *const *envp, const char *key) {
+    if (!envp)
+        return NULL;
+    size_t klen = strlen(key);
+    for (size_t i = 0; envp[i]; ++i) {
+        if (strncmp(envp[i], key, klen) == 0 && envp[i][klen] == '=')
+            return envp[i] + klen + 1;
+    }
+    return NULL;
+}
+
+/// @brief Resolve a program name to a full path for posix_spawn, PATH-searching
+///        bare names so they resolve the same whether or not an explicit
+///        environment is supplied (VDOC-213).
+/// @details A name containing '/' is used verbatim. A bare name is searched
+///          through the PATH taken from @p envp when it provides one, else the
+///          inherited PATH (mirroring what `execvp` does, and what the PTY
+///          backend now does with the supplied environment). If nothing is
+///          found the name is left unchanged so the spawn fails with ENOENT
+///          just as `execvp` would. Returns 0 only when a path would overflow
+///          @p out.
+static int process_resolve_program_path(const char *program,
+                                        char *const *envp,
+                                        char *out,
+                                        size_t out_size) {
+    if (strchr(program, '/') != NULL) {
+        if (strlen(program) >= out_size)
+            return 0;
+        strcpy(out, program);
+        return 1;
+    }
+    const char *path = process_env_lookup(envp, "PATH");
+    if (!path)
+        path = getenv("PATH");
+    if (!path || !*path)
+        path = "/usr/bin:/bin";
+
+    const char *seg = path;
+    while (*seg) {
+        const char *colon = strchr(seg, ':');
+        size_t dirlen = colon ? (size_t)(colon - seg) : strlen(seg);
+        // An empty entry means the current directory.
+        const char *dir = (dirlen == 0) ? "." : seg;
+        size_t effective_dirlen = (dirlen == 0) ? 1 : dirlen;
+        char candidate[PATH_MAX];
+        if (effective_dirlen + 1 + strlen(program) + 1 <= sizeof(candidate)) {
+            memcpy(candidate, dir, effective_dirlen);
+            candidate[effective_dirlen] = '/';
+            strcpy(candidate + effective_dirlen + 1, program);
+            if (access(candidate, X_OK) == 0) {
+                if (strlen(candidate) >= out_size)
+                    return 0;
+                strcpy(out, candidate);
+                return 1;
+            }
+        }
+        if (!colon)
+            break;
+        seg = colon + 1;
+    }
+    // Not found: leave the name unchanged so posix_spawn fails like execvp.
+    if (strlen(program) >= out_size)
+        return 0;
+    strcpy(out, program);
+    return 1;
+}
+
 static rt_process_impl *process_start_impl(rt_string program,
                                            void *args,
                                            rt_string cwd,
@@ -1197,9 +1272,29 @@ static rt_process_impl *process_start_impl(rt_string program,
         return NULL;
     }
 
+    // PATH-search a bare program name (using the supplied environment's PATH
+    // when present) so Start/StartWithEnv resolve names the same way, and the
+    // same way the PTY backend does (VDOC-213). posix_spawn itself does no PATH
+    // search, so resolve to a full path first.
+    char resolved_program[PATH_MAX];
+    if (!process_resolve_program_path(
+            program_text, envp.values, resolved_program, sizeof(resolved_program))) {
+        posix_spawn_file_actions_destroy(&actions);
+        close_fd(&stdout_pipe[0]);
+        close_fd(&stdout_pipe[1]);
+        close_fd(&stderr_pipe[0]);
+        close_fd(&stderr_pipe[1]);
+        close_fd(&stdin_pipe[0]);
+        close_fd(&stdin_pipe[1]);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        rt_trap("Process.Start: program path too long");
+        return NULL;
+    }
+
     pid_t pid = -1;
-    int spawn_rc =
-        posix_spawn(&pid, program_text, &actions, NULL, argv.values, envp.values ? envp.values : environ);
+    int spawn_rc = posix_spawn(
+        &pid, resolved_program, &actions, NULL, argv.values, envp.values ? envp.values : environ);
     posix_spawn_file_actions_destroy(&actions);
     if (spawn_rc != 0) {
         close_fd(&stdout_pipe[0]);

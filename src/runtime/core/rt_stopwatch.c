@@ -13,8 +13,9 @@
 //
 // Key invariants:
 //   - Prefers CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter (Windows).
-//     POSIX falls back to CLOCK_REALTIME when the monotonic query fails, so that
-//     failure path can move with wall-clock adjustments (VDOC-223).
+//     POSIX falls back to CLOCK_REALTIME when the monotonic query fails; the
+//     fallback reading is clamped to a process-local atomic floor (CAS-max) so
+//     elapsed intervals cannot go negative on that failure path (VDOC-223).
 //   - Elapsed time accumulates correctly across multiple Start/Stop cycles;
 //     total elapsed = accumulated_ns + (current interval if running).
 //   - Stopwatch objects are not thread-safe; external synchronization is
@@ -38,6 +39,7 @@
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_time.h"
 #include "rt_trap.h"
 
 #include <limits.h>
@@ -47,6 +49,28 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "rt_atomic_compat.h"
+
+/// @brief Return the QPC frequency, caching it through an atomic slot.
+/// @details `QueryPerformanceFrequency` is fixed for the life of the system, so
+///          the value can be cached process-wide. The cache slot is read and
+///          published with acquire/release atomics rather than a plain shared
+///          write, which makes concurrent first use well-defined instead of a C
+///          data race (VDOC-224). Duplicate concurrent stores write the identical
+///          constant, so no once primitive is required for correctness.
+/// @return QPC ticks-per-second, or 0 when the counter is unavailable.
+static int64_t stopwatch_qpc_freq(void) {
+    static int64_t cached = 0; // 0 = not yet resolved
+    int64_t freq = __atomic_load_n(&cached, __ATOMIC_ACQUIRE);
+    if (freq != 0)
+        return freq;
+    LARGE_INTEGER f;
+    if (!QueryPerformanceFrequency(&f) || f.QuadPart <= 0)
+        return 0;
+    __atomic_store_n(&cached, (int64_t)f.QuadPart, __ATOMIC_RELEASE);
+    return (int64_t)f.QuadPart;
+}
 #else
 #include <time.h>
 #endif
@@ -156,19 +180,18 @@ static ViperStopwatch *require_stopwatch(void *obj) {
 /// @return Nanoseconds since unspecified epoch.
 static int64_t get_timestamp_ns(void) {
 #if defined(_WIN32)
-    // QPC frequency is constant and duplicate queries should agree, but this
-    // unsynchronized shared write is still a C data race (VDOC-224).
-    static LARGE_INTEGER freq = {0};
-    if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
+    // QPC frequency is constant; cache it through an atomic slot so concurrent
+    // first use is defined rather than a data race (VDOC-224).
+    int64_t freq = stopwatch_qpc_freq();
+    if (freq == 0)
         return stopwatch_tick_count_ns();
-    }
 
     LARGE_INTEGER counter;
     if (!QueryPerformanceCounter(&counter))
         return stopwatch_tick_count_ns();
 
-    int64_t whole = counter.QuadPart / freq.QuadPart;
-    int64_t rem = counter.QuadPart % freq.QuadPart;
+    int64_t whole = counter.QuadPart / freq;
+    int64_t rem = counter.QuadPart % freq;
     int64_t whole_ns;
     int64_t result;
     if (whole > INT64_MAX / 1000000000LL) {
@@ -176,7 +199,7 @@ static int64_t get_timestamp_ns(void) {
         return 0;
     }
     whole_ns = whole * 1000000000LL;
-    int64_t rem_ns = (int64_t)(((long double)rem * 1000000000.0L) / (long double)freq.QuadPart);
+    int64_t rem_ns = (int64_t)(((long double)rem * 1000000000.0L) / (long double)freq);
     if (stopwatch_checked_add_i64(whole_ns, rem_ns, &result)) {
         rt_trap_ovf();
         return 0;
@@ -190,9 +213,12 @@ static int64_t get_timestamp_ns(void) {
         return stopwatch_timespec_to_ns(ts);
     }
 #endif
-    // Fallback to CLOCK_REALTIME
+    // Fallback to CLOCK_REALTIME. Ratchet the wall-clock reading through a
+    // process-local atomic floor so elapsed intervals never go negative when
+    // the system clock is adjusted backward on this failure path (VDOC-223).
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        return stopwatch_timespec_to_ns(ts);
+        static int64_t floor_ns = 0;
+        return rt_time_monotonic_ratchet(&floor_ns, stopwatch_timespec_to_ns(ts));
     }
     return 0;
 #endif

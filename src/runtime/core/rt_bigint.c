@@ -62,6 +62,22 @@ typedef struct {
     int sign;         // 0 = non-negative, 1 = negative
 } bigint_t;
 
+/// @brief Validate a generic object operand as a BigInt (or null).
+/// @details Returns 1 when @p obj is null (each caller applies its own null
+///          semantics — e.g. Add treats null as zero) OR a genuine BigInt
+///          instance. For any other object it traps and returns 0, so the
+///          operation stops before casting the payload to `bigint_t` and
+///          dereferencing unrelated memory as digits/len/cap/sign (VDOC-204).
+static int bigint_check(void *obj) {
+    if (!obj)
+        return 1;
+    if (!rt_obj_is_instance(obj, BIGINT_CLASS_ID, sizeof(bigint_t))) {
+        rt_trap("BigInt: invalid BigInt object");
+        return 0;
+    }
+    return 1;
+}
+
 //=============================================================================
 // Memory Management
 //=============================================================================
@@ -526,6 +542,8 @@ void *rt_bigint_one(void) {
 /// @param a BigInt to convert.
 /// @return int64_t representation, saturated when out of range.
 int64_t rt_bigint_to_i64(void *a) {
+    if (!bigint_check(a))
+        return 0;
     if (!a)
         return 0;
 
@@ -571,6 +589,8 @@ rt_string rt_bigint_to_str(void *a) {
 /// @return Newly allocated runtime string.
 /// @brief Convert BigInt to string in the specified base (2-36).
 rt_string rt_bigint_to_str_base(void *a, int64_t base) {
+    if (!bigint_check(a))
+        return rt_string_from_bytes("0", 1);
     if (!a)
         return rt_string_from_bytes("0", 1);
 
@@ -636,6 +656,8 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
 /// @warning The current sign-extension decision is incorrect for some negative
 ///          magnitudes (for example -129 encodes as 0x7f); see VDOC-203.
 void *rt_bigint_to_bytes(void *a) {
+    if (!bigint_check(a))
+        return NULL;
     if (!a) {
         void *b = rt_bytes_new(1);
         if (!b)
@@ -673,32 +695,18 @@ void *rt_bigint_to_bytes(void *a) {
         byte_len--;
     }
 
-    // Add sign byte if needed
-    int need_sign = 0;
-    {
-        int64_t idx = byte_len - 1;
-        int64_t digit_idx = idx / 4;
-        int64_t byte_idx = idx % 4;
-        uint8_t msb = 0;
-        if (digit_idx < bi->len)
-            msb = (bi->digits[digit_idx] >> (byte_idx * 8)) & 0xFF;
-        if (bi->sign && !(msb & 0x80))
-            need_sign = 1;
-        if (!bi->sign && (msb & 0x80))
-            need_sign = 1;
-    }
-
-    int64_t result_len;
-    if (!bigint_checked_add_i64(byte_len, need_sign, &result_len)) {
-        rt_trap("bigint: byte size overflow");
+    // Materialize the big-endian two's-complement bytes of the value in exactly
+    // `byte_len` bytes into a temp buffer FIRST, then decide the sign prefix from
+    // the RESULT's top bit — not the magnitude's. Deciding from the magnitude's
+    // high bit was wrong for negatives (e.g. -129 has magnitude top bit 0x81 set,
+    // but its 1-byte two's complement is 0x7F with the top bit clear, so it
+    // silently encoded as +127) (VDOC-203).
+    uint8_t *tmp = (uint8_t *)malloc((size_t)byte_len);
+    if (!tmp) {
+        rt_trap("bigint: memory allocation failed");
         return NULL;
     }
-    void *result = rt_bytes_new(result_len);
-    if (!result)
-        return NULL;
-
     if (bi->sign) {
-        // Two's complement: invert and add 1
         uint32_t carry = 1;
         for (int64_t i = 0; i < byte_len; i++) {
             int64_t digit_idx = i / 4;
@@ -706,13 +714,10 @@ void *rt_bigint_to_bytes(void *a) {
             uint8_t b = 0;
             if (digit_idx < bi->len)
                 b = (bi->digits[digit_idx] >> (byte_idx * 8)) & 0xFF;
-            uint32_t inv = (~b) & 0xFF;
-            uint32_t sum = inv + carry;
-            rt_bytes_set(result, byte_len - 1 - i + need_sign, sum & 0xFF);
+            uint32_t sum = ((~b) & 0xFF) + carry;
+            tmp[byte_len - 1 - i] = (uint8_t)(sum & 0xFF);
             carry = sum >> 8;
         }
-        if (need_sign)
-            rt_bytes_set(result, 0, 0xFF);
     } else {
         for (int64_t i = 0; i < byte_len; i++) {
             int64_t digit_idx = i / 4;
@@ -720,11 +725,35 @@ void *rt_bigint_to_bytes(void *a) {
             uint8_t b = 0;
             if (digit_idx < bi->len)
                 b = (bi->digits[digit_idx] >> (byte_idx * 8)) & 0xFF;
-            rt_bytes_set(result, byte_len - 1 - i + need_sign, b);
+            tmp[byte_len - 1 - i] = b;
         }
-        if (need_sign)
-            rt_bytes_set(result, 0, 0x00);
     }
+
+    // A negative value needs a leading 0xFF exactly when the encoded top bit is
+    // clear (else it reads as positive); a positive value needs a leading 0x00
+    // exactly when the encoded top bit is set (else it reads as negative).
+    int need_sign = 0;
+    if (bi->sign && !(tmp[0] & 0x80))
+        need_sign = 1;
+    if (!bi->sign && (tmp[0] & 0x80))
+        need_sign = 1;
+
+    int64_t result_len;
+    if (!bigint_checked_add_i64(byte_len, need_sign, &result_len)) {
+        free(tmp);
+        rt_trap("bigint: byte size overflow");
+        return NULL;
+    }
+    void *result = rt_bytes_new(result_len);
+    if (!result) {
+        free(tmp);
+        return NULL;
+    }
+    if (need_sign)
+        rt_bytes_set(result, 0, bi->sign ? 0xFF : 0x00);
+    for (int64_t i = 0; i < byte_len; i++)
+        rt_bytes_set(result, need_sign + i, tmp[i]);
+    free(tmp);
 
     return result;
 }
@@ -736,6 +765,8 @@ void *rt_bigint_to_bytes(void *a) {
 /// @param a BigInt to test.
 /// @return 1 if the value is representable as int64, 0 otherwise.
 int8_t rt_bigint_fits_i64(void *a) {
+    if (!bigint_check(a))
+        return 1;
     if (!a)
         return 1;
 
@@ -1114,7 +1145,13 @@ static bigint_t *bigint_single_bit_mask(int64_t n) {
 /// @param a First addend (not consumed).
 /// @param b Second addend (not consumed).
 /// @return New BigInt holding a + b.
-void *rt_bigint_add(void *a, void *b) {
+/// @brief Add two BigInt operands without receiver validation.
+/// @details Internal core shared by the public `rt_bigint_add` (which validates
+///          first) and `rt_bigint_sub`, which passes a trusted STACK-allocated
+///          negated copy of b. Internal callers pass already-trusted operands
+///          (heap instances or internal stack temps), so re-validating here
+///          would wrongly reject the stack temp (VDOC-204).
+static void *bigint_add_impl(void *a, void *b) {
     if (!a)
         return b ? bigint_clone((bigint_t *)b) : rt_bigint_zero();
     if (!b)
@@ -1149,6 +1186,12 @@ void *rt_bigint_add(void *a, void *b) {
     }
 }
 
+void *rt_bigint_add(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
+    return bigint_add_impl(a, b);
+}
+
 /// @brief Subtract two BigInts (a - b), returning a new result.
 /// @details Implemented as a + (-b): negates the sign of b and delegates to
 ///          rt_bigint_add. This reuses the sign-dispatch logic in add rather
@@ -1158,6 +1201,8 @@ void *rt_bigint_add(void *a, void *b) {
 /// @param b Subtrahend (not consumed).
 /// @return New BigInt holding a - b.
 void *rt_bigint_sub(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
     if (!b)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
 
@@ -1169,7 +1214,9 @@ void *rt_bigint_sub(void *a, void *b) {
     if (neg_b.len == 0)
         neg_b.sign = 0;
 
-    return rt_bigint_add(a, &neg_b);
+    // Use the unchecked add core: `a` is validated above and `&neg_b` is a
+    // trusted internal stack temp that the public guard would reject (VDOC-204).
+    return bigint_add_impl(a, &neg_b);
 }
 
 /// @brief Multiply two BigInts using grade-school long multiplication.
@@ -1182,6 +1229,8 @@ void *rt_bigint_sub(void *a, void *b) {
 /// @param b Second factor (not consumed).
 /// @return New BigInt holding a * b.
 void *rt_bigint_mul(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
     if (!a || !b)
         return rt_bigint_zero();
 
@@ -1235,6 +1284,8 @@ void *rt_bigint_mul(void *a, void *b) {
 /// @param remainder If non-NULL, receives a new BigInt holding the remainder.
 /// @return New BigInt holding the quotient (truncated toward zero).
 void *rt_bigint_divmod(void *a, void *b, void **remainder) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return NULL;
     if (!b) {
         rt_trap("BigInt division by zero");
         return NULL;
@@ -1537,6 +1588,8 @@ void *rt_bigint_mod(void *a, void *b) {
 
 /// @brief Negate a BigInt, returning a new result.
 void *rt_bigint_neg(void *a) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (!a)
         return rt_bigint_zero();
 
@@ -1551,6 +1604,8 @@ void *rt_bigint_neg(void *a) {
 
 /// @brief Return the absolute value of a BigInt.
 void *rt_bigint_abs(void *a) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (!a)
         return rt_bigint_zero();
 
@@ -1573,6 +1628,8 @@ void *rt_bigint_abs(void *a) {
 /// @param b Second operand.
 /// @return -1 if a < b, 0 if equal, 1 if a > b.
 int64_t rt_bigint_cmp(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return 0;
     if (!a && !b)
         return 0;
     if (!a)
@@ -1608,6 +1665,8 @@ int8_t rt_bigint_eq(void *a, void *b) {
 /// @param a BigInt to test; NULL is treated as zero.
 /// @return 1 if the value is zero, 0 otherwise.
 int8_t rt_bigint_is_zero(void *a) {
+    if (!bigint_check(a))
+        return 1;
     if (!a)
         return 1;
     return ((bigint_t *)a)->len == 0 ? 1 : 0;
@@ -1617,6 +1676,8 @@ int8_t rt_bigint_is_zero(void *a) {
 /// @param a BigInt to test; NULL is treated as non-negative.
 /// @return 1 if negative, 0 otherwise.
 int8_t rt_bigint_is_negative(void *a) {
+    if (!bigint_check(a))
+        return 0;
     if (!a)
         return 0;
     bigint_t *bi = (bigint_t *)a;
@@ -1629,6 +1690,8 @@ int8_t rt_bigint_is_negative(void *a) {
 /// @param a BigInt to query.
 /// @return -1, 0, or 1.
 int64_t rt_bigint_sign(void *a) {
+    if (!bigint_check(a))
+        return 0;
     if (!a)
         return 0;
     bigint_t *bi = (bigint_t *)a;
@@ -1648,21 +1711,29 @@ int64_t rt_bigint_sign(void *a) {
 /// @param b Second operand (not consumed).
 /// @return New BigInt holding a AND b.
 void *rt_bigint_and(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
     return bigint_bitwise_twos((bigint_t *)a, (bigint_t *)b, '&');
 }
 
 /// @brief Bitwise OR of two BigInts (two's complement semantics).
 void *rt_bigint_or(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
     return bigint_bitwise_twos((bigint_t *)a, (bigint_t *)b, '|');
 }
 
 /// @brief Bitwise XOR of two BigInts (two's complement semantics).
 void *rt_bigint_xor(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
     return bigint_bitwise_twos((bigint_t *)a, (bigint_t *)b, '^');
 }
 
 /// @brief Bitwise NOT (one's complement) of a BigInt.
 void *rt_bigint_not(void *a) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     // For arbitrary precision, NOT doesn't have fixed meaning
     // Return -(a + 1) as two's complement would
     void *one = rt_bigint_one();
@@ -1682,6 +1753,8 @@ void *rt_bigint_not(void *a) {
 
 /// @brief Left-shift a BigInt by n bits.
 void *rt_bigint_shl(void *a, int64_t n) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (!a || n <= 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
 
@@ -1725,6 +1798,8 @@ void *rt_bigint_shl(void *a, int64_t n) {
 
 /// @brief Arithmetic right-shift a BigInt by n bits.
 void *rt_bigint_shr(void *a, int64_t n) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (!a || n <= 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
 
@@ -1761,6 +1836,8 @@ void *rt_bigint_shr(void *a, int64_t n) {
 /// @param n Exponent (must be non-negative).
 /// @return New BigInt holding a^n. Returns 1 for n=0.
 void *rt_bigint_pow(void *a, int64_t n) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (n < 0) {
         rt_trap("BigInt.Pow: negative exponent");
         return NULL;
@@ -1819,8 +1896,10 @@ void *rt_bigint_pow(void *a, int64_t n) {
 /// @param a Base (not consumed).
 /// @param n Exponent (not consumed).
 /// @param m Modulus (not consumed; must be non-zero).
-/// @return New BigInt holding a^n mod m.
+/// @return New BigInt holding a^n mod m as the least non-negative residue in [0, |m|).
 void *rt_bigint_pow_mod(void *a, void *n, void *m) {
+    if (!bigint_check(a) || !bigint_check(n) || !bigint_check(m))
+        return NULL;
     if (!m || rt_bigint_is_zero(m)) {
         rt_trap("BigInt.PowMod: zero modulus");
         return NULL;
@@ -1915,6 +1994,20 @@ void *rt_bigint_pow_mod(void *a, void *n, void *m) {
 
     bigint_release_owned((bigint_t *)r1);
 
+    // Normalize to the least non-negative residue in [0, |m|). `Mod` uses
+    // truncating division, so a negative base propagates a negative residue
+    // through the ladder; PowMod returns the conventional non-negative
+    // representative of the congruence class (e.g. PowMod(-2,3,5) == 2, not -3)
+    // (VDOC-205). The raw residue is in (-|m|, 0) when negative, so adding |m|
+    // lands it in (0, |m|).
+    if (r0 && rt_bigint_is_negative(r0)) {
+        void *absm = rt_bigint_abs(m);
+        void *norm = absm ? bigint_add_impl(r0, absm) : NULL;
+        bigint_release_owned((bigint_t *)absm);
+        bigint_release_owned((bigint_t *)r0);
+        r0 = norm;
+    }
+
     return r0;
 }
 
@@ -1927,6 +2020,8 @@ void *rt_bigint_pow_mod(void *a, void *n, void *m) {
 /// @param b Second value (not consumed).
 /// @return New BigInt holding gcd(|a|, |b|).
 void *rt_bigint_gcd(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
     if (!a)
         return b ? rt_bigint_abs(b) : rt_bigint_zero();
     if (!b)
@@ -1965,6 +2060,8 @@ void *rt_bigint_gcd(void *a, void *b) {
 /// @param b Second value (not consumed).
 /// @return New BigInt holding lcm(|a|, |b|).
 void *rt_bigint_lcm(void *a, void *b) {
+    if (!bigint_check(a) || !bigint_check(b))
+        return rt_bigint_zero();
     if (!a || !b)
         return rt_bigint_zero();
 
@@ -2001,6 +2098,8 @@ void *rt_bigint_lcm(void *a, void *b) {
 /// @param a BigInt to measure.
 /// @return Bit count (excludes the sign).
 int64_t rt_bigint_bit_length(void *a) {
+    if (!bigint_check(a))
+        return 0;
     if (!a)
         return 0;
 
@@ -2033,6 +2132,8 @@ int64_t rt_bigint_bit_length(void *a) {
 /// @return 1 if the bit is set, 0 otherwise.
 /// @brief Test bit n (0 = LSB). Returns 1 if set, 0 if clear.
 int8_t rt_bigint_test_bit(void *a, int64_t n) {
+    if (!bigint_check(a))
+        return 0;
     if (!a || n < 0)
         return 0;
 
@@ -2069,6 +2170,8 @@ int8_t rt_bigint_test_bit(void *a, int64_t n) {
 
 /// @brief Return a new BigInt with bit n set to 1.
 void *rt_bigint_set_bit(void *a, int64_t n) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (n < 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
 
@@ -2082,6 +2185,8 @@ void *rt_bigint_set_bit(void *a, int64_t n) {
 
 /// @brief Return a new BigInt with bit n cleared to 0.
 void *rt_bigint_clear_bit(void *a, int64_t n) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (!a || n < 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
 
@@ -2109,6 +2214,8 @@ void *rt_bigint_clear_bit(void *a, int64_t n) {
 /// @param a Non-negative BigInt (not consumed).
 /// @return New BigInt holding floor(sqrt(a)).
 void *rt_bigint_sqrt(void *a) {
+    if (!bigint_check(a))
+        return rt_bigint_zero();
     if (!a)
         return rt_bigint_zero();
 

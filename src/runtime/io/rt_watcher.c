@@ -47,6 +47,8 @@
 
 // Platform-specific includes
 #if RT_PLATFORM_LINUX
+#include "rt_time.h" // rt_clock_ticks_us for the PollFor monotonic deadline (VDOC-191)
+
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
@@ -85,6 +87,12 @@ static int watcher_timeout_to_int(int64_t ms) {
 }
 
 #define WATCHER_EVENT_QUEUE_SIZE 64
+
+/// Sentinel `dropped_count` for a NATIVE (kernel) queue overflow, where the OS
+/// dropped an unknown number of events before Viper could read them. Distinct
+/// from an internal ring overflow, which counts dropped events exactly
+/// (VDOC-190). Exposed to callers via `Watcher.EventOverflowCount()`.
+#define WATCHER_OVERFLOW_COUNT_UNKNOWN ((int64_t)-1)
 
 /// @brief A single queued file system event.
 typedef struct watcher_event {
@@ -249,9 +257,16 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         int64_t overflow_slot =
             (w->event_tail + WATCHER_EVENT_QUEUE_SIZE - 1) % WATCHER_EVENT_QUEUE_SIZE;
-        int64_t dropped = w->events[overflow_slot].type == RT_WATCH_EVENT_OVERFLOW
-                              ? w->events[overflow_slot].dropped_count + 1
-                              : 2;
+        int64_t dropped;
+        if (w->events[overflow_slot].type == RT_WATCH_EVENT_OVERFLOW) {
+            // Coalesce with the existing marker; once the count is UNKNOWN (a
+            // native overflow folded in), it stays UNKNOWN (VDOC-190).
+            dropped = w->events[overflow_slot].dropped_count == WATCHER_OVERFLOW_COUNT_UNKNOWN
+                          ? WATCHER_OVERFLOW_COUNT_UNKNOWN
+                          : w->events[overflow_slot].dropped_count + 1;
+        } else {
+            dropped = 2;
+        }
         rt_string overflow_path = rt_string_ref((rt_string)w->watch_path);
         if (w->events[overflow_slot].path)
             rt_string_unref(w->events[overflow_slot].path);
@@ -269,6 +284,35 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
     w->event_tail = (w->event_tail + 1) % WATCHER_EVENT_QUEUE_SIZE;
     w->event_count++;
 }
+
+/// @brief Queue an overflow marker for a NATIVE (kernel) queue overflow.
+/// @details The OS dropped an unknown number of events before Viper could read
+///          them, so the marker carries the UNKNOWN count sentinel rather than
+///          a fabricated zero (VDOC-190). If the ring is full it coalesces into
+///          the newest slot, keeping the count UNKNOWN. Distinct from the
+///          internal ring overflow, which counts precisely. Only Linux inotify
+///          (IN_Q_OVERFLOW) and Windows (failed/zero-byte overlapped read)
+///          report native overflow; macOS kqueue is level-triggered per-fd and
+///          has no queue-overflow notification, so this helper is unused there.
+#if RT_PLATFORM_LINUX || RT_PLATFORM_WINDOWS
+static void watcher_queue_native_overflow(rt_watcher_impl *w) {
+    if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
+        int64_t slot = (w->event_tail + WATCHER_EVENT_QUEUE_SIZE - 1) % WATCHER_EVENT_QUEUE_SIZE;
+        rt_string overflow_path = rt_string_ref((rt_string)w->watch_path);
+        if (w->events[slot].path)
+            rt_string_unref(w->events[slot].path);
+        w->events[slot].type = RT_WATCH_EVENT_OVERFLOW;
+        w->events[slot].path = overflow_path;
+        w->events[slot].dropped_count = WATCHER_OVERFLOW_COUNT_UNKNOWN;
+        return;
+    }
+    w->events[w->event_tail].type = RT_WATCH_EVENT_OVERFLOW;
+    w->events[w->event_tail].path = rt_string_ref((rt_string)w->watch_path);
+    w->events[w->event_tail].dropped_count = WATCHER_OVERFLOW_COUNT_UNKNOWN;
+    w->event_tail = (w->event_tail + 1) % WATCHER_EVENT_QUEUE_SIZE;
+    w->event_count++;
+}
+#endif // RT_PLATFORM_LINUX || RT_PLATFORM_WINDOWS
 
 /// @brief Pop the oldest queued event into `*out`, transferring string ownership.
 ///
@@ -308,6 +352,16 @@ static void watcher_read_inotify_events(rt_watcher_impl *w) {
     while (ptr < buf + len) {
         struct inotify_event *event = (struct inotify_event *)ptr;
         int64_t type = RT_WATCH_EVENT_NONE;
+
+        // The kernel sets IN_Q_OVERFLOW (wd == -1, no name) when its own event
+        // queue overflowed and events were lost. Translate it into an overflow
+        // marker with an UNKNOWN loss count so clients get the documented
+        // rescan signal (VDOC-190).
+        if (event->mask & IN_Q_OVERFLOW) {
+            watcher_queue_native_overflow(w);
+            ptr += sizeof(struct inotify_event) + event->len;
+            continue;
+        }
 
         if (event->mask & IN_CREATE)
             type = RT_WATCH_EVENT_CREATED;
@@ -408,8 +462,10 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
         if (GetLastError() == ERROR_IO_INCOMPLETE)
             return; // Still pending
         w->pending_read = FALSE;
-        watcher_queue_event_owned(
-            w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+        // A failed overlapped read means the kernel dropped an unknown number
+        // of change records — a native overflow, not a zero-loss marker
+        // (VDOC-190).
+        watcher_queue_native_overflow(w);
         if (w->is_watching)
             (void)watcher_start_windows_read(w);
         return;
@@ -418,8 +474,10 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
     w->pending_read = FALSE;
 
     if (bytes_returned == 0) {
-        watcher_queue_event_owned(
-            w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+        // Zero bytes with a completed read means the change buffer overflowed
+        // and the kernel could not report which files changed (native overflow,
+        // unknown loss count) (VDOC-190).
+        watcher_queue_native_overflow(w);
         if (w->is_watching)
             (void)watcher_start_windows_read(w);
         return;
@@ -821,9 +879,26 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     pfd.events = POLLIN;
     int timeout = watcher_timeout_to_int(ms);
     int poll_rc = 0;
-    do {
+    // For a positive timeout, anchor a single monotonic deadline so an EINTR
+    // retry resumes with the REMAINING budget rather than restarting the full
+    // wait each time — otherwise repeated signals could block far longer than
+    // the documented "up to `ms`" (VDOC-191). A negative timeout (wait forever)
+    // and a zero timeout (poll once) keep their original semantics.
+    int64_t deadline_us = timeout > 0 ? rt_clock_ticks_us() + (int64_t)timeout * 1000 : 0;
+    for (;;) {
         poll_rc = poll(&pfd, 1, timeout);
-    } while (poll_rc < 0 && errno == EINTR);
+        if (poll_rc >= 0 || errno != EINTR)
+            break;
+        if (timeout > 0) {
+            int64_t remaining_us = deadline_us - rt_clock_ticks_us();
+            if (remaining_us <= 0) {
+                poll_rc = 0; // deadline reached during interruption: time out
+                break;
+            }
+            timeout = (int)((remaining_us + 999) / 1000); // ceil to ms
+        }
+        // timeout <= 0 (wait-forever or poll-once) retries with the same value.
+    }
     if (poll_rc > 0 && (pfd.revents & POLLNVAL)) {
         w->is_watching = 0;
     } else if (poll_rc > 0 && (pfd.revents & POLLIN)) {
@@ -887,9 +962,13 @@ int64_t rt_watcher_event_type(void *obj) {
 
 /// @brief Read how many file-system events were represented by the last overflow marker.
 /// @details Returns zero when no event has been polled or when the most recent
-///          event was not `RT_WATCH_EVENT_OVERFLOW`. Overflow markers are
-///          coalesced when the fixed queue remains full, so this value can be
-///          greater than one.
+///          event was not `RT_WATCH_EVENT_OVERFLOW`. For an INTERNAL ring
+///          overflow (Viper's own 64-entry queue filled), the value is the exact
+///          number of dropped events and is coalesced upward while the queue
+///          stays full, so it can be greater than one. For a NATIVE (kernel)
+///          overflow — Linux `IN_Q_OVERFLOW` or a Windows change-buffer overflow
+///          — the OS does not report how many events were lost, so the value is
+///          `-1` (unknown) rather than a fabricated count (VDOC-190).
 int64_t rt_watcher_event_overflow_count(void *obj) {
     if (!obj)
         return 0;

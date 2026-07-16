@@ -41,9 +41,10 @@ Basic timing utilities for sleeping and measuring elapsed time.
 ### Notes
 
 - `NowMs()` and `NowMicros()` use the platform's monotonic clock when it is available. On POSIX,
-  failure of `CLOCK_MONOTONIC` falls back to `CLOCK_REALTIME`, which can move backward or forward
-  when the wall clock is adjusted (VDOC-223). If all usable clock queries fail, these helpers
-  return `0`.
+  failure of `CLOCK_MONOTONIC` falls back to `CLOCK_REALTIME`. That fallback reading is passed
+  through a process-local floor (a lock-free compare-and-swap maximum), so the values these helpers
+  return stay non-decreasing even if the wall clock is adjusted backward (VDOC-223). If all usable
+  clock queries fail, these helpers return `0`.
 - The epoch (starting point) is unspecified. Use tick values for elapsed durations, not absolute
   dates or serialization.
 - `NowMicros()` reports microsecond units; neither method promises that much physical clock
@@ -143,9 +144,10 @@ interval has expired.
   does not stop it when it returns; call `Stop()` if the final elapsed value must remain fixed.
 - Countdown instances are not thread-safe; synchronize externally if an instance is shared
 - Instance methods and properties require a valid Countdown object; a null receiver traps
-- Countdown timing inherits `Clock`'s wall-clock fallback if the platform monotonic query fails
-  (VDOC-223). On Windows, the first-use performance-counter frequency cache is not synchronized
-  (VDOC-224).
+- Countdown timing inherits `Clock`'s wall-clock fallback if the platform monotonic query fails;
+  that fallback is ratcheted to stay non-decreasing so the deadline cannot recede (VDOC-223). On
+  Windows, the performance-counter frequency is cached through an acquire/release atomic slot, so
+  concurrent first use is well-defined (VDOC-224).
 
 ### Zia Example
 
@@ -242,6 +244,7 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `ParseDate(str)`                 | `Integer(String)`           | Parse a "YYYY-MM-DD" string to Unix timestamp            |
 | `ParseTime(str)`                 | `Integer(String)`           | Parse a "HH:MM:SS" string to seconds since midnight      |
 | `TryParseOption(str)`            | `Option[Integer](String)`   | Auto-detect format and parse; returns `None` on failure  |
+| `TryFromParts(y, m, d, h, min, s)` | `Option[Integer](Integer...)` | Like `FromParts` but returns `Some` on success and `None` on failure, so pre-epoch `-1` is unambiguous |
 
 ### Notes
 
@@ -266,8 +269,11 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 - `Now` and `NowMs` read the adjustable wall clock, not a monotonic timer. `NowMs` returns `0` when
   its platform query fails. `Now` forwards `time(NULL)` directly, so its `-1` failure value is also
   a valid pre-epoch timestamp (VDOC-230).
-- `Create` uses `-1` for rejected/unrepresentable input, but `-1` is also the valid Unix instant
-  immediately before the epoch. There is no non-sentinel `Create` variant (VDOC-225).
+- `FromParts` (the sentinel construction form) uses `-1` for rejected/unrepresentable input, but
+  `-1` is also the valid Unix instant immediately before the epoch. Use `TryFromParts`, which
+  returns `Some(Integer)` for any valid instant — including that pre-epoch `-1` — and `None` on
+  failure, when construction failure must be distinguished from a genuine pre-epoch result
+  (VDOC-225).
 - Local civil-time creation rejects a skipped daylight-saving hour. For a repeated hour it accepts
   whichever occurrence the host `mktime` chooses for `tm_isdst = -1`, which can vary by platform
   and timezone implementation (VDOC-226). Use an explicit numeric offset or a named-zone UTC
@@ -502,9 +508,11 @@ elapsed values down to nanosecond units.
 - Stopwatch instances are not thread-safe; synchronize externally if an instance is shared
 - `Restart()` is not a synchronization primitive or an atomic operation between threads. It is a
   single API call on an otherwise non-thread-safe object.
-- On POSIX, failure of the monotonic clock falls back to the adjustable realtime clock and total
-  elapsed time can therefore decrease. If both queries fail, the internal timestamp is `0`
-  (VDOC-223). Windows uses an unsynchronized first-use frequency cache (VDOC-224).
+- On POSIX, failure of the monotonic clock falls back to the realtime clock; that fallback reading
+  is ratcheted through a process-local floor so total elapsed time stays non-decreasing even if the
+  wall clock is adjusted backward. If both queries fail, the internal timestamp is `0` (VDOC-223).
+  On Windows the performance-counter frequency is cached through an acquire/release atomic slot, so
+  concurrent first use is well-defined (VDOC-224).
 
 ### Zia Example
 

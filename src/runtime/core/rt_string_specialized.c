@@ -130,13 +130,19 @@ rt_string rt_str_remove_suffix(rt_string str, rt_string suffix) {
 }
 
 /// @brief Find the *last* occurrence of `needle` within `haystack`. Returns the 1-based byte
-/// position of the match, or 0 if not found / either operand is empty.
+/// position of the match, or 0 if not found.
+/// @details Shares the family-wide empty-needle rule (VDOC-168): an empty
+///          needle matches at every position 1..Length+1, so IndexOf returns
+///          the first (1), IndexOfFrom the clamped start, and LastIndexOf the
+///          final one (Length + 1) — never the 0 miss sentinel.
 int64_t rt_str_last_index_of(rt_string haystack, rt_string needle) {
     if (!haystack || !needle)
         return 0;
     size_t hlen = rt_string_len_bytes(haystack);
     size_t nlen = rt_string_len_bytes(needle);
-    if (nlen == 0 || nlen > hlen)
+    if (nlen == 0)
+        return (int64_t)hlen + 1;
+    if (nlen > hlen)
         return 0;
 
     for (size_t i = hlen - nlen + 1; i > 0; i--) {
@@ -426,8 +432,13 @@ static int is_separator(char c) {
 /// @param words     Receives a pointer to each word (NUL-terminated within @p buf).
 /// @param max_words Capacity of @p words; further words are dropped.
 /// @return Number of words written (≤ @p max_words).
-static int split_words(
-    const char *src, size_t len, char *buf, size_t buf_cap, const char **words, int max_words) {
+static int split_words(const char *src,
+                       size_t len,
+                       char *buf,
+                       size_t buf_cap,
+                       const char **words,
+                       size_t *word_lens,
+                       int max_words) {
     int wcount = 0;
     size_t bpos = 0;
 
@@ -441,6 +452,7 @@ static int split_words(
 
         // Start of a word
         words[wcount] = buf + bpos;
+        size_t word_start = bpos;
 
         // Collect word characters
         while (i < len && !is_separator(src[i])) {
@@ -464,6 +476,10 @@ static int split_words(
                 buf[bpos++] = src[i];
             ++i;
         }
+        // Record the exact byte length: the copied bytes may themselves
+        // contain NUL, which strlen would silently truncate (VDOC-165).
+        if (word_lens)
+            word_lens[wcount] = bpos - word_start;
         if (bpos < buf_cap)
             buf[bpos++] = '\0';
         ++wcount;
@@ -508,56 +524,25 @@ static int append_case_char(rt_string_builder *sb, char ch, const char *context)
 /// @param remaining Number of bytes available from @p data.
 /// @return Number of bytes in the next codepoint, or zero on invalid input.
 static size_t like_utf8_step(const char *data, size_t remaining) {
-    if (!data || remaining == 0)
-        return 0;
-    unsigned char lead = (unsigned char)data[0];
-    if (lead < 0x80)
-        return 1;
-    // Strict decode (VDOC-060): reject overlong encodings, UTF-16 surrogates,
-    // and code points above U+10FFFF so `_` always means one valid code point.
-    size_t extra;
-    uint32_t cp;
-    if (lead >= 0xC2 && lead <= 0xDF) {
-        extra = 1;
-        cp = lead & 0x1Fu;
-    } else if (lead >= 0xE0 && lead <= 0xEF) {
-        extra = 2;
-        cp = lead & 0x0Fu;
-    } else if (lead >= 0xF0 && lead <= 0xF4) {
-        extra = 3;
-        cp = lead & 0x07u;
-    } else {
+    size_t step = rt_utf8_strict_step(data, remaining);
+    if (step == 0) {
         rt_trap("String.Like: invalid UTF-8 sequence");
         return 0;
     }
-    if (remaining - 1 < extra) {
-        rt_trap("String.Like: invalid UTF-8 sequence");
-        return 0;
-    }
-    for (size_t k = 1; k <= extra; k++) {
-        unsigned char ch = (unsigned char)data[k];
-        if ((ch & 0xC0u) != 0x80u) {
-            rt_trap("String.Like: invalid UTF-8 sequence");
-            return 0;
-        }
-        cp = (cp << 6) | (uint32_t)(ch & 0x3Fu);
-    }
-    if ((extra == 2 && cp < 0x800u) || (extra == 3 && cp < 0x10000u) ||
-        (cp >= 0xD800u && cp <= 0xDFFFu) || cp > 0x10FFFFu) {
-        rt_trap("String.Like: invalid UTF-8 sequence");
-        return 0;
-    }
-    return extra + 1;
+    return step;
 }
 
 static int split_words_dynamic(const char *src,
                                size_t len,
                                char **buf_out,
-                               const char ***words_out) {
+                               const char ***words_out,
+                               size_t **word_lens_out) {
     if (buf_out)
         *buf_out = NULL;
     if (words_out)
         *words_out = NULL;
+    if (word_lens_out)
+        *word_lens_out = NULL;
     if (len > (size_t)INT_MAX) {
         rt_trap("string_ops: input too large");
         return 0;
@@ -583,9 +568,21 @@ static int split_words_dynamic(const char *src,
         return 0;
     }
 
-    int wc = split_words(src, len, wbuf, buf_cap, words, (int)word_cap);
+    size_t *word_lens = (size_t *)malloc(word_cap * sizeof(*word_lens));
+    if (!word_lens) {
+        free(words);
+        free(wbuf);
+        rt_trap("string_ops: memory allocation failed");
+        return 0;
+    }
+
+    int wc = split_words(src, len, wbuf, buf_cap, words, word_lens, (int)word_cap);
     *buf_out = wbuf;
     *words_out = words;
+    if (word_lens_out)
+        *word_lens_out = word_lens;
+    else
+        free(word_lens);
     return wc;
 }
 
@@ -602,7 +599,8 @@ rt_string rt_str_camel_case(rt_string str) {
 
     char *wbuf = NULL;
     const char **words = NULL;
-    int wc = split_words_dynamic(src, len, &wbuf, &words);
+    size_t *word_lens = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words, &word_lens);
     if (!wbuf || !words)
         return NULL;
 
@@ -611,7 +609,7 @@ rt_string rt_str_camel_case(rt_string str) {
 
     for (int w = 0; w < wc; ++w) {
         const char *word = words[w];
-        size_t wlen = strlen(word);
+        size_t wlen = word_lens[w];
         if (wlen == 0)
             continue;
 
@@ -628,12 +626,14 @@ rt_string rt_str_camel_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return result;
 
 camel_fail:
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return NULL;
@@ -650,7 +650,8 @@ rt_string rt_str_pascal_case(rt_string str) {
 
     char *wbuf = NULL;
     const char **words = NULL;
-    int wc = split_words_dynamic(src, len, &wbuf, &words);
+    size_t *word_lens = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words, &word_lens);
     if (!wbuf || !words)
         return NULL;
 
@@ -659,7 +660,7 @@ rt_string rt_str_pascal_case(rt_string str) {
 
     for (int w = 0; w < wc; ++w) {
         const char *word = words[w];
-        size_t wlen = strlen(word);
+        size_t wlen = word_lens[w];
         if (wlen == 0)
             continue;
 
@@ -675,12 +676,14 @@ rt_string rt_str_pascal_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return result;
 
 pascal_fail:
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return NULL;
@@ -698,7 +701,8 @@ rt_string rt_str_snake_case(rt_string str) {
 
     char *wbuf = NULL;
     const char **words = NULL;
-    int wc = split_words_dynamic(src, len, &wbuf, &words);
+    size_t *word_lens = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words, &word_lens);
     if (!wbuf || !words)
         return NULL;
 
@@ -709,7 +713,7 @@ rt_string rt_str_snake_case(rt_string str) {
         if (w > 0 && !append_case_bytes(&sb, "_", 1, "String.SnakeCase: append failed"))
             goto snake_fail;
         const char *word = words[w];
-        size_t wlen = strlen(word);
+        size_t wlen = word_lens[w];
         for (size_t j = 0; j < wlen; ++j) {
             char c = (char)rt_ascii_tolower((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.SnakeCase: append failed"))
@@ -719,12 +723,14 @@ rt_string rt_str_snake_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return result;
 
 snake_fail:
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return NULL;
@@ -741,7 +747,8 @@ rt_string rt_str_kebab_case(rt_string str) {
 
     char *wbuf = NULL;
     const char **words = NULL;
-    int wc = split_words_dynamic(src, len, &wbuf, &words);
+    size_t *word_lens = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words, &word_lens);
     if (!wbuf || !words)
         return NULL;
 
@@ -752,7 +759,7 @@ rt_string rt_str_kebab_case(rt_string str) {
         if (w > 0 && !append_case_bytes(&sb, "-", 1, "String.KebabCase: append failed"))
             goto kebab_fail;
         const char *word = words[w];
-        size_t wlen = strlen(word);
+        size_t wlen = word_lens[w];
         for (size_t j = 0; j < wlen; ++j) {
             char c = (char)rt_ascii_tolower((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.KebabCase: append failed"))
@@ -762,12 +769,14 @@ rt_string rt_str_kebab_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return result;
 
 kebab_fail:
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return NULL;
@@ -784,7 +793,8 @@ rt_string rt_str_screaming_snake(rt_string str) {
 
     char *wbuf = NULL;
     const char **words = NULL;
-    int wc = split_words_dynamic(src, len, &wbuf, &words);
+    size_t *word_lens = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words, &word_lens);
     if (!wbuf || !words)
         return NULL;
 
@@ -795,7 +805,7 @@ rt_string rt_str_screaming_snake(rt_string str) {
         if (w > 0 && !append_case_bytes(&sb, "_", 1, "String.ScreamingSnake: append failed"))
             goto screaming_fail;
         const char *word = words[w];
-        size_t wlen = strlen(word);
+        size_t wlen = word_lens[w];
         for (size_t j = 0; j < wlen; ++j) {
             char c = (char)rt_ascii_toupper((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.ScreamingSnake: append failed"))
@@ -805,12 +815,14 @@ rt_string rt_str_screaming_snake(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return result;
 
 screaming_fail:
     rt_sb_free(&sb);
+    free(word_lens);
     free(words);
     free(wbuf);
     return NULL;

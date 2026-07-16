@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: misc/benchmarks/reference/c/inline_stress.c
+// Purpose: C reference for the inline_stress benchmark kernel.
+// Key invariants:
+//   - Standalone translation unit; no cross-layer dependencies.
+// Ownership/Lifetime:
+//   - No long-lived state; all allocations are scoped to the run.
+// Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 /* inline_stress.c — Inlining stress benchmark (50M iterations).
    Equivalent to examples/il/benchmarks/inline_stress.il */
 #include <stdint.h>

@@ -20,6 +20,9 @@
 
 #include "rt_async_socket.h"
 
+#include "rt_box.h"
+#include "system/rt_machine.h"
+
 #include "rt_internal.h"
 #include "rt_network.h"
 #include "rt_object.h"
@@ -46,6 +49,7 @@ extern int8_t rt_threadpool_submit(void *pool, void *callback, void *arg);
 // Forward declarations for promise/future (from rt_promise.h)
 extern void *rt_promise_new(void);
 extern void rt_promise_set(void *promise, void *value);
+extern void rt_promise_set_transferred(void *promise, void *value);
 extern void rt_promise_set_error(void *promise, rt_string error);
 extern void *rt_promise_get_future(void *promise);
 
@@ -54,21 +58,43 @@ extern void *rt_promise_get_future(void *promise);
 //=============================================================================
 
 static void *default_pool = NULL;
+
+/// @brief Requested worker count for the shared pool (0 = CPU-scaled default).
+/// Configurable via `AsyncSocket.SetPoolSize` BEFORE the first async call.
+static int64_t requested_pool_size = 0;
+
+/// @brief CPU-aware default pool size (2x cores, floor 8, cap 1024): each
+///        blocking operation occupies a worker for its duration, so the old
+///        fixed 4-worker pool let a handful of long reads starve the surface.
+static int64_t async_default_pool_size(void) {
+    int64_t size = requested_pool_size;
+    if (size <= 0) {
+        int64_t cores = rt_machine_cores();
+        if (cores < 1)
+            cores = 1;
+        size = cores * 2;
+        if (size < 8)
+            size = 8;
+    }
+    if (size > 1024)
+        size = 1024;
+    return size;
+}
+
 #ifdef _WIN32
 static LONG pool_init_state = 0;
 #else
 static pthread_once_t pool_once = PTHREAD_ONCE_INIT;
 
-/// @brief POSIX `pthread_once` initializer for the shared 4-thread pool.
+/// @brief POSIX `pthread_once` initializer for the shared worker pool.
 static void init_default_pool(void) {
-    default_pool = rt_threadpool_new(4);
+    default_pool = rt_threadpool_new(async_default_pool_size());
 }
 #endif
 
 /// @brief Lazy-initialize and return the shared async-socket thread pool. POSIX uses
 /// `pthread_once`; Win32 uses a 3-state Interlocked flag (0=uninit, 1=initializing, 2=ready)
-/// with a busy-wait while another thread is initializing. Pool is 4 threads — enough for
-/// concurrent socket operations without overwhelming the system on small machines.
+/// with a busy-wait while another thread is initializing.
 static void *get_default_pool(void) {
 #ifdef _WIN32
     if (pool_init_state == 2)
@@ -81,13 +107,29 @@ static void *get_default_pool(void) {
             Sleep(0);
         return default_pool;
     }
-    default_pool = rt_threadpool_new(4);
+    default_pool = rt_threadpool_new(async_default_pool_size());
     InterlockedExchange(&pool_init_state, 2);
     return default_pool;
 #else
     pthread_once(&pool_once, init_default_pool);
     return default_pool;
 #endif
+}
+
+/// @brief Configure the shared pool's worker count (the executor model is a
+///        bounded blocking-worker pool). Must be called before the first
+///        async operation; traps once the pool exists.
+void rt_async_socket_set_pool_size(int64_t size) {
+    if (size < 1 || size > 1024) {
+        rt_trap("AsyncSocket.SetPoolSize: size must be 1..1024");
+        return;
+    }
+    if (default_pool) {
+        rt_trap("AsyncSocket.SetPoolSize: pool already created; set the size "
+                "before the first async operation");
+        return;
+    }
+    requested_pool_size = size;
 }
 
 /// @brief Drop one reference; free if it was the last. Used in worker cleanup and error paths.
@@ -207,7 +249,9 @@ static void async_connect_worker(void *arg) {
         void *tcp = rt_tcp_connect_for(host, a->port, a->timeout_ms);
         rt_string_unref(host);
         host = NULL;
-        rt_promise_set(a->promise, tcp);
+        // Transfer the worker's freshly produced reference to the Future so
+        // consumption releases the only reference (VDOC-157).
+        rt_promise_set_transferred(a->promise, tcp);
     } else {
         if (host)
             rt_string_unref(host);
@@ -288,7 +332,10 @@ static void async_send_worker(void *arg) {
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
         int64_t sent = rt_tcp_send(a->tcp, a->data);
-        rt_promise_set(a->promise, (void *)(intptr_t)sent);
+        // Box the count: the Future payload must be a real runtime object,
+        // not a raw pointer-cast integer (VDOC-158). Consumers unbox with
+        // Viper.Core.Box, matching Async.Run's boxed-result convention.
+        rt_promise_set_transferred(a->promise, rt_box_i64(sent));
     } else {
         async_promise_error_from_trap(a->promise, "AsyncSocket: send failed");
     }
@@ -354,7 +401,7 @@ static void async_recv_worker(void *arg) {
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
         void *data = rt_tcp_recv(a->tcp, a->max_bytes);
-        rt_promise_set(a->promise, data);
+        rt_promise_set_transferred(a->promise, data);
     } else {
         async_promise_error_from_trap(a->promise, "AsyncSocket: recv failed");
     }
@@ -371,8 +418,10 @@ static void async_recv_worker(void *arg) {
 ///          pool thread and the promise is resolved with the resulting
 ///          Bytes payload (or an error message via the trap recovery).
 void *rt_async_recv(void *tcp, int64_t max_bytes) {
-    if (!tcp)
+    if (!tcp) {
         rt_trap("AsyncSocket: NULL tcp");
+        return async_failed_future("AsyncSocket: NULL tcp");
+    }
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
@@ -423,7 +472,7 @@ static void async_http_get_worker(void *arg) {
         result = rt_http_get(url);
         rt_string_unref(url);
         url = NULL;
-        rt_promise_set(a->promise, (void *)result);
+        rt_promise_set_transferred(a->promise, (void *)result);
     } else {
         if (url)
             rt_string_unref(url);
@@ -443,8 +492,10 @@ static void async_http_get_worker(void *arg) {
 void *rt_async_http_get(rt_string url) {
     const char *u = rt_string_cstr(url);
     size_t url_len = async_string_len_or_trap(url, "AsyncSocket: NULL URL");
-    if (url_len == 0 || async_has_embedded_nul(u, url_len))
+    if (url_len == 0 || async_has_embedded_nul(u, url_len)) {
         rt_trap("AsyncSocket: invalid URL");
+        return async_failed_future("AsyncSocket: invalid URL");
+    }
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
@@ -494,7 +545,7 @@ static void async_http_post_worker(void *arg) {
         rt_string_unref(body);
         url = NULL;
         body = NULL;
-        rt_promise_set(a->promise, (void *)result);
+        rt_promise_set_transferred(a->promise, (void *)result);
     } else {
         if (url)
             rt_string_unref(url);
@@ -520,8 +571,10 @@ void *rt_async_http_post(rt_string url, rt_string body) {
     const char *b = body ? rt_string_cstr(body) : NULL;
     size_t url_len = async_string_len_or_trap(url, "AsyncSocket: NULL URL");
     size_t body_len = body ? async_string_len_or_trap(body, "AsyncSocket: NULL body") : 0;
-    if (url_len == 0 || async_has_embedded_nul(u, url_len))
+    if (url_len == 0 || async_has_embedded_nul(u, url_len)) {
         rt_trap("AsyncSocket: invalid URL");
+        return async_failed_future("AsyncSocket: invalid URL");
+    }
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);

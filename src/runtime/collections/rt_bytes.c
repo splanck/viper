@@ -266,6 +266,8 @@ void *rt_bytes_from_str(rt_string str) {
         return rt_bytes_new(0);
 
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
+    if (!bytes)
+        return NULL; // returning-hook NULL after an allocation trap (VDOC-177)
     memcpy(bytes->data, cstr, len);
     return bytes;
 }
@@ -323,6 +325,8 @@ void *rt_bytes_from_hex(rt_string hex) {
     }
 
     rt_bytes_impl *bytes = rt_bytes_alloc(len);
+    if (!bytes)
+        return NULL; // returning-hook NULL after an allocation trap (VDOC-177)
     for (int64_t i = 0; i < len; i++) {
         int hi = rt_hex_digit_value(hex_str[i * 2]);
         int lo = rt_hex_digit_value(hex_str[i * 2 + 1]);
@@ -346,7 +350,8 @@ void *rt_bytes_from_hex(rt_string hex) {
 int64_t rt_bytes_len(void *obj) {
     if (!obj)
         return 0;
-    return rt_bytes_require(obj, "Bytes: invalid Bytes object")->len;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes: invalid Bytes object");
+    return bytes ? bytes->len : 0; // guard a returning-hook NULL (VDOC-177)
 }
 
 int8_t rt_bytes_is_bytes(void *obj) {
@@ -368,7 +373,8 @@ const uint8_t *rt_bytes_data_const(void *obj) {
 int8_t rt_bytes_is_empty(void *obj) {
     if (!obj)
         return 1;
-    return rt_bytes_require(obj, "Bytes.IsEmpty: invalid Bytes object")->len == 0 ? 1 : 0;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.IsEmpty: invalid Bytes object");
+    return (!bytes || bytes->len == 0) ? 1 : 0; // guard returning-hook NULL (VDOC-177)
 }
 
 /// @brief Gets the byte value at the specified index.
@@ -400,6 +406,8 @@ int64_t rt_bytes_get(void *obj, int64_t idx) {
         rt_bytes_trap_invalid_operation("Bytes.Get: null bytes");
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Get: invalid Bytes object");
+    if (!bytes)
+        return 0; // returning-hook NULL after a wrong-class trap (VDOC-177)
 
     if (idx < 0 || idx >= bytes->len)
         rt_bytes_trap_bounds("Bytes.Get: index out of bounds");
@@ -439,6 +447,8 @@ void rt_bytes_set(void *obj, int64_t idx, int64_t val) {
         rt_bytes_trap_invalid_operation("Bytes.Set: null bytes");
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Set: invalid Bytes object");
+    if (!bytes)
+        return; // returning-hook NULL after a wrong-class trap (VDOC-177)
 
     if (idx < 0 || idx >= bytes->len)
         rt_bytes_trap_bounds("Bytes.Set: index out of bounds");
@@ -480,6 +490,8 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end) {
         return rt_bytes_new(0);
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Slice: invalid Bytes object");
+    if (!bytes)
+        return rt_bytes_new(0); // returning-hook NULL (VDOC-177)
 
     // Clamp bounds
     if (start < 0)
@@ -542,6 +554,8 @@ void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64
 
     rt_bytes_impl *dst_bytes = rt_bytes_require(dst, "Bytes.Copy: invalid destination");
     rt_bytes_impl *src_bytes = rt_bytes_require(src, "Bytes.Copy: invalid source");
+    if (!dst_bytes || !src_bytes)
+        return; // returning-hook NULL after a wrong-class trap (VDOC-177)
 
     if (count < 0) {
         rt_bytes_trap_domain("Bytes.Copy: count cannot be negative");
@@ -590,6 +604,8 @@ rt_string rt_bytes_to_str(void *obj) {
         return rt_string_from_bytes("", 0);
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.ToStr: invalid Bytes object");
+    if (!bytes)
+        return rt_string_from_bytes("", 0); // returning-hook NULL (VDOC-177)
     return rt_string_from_bytes((const char *)bytes->data, (size_t)bytes->len);
 }
 
@@ -627,6 +643,8 @@ rt_string rt_bytes_to_hex(void *obj) {
         return rt_string_from_bytes("", 0);
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.ToHex: invalid Bytes object");
+    if (!bytes)
+        return rt_string_from_bytes("", 0); // returning-hook NULL (VDOC-177)
 
     if (bytes->len == 0)
         return rt_string_from_bytes("", 0);
@@ -828,6 +846,8 @@ void *rt_bytes_from_base64(rt_string b64) {
     }
 
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)out_len);
+    if (!bytes)
+        return NULL; // returning-hook NULL after an allocation trap (VDOC-177)
 
     size_t out_pos = 0;
     for (size_t i = 0; i < b64_len; i += 4) {
@@ -914,7 +934,7 @@ void rt_bytes_fill(void *obj, int64_t val) {
         return;
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Fill: invalid Bytes object");
-    if (bytes->len > 0 && bytes->data) {
+    if (bytes && bytes->len > 0 && bytes->data) { // guard returning-hook NULL (VDOC-177)
         memset(bytes->data, (uint8_t)(val & 0xFF), (size_t)bytes->len);
     }
 }
@@ -945,6 +965,8 @@ int64_t rt_bytes_find(void *obj, int64_t val) {
         return -1;
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Find: invalid Bytes object");
+    if (!bytes)
+        return -1; // returning-hook NULL (VDOC-177)
     uint8_t byte = (uint8_t)(val & 0xFF);
 
     for (int64_t i = 0; i < bytes->len; i++) {
@@ -994,6 +1016,8 @@ void *rt_bytes_clone(void *obj) {
         return rt_bytes_new(0);
 
     rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Clone: invalid Bytes object");
+    if (!bytes)
+        return rt_bytes_new(0); // returning-hook NULL (VDOC-177)
     return rt_bytes_slice(obj, 0, bytes->len);
 }
 
@@ -1235,6 +1259,8 @@ void *rt_bytes_from_raw(const uint8_t *data, size_t len) {
     if (len > 0 && !data)
         rt_bytes_trap_invalid_operation("Bytes.FromRaw: null data with non-zero length");
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
+    if (!bytes)
+        return NULL; // returning-hook NULL after an allocation trap (VDOC-177)
     if (len > 0 && data)
         memcpy(bytes->data, data, len);
     return bytes;

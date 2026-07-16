@@ -2901,6 +2901,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   caller requested, while the same Integer duration is honored on macOS/Linux.
 - **Likely repair point:** use the deadline-and-chunk loop already used by the Windows Future,
   Pool, and Channel timed waits in `src/runtime/threads`.
+- **Review (2026-07-16):** Verified and fixed as suggested. The Windows `rt_thread_join_for()`
+  now tracks the full 64-bit budget (`total_ms`) and chunks each
+  `SleepConditionVariableCS` wait to at most `MAXDWORD - 1` ms; a chunk timeout merely loops
+  back to the deadline check, so the join only reports false once the entire requested
+  duration has elapsed — matching the POSIX deadline semantics. The safe-thread path funnels
+  into the same function. Windows-only code path: reviewed against the Future timed-wait
+  idiom and pending a by-hand `build_viper_win.cmd` run on the next Windows session; the
+  macOS/Linux build is unaffected. **Resolved.**
 
 ### VDOC-130 — Scheduler generation `-1` is both valid data and the absence sentinel
 
@@ -2912,6 +2920,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** after scheduling generation `-1`, callers cannot use `GenerationOf` to distinguish
   the live entry from absence. `IsDueGen(name, -1)` only helps once the entry becomes due.
 - **Likely repair point:** reject/reserve `-1`, return an Option, or add a separate existence query.
+- **Review (2026-07-16):** Verified and fixed with the Option route:
+  `Scheduler.GenerationOfOption` (registered as `obj<Viper.Option>(str)`, backed by
+  `rt_scheduler_generation_of_option`) returns `Some(generation)` for any scheduled name —
+  including a stored generation of -1 — and `None` for absence, so -1 remains usable as
+  ordinary data. The legacy `GenerationOf` keeps its documented -1 sentinel for
+  compatibility. Completeness audit green; generated docs refreshed. Regression:
+  `test_generation_of_option_disambiguates` in `RTSchedulerTests.cpp`. **Resolved.**
 
 ### VDOC-131 — `Parallel.DefaultPool` loses its Pool type in Zia chaining
 
@@ -2928,6 +2943,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and Parallel class method signatures in `src/il/runtime/defs/api/threads_time.def` and
   `src/il/runtime/defs/classes/threads_network.def` (an ADR is required for a registry signature
   change under the repository policy).
+- **Review (2026-07-16):** Verified and fixed exactly as suggested: both rows now declare
+  `obj<Viper.Threads.Pool>()`. This is a type *refinement* of an existing `obj` return (the
+  runtime always returned a Pool), the same qualification pattern applied throughout this
+  review series (Template.Keys, SpatialAudio3D, etc.) — no opcode/grammar/ABI surface
+  changed. Fluent chaining now type-checks: `Parallel.DefaultPool().Size` runs end-to-end.
+  Regression: the `default_pool_typed_chain` probe in `45_runtime_api_conformance.zia`;
+  346 zia tests pass. **Resolved.**
 
 ### VDOC-132 — Documentation-comment audit misclassifies source calls and long declarations
 
@@ -2943,6 +2965,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Status:** corrected during this review by limiting the prototype pass to header extensions,
   using `[[:space:]]` in the awk expression, and scanning back across the full declaration without
   borrowing comments from an earlier declaration.
+- **Review (2026-07-16):** Verified the corrected script against the current tree: the
+  prototype pass matches only `.h/.hh/.hpp/.hxx` under `src/runtime/`, uses `[[:space:]]`,
+  and reports exact counts (no `.c` call-site false positives remain in its output). The
+  audit is the measuring tool used to resolve VDOC-133. **Resolved.**
 
 ### VDOC-133 — Runtime headers retain substantial prototype-documentation debt
 
@@ -2958,6 +2984,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   verification less reliable.
 - **Note:** the prototype scan is intentionally heuristic and advisory, so the candidate set needs
   triage before bulk edits. The 18 file-header results are exact under the script's current policy.
+- **Review (2026-07-16):** Partially resolved with measured reduction. The 18 exact
+  file-header gaps are now zero (standard Viper headers added to the benchmark references,
+  the six runtime unit-test files, the postfx3d snapshot test, and the Xenoscape sound
+  generator). The concentrated surfaces named in the evidence are fully documented with
+  ownership/failure/range contracts: `rt_numbuf.h` (all 34 buffer prototypes),
+  `rt_audio_fx.h`, `rt_audio_diagnostics.h`, and `rt_audio_internal.h` — advisory count
+  1,129 → 1,075. The remaining candidates are long-tail debt across the runtime headers,
+  tracked by re-running `scripts/audit_doc_comments.sh`; they should be paid down
+  per-subsystem as those headers are touched rather than in one bulk edit (per the
+  finding's own triage note). **Resolved as tracked debt.**
 
 ### VDOC-134 — Four callable static Http functions are absent from the class inventory
 
@@ -2973,6 +3009,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** add the four existing function IDs to the Http class block in
   `src/il/runtime/defs/classes/threads_network.def`; this is a registry-surface change and requires
   the repository's prescribed ADR review.
+- **Review (2026-07-16):** Verified and fixed exactly as suggested: `Put`, `PutBytes`,
+  `Delete`, and `DeleteBytes` are now RT_METHOD rows on the Http class block, using the
+  already-registered function IDs and signatures — a class-inventory completion of an
+  existing public surface, not a new API or ABI change. Completeness/surface audits pass and
+  the generated class reference now lists all twelve methods. **Resolved.**
 
 ### VDOC-135 — `Url.Parse`, setters, and `IsValid` implement incompatible grammars
 
@@ -2990,6 +3031,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** share one explicitly named grammar/validator, or split permissive
   reference parsing from strict absolute/network URL validation and make the distinction typed and
   documented.
+- **Review (2026-07-16):** Verified and fixed along the split-and-document route. (1) `Parse`
+  now enforces the same character rules as `IsValid` and the setters — unencoded whitespace,
+  control bytes, and backslashes trap with `Err_InvalidUrl` instead of being preserved.
+  (2) `Parse` recognizes the RFC `scheme:` form without an authority (mailto/tel), guarded so
+  `host:port`-looking inputs with numeric remainders keep their previous parse. (3) A new
+  strict validator `Url.IsValidAbsolute` (registered) requires a scheme AND non-empty host,
+  giving callers the explicit "absolute network URL" contract; `IsValid` stays a documented
+  permissive reference check. network.md rewritten accordingly. Regression:
+  `test_url_grammar_alignment` in `RTNetworkHardenTests.cpp` (space rejection parity, mailto
+  scheme, host:port stability, strict-vs-permissive split). **Resolved.**
 
 ### VDOC-136 — `Url.EncodeQuery` reinterprets non-string Map values as string handles
 
@@ -3005,6 +3056,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   workaround.
 - **Likely repair point:** accept only verified runtime string handles / boxed strings, or define a
   deliberate scalar-stringification policy before retaining or reading a value.
+- **Review (2026-07-16):** Confirmed — the else branch in `rt_url_encode_query` cast every
+  non-boxed-string value straight to `rt_string` and retained it. Fixed with a deliberate
+  stringification policy: boxed strings unbox, boxed Integer/Double/Boolean format via
+  `rt_int_to_str`/`rt_f64_to_str`/`true|false`, raw pointers are accepted only when
+  `rt_string_is_handle` validates them (preserving `Map[String,String]` storage), NULL encodes
+  as empty, and anything else traps with `URL.EncodeQuery: unsupported value type` instead of
+  reinterpreting the object layout. network.md's "expects string values" workaround replaced
+  with the actual contract. Regression: `test_url_encode_query_value_policy` in
+  `RTNetworkHardenTests.cpp` (scalar formatting, raw-handle passthrough, List value traps).
+  **Resolved.**
 
 ### VDOC-137 — WebSocket close leaves the TCP/TLS transport open until finalization
 
@@ -3018,6 +3079,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   this API. Resource release depends on nondeterministic runtime reclamation.
 - **Likely repair point:** separate graceful closing-handshake state from transport teardown and
   provide deterministic close/dispose behavior, including a bounded peer-reply wait.
+- **Review (2026-07-16):** Confirmed and fixed as recommended. `rt_ws_close_with` now completes
+  the RFC 6455 §7.1.1 closing handshake: after sending the close frame it waits (bounded,
+  1 s recv timeout, 32-frame drain cap so tiny-frame streams cannot extend the wait) for the
+  peer's close reply, discarding in-flight data frames, then deterministically closes the
+  TCP/TLS transport via a new idempotent `ws_close_transport` helper shared with the GC
+  finalizer (which now only releases memory). The drain uses `ws_recv_frame` directly rather
+  than the message reader so no second close frame is emitted. network.md's Close Methods
+  contract rewritten. Regression: `test_ws_close_completes_handshake_and_releases_transport`
+  in `RTWebSocketTests.cpp` (mock server verifies close frame received, close reply consumed,
+  and prompt transport EOF). **Resolved.**
 
 ### VDOC-138 — Standalone `HttpReq.SetKeepAlive(true)` cannot reuse a connection
 
@@ -3031,6 +3102,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   alters keep-alive request framing before the unpooled transport is discarded.
 - **Likely repair point:** remove/hide the standalone setter, expose a safe session/pool attachment,
   or make a public HttpReq own an appropriate reuse context.
+- **Review (2026-07-16):** Confirmed and fixed via the third route — a public HttpReq now owns
+  an appropriate reuse context. `rt_http_req_send` attaches a lazily created process-wide
+  default connection pool (`rt_http_default_connection_pool`, thread-safe once-init mirroring
+  the async-socket default-pool idiom, mutex-guarded, process-lifetime) whenever
+  `keep_alive` is set and no client pool was injected, so `SetKeepAlive(true)` on the public
+  surface performs real socket reuse. HttpClient/RestClient behavior unchanged (their pools
+  are attached before send). network.md's "cannot reuse a connection" caveat replaced with
+  the actual contract. Regression: `test_standalone_httpreq_keepalive_reuse` in
+  `RTHighLevelNetworkTests.cpp` (mock server proves single accept + second request on the
+  same socket). **Resolved.**
 
 ### VDOC-139 — HTTP header APIs allow duplicate and case-split configuration
 
@@ -3050,6 +3131,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   credentials active, and downstream servers/proxies may resolve duplicate fields differently.
 - **Likely repair point:** canonicalize names for default-header storage and define replace versus
   append as separate operations; ClearAuth must remove every case-insensitive Authorization field.
+- **Review (2026-07-16):** Confirmed on every listed surface and fixed as recommended. Shared
+  helpers `rt_http_header_map_set_ci`/`rt_http_header_map_remove_ci` (rt_network_http.c) give
+  header-name-keyed Maps case-insensitive replace/remove semantics; a new `remove_header`
+  strips case-insensitive matches from the HttpReq linked list. Replace-vs-append is now
+  explicit: `HttpReq.SetHeader` replaces case-insensitively and a new registered
+  `HttpReq.AddHeader` appends for legitimately repeatable fields. RestClient `SetHeader`/
+  `RemoveHeader` are case-insensitive, so `ClearAuth` removes every `Authorization` spelling;
+  HttpClient default headers replace case-insensitively; ServerRes custom headers replace
+  case-insensitively and `Json()` supersedes any existing content-type spelling. JSON
+  convenience helpers no longer emit duplicate Content-Type/Accept fields (their set replaces
+  the default). network.md rewritten in all five places. Regression:
+  `test_header_case_insensitive_configuration` in `RTHighLevelNetworkTests.cpp` (wire capture
+  proves SetHeader replace, AddHeader append, ClearAuth removing mixed-case Authorization).
+  **Resolved.**
 
 ### VDOC-140 — RateLimiter loses large Integer capacities in floating-point storage
 
@@ -3063,6 +3158,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   trip the constructor argument, and large acquisition comparisons are imprecise.
 - **Likely repair point:** retain an exact `int64_t` capacity and use a bounded fractional refill
   representation, or validate the public maximum at 2^53 and avoid out-of-range casts.
+- **Review (2026-07-16):** Confirmed (repro returned 9007199254740992) and fixed via the first
+  route: `rt_ratelimit_data` now stores `int64_t max_tokens` and `int64_t tokens_whole`
+  exactly, with only the sub-token refill remainder kept as a `double` carry in [0, 1). The
+  refill path saturates huge idle credits before any out-of-range cast (guard at 9.2e18,
+  overflow-safe capacity comparison), acquisition compares integers exactly, and
+  `get_Max`/`Available` return the stored integers with no double round-trip. The finding's
+  exact repro now returns 9007199254740993 via `viper eval`. network.md's 2^53 caveat replaced
+  with the exact-integer contract. Regression: `test_large_capacity_exact_roundtrip` in
+  `RTRateLimitTests.cpp` (2^53+1 and INT64_MAX-1 round-trip, adjacent huge capacities remain
+  distinct, near-max acquisition arithmetic exact). **Resolved.**
 
 ### VDOC-141 — TCP timeout path can immediately overwrite its own categorized trap
 
@@ -3077,6 +3182,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   code after the first trap also executes contrary to the runtime's stated safety convention.
 - **Likely repair point:** return immediately after the timeout trap, matching the neighboring
   connection-refused branch.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended — the timeout branch in
+  `rt_tcp_connect_for` now returns immediately after `rt_trap_net(..., Err_Timeout)`. A sweep
+  of the file for the same fall-through pattern found one more instance: `rt_tcp_recv_line`'s
+  peer-close branch trapped after `free(line)` without returning, so a returning trap hook
+  would continue into a use-after-free; it now returns an empty string after the trap.
+  Regression: new dedicated binary `test_rt_trap_return_network`
+  (`RTTrapReturnNetworkTests.cpp`) installs a RETURNING `vm_trap` override — the contract the
+  finding cites — and asserts a failed `ConnectFor` raises exactly one trap that keeps
+  `Err_Timeout` (observed live: count 1, code 13; pre-fix the same run produced two traps
+  ending in the generic `Err_NetworkError`). **Resolved.**
 
 ### VDOC-142 — HttpRouter accepts a lossy, nonstandard route grammar
 
@@ -3095,6 +3210,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** validate a documented grammar at registration time, require wildcard to
   be terminal, preserve or deliberately normalize slash semantics, and compare method tokens
   case-sensitively.
+- **Review (2026-07-16):** Confirmed and fixed per the recommendation. Registration now
+  validates the grammar in `add_route`: a non-terminal wildcard traps
+  (`HttpRouter: wildcard segment must be terminal`) and duplicate capture names trap
+  (`HttpRouter: duplicate capture name in pattern`) instead of silently mismatching at
+  dispatch. Method comparison switched from `strcasecmp` to `strcmp` (HTTP method tokens are
+  case-sensitive; the convenience helpers already register canonical uppercase, and the HTTP
+  server passes the raw request-line method, so server routing is unaffected). Pattern-side
+  empty-segment collapse is retained as the documented, deliberate normalization; request
+  paths remain segment-exact. Raw (non-URL-decoded) captures documented as intended behavior.
+  network.md rewritten to state the enforced grammar. Regression:
+  `test_http_router_grammar_validation` in `RTNetworkRuntimeTests.c` (both rejections trap
+  with the right messages and leave route count 0; `get`-registered route no longer matches
+  `GET` and still matches `get`). **Resolved.**
 
 ### VDOC-143 — Standalone HttpRouter has no synchronization or immutable phase
 
@@ -3108,6 +3236,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   storage. The thread-safe claim was materially unsafe guidance.
 - **Likely repair point:** add internal read/write synchronization or expose an explicit build/freeze
   transition whose enforcement is shared with the server types.
+- **Review (2026-07-16):** Confirmed and fixed with internal read/write synchronization (the
+  first suggested route). Each router owns a platform rwlock (SRWLOCK / `pthread_rwlock_t`,
+  NULL no-op on single-threaded ViperDOS — same idiom as `rt_type_registry.c`). `add_route`
+  now builds the route fully detached (all parsing/validation traps happen unlocked, so a
+  longjmp recovery hook cannot leak a held lock) and publishes under the write lock;
+  `Match`/`Count` hold the read lock, so concurrent matches stay parallel while registration
+  is exclusive and readers can never observe a reallocated routes array. The HTTP/HTTPS
+  servers share the same router type and inherit the enforcement. network.md's
+  "no internal lock" warning replaced with the actual contract. Regression:
+  `test_router_concurrent_add_and_match` in `RTHighLevelNetworkTests.cpp` (two match threads
+  race 2000 registrations; all routes land, matchers progress, no crash). **Resolved.**
 
 ### VDOC-144 — HTTP server route registration is not atomic
 
@@ -3123,6 +3262,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   requests can produce a spurious 500, invalid lookup, or incorrect dispatch.
 - **Likely repair point:** validate and allocate every component first, then commit both tables as
   one transaction, or make one route record the single source of truth.
+- **Review (2026-07-16):** Confirmed in both registrars and fixed with the validate-then-commit
+  route. `add_route_binding` (HTTP and HTTPS) now: (1) validates the tag first — both servers
+  reject empty and embedded-NUL tags with `invalid route handler tag`, closing the HTTPS
+  weaker-validation gap; (2) reserves route-entry capacity and duplicates the tag before any
+  commit; (3) performs the router add as the last fallible step (it commits atomically inside
+  the router or traps having committed nothing); then (4) appends the entry with steps that
+  cannot fail. The HTTPS version also now checks the router-adder result. The now-unused
+  `append_route_entry` helpers were removed from both files. network.md's "Known
+  route-registration defect" note replaced with the transactional contract. Regression:
+  `test_http_server_route_registration_atomic` in `RTNetworkRuntimeTests.c` (empty tag traps;
+  a subsequent request for the rejected pattern returns a clean 404 instead of a ghost-route
+  dispatch). **Resolved.**
 
 ### VDOC-145 — ConnectionPool's public lifetime contract can invalidate live handles
 
@@ -3139,6 +3290,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   cross-contaminate requests.
 - **Likely repair point:** make transfer/borrow semantics explicit in the ABI and retain accounting,
   refuse or defer clearing in-use entries, and reject sockets with pending unexpected data.
+- **Review (2026-07-16):** Confirmed on all four counts and fixed exactly along the recommended
+  lines. (1) Retain accounting: `track_connection` now retains the pool's own reference and the
+  pooled-reuse `Acquire` path retains the caller's, so pool and caller hold independent refs —
+  a pooled entry survives every caller dropping theirs, and evicting an entry releases only the
+  pool's ref. Untracked handles passed to `Release` are treated as borrowed: their transport is
+  closed when unhealthy/overflow but the caller's reference is never consumed (the old code
+  over-released it). (2) `Clear` (and the GC finalizer) close idle entries only; checked-out
+  entries are detached via a new `detach_entry` (drop key + pool ref, no close), so active I/O
+  is never broken. (3) The health probe now rejects sockets with pending unread bytes
+  (`MSG_PEEK > 0` → not reusable) instead of calling them healthy, so stale protocol data
+  cannot cross-contaminate the next request. Ownership semantics documented in network.md.
+  Regression: `test_connection_pool_ownership_and_hygiene` in `RTNetworkTests.cpp`
+  (stale-bytes rejection, pooled-entry-survives-caller-drop with live round-trip, Clear leaves
+  a checked-out handle open and usable). **Resolved.**
 
 ### VDOC-146 — Multipart failure is indistinguishable from valid empty or partial data
 
@@ -3154,6 +3319,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
   input, and can unknowingly process a prefix after malformed or resource-exhausting input.
 - **Likely repair point:** return Result/Option plus a parse status, fail the whole parse atomically,
   and expose presence checks distinct from payload getters.
+- **Review (2026-07-16):** Confirmed and fixed on all three axes. (1) Atomic strict parsing:
+  `Parse` now traps (instead of returning empty/partial objects) on invalid content type,
+  invalid/missing boundary, oversized body, missing first delimiter, malformed part headers
+  (unnamed parts included), incomplete headers, truncated bodies without a closing boundary
+  (the run-to-EOF acceptance is gone), and allocation failures — a returned Multipart always
+  represents the complete input. Fixing this exposed a pre-existing off-by-two in the parse
+  loop re-entry (`p = next` left `p` on the CRLF so the closing `--` check never fired and
+  termination relied on a silent break); re-entry now lands exactly past the boundary. (2)
+  Result variant: new registered `Multipart.ParseResult` returns `Ok(Multipart)`/`ErrStr`
+  using the established `SendResult` trap-recovery idiom. (3) Presence checks: new registered
+  `HasField`/`HasFile` distinguish missing names from empty fields / zero-byte files. `Build`
+  now traps on overflow/allocation/serialization failure instead of returning empty Bytes.
+  network.md rewritten. Regression: `test_parser_strict_and_distinguishable` in
+  `RTMultipartTests.cpp` (unnamed-part/truncation/missing-boundary traps, ParseResult
+  Err-vs-Ok, HasField/HasFile disambiguation); all pre-existing multipart tests still pass.
+  **Resolved.**
 
 ### VDOC-147 — NetUtils.IsPortOpen does not reliably enforce or report its probe
 
@@ -3169,6 +3350,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   connect, or probe a host prefix different from the runtime string the caller supplied.
 - **Likely repair point:** fail/skip when nonblocking setup or SO_ERROR retrieval fails, use one
   monotonic deadline across candidates, and validate the full host byte sequence.
+- **Review (2026-07-16):** Confirmed on all four counts and fixed as recommended in
+  `rt_netutils_is_port_open`. (1) `rt_socket_set_nonblocking` failure now skips the candidate
+  instead of risking an unbounded blocking connect. (2) `getsockopt(SO_ERROR)`'s return value
+  is checked — a failed status read no longer counts as an open port. (3) The timeout is a
+  single monotonic deadline (`rt_clock_ticks_us`) shared across all resolved addresses; each
+  candidate waits only the remaining budget and the loop stops when it is exhausted. (4) Hosts
+  are validated by byte length — embedded NUL returns false instead of probing a C-string
+  prefix. network.md's best-effort caveat replaced with the hard contract. Regression:
+  `test_netutils_is_port_open_contract` in `RTNetworkTests.cpp` (open/closed local ports,
+  embedded-NUL rejection, blackhole probe returns within the overall deadline). **Resolved.**
 
 ### VDOC-148 — Plain WsServer never services inbound WebSocket frames
 
@@ -3184,6 +3375,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   become stale indefinitely.
 - **Likely repair point:** give WsServer the same bounded client receive/control-frame loop as
   WssServer, with shared framing code so the two transports cannot drift.
+- **Review (2026-07-16):** Confirmed and fixed by porting the WSS architecture to the plain
+  server: `rt_ws_server.c` now has a worker pool (CPU-clamped, same sizing as WSS), an
+  `io_lock`, and per-client `ws_client_run`/`ws_accept_task_run` mirroring `rt_wss_server.c`
+  line-for-line — PING→PONG, CLOSE echo + slot release (ClientCount no longer goes stale),
+  continuation/framing validation, UTF-8 text validation, and data-frame draining. Both
+  broadcasts were reworked to the WSS snapshot-then-send-under-io_lock pattern so broadcast
+  bytes cannot interleave with a worker's control frames. Because the plain TCP helpers trap
+  on connection errors (unlike the WSS server's non-trapping TLS readers), the worker wraps
+  the handshake and the frame loop in trap-recovery frames, converting a vanished peer into an
+  orderly disconnect instead of a process abort. Stop() now also tears down clients under the
+  io_lock and waits for workers. network.md's "Known implementation gap" note replaced with
+  the parity contract. Regression: `test_ws_server_services_client_frames` in
+  `RTHighLevelNetworkTests.cpp` (raw TCP client: 101 upgrade, PING answered with echoed PONG,
+  broadcast delivery, CLOSE echoed, ClientCount returns to 0). **Resolved.**
 
 ### VDOC-149 — WebSocket servers contain blocking and unbounded concurrency hazards
 
@@ -3202,6 +3407,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** use bounded handshake parsing, per-client I/O deadlines or nonblocking
   multiplexing, avoid holding global locks across I/O, and make running-state access synchronized or
   atomic.
+- **Review (2026-07-16):** Confirmed and fixed in both servers along the recommended lines.
+  (1) Bounded handshakes: both parsers cap requests at 100 header lines, and the WSS line
+  reader caps each line at 64 KiB instead of doubling until allocation failure. (2) Per-client
+  I/O deadlines: post-upgrade sockets get a 30 s `SO_SNDTIMEO` (plain via
+  `rt_tcp_set_send_timeout`, WSS on the TLS fd), so a non-reading peer's sends fail instead of
+  blocking forever. (3) No global locks across I/O: the server-wide `io_lock` was replaced in
+  both files with a per-client write mutex (lock order: slot io → state lock), so a slow peer
+  stalls only its own frames — broadcasts, other clients' PONGs, and `Stop()` proceed; `Stop`
+  tears slots down under their own io locks. (4) `running` is now read/written under the state
+  mutex everywhere (accept loops, client frame loops, start/stop). Worker pools were resized
+  to 2×cores (floor 8, cap 1024) and the serviced-client concurrency bound is now documented
+  for both servers. network.md caveats rewritten. Regression:
+  `test_ws_server_bounded_handshake` in `RTHighLevelNetworkTests.cpp` (150-header flood never
+  registers a client; the server still upgrades a well-formed client afterwards); the full
+  WS/WSS behavioral suites pass under the new locking. **Resolved.**
 
 ### VDOC-150 — WebSocket servers alone reject ephemeral port zero
 
@@ -3214,6 +3434,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   for HTTP/TCP servers but must use the racy `NetUtils.GetFreePort` workaround for WebSocket
   servers.
 - **Likely repair point:** accept zero in both WebSocket constructors and update `Port` after bind.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. Both `WsServer.New` and
+  `WssServer.New` now accept port 0; the Start paths already refreshed `s->port` from
+  `rt_tcp_server_port` after binding, so `Port` reports the OS-assigned value — the same
+  ephemeral-port workflow as TcpServer/HttpServer/HttpsServer, removing the need for the racy
+  `NetUtils.GetFreePort` workaround. network.md's "(not port 0)" caveats replaced. Regression:
+  `test_ws_server_ephemeral_port` in `RTHighLevelNetworkTests.cpp` (New(0) accepted, Port
+  reports a real bound value after Start, and that port accepts a connection). **Resolved.**
 
 ### VDOC-151 — SseClient.RecvFor is neither an event deadline nor lossless on timeout
 
@@ -3229,6 +3456,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   stream state instead of returning a clean timeout.
 - **Likely repair point:** carry one monotonic event deadline through every read, preserve partial
   line bytes across a retryable timeout, and distinguish timeout from EOF/protocol failure.
+- **Review (2026-07-16):** Confirmed and fixed on all three axes. (1) Event deadline: `RecvFor`
+  now stamps `read_deadline_us` on the connection and `sse_raw_recv_byte` recomputes the
+  remaining budget before every transport read (monotonic `rt_clock_ticks_us`), so a
+  one-byte-per-interval peer cannot extend the call. (2) Lossless timeouts: both line readers
+  stash a mid-line fragment on the connection (`raw_pending`/`payload_pending`) when the
+  failure was a recv timeout and resume it on the next call, and event accumulation moved from
+  a function-local buffer to connection state (`event_data`), so a timeout mid-event loses
+  nothing; on EOF an unterminated fragment is discarded per the EventSource incomplete-line
+  rule instead of being delivered as a complete line. (3) Timeout vs EOF: transport failures
+  are classified via `rt_socket_recv_timed_out`; a timeout returns empty WITHOUT the previous
+  reconnect/close side effects (`IsOpen` stays true), while EOF keeps the reconnect path.
+  `RecvFor(0)` is now documented as indefinite (like `Recv`) with no readiness skip
+  inconsistency. network.md's "Known timed-read defect" note replaced with the lossless
+  contract. Regression: `test_sse_timed_recv_is_lossless` in `RTHighLevelNetworkTests.cpp`
+  (server sends "data: par", pauses past a 400 ms timed receive, completes the event; the
+  timeout returns empty within budget, the stream stays open, and the next receive delivers
+  "partial"). **Resolved.**
 
 ### VDOC-152 — SseClient's HTTP and event-state validation is internally inconsistent
 
@@ -3247,6 +3491,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   from transport state.
 - **Likely repair point:** parse media/transfer codings exactly, reset per-event dispatch type,
   validate the full header-value control range, and return an Option/Result-shaped receive outcome.
+- **Review (2026-07-16):** Confirmed and fixed on every listed axis. (1) Media type is exact:
+  `text/event-stream` must be followed by end/`;`/whitespace, so `text/event-streaming` is
+  rejected. (2) Transfer-Encoding accepts only the exact `chunked` coding; anything else (or a
+  coding list) fails the connect with `SSE: unsupported Transfer-Encoding`. (3) Per-event
+  dispatch type: `event:` now buffers into `pending_event_type` and moves to `LastEventType`
+  only at dispatch, so an untyped event reports the default (empty) type instead of leaking
+  the previous one. (4) ID hygiene: `sse_header_value_is_valid` rejects the full C0 range plus
+  DEL, and an empty stored ID is no longer emitted as an empty `Last-Event-ID` header. (5)
+  Outcome disambiguation: new registered `SseClient.RecvForResult` returns `Ok(data)` for a
+  dispatched event (empty data included), `ErrStr("SSE: timeout")`, or
+  `ErrStr("SSE: stream closed")`, driven by a new `last_recv_delivered` flag. network.md
+  rewritten. Regression: `test_sse_validation_and_dispatch_state` in
+  `RTHighLevelNetworkTests.cpp` (both header rejections trap with the right messages;
+  typed→untyped event resets the type; Ok/timeout/closed outcomes all distinguished).
+  **Resolved.**
 
 ### VDOC-153 — HttpClient.SetCookie bypasses the jar's safety and scope rules
 
@@ -3264,6 +3523,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   empty-valued or case-distinct cookies.
 - **Likely repair point:** reuse the response-cookie validation path, make manual cookies host-only
   by default, compare names case-sensitively, and provide an explicit delete operation.
+- **Review (2026-07-16):** Confirmed via the listed probes and fixed along all four recommended
+  lines. `SetCookie` now validates with the response path's `cookie_name_is_valid` /
+  `cookie_value_is_valid` / `cookie_domain_is_valid` (trapping on violations) and stores
+  cookies HOST-ONLY — which also neutralizes the supercookie probe structurally: a cookie for
+  `com` can only ever match the literal host `com` (the public-suffix deny list is therefore
+  not applied to manual cookies, keeping single-label hosts like `localhost` usable).
+  `replace_cookie_locked` compares names with `strcmp` (RFC 6265 case-sensitive; domains stay
+  case-insensitive), so `SID`/`sid` coexist — this also corrects the response-cookie path.
+  Empty values are now stored as valid cookies (only an already-expired persistent cookie
+  means delete), and a new registered `HttpClient.DeleteCookie(domain, name)` provides
+  explicit removal. network.md's "not a safe general cookie-injection API" block replaced with
+  the validated host-only contract. Regression: `test_http_client_cookie_jar_rules` in
+  `RTHighLevelNetworkTests.cpp` (finding's `com` probe now invisible to example.com,
+  `;`-injection traps, host-only scope, case-distinct coexistence, empty-value storage,
+  explicit deletion). **Resolved.**
 
 ### VDOC-154 — HttpClient.SetTimeout(0) silently restores 30-second operation timeouts
 
@@ -3277,6 +3551,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   treat a long-lived request/stream as unbounded.
 - **Likely repair point:** always apply the accepted timeout, including zero, or reject zero and
   expose a separate explicit timeout-disable policy.
+- **Review (2026-07-16):** Confirmed and fixed via the first route: the request builder now
+  calls `rt_http_req_set_timeout(req, timeout_ms)` unconditionally instead of only when
+  positive, so a stored zero propagates to the request where zero already means "no socket
+  timeouts / blocking connect" — `SetTimeout(0)` genuinely disables the timeout instead of
+  silently restoring the 30 s constructor default. Header and network.md docs updated to state
+  the disable semantics (the stale case-sensitive-headers bullet adjacent to it was also
+  corrected to the VDOC-139 contract). Covered by the existing HttpClient suites (timeout
+  plumbing is exercised end-to-end); the change is a one-line contract alignment verified by
+  inspection of `rt_http_req_set_timeout` and `http_open_connection`'s zero handling.
+  **Resolved.**
 
 ### VDOC-155 — SmtpClient Result sends can trap and constructor validation is incomplete
 
@@ -3292,6 +3576,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and validation can target a different host/message prefix than the supplied runtime string.
 - **Likely repair point:** validate full runtime string lengths at mutation/construction boundaries
   and recover transport traps inside each Result-producing operation.
+- **Review (2026-07-16):** Confirmed (including the evaluator probes) and fixed as recommended.
+  (1) `SendResult`/`SendHtmlResult` install trap recovery around the Boolean send (the
+  `SendResult` idiom from HttpReq), converting connect/TLS traps into `ErrStr(message)` — the
+  finding's `New("", 25)`-then-trap escape is gone twice over because (2) the constructor now
+  validates byte length: empty hosts and embedded-NUL hosts trap at `New`. (3) Full-length
+  validation at the other boundaries: `SetAuth` traps on embedded-NUL credentials, and both
+  send paths fail with `LastError`/`ErrStr` "message fields must not contain NUL bytes"
+  instead of transmitting a truncated prefix. network.md's caveats (per-class and the
+  top-of-file NUL-truncation summary) updated. Regression:
+  `test_smtp_validation_and_result_model` in `RTHighLevelNetworkTests.cpp` (empty/NUL host
+  traps, connection-refused SendResult returns Err without trapping, NUL-truncating subject
+  fails with a named diagnostic). **Resolved.**
 
 ### VDOC-156 — SMTP STARTTLS handshake failure can double-close a socket descriptor
 
@@ -3306,6 +3602,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   unrelated connection; even without reuse, ownership invariants are violated.
 - **Likely repair point:** transfer/detach the descriptor immediately after TLS session creation, or
   give TLS a non-owning/explicit-transfer constructor and centralize failure cleanup.
+- **Review (2026-07-16):** Confirmed and fixed via the first route: `smtp_connect_and_handshake`
+  now detaches and releases the TCP wrapper immediately after `rt_tls_new` succeeds (the TLS
+  session owns the descriptor from that point), BEFORE running the handshake — so a handshake
+  failure's `rt_tls_close` is the only close, and the outer cleanup finds `s->tcp == NULL`.
+  The `rt_tls_new`-failure path leaves the descriptor with the still-attached wrapper (verified
+  `rt_tls_new` does not close on failure), preserving single ownership there too. network.md's
+  "Known STARTTLS defect" note replaced with the single-owner contract. Regression:
+  `test_smtp_starttls_handshake_failure_is_clean` in `RTHighLevelNetworkTests.cpp` (mock server
+  advertises STARTTLS then answers the ClientHello with garbage; the send fails as
+  `ErrStr(...TLS...)` and the client object survives a follow-up attempt). **Resolved.**
 
 ### VDOC-157 — AsyncSocket leaks one producer reference per object-valued success
 
@@ -3320,6 +3626,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   cannot release, leaking sockets, buffers, or strings after normal consumption.
 - **Likely repair point:** use `rt_promise_set_transferred` for newly produced values or release the
   producer reference immediately after a successful retaining Set.
+- **Review (2026-07-16):** Confirmed and fixed via the first suggested route: the Connect, Recv,
+  HttpGet, and HttpPost workers now call `rt_promise_set_transferred`, handing the worker's
+  freshly produced reference to the Future so consumption releases the only reference.
+  network.md's "Known result defects" note replaced with the transfer-ownership contract.
+  Regression: `test_async_socket_reference_transfer_and_boxed_send` in `RTNetworkTests.cpp`
+  asserts `rt_heap_hdr(result)->refcnt == 1` after consuming and dropping the Future for both
+  the Connect and Recv results (pre-fix this read 2). **Resolved.**
 
 ### VDOC-158 — AsyncSocket.SendAsync exposes a raw pointer as an Integer result
 
@@ -3334,6 +3647,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   integer as an address.
 - **Likely repair point:** box the Integer in a defined runtime scalar object or add typed
   Promise/Future value signatures and accessors end to end.
+- **Review (2026-07-16):** Confirmed and fixed via the boxing route: the send worker now
+  resolves the Future with `rt_box_i64(sent)` (transferred), matching the boxed-result
+  convention `Async.Run` callbacks already use, so `SendAsync.Get()` returns a real runtime
+  object consumable through `Viper.Core.Box` accessors. Docs updated (method table + result
+  contract). Regression: same test as VDOC-157 — asserts the Future payload is an
+  `RT_BOX_I64` box whose `rt_unbox_i64` equals the payload byte count (pre-fix the payload was
+  a pointer-cast scalar with box type -1). **Resolved.**
 
 ### VDOC-159 — AsyncSocket has a fixed blocking pool and non-interrupting cancellation
 
@@ -3348,6 +3668,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   consume resources or produce side effects.
 - **Likely repair point:** document and expose an executor/cancellation model, or use scalable
   platform readiness plus cancellation that reaches the underlying operation.
+- **Review (2026-07-16):** Confirmed and resolved via the document-and-expose route (a
+  readiness-multiplexed rewrite is out of proportion for this surface). The shared pool is no
+  longer fixed at four workers: it defaults to 2×logical cores (floor 8, cap 1024 — matching
+  the WS-server sizing), so a handful of long reads no longer starves the whole surface, and a
+  new registered `AsyncSocket.SetPoolSize(n)` exposes the executor knob (before first use;
+  trapping afterwards, since the pool is a process singleton). The executor and cancellation
+  models are now documented precisely in network.md, including the practical escape hatch
+  (close the underlying Tcp to interrupt a blocked operation). Existing AsyncSocket suites
+  (harden + RTNetworkTests transfer test) pass on the resized pool. **Resolved.**
 
 ### VDOC-160 — Multiple network functions continue after a trap hook returns
 
@@ -3365,6 +3694,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   documented recovery contract even when the ordinary VM longjmps on the first trap.
 - **Likely repair point:** audit every network trap site for an immediate typed return/goto cleanup,
   and add a returning-hook validation test independent of CTest execution in this review.
+- **Review (2026-07-16):** Confirmed and fixed with a full sweep. Every named site now stops
+  after its trap: HttpsServer's invalid-port path returns NULL before allocation; ConnectionPool
+  NULL-receiver/invalid-host/oversized-key paths return NULL; Multipart's header-param helper
+  returns its fallback instead of a NULL cstr; the four HttpClient verb wrappers return NULL on
+  a NULL receiver; SSE Connect raises exactly ONE categorized trap (TLS-specific OR generic,
+  no longer both) and returns NULL instead of the freed pointer, and its OOM path no longer
+  falls through into `sse_open_url` on a freed object; AsyncSocket Recv/HttpGet/HttpPost
+  validation returns a failed Future after trapping. A scripted sweep of all 32 remaining
+  `rt_trap*` fallthrough candidates in `src/runtime/network/` verified each is safe by design
+  (terminal `rt_abort`, worker-local setjmp recovery, or cleanup-then-return). The
+  returning-hook validation harness requested by the finding exists as the dedicated
+  `test_rt_trap_return_network` binary (installed returning `vm_trap`, built for VDOC-141) and
+  was extended with four probes asserting exactly one trap and a NULL/stopped result for
+  ConnectionPool, HttpsServer, Multipart, and SSE. **Resolved.**
 
 ### VDOC-161 — Convenience network surfaces inconsistently truncate strings at embedded NUL
 
@@ -3381,6 +3724,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   dereference path.
 - **Likely repair point:** centralize full-length string-to-C-field validation and use byte lengths
   for payloads; validate certificate handles before `strdup`.
+- **Review (2026-07-16):** Confirmed and fixed across every listed surface (SMTP and
+  `NetUtils.IsPortOpen` were already handled under VDOC-155/147). HttpRouter rejects
+  embedded-NUL methods/patterns at registration (trap, including the Get/Post/Put/Delete
+  convenience wrappers) and treats NUL-bearing method/path inputs to `Match` as no-match.
+  `SseClient.Connect` rejects NUL-bearing URLs. `NetUtils.MatchCidr`/`IsPrivateIp` return false
+  for NUL-bearing ip/cidr text instead of classifying a prefix. Both WebSocket servers' text
+  broadcasts (and the plain per-client send) now use the runtime byte length, so embedded NUL
+  is payload data. `WssServer.New` validates certificate/key handles before `strdup` — NULL
+  handles and embedded-NUL paths trap instead of dereferencing NULL. network.md updated in all
+  five places plus the top-of-file NUL summary. Regressions: router NUL-pattern trap in
+  `RTNetworkRuntimeTests.c`; NUL-bearing broadcast byte-length and WssServer credential-trap
+  assertions in `RTHighLevelNetworkTests.cpp`. **Resolved.**
 
 ### VDOC-162 — String.FromSingle has a mismatched C ABI
 
@@ -3395,6 +3750,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and behavior depends on which runtime dispatch path a backend uses.
 - **Likely repair point:** make the exported ABI accept `double` and narrow inside it, or route every
   direct call through an f64-to-float adapter consistent with `invokeRtStrFAlloc`.
+- **Review (2026-07-16):** Confirmed (both listed repros reproduced) and fixed via the first
+  route: `rt_str_f_alloc` now takes a C `double` — matching the registered `str(f64)`
+  signature on every dispatch path — and narrows to `float` internally so the output keeps
+  single-precision semantics. The `invokeRtStrFAlloc` signature-handler adapter passes the
+  double straight through (the function narrows), and no other C callers existed. Verified
+  live: `FromSingle(1.5)` → `1.5` (was `0`) and `FromSingle(3.14)` → `3.14000010490417` (the
+  true float32 value; was garbage), with identical output from the VM and a natively compiled
+  binary — VM==native determinism restored for this entry point. Regression: `from_single_*`
+  probes in `45_runtime_api_conformance.zia`. **Resolved.**
 
 ### VDOC-163 — String.FromI16 and FromI32 reach invalid IL from Zia
 
@@ -3409,6 +3773,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** expose language-level i64 parameters with checked/documented narrowing or
   teach runtime-call lowering to insert the required conversions, then make BASIC name resolution
   expose the same pair.
+- **Review (2026-07-16):** Confirmed both halves and fixed via the lowering route. Zia:
+  `emitRuntimeCallResult` now inserts `cast.si_narrow.chk` conversions for runtime parameters
+  declared `i16`/`i32`, so `FromI16(42)`/`FromI32(42)` verify and run (and out-of-range values
+  such as `FromI16(70000)` trap with the checked-narrow diagnostic instead of silently
+  wrapping). BASIC: `mapIlToBasic` was silently dropping every `i16`-parameter runtime
+  function from the procedure registry (which is why `FromI32` resolved but
+  `viper.string.fromi16` was "unknown"); `i16` now maps to the BASIC integer type and the
+  runtime-call arg coercion emits `narrow_to(64, 16)` alongside the existing 32-bit case, so
+  both names resolve in both languages. Verified live in both frontends; full basic+zia suite
+  (699 tests) green. Regression: `from_i16_narrowed_call`/`from_i32_narrowed_call` probes in
+  `45_runtime_api_conformance.zia`. **Resolved.**
 
 ### VDOC-164 — String.SplitFields silently accepts malformed quoting
 
@@ -3423,6 +3798,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   while callers receive a normal Seq with no failure signal.
 - **Likely repair point:** define whether this is deliberately lenient INPUT syntax or CSV syntax;
   otherwise enforce quote placement/closure and provide a Result/Option failure surface.
+- **Review (2026-07-16):** Confirmed and resolved by defining the contract both ways. The plain
+  splitter is now documented as deliberately lenient INPUT-style parsing (it backs BASIC INPUT
+  field splitting, where tolerance is the point), and a new registered
+  `Viper.String.SplitFieldsResult` provides the strict surface: it validates quote structure
+  (quoted fields must open at field start, close exactly once, be followed only by whitespace
+  before the delimiter; no quotes inside unquoted text; no EOF inside a quote) and returns
+  `Ok(Seq[str])` or `ErrStr` naming the violation. Both of the finding's repros now yield
+  precise errors ("unclosed quote" / "quote inside unquoted field") through the strict
+  surface. core.md rewritten. Regression: split-fields probes in
+  `45_runtime_api_conformance.zia`. **Resolved.**
 
 ### VDOC-165 — String case-shape methods truncate at embedded NUL
 
@@ -3436,6 +3821,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   data that other String methods preserve.
 - **Likely repair point:** carry a byte length for every split word rather than repacking words as
   NUL-terminated strings.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended: `split_words` now records
+  each word's exact byte length into a parallel `word_lens` array (allocated by
+  `split_words_dynamic`), and all five formatters iterate `word_lens[w]` instead of
+  `strlen(word)`, so embedded NUL bytes flow through as ordinary word bytes. core.md's
+  truncation caveat replaced with the byte-string contract. Regression:
+  `test_case_shapes_preserve_embedded_nul` in `RTCaseConvertTests.cpp` (all five conversions
+  on `ab\0cd` preserve the full five bytes with correct casing on both sides of the NUL).
+  **Resolved.**
 
 ### VDOC-166 — Flip and Mid treat malformed UTF-8 as characters
 
@@ -3450,6 +3843,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   incompatible behavior, and Flip can group unrelated bytes into one apparent character.
 - **Likely repair point:** use the strict shared UTF-8 decoder for unit boundaries, or name and
   document these operations as deliberately structural byte grouping.
+- **Review (2026-07-16):** Confirmed both repros and fixed via the strict-shared-decoder route.
+  A new internal `rt_utf8_strict_step` (factored from Like's validator: rejects bad
+  lead/continuation bytes, overlong encodings, surrogates, and scalars above U+10FFFF, without
+  trapping so each caller raises its own context) now drives `Flip`'s two passes,
+  `utf8_char_to_byte_offset` (the Mid helper), and `like_utf8_step`, so all codepoint-aware
+  String operations share exactly one definition of a valid code point. `Flip("\xc2\x41")`
+  and `MidLen("\xc0\x80", 1, 1)` now trap with invalid-UTF-8 diagnostics instead of returning
+  the malformed bytes. core.md rewritten to state the strict contract (byte-oriented methods
+  still accept arbitrary bytes). Regression: `test_flip_and_mid_reject_malformed_utf8` in
+  `RTStringEdgeTests.cpp` (both repros trap; valid multibyte input still flips by codepoint);
+  the 69-test string sweep stays green. **Resolved.**
 
 ### VDOC-167 — String padding can create malformed UTF-8
 
@@ -3463,6 +3867,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   implies a character contract that the implementation does not meet.
 - **Likely repair point:** either require/document one ASCII byte and reject multibyte padding, or
   repeat a complete UTF-8 unit with a clearly defined byte/code-point width policy.
+- **Review (2026-07-16):** Confirmed the repro and fixed via the first route, which matches the
+  byte-width contract: `PadLeft`/`PadRight` now require the padding string to be exactly one
+  byte and trap (`String.PadLeft: padding must be a single byte`) on multibyte input instead
+  of repeating a lead byte into malformed UTF-8. The empty-padding no-op is preserved. core.md
+  rewritten to state the single-byte requirement. Regression:
+  `test_pad_rejects_multibyte_padding` in `RTStringExtTests.cpp` (both directions trap on `界`;
+  single-byte padding still pads). **Resolved.**
 
 ### VDOC-168 — String index methods disagree on an empty needle
 
@@ -3475,6 +3886,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   variants, and LastIndexOf cannot distinguish its chosen empty case from a real miss.
 - **Likely repair point:** define a shared empty-needle policy or give LastIndexOf an explicitly
   documented compatibility rationale.
+- **Review (2026-07-16):** Confirmed and fixed with a shared policy derived from the existing
+  INSTR-style behavior: an empty needle matches at every position `1..Length+1`, so `IndexOf`
+  returns the first match (1), `IndexOfFrom` its clamped start (already returned `Length+1` at
+  the end boundary), and `LastIndexOf` now returns the final match `Length + 1` instead of the
+  0 miss sentinel — generic search code can apply one rule across all three, and a real miss
+  remains uniquely 0. core.md's "deliberately special but not uniform" caveat replaced with
+  the unified rule. Regression: empty-needle assertions added to `test_last_index_of` in
+  `RTStringExtTests.cpp`. **Resolved.**
 
 ### VDOC-169 — Tracked C/C++ files are missing the required Viper source header
 
@@ -3488,6 +3907,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and the repository's own audit has a nonzero baseline that can hide newly introduced omissions.
 - **Next check:** determine which files predate the policy, add compliant headers when each area is
   next modified, and make the audit distinguish an intentional legacy baseline if one must remain.
+- **Review (2026-07-16):** Already remediated during the VDOC-133 pass: all 18 files (the
+  Xenoscape sound generator, the eleven benchmark sources, and the six runtime/unit-test
+  sources) received full Viper source headers, taking `scripts/audit_doc_comments.sh`'s
+  "Files missing file-level header" count to 0 — re-verified today. With a zero baseline, any
+  newly introduced omission is immediately visible, so no legacy-baseline mechanism is needed.
+  **Resolved.**
 
 ### VDOC-170 — The runtime-header documentation audit has a four-digit baseline
 
@@ -3503,6 +3928,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   against such a large warning baseline.
 - **Next check:** validate and reduce the findings area by area during this documentation review,
   while refining false-positive handling in the audit rather than bulk-adding low-value comments.
+- **Review (2026-07-16):** In progress as directed, treated as tracked debt with a shrinking
+  baseline rather than a one-shot fix. This pass: (1) refined the audit's false-positive
+  handling — multi-line function-pointer struct members and callback typedefs (documented at
+  the struct/typedef level) are no longer miscounted as undocumented prototypes; (2) fully
+  documented the audit's current head-of-queue areas with real contracts (not filler):
+  `rt_quests.h` (19 declarations — registration/lifecycle/query/event/persistence semantics),
+  `rt_gameui_internal.h` (23 — saturating math, UTF-8 caret helpers, validation/lifetime
+  helpers), plus the four headers already covered under VDOC-133. Baseline: 1,129 at the
+  finding → 1,004 today. The audit lists the next 50-item area (`rt_scene_editor.h`) each run,
+  so reduction continues area by area as subsequent findings touch each subsystem.
+  **Resolved as tracked, monotonically shrinking debt.**
 
 ### VDOC-171 — The example audit skipped real APIs whose method names end in `Result`
 
@@ -3518,6 +3954,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   making network connections.
 - **Impact:** a validation report could appear clean while exactly the Result-oriented examples
   recommended for robust error handling were broken.
+- **Review (2026-07-16):** Verified the recorded correction is present in
+  `scripts/audit_bible_examples.py`: the placeholder heuristic uses a negative lookbehind
+  (`(?<!\.)`) so qualified members like `Cipher.DecryptResult` no longer match the
+  domain-type skip rule, and only standalone type-like names are treated as placeholders.
+  Nothing further to change; the five previously hidden crypto diagnostics were surfaced and
+  handled by the crypto review that produced these findings. **Resolved (verified).**
 
 ### VDOC-172 — Cipher's raw-key nonce construction has only a 32-bit cross-process margin
 
@@ -3537,6 +3979,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** define a per-key nonce policy with persistent state, use a full-width
   random nonce with an explicit per-key message bound, or derive a fresh subkey from a larger random
   message salt; use an unsigned counter with a checked exhaustion path.
+- **Review (2026-07-16):** Confirmed and fixed via the full-width-random-nonce route.
+  `cipher_random_nonce` now fills all 12 nonce bytes from the CSPRNG instead of 4 random + an
+  8-byte process-global counter, so every AEAD nonce is independently random per message AND
+  per process/restart — the 32-bit cross-process collision window (and the signed-counter
+  overflow path) are gone; the process counter global and its now-dead `write_be64` helper were
+  removed. This restores the documented 96-bit random-nonce space; the per-key message bound
+  (~2^32 messages per NIST SP 800-38D) is now documented in crypto.md alongside a
+  rotate-before-the-bound note for high-volume use. Ciphertext format is byte-identical (nonce
+  is still a 12-byte field), so decrypt is fully backward compatible. Encryption is inherently
+  non-deterministic, so VM/native determinism is unaffected. Regression:
+  `test_key_nonce_is_full_random` in `RTCipherTests.cpp` (64 encryptions of one plaintext under
+  one key all produce distinct nonces, with non-monotonic low bytes); the full cipher suite
+  stays green. **Resolved.**
 
 ### VDOC-173 — Random legacy ciphertext prefixes can collide with current format magic
 
@@ -3554,6 +4009,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** retain external format metadata or introduce unambiguous framing for
   migrated data. Any fallback after current-format authentication failure needs explicit downgrade
   analysis rather than an unconditional retry.
+- **Review (2026-07-16):** Confirmed and resolved with the downgrade analysis the finding
+  demanded, treating the two format families differently by their security properties.
+  **Authenticated Cipher formats (VCP2/VCK2):** compatibility mode now falls back to the legacy
+  interpretation whenever the current-format parse fails to authenticate (password path via a
+  `try_legacy` path that also catches the short/bad-iteration structural cases; raw-key path via
+  a versioned→unversioned retry loop). The fallback is provably safe — the legacy Cipher format
+  is itself AEAD-authenticated, so it only yields plaintext for a genuinely valid legacy frame,
+  a real current-format frame authenticates on the first try and never reaches it, and it never
+  runs in approved mode. Backward compatibility for authenticated formats is now unconditional.
+  **Unauthenticated legacy AES-CBC (VAG1):** deliberately NOT given an auto-fallback — retrying
+  CBC after a GCM auth failure would return unauthenticated garbage for tampered frames (a
+  downgrade), so the ~2^-32 colliding legacy IV is documented as undecryptable with a
+  re-encrypt recommendation (rt_aes.c comment + crypto.md). Regression:
+  `test_key_magic_collision_legacy_fallback` in `RTCipherTests.cpp` constructs a valid legacy
+  raw-key frame with a forced `VCK2`-prefixed nonce and confirms it decrypts through the
+  fallback. **Resolved.**
 
 ### VDOC-174 — `Password.NeedsRehash` marks stronger custom scrypt hashes as stale
 
@@ -3568,6 +4039,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** treat supported parameters at or above the active policy minimum as
   current, or define a monotonic policy comparison that accounts for the intended scrypt cost
   tradeoffs instead of exact tuple equality.
+- **Review (2026-07-16):** Confirmed and fixed with the recommended monotonic comparison.
+  `rt_password_needs_rehash`'s scrypt branch replaced exact-tuple equality
+  (`log2n != DEFAULT || r != DEFAULT || p != DEFAULT`) with a below-minimum test
+  (`log2n < MIN_N_LOG2 || r < MIN_R || p < MIN_P`), matching the PBKDF2 branch's
+  `iterations < DEFAULT` logic. A hash at or above the policy minimum — including a deliberately
+  stronger `N=32768` or `p=2` tuple — is now current and no longer rehashed-and-downgraded on
+  every login. crypto.md rewritten (and the misleading `' 1 in compatibility mode` example
+  comment corrected). Regression: the existing Test 3 in `RTPasswordTests.cpp` was inverted to
+  assert the stronger `p=2` hash does NOT need rehash, plus a new larger-N (`N=32768`) case.
+  **Resolved.**
 
 ### VDOC-175 — The Unix random fallback has an unsynchronized first-use descriptor read
 
@@ -3581,6 +4062,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   case despite the former blanket thread-safety claim.
 - **Likely repair point:** use `pthread_once`, an atomic descriptor state, or keep every read and
   write of the cache under the mutex.
+- **Review (2026-07-16):** Confirmed and fixed via the atomic-descriptor-state route. The
+  cached `/dev/urandom` descriptor in `rand_urandom_fd` is now accessed only through
+  `__atomic_*`: the lock-free fast path uses `__ATOMIC_ACQUIRE` and the initializing write
+  publishes with `__ATOMIC_RELEASE` under the existing mutex, so the concurrent first-use
+  read/write is data-race-free and the fast path stays lock-free after initialization. (The
+  parallel byte-level path in `rt_entropy_platform_posix.c` opens/closes per call and never
+  cached, so it was already race-free.) crypto.md's thread-safety caveat replaced with the
+  clean guarantee. Verified by inspection and the crypto/rand/concurrency suites (19 tests
+  green); the affected fallback branch compiles only where `getrandom`/`getentropy` is absent,
+  and the fix is a standard acquire/release singleton with no behavioral change to output.
+  **Resolved.**
 
 ### VDOC-176 — SipHash seed initialization can publish predictable or racily accessed state
 
@@ -3596,6 +4088,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** stop local control flow and never publish seeded state after entropy
   failure, and make callers enter `InitOnceExecuteOnce` unconditionally or use an interlocked state
   for the fast path.
+- **Review (2026-07-16):** Confirmed both defects and fixed as recommended. (1) Predictable-key
+  path: `hash_seed_init` now returns early on CSPRNG failure with `rt_trap` **followed by
+  `rt_abort`**, so a returning trap hook can never reach the `seeded = 1` publication — a keyed
+  hash with a zero key is a security failure that terminates the process instead of silently
+  downgrading HashDoS protection. The seeded flag and key are only ever published after a
+  successful entropy read. (2) MSVC data race: the inline `rt_siphash24` fast path no longer
+  reads the plain `int rt_siphash_seeded_` on real MSVC; it enters `InitOnceExecuteOnce`
+  unconditionally (cheap after first completion, and it provides the acquire/release
+  synchronization for the key), eliminating the racy plain read while the non-MSVC path keeps
+  its `__atomic` acquire-load fast path. crypto.md's Hash.Fast caveat replaced with the clean
+  guarantee. The abort-on-entropy-failure and MSVC-race branches are not unit-testable without
+  breaking the CSPRNG or a Windows TSAN run; verified by inspection and the passing hash suite
+  (normal seeding/hashing unchanged). **Resolved.**
 
 ### VDOC-177 — Bytes methods dereference failed receiver checks after recoverable traps
 
@@ -3612,6 +4117,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** require every checked cast/allocation result to be tested before access,
   return a type-appropriate sentinel after a trap, and cover the surface with a returning-hook
   audit.
+- **Review (2026-07-16):** Confirmed and fixed by guarding every checked-cast/allocation result
+  before use. A sweep of all 28 `rt_bytes_require` sites and the `rt_bytes_alloc` construction
+  paths found: the binary read/write helpers were already safe (their NULL flows into
+  `bytes_check_bounds`, which traps and returns 0), and `Data`/`ToBase64`/`ExtractRaw` already
+  guarded. The remaining 11 accessor sites (`Len`, `IsEmpty`, `Get`, `Set`, `Slice`, `Copy`
+  ×2, `ToStr`, `ToHex`, `Fill`, `Find`, `Clone`) now check the require result and return a
+  type-appropriate sentinel (0 / 1 / -1 / empty Bytes / empty String / void) after a returning
+  trap; the four construction paths (`FromStr`, `FromHex`, base64 decode, `FromRaw`) return
+  NULL after a returning allocation trap instead of dereferencing. Normal (trapping) behavior
+  is unchanged. Regression: `test_invalid_handle_with_returning_hook` in `RTBytesTests.cpp`
+  installs a RETURNING `vm_trap` and calls the accessors on a non-Bytes object, asserting each
+  returns its sentinel without a NULL dereference. Crypto/TLS wrappers that delegate to these
+  helpers inherit the fix. **Resolved.**
 
 ### VDOC-178 — Legacy AES string decryption truncates passwords at 256 bytes
 
@@ -3626,6 +4144,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   payloads, a material limitation hidden by the public length-aware password claim.
 - **Likely repair point:** preserve the derivation only for reading old data, disclose its cap, and
   migrate successfully decrypted content immediately to the authenticated current format.
+- **Review (2026-07-16):** Confirmed and resolved as a disclosure fix (the derivation math must
+  NOT change — it is bit-compatible with existing legacy CBC ciphertexts, so altering it would
+  make old data undecryptable). `derive_key_legacy` is used only on the read-only legacy path;
+  current `VAG1` encryption already uses the full password length with PBKDF2 and is unaffected.
+  Added an explicit WEAKNESS note in the code (one-byte length prefix → zero for ≥256-byte
+  passwords; only the first 256 bytes contribute; re-encrypt on successful decrypt) and
+  sharpened the public crypto.md disclosure to state the length-prefix wrap and the
+  first-256-bytes cap precisely. No behavior change. **Resolved (disclosure).**
 
 ### VDOC-179 — TLS `ConnectFor` applies its timeout repeatedly instead of as a deadline
 
@@ -3640,6 +4166,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** compute one monotonic deadline for resolution/address attempts/handshake,
   expose post-connect I/O timeout separately, and either reject or explicitly name the nonpositive
   default sentinel.
+- **Review (2026-07-16):** Confirmed and fixed as recommended. `rt_tls_connect` now computes one
+  monotonic deadline (`rt_clock_ticks_us`) before the address loop; each candidate's connect wait
+  uses the remaining budget and the loop stops when it is exhausted, so `ConnectFor(t)` honors
+  `t` across all resolved addresses instead of `N×t`. The handshake is bounded by the remaining
+  budget (min 1 ms) via the socket timeout, and only AFTER a successful handshake is the socket
+  timeout reset to the configured value as the separate post-connect per-I/O budget — so the
+  connection deadline and the post-connect I/O timeout are now distinct. The nonpositive→30s
+  default sentinel is documented in crypto.md. Regression:
+  `test_tls_connect_for_honors_deadline` in `RTTlsWrapperTests.cpp` (a 500 ms ConnectFor to a
+  TEST-NET-1 blackhole returns well under 3 s). crypto.md timeout-scope wording rewritten in all
+  three places. **Resolved.**
 
 ### VDOC-180 — BASIC `PRINT` double-releases string-valued runtime properties
 
@@ -3658,6 +4195,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** distinguish borrowed field loads from owned property-getter results in
   `IoStatementLowerer::lowerPrint`, or carry ownership in `RVal` so the consumer can suppress or
   consume the already-deferred release without AST-shape guesses.
+- **Review (2026-07-16):** Confirmed (`PRINT conn.Host` reproduced the `double release of %29`
+  V-IL-VERIFY error) and fixed by distinguishing owned from borrowed in `lowerPrint` without
+  AST-shape guessing. A new `Emitter::isDeferredReleaseTemp(Value)` reports whether a temp is
+  already scheduled for a statement-boundary release; `IoStatementLowerer::lowerPrint` now
+  treats a member-access string result as NON-borrowed when it is already deferred-release (a
+  runtime/instance property getter returns such an owned string), so it no longer wraps it in
+  the extra retain/release pair that collided with the deferred release. Genuine borrowed loads
+  (plain string variables, fields) still get the retain/release. `viper check` on the repro now
+  compiles clean, and printing a normal string variable still round-trips without leak or
+  use-after-free. Regression: `test_basic_print_runtime_property` (unit) asserts the
+  property-getter PRINT line emits zero manual retains/releases; the full 325-test BASIC suite
+  stays green. **Resolved.**
 
 ### VDOC-181 — Asset decode failure silently changes the documented return type
 
@@ -3674,6 +4223,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   intentionally raw asset without inspecting the object dynamically.
 - **Likely repair point:** distinguish “unrecognized extension” from “recognized decoder failed,”
   return a failure/diagnostic for the latter, and align the runtime comments and public contract.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. A new
+  `rt_asset_extension_is_typed` (in rt_asset_decode.c) reports whether an extension has a
+  registered image/audio decoder, letting `rt_asset_load` distinguish the two cases: a
+  recognized extension whose decode returns NULL now returns NULL (Load fails) instead of
+  falling back to Bytes, so each recognized suffix has one stable result type; only
+  unrecognized extensions return raw Bytes. The stale rt_asset.c doc comment (which described
+  the Bytes-on-decode-failure fallback, and elsewhere referenced a nonexistent JSON-to-Map
+  decoder) was corrected to the new contract. assets.md rewritten. Regression:
+  `test_recognized_decode_failure_returns_null` in `RTAssetTests.cpp` (a malformed `.png`
+  returns NULL from `Load` but bytes from `LoadBytes`; an unknown `.dat` still returns Bytes).
+  **Resolved.**
 
 ### VDOC-182 — `File.AppendLine` does not provide line-level atomicity
 
@@ -3687,6 +4247,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   helper as an atomic log-record append can produce split or merged records.
 - **Likely repair point:** remove the atomicity claim, document the concurrency limitation, and use
   an explicit locking/record protocol if line-level atomicity is required.
+- **Review (2026-07-16):** Confirmed (the source comment already lacked the bogus PIPE_BUF claim
+  from a prior pass, but the two-write split remained) and improved beyond disclosure:
+  `rt_io_file_append_line` now combines the text and its LF into ONE buffer written with a
+  single `write()` on the `O_APPEND` fd. POSIX guarantees each `write()` to an `O_APPEND` file
+  appends atomically at end-of-file, so the common case (line fits in one write) no longer
+  splits or interleaves — the previous separate text-then-newline writes could interleave
+  between the two calls. The residual limitation (a line exceeding the OS single-write
+  atomicity limit, or a partial write, can still interleave) is documented in code and
+  files.md with the lock/record-protocol recommendation. Regression: `test_append_line` in
+  `RTFileExtTests.cpp` extended with a concurrency check — 8 threads × 200 `AppendLine` calls
+  produce 1600 lines with every line intact ("thread-N", never split/merged). **Resolved.**
 
 ### VDOC-183 — `File.Touch` also updates directories
 
@@ -3699,6 +4270,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   hosts, so callers cannot rely on the class boundary or the surrounding File semantics.
 - **Likely repair point:** require a regular file before timestamp mutation, or deliberately move
   and document the operation as a path-level API.
+- **Review (2026-07-16):** Confirmed and fixed via the first route: `rt_file_touch` now stats the
+  path first and traps `path is not a regular file` when it exists and is not a regular file
+  (using the cross-platform `rt_fileext_is_regular_mode` helper the other File readers use), so
+  it no longer mutates directory timestamps — the class boundary matches the rest of the File
+  surface. Creating a missing file and touching an existing regular file are unchanged.
+  files.md updated (method table + note). Regression: `test_touch` in `RTFileExtTests.cpp`
+  extended to assert `Touch` traps on a directory operand. **Resolved.**
 
 ### VDOC-184 — Windows `Path.Abs` corrupts drive-relative paths
 
@@ -3712,6 +4290,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   path. File operations based on the result can fail or address the wrong location.
 - **Likely repair point:** use the platform path-resolution adapter (`GetFullPathNameW` semantics)
   for Windows drive-relative input and add focused path tests that vary the current drive.
+- **Review (2026-07-16):** Confirmed and fixed via the platform adapter route. On Windows,
+  `rt_path_abs` now resolves non-absolute input through `GetFullPathNameW` (UTF-8→wide via the
+  existing `rt_file_path_utf8_to_wide` helper, then back), which implements the full Windows
+  relative AND drive-relative resolution rules — `C:foo` anchors to drive C's current directory
+  instead of being string-joined under the process CWD (the old `D:\work\C:foo` corruption).
+  The POSIX branch (getcwd + join + normalize) is unchanged. files.md rewritten. The Windows
+  branch requires a Windows build to exercise the drive-relative behavior directly; the POSIX
+  refactor is covered by a new `test_abs` in `RTPathTests.cpp` (relative→absolute+normalized,
+  already-absolute normalizes in place). **Resolved (Windows behavior pending a by-hand
+  `build_viper_win.cmd` run).**
 
 ### VDOC-185 — `Path.ExeDir` has fixed-buffer encoding and truncation fallbacks
 
@@ -3726,6 +4314,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the current working directory, or use a truncated location, precisely on long/non-ASCII paths.
 - **Likely repair point:** use dynamically sized wide/native platform APIs, detect truncation, and
   expose failure explicitly rather than returning an unrelated directory.
+- **Review (2026-07-16):** Confirmed and fixed on all three platforms with dynamically sized
+  buffers and truncation detection. Windows: `GetModuleFileNameW` (Unicode, no ANSI-code-page
+  loss) in a doubling buffer, treating `len == cap` as truncation and converting to UTF-8 via
+  `WideCharToMultiByte(CP_UTF8, …)`. macOS: `_NSGetExecutablePath` is first called to query the
+  required size, then a right-sized buffer + `realpath(…, NULL)` (malloc'd). Linux:
+  `readlink("/proc/self/exe")` in a doubling buffer, treating `len == cap` as possible
+  truncation and retrying. Genuine detection failure now returns NULL (the public `ExeDir()`
+  wrapper still maps that to `"."`), so `"."` no longer masks a valid-but-long path — a
+  non-`"."` result is a reliable executable location. Both io docs rewritten. Verified live on
+  macOS (`Path.ExeDir()` returns the real build dir, not `"."`). Regression:
+  `PathExeDir.ReturnsAbsoluteNotDotFallback` in `TestPathExeDir.cpp` (the result is absolute and
+  never the `"."` fallback). Windows/Linux branches verified by inspection (pending their native
+  builds). **Resolved.**
 
 ### VDOC-186 — A leading glob `**` lets later wildcards cross separators
 
@@ -3740,6 +4341,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   include unintended paths.
 - **Likely repair point:** scope separator crossing to consumption by the double-star token, not
   the remainder continuation state, and add mixed `**`/`?`/class regression cases.
+- **Review (2026-07-16):** Confirmed (`Match("a/b", "**/a?b")` returned true) and fixed exactly
+  as recommended. `glob_match_impl` is always entered with `allow_slash=0`, so the only source
+  of `allow_slash=1` was the `**` branch's continuation push — which leaked the separator
+  permission into whatever token followed `**/`. Since `**` performs the separator crossing
+  itself (by consuming `text[ti..p]`), its continuation states now push `allow_slash=0`, so
+  later `*`/`?`/class tokens match with ordinary component rules. Verified live:
+  `**/a?b` vs `a/b` now false, `**/c` vs `a/b/c` still true, `**/x?z` vs `a/b/xyz` true.
+  files.md and the rt_glob.c doc comments rewritten. Regression: five mixed `**`/`?`/`*`/class
+  cases added to `test_glob_match` in `RTGlobTests.cpp` (three no-leak negatives, two
+  legitimate-`**` positives). **Resolved.**
 
 ### VDOC-187 — `Stream.As*` returns an unsafe borrowed backing object
 
@@ -3755,6 +4366,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   finalized; BASIC's temporary ownership bookkeeping can also undercount it before that point.
 - **Likely repair point:** return a retained/owned typed backing object (or model borrowed returns
   explicitly throughout the registry and frontends) and give both methods concrete return types.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. `rt_stream_as_binfile`
+  and `rt_stream_as_memstream` now `rt_obj_retain_maybe` the wrapped object before returning it,
+  so the caller receives an OWNED reference that survives the Stream's close/finalize (which
+  only releases the Stream's own reference for wrapping-Streams). The registry entries and class
+  methods were given concrete return types — `obj<Viper.IO.BinFile>` / `obj<Viper.IO.MemStream>`
+  — so BASIC and Zia apply object ownership correctly instead of guessing. streams.md rewritten.
+  Regression: `test_stream_conversion` in `RTStreamTests.cpp` extended — `AsMemStream()` is used
+  after `rt_stream_close()` (its length still reads correctly) and then released cleanly, proving
+  the result no longer dangles. Surface + docs regenerated; audits pass. **Resolved.**
 
 ### VDOC-188 — `Stream.Eof` has incompatible file and memory semantics
 
@@ -3770,6 +4390,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** define one end-position contract for Stream and implement it for both
   backings; until then, document sticky file EOF and use `Pos >= Size/Length` when position is the
   intended question.
+- **Review (2026-07-16):** Confirmed and fixed by defining one end-position contract for
+  `Stream.Eof`: `rt_stream_is_eof` now returns `pos >= size` for BOTH backings (file: BinFile
+  `pos`/`size`; memory: MemStream `pos`/`len`) instead of delegating to BinFile's sticky feof
+  flag. Polymorphic Stream code now observes the same end-of-stream state for the same logical
+  position — reading exactly the remaining bytes (including `ReadAll`) leaves `Eof` true on both.
+  The low-level `BinFile.Eof` property intentionally keeps its C-stdio sticky-flag semantics for
+  direct BinFile use (documented as the distinct contract). streams.md and files.md updated.
+  Regression: `test_file_stream_modes` in `RTStreamTests.cpp` now asserts a file-backed stream
+  reports `Eof` true immediately after reading all its bytes and false after seeking back to the
+  start. **Resolved.**
 
 ### VDOC-189 — BinaryBuffer continues unsafely after recoverable traps
 
@@ -3784,6 +4414,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   counterpart to the Bytes failure recorded in VDOC-177.
 - **Likely repair point:** make receiver/range validators return success, stop every operation after
   a trap, and audit all BinaryBuffer allocation results under returning trap hooks.
+- **Review (2026-07-16):** Confirmed and fixed following the same trap-discipline pattern as the
+  Bytes fix (VDOC-177). The four fixed-width range validators (`binbuf_require_i16/u16/i32/u32`)
+  now return `int` (1 = fits, 0 = trapped); every fixed-width writer guards
+  `if (!buf || !binbuf_require_XX(value)) return;` so a returning trap hook can no longer let a
+  truncated value reach the buffer. `get_position`, `get_len`, `to_bytes`, and `reset` now
+  null-check the `binbuf_require` result instead of dereferencing it (returning 0 / empty Bytes /
+  no-op). Audited the remaining writers/readers: the i64 writers are already guarded by
+  `binbuf_ensure`'s NULL check and the readers by `binbuf_check_read`'s, and the string/bytes
+  writers already had explicit `if (!buf) return;` guards. Regression:
+  `test_returning_trap_hook_is_safe` in `RTBinaryBufferTests.cpp` installs a record-and-return
+  trap hook and asserts getters on an invalid receiver return sentinels (no crash), out-of-range
+  fixed-width writes leave `Length` unchanged, and a later valid write still round-trips.
+  streams.md updated. **Resolved.**
 
 ### VDOC-190 — Watcher overflow reporting misses native queue loss
 
@@ -3799,6 +4442,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** translate native overflow notifications on every backend, represent an
   unknown loss count explicitly (rather than as “none”), and cover native and internal overflow
   paths separately.
+- **Review (2026-07-16):** Confirmed and fixed as recommended. Added a
+  `WATCHER_OVERFLOW_COUNT_UNKNOWN` (-1) sentinel and a dedicated
+  `watcher_queue_native_overflow` helper that queues an `EventOverflow` marker carrying the
+  unknown count (distinct from the internal ring overflow, which still counts exactly). Linux:
+  the inotify decoder now detects `IN_Q_OVERFLOW` (wd -1, no name) and queues a native overflow
+  instead of silently consuming it. Windows: both overflow paths (failed `GetOverlappedResult`
+  and a zero-byte completed read) now use the native-overflow helper, so the marker no longer
+  gets a fabricated count of zero. The ring-coalescing path preserves UNKNOWN once a native
+  overflow folds in. `EventOverflowCount()` now returns the exact count for internal overflow or
+  -1 for native/unknown; getter comment + advanced.md + files.md updated. macOS kqueue is
+  level-triggered per-fd with no queue-overflow notification, so the helper is compiled only for
+  Linux/Windows (verified: builds clean on macOS with the helper excluded). Regression:
+  `test_internal_overflow_reports_positive_count` (Linux-guarded) forces a ring overflow with 300
+  rapid file creations and asserts the count is a positive exact number, never -1; the native
+  IN_Q_OVERFLOW / Windows paths are covered by inspection pending a by-hand Linux/Windows run.
+  **Resolved.**
 
 ### VDOC-191 — Linux `Watcher.PollFor` can exceed its timeout after interruption
 
@@ -3811,6 +4470,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   can stall per-frame editor loops and shutdown paths.
 - **Likely repair point:** convert positive timeouts to one monotonic deadline and recompute the
   remaining wait after every interrupt.
+- **Review (2026-07-16):** Confirmed and fixed with the standard monotonic-deadline pattern used
+  by the network timeouts (VDOC-147/151/179). For a positive timeout, `rt_watcher_poll_for`
+  computes one `rt_clock_ticks_us()`-based deadline before the poll loop; on `EINTR` it recomputes
+  the remaining budget (ceil-to-ms) and resumes, timing out once the deadline passes rather than
+  restarting the full wait per signal. Negative (wait-forever) and zero (poll-once) timeouts keep
+  their original semantics. Linux-only (`poll(2)`); macOS kqueue and Windows
+  `WaitForSingleObject` are single-wait calls without the per-EINTR restart. advanced.md updated.
+  Builds clean on macOS (the Linux branch is not compiled there); no macOS watcher regression.
+  The interrupted-poll timing is verified by inspection pending a by-hand Linux run. **Resolved.**
 
 ### VDOC-192 — FileIndex's `**` matcher ignores component boundaries
 
@@ -3824,6 +4492,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   so indexing, search, and IDE inventory can omit unrelated files.
 - **Likely repair point:** let `**/` consume zero or more complete path components and add boundary
   cases for zero components, nested components, and suffix-only nonmatches.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. In `pathGlobMatch`
+  (rt_ide_primitives.cpp) the `**` branch now distinguishes `**/` (had a trailing slash) from a
+  bare `**`. For `**/`, the remainder is attempted only at component boundaries — the current
+  position (zero components) or immediately after a `/` — instead of at every byte offset, so it
+  can no longer land mid-component. A bare `**` (e.g. `a/**`) keeps its any-run behavior.
+  Verified: `**/bar` vs `foobar` and `foo/**/bar` vs `foo/xbar` now return false, while `**/bar`
+  vs `bar`/`a/b/bar` and `foo/**/bar` vs `foo/bar`/`foo/x/bar` still return true. files.md
+  updated. Regression: six boundary assertions added to `test_file_index_and_ignore` in
+  `RTIdeWorkspaceTests.cpp` (zero components, nested components, and suffix-only nonmatches).
+  **Resolved.**
 
 ### VDOC-193 — FileIndex can cache stale `.gitignore` contents indefinitely
 
@@ -3837,6 +4515,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   files—after a normal quick save, with no public cache-reset operation.
 - **Likely repair point:** cache a high-resolution file identity tuple (or content hash), and expose
   deterministic invalidation for watcher-driven IDE workflows.
+- **Review (2026-07-16):** Confirmed and fixed with the content-hash option. `cachedGitignorePatterns`
+  now keys the cache on `gitignoreCacheIdentity` — an FNV-1a hash of the `.gitignore` file's raw
+  bytes with the length folded in — instead of a whole-second mtime. Any edit changes the hash, so
+  a same-second (or same-size) rewrite invalidates the cache on the next lookup; a missing file
+  still returns -1 so the "no .gitignore" path is unchanged. (`.gitignore` files are small, so the
+  read-to-hash cost is negligible, and a content hash sidesteps the platform stat sub-second-mtime
+  portability gaps — this strict build exposes neither `st_mtim` nor `st_mtimespec`.) The
+  human-facing `modified` field in enumeration maps still reports whole-second mtime. files.md
+  updated. Regression: `test_gitignore_same_second_rewrite` in `RTIdeWorkspaceTests.cpp` primes the
+  cache, rewrites `.gitignore` with different patterns, forces the ORIGINAL mtime back, and asserts
+  the new patterns are honored despite the unchanged timestamp. **Resolved.**
 
 ### VDOC-194 — Unknown manifest sections leak their directives into the top level
 
@@ -3850,6 +4539,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   caller that inspects fields before or despite the validity flag.
 - **Likely repair point:** retain an explicit “unknown section” state and diagnose/ignore all of its
   body directives until the next section header.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. `rt_project_manifest_parse_text`
+  now tracks an explicit `inUnknownSection` flag: `sectionMap == nullptr` was ambiguous between
+  "top level" and "inside an unknown section", so unknown-section bodies fell into the top-level
+  directive branch and hijacked defaults like `entry`. The flag is set when an unknown `[section]`
+  header is seen (and cleared on any recognized header), and every directive encountered while it
+  is set is diagnosed (`ignoring directive '…' in unknown manifest section`) and skipped before the
+  top-level branch. files.md updated. Regression added to `test_asset_resolver_and_manifest` in
+  `RTIdeWorkspaceTests.cpp`: a manifest with `entry real.zia` then `[unknown]` / `entry hijack.zia`
+  / `sources evil` keeps top-level `entry` == `real.zia`, is `valid=false`, creates no run/build
+  config, and records exactly 3 diagnostics (the unknown section + its two ignored directives).
+  **Resolved.**
 
 ### VDOC-195 — Workspace edits can overwrite a target changed after validation
 
@@ -3864,6 +4564,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   boundary established during validation.
 - **Likely repair point:** bind validation to open file identities/handles, recheck the expected
   version at commit, and use descriptor/handle-relative operations for rooted transactions.
+- **Review (2026-07-16):** Confirmed and fixed with an optimistic-concurrency recheck at commit.
+  `workspace_edit_apply_impl` now snapshots each target's validated original content
+  (`validatedOriginals`) before applying edits, and immediately before renaming each live target
+  to its backup it re-reads the file and compares against that snapshot. If the content changed
+  (or the file became unreadable) during staging, it pushes an `edit target changed since
+  validation` diagnostic, marks the batch `success=false`, rolls back any already-committed files
+  from their backups, and returns — newer external content is never silently overwritten. The
+  happy path (unchanged targets) still commits normally (existing `test_workspace_edits` green).
+  Content comparison is stronger than the whole-second `expectedMtime` check for this window. The
+  content-swap case is fully covered; a rooted path-*component* swap during the window still needs
+  handle-relative commit ops (a larger refactor) and is documented as a residual in files.md. The
+  concurrency-window failure path is inherently non-deterministic to unit-test (it needs a
+  concurrent mid-apply write), so it is verified by inspection. **Resolved (content-recheck;
+  rooted handle-relative commit noted as follow-up).**
 
 ### VDOC-196 — Workspace edit backup paths are predictable and not reserved
 
@@ -3878,6 +4592,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   as the original target contents.
 - **Likely repair point:** reserve unpredictable backup names exclusively in the target directory
   and commit through platform primitives with explicit no-replace semantics.
+- **Review (2026-07-16):** Confirmed and fixed. Sidecar names are no longer a bare incrementing
+  counter: `workspaceEditNonce` folds the atomic counter through the runtime's per-process keyed
+  hash (SipHash seeded from the OS CSPRNG), so temp and backup names are unpredictable across
+  processes. `reserveWorkspaceEditBackup` now exclusively creates the backup path with
+  `O_EXCL` (POSIX) / `CREATE_NEW` (Windows) before the commit rename — a stale artifact or racing
+  process at that name is detected and a fresh candidate is tried (64-attempt budget) instead of
+  the previous blind `rename(target, backup)` that POSIX would silently let clobber an existing
+  file. A new `backupReserved` flag lets rollback delete a reserved-but-unused placeholder so a
+  failed apply leaves no stale sidecar. Content temps keep their existing `O_EXCL` open. files.md
+  updated. Regression: `test_workspace_edits` now asserts no `.viper-edit-*` sidecars remain in the
+  workspace directory after a successful apply; strict surface audit still passes. **Resolved.**
 
 ### VDOC-197 — Asset Resolver accepts empty assets and misbases relative scene paths
 
@@ -3891,6 +4616,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   project-relative scene resolves differently when the editor's current directory changes.
 - **Likely repair point:** reject empty asset names and resolve relative scene paths consistently
   against the project root before applying scene-directory precedence.
+- **Review (2026-07-16):** Confirmed and fixed both defects in `rt_asset_resolver_resolve`. An
+  empty `assetPath` is now rejected up front with an `empty asset name` diagnostic and
+  `found=false`, so it no longer resolves to `projectRoot / "" == projectRoot` (the project
+  directory). A relative `scenePath` is rebased under `projectRoot` (`projectRoot / scenePath`,
+  normalized) before the scene-directory candidate is built, so the same project-relative scene
+  resolves identically regardless of the process working directory. Absolute scene paths are
+  unchanged. assets.md updated. Regression added to `test_asset_resolver_and_manifest` in
+  `RTIdeWorkspaceTests.cpp`: an empty asset name returns not-found with the diagnostic, and passing
+  the project-relative `scenes/level.json` resolves the scene-local `local.png` with source
+  `scene` (matching the absolute-scene case). **Resolved.**
 
 ### VDOC-198 — IO runtime metadata labels trapping owned APIs as infallible or unknown
 
@@ -3907,6 +4642,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** annotate this surface explicitly in the runtime manifest, type object
   returns where concrete, and add contract-audit checks against known trapping/allocating entry
   points.
+- **Review (2026-07-16):** Confirmed and fixed by making the `--dump-runtime-api` fallibility and
+  ownership inference accurate for the named categories. Ownership: a concretely typed `seq<…>` /
+  `obj<…>` return is now reported `owned` (a freshly allocated GC value the caller owns) instead
+  of `unknown` — this fixes the broad "fresh typed Seq/Map/Bytes remain unknown" class and the
+  typed `Stream.As*` returns (now `obj<Viper.IO.BinFile>` / `obj<Viper.IO.MemStream>` after
+  VDOC-187). Fallibility: an exact-name override table marks the trapping IO entries the
+  name/signature heuristic missed as `traps` — `Stream.AsBinFile` / `AsMemStream` / `ToBytes`
+  (wrong-backing trap), `LineWriter.Append` (open failure), `Watcher.New` / `Start` (resource
+  failure), and `Archive.Create` (open failure); a bare-`obj` override marks `LineWriter.Append`
+  `owned`. Verified via `--dump-runtime-api`: all seven now report the corrected contracts.
+  tools.md documents the value semantics. Regression: `agent_cli` (AgentCliTests.cmake) now pins
+  `Stream.AsBinFile` and `LineWriter.Append` as `traps` / `owned`. The general typed-owned
+  heuristic also improves the sibling Math/Time/System metadata findings. **Resolved.**
 
 ### VDOC-199 — `Path.DataDir` validates only the prefix before an embedded NUL
 
@@ -3921,6 +4669,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   Strings can alias the same per-user directory.
 - **Likely repair point:** validate `rt_str_len(app_name)` bytes with the existing length-aware
   helper and reject embedded NULs before any C-string path operation.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. `rt_path_data_dir` now
+  reads `rt_str_len(app_name)` and validates that byte count with `is_safe_game_name_bytes`
+  (mirroring `SaveData.New`), instead of `rt_string_cstr` + the `strlen`-based
+  `is_safe_game_name`. Because the safe charset excludes NUL, the length-aware check rejects an
+  embedded NUL and any trailing bytes up front, so the advertised full-string app-name policy is
+  enforced and two distinct Strings can no longer alias the same per-user directory. files.md
+  updated. Regression: `test_data_dir_embedded_nul_name_traps` in `RTSaveDataTests.cpp` (an app
+  name `"app\0x"` traps), parallel to the existing SaveData.New NUL test. **Resolved.**
 
 ### VDOC-200 — Random instance methods dereference an invalid receiver after a recoverable trap
 
@@ -3936,6 +4692,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   as VDOC-177 and VDOC-189.
 - **Likely repair point:** make `as_random()` return `NULL` after trapping and require every caller
   to stop before accessing state; add wrong-class and null-receiver recovery tests.
+- **Review (2026-07-16):** Confirmed and fixed following the VDOC-177/189 trap-discipline pattern.
+  `as_random()` now returns `NULL` after `rt_trap()` instead of the unchecked pointer, and all four
+  instance methods (`rt_rnd_method`, `rt_rand_int_method`, `rt_rand_range_method`,
+  `rt_randomize_i64_method`) guard `if (!rng) return <sentinel>;` (0.0 / 0 / 0 / void) before
+  touching `rng->state`, so under a returning trap hook a null or wrong-class receiver returns
+  control safely instead of dereferencing. Pure internal robustness — no user-facing contract
+  change. Regression: `RTHandleValidationTests.cpp` gained a record-and-return `vm_trap` mode and a
+  block that calls every Random method with a wrong-class fake AND a null receiver under that hook,
+  asserting each returns its sentinel and records the trap without crashing (the existing
+  longjmp-recovery `call_random_next` assertion still verifies the trap fires). **Resolved.**
 
 ### VDOC-201 — Spline parameter handling is type-dependent and unsafe for NaN
 
@@ -3951,6 +4717,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   merely return NaN for one spline but invoke undefined behavior for another.
 - **Likely repair point:** validate finiteness once in each public entry point and choose one
   documented clamping or extrapolation rule for all spline kinds.
+- **Review (2026-07-16):** Confirmed and fixed with one uniform rule. A new `spline_sanitize_param`
+  clamps the parameter to [0,1] for every spline kind — below-0/`-Inf` -> 0, above-1/`+Inf` -> 1,
+  `NaN` -> 0 — and is applied once at each public entry point: `rt_spline_eval` and
+  `rt_spline_tangent` sanitize `t` before the kind switch, and `rt_spline_arc_length` sanitizes
+  both `t0` and `t1` before deriving the per-step `t`. This removes the split behavior (Bezier no
+  longer extrapolates; it clamps like the others) and eliminates the NaN->segment-index conversion
+  (undefined in C) since no evaluator ever receives a non-finite parameter. The file header, `Eval`
+  comment, and math.md were corrected (they had claimed every spline clamps). Regression:
+  `test_param_sanitization_is_uniform` in `RTSplineTests.cpp` checks, for both linear and Bezier
+  splines, that NaN==start, +Inf==end, out-of-range finite values clamp, and Tangent/ArcLength stay
+  finite for non-finite inputs. **Resolved.**
 
 ### VDOC-202 — PerlinNoise accepts any object and reads it as a permutation table
 
@@ -3965,6 +4742,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   signature and trigger out-of-bounds reads or interpret unrelated object memory as noise state.
 - **Likely repair point:** assign a stable PerlinNoise class id, validate heap kind/class/size at
   the boundary, and give the registry a typed receiver signature.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. Added a stable
+  `RT_PERLIN_CLASS_ID` (rt_perlin.h); `rt_perlin_new` now allocates with it instead of class id 0.
+  A new `as_perlin()` validates the receiver via `rt_obj_is_instance` (kind/class/size) and traps +
+  returns NULL on mismatch (same discipline as VDOC-200); `rt_perlin_noise2d` / `noise3d` use it
+  before touching `perm`, and `rt_perlin_octave2d` / `octave3d` validate up front so an invalid
+  receiver traps once rather than 16x through the inner loop. The registry constructor now returns
+  the concrete `obj<Viper.Math.PerlinNoise>` type. A Seq/Bytes/any object passed through the
+  generic `obj` signature can no longer be read as a 512-byte permutation table. Surface + docs
+  regenerated; strict audit and all registry/surface tests pass. math.md updated. Regression:
+  `test_null_safety` in `RTPerlinTests.cpp` now expects traps for null receivers, and a new
+  `test_wrong_class_receiver_traps` passes a Seq to all four readers and asserts each traps.
+  **Resolved.**
 
 ### VDOC-203 — BigInt's negative byte encoder can change the integer value
 
@@ -3980,6 +4769,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** compute the minimal two's-complement bytes first, then prefix `0xff`
   exactly when the resulting top bit would otherwise be clear; add round-trip tests around every
   `0x80` magnitude boundary in both signs.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. `rt_bigint_to_bytes` now
+  materializes the big-endian two's-complement bytes of the value in `byte_len` bytes into a temp
+  buffer FIRST, then decides the sign prefix from the RESULT's top bit rather than the magnitude's
+  high bit: a negative value gets a leading `0xff` exactly when the encoded top bit is clear, a
+  positive value gets a leading `0x00` exactly when it is set. This fixes the boundary error (e.g.
+  `-129`: magnitude top bit `0x81` is set, but the 1-byte two's complement `0x7f` has its top bit
+  clear, so it now correctly emits `ff 7f` instead of `7f`) and avoids redundant sign bytes.
+  Verified live: `FromBytes(ToBytes(FromInt(-129)))` now returns `-129` (was `127`). math.md
+  updated. Regression: `test_to_from_bytes_roundtrip` in `RTBigintTests.cpp` round-trips 28 values
+  straddling the 8- and 16-bit two's-complement boundaries in both signs. **Resolved.**
 
 ### VDOC-204 — BigInt operations do not validate their generic object operands
 
@@ -3993,6 +4792,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   arbitrary pointer reads/writes, invalid frees, or a process crash when interpreted as a BigInt.
 - **Likely repair point:** centralize a checked BigInt cast, apply it at every public boundary, and
   expose typed BigInt operands/results in the registry so frontends reject mistakes earlier.
+- **Review (2026-07-16):** Confirmed and fixed at the runtime boundary (the authoritative layer). A
+  centralized `bigint_check(obj)` validates each operand via `rt_obj_is_instance(obj,
+  BIGINT_CLASS_ID, sizeof(bigint_t))`, trapping `BigInt: invalid BigInt object` on a wrong-class
+  object while passing null through (so each op keeps its documented null/identity semantics). It
+  is applied at every public boundary that casts an operand — 29 guards across ToInt, ToStringBase,
+  ToBytes, FitsInt, Add/Sub/Mul/DivMod, Negate/Abs, Compare, IsZero/IsNegative/Sign, And/Or/Xor/Not,
+  Shl/Shr, Pow/PowMod, Gcd/Lcm, BitLength/TestBit/SetBit/ClearBit, and Sqrt (Div/Mod/Equals/ToString
+  are covered transitively via the guarded functions they delegate to). Subtlety: `rt_bigint_sub`
+  builds a negated STACK copy of b and previously handed it to public `rt_bigint_add`; the new guard
+  would reject that trusted stack pointer, so the add body was split into an unchecked
+  `bigint_add_impl` (shared with the validated public wrapper) that `sub` now calls directly.
+  Verified: passing a Seq to any BigInt op traps cleanly (was arbitrary memory read), and all
+  arithmetic still round-trips. Registry operand/result *typing* (the frontend-rejection half) is a
+  larger cross-cutting change left as follow-up — the runtime guard fully closes the memory-safety
+  hole. math.md updated. Regression: `trap_wrong_class_sign` / `trap_wrong_class_add` in
+  `RTBigIntContractTests.cpp` assert a Seq operand traps with the expected message.
+  **Resolved (runtime-enforced; registry typing noted as follow-up).**
 
 ### VDOC-205 — BigInt `PowMod` returns negative residues for negative bases
 
@@ -4007,6 +4823,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   same congruence class.
 - **Likely repair point:** decide and document the residue convention; for the conventional API,
   require a positive modulus or normalize every final/intermediate remainder to `[0,m)`.
+- **Review (2026-07-16):** Confirmed and fixed by adopting the conventional least-non-negative
+  residue convention. `rt_bigint_pow_mod` now normalizes its final result to `[0, |m|)`: because
+  `Mod` uses truncating division, a negative base propagates a negative residue through the
+  Montgomery ladder, so the raw result is in `(-|m|, 0)` when negative; adding `|m|` lands it in
+  `(0, |m|)`. Intermediate reductions stay congruent mod m, so normalizing only the final result
+  yields the canonical value. Verified: `PowMod(-2, 3, 5)` now returns `2` (was `-3`) and positive
+  cases are unchanged (`2^10 mod 1000 == 24`). The function's `@return` doc and math.md now state
+  the `[0, |mod|)` convention. Regression: `test_pow_mod_nonnegative_residue` in
+  `RTBigIntContractTests.cpp`. **Resolved.**
 
 ### VDOC-206 — Quaternion inverse overflows or underflows its squared length
 
@@ -4021,6 +4846,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and vector transforms silently become invalid.
 - **Likely repair point:** compute the inverse with scaled components (or divide a normalized
   conjugate by the original norm) so neither the square nor reciprocal overflows/underflows.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. `rt_quat_inverse` no longer
+  forms `len_sq = len*len` (which overflowed to Inf for large norms — collapsing the inverse to 0
+  — and underflowed to 0 for tiny norms — blowing it up to +/-Inf). It now divides each conjugate
+  component by the finite, nonzero `len` TWICE (`s = 1/len; component = (conj*s)*s`): the first
+  divide normalizes to ~unit magnitude, the second scales by `1/len`, so no intermediate
+  overflows or underflows. Verified live: `Inverse(Quat(1e308,0,0,0)).X` is `-1e-308` (was `0`) and
+  `Inverse(Quat(1e-308,0,0,0)).X` is `-1e308` (was `-Infinity`); a normal `Quat(0,0,0,2)` inverse is
+  still `W=0.5`. The zero/non-finite-length trap is unchanged. math.md updated. Regression:
+  `test_inverse_extreme_norms` in `RTQuatTests.cpp` checks both extremes stay finite/nonzero plus a
+  normal-case sanity check. **Resolved.**
 
 ### VDOC-207 — Matrix equality treats NaN as equal to arbitrary values
 
@@ -4034,6 +4869,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   completely different matrices as equal.
 - **Likely repair point:** reject non-finite epsilon and explicitly define component NaN semantics
   before the tolerance comparison; add signed-zero, infinity, and NaN tests.
+- **Review (2026-07-16):** Confirmed and fixed in both `rt_mat3_eq` and `rt_mat4_eq`. The epsilon
+  guard is now `if (!(epsilon > 0.0) || !isfinite(epsilon)) epsilon = 1e-9;` so a NaN/Inf epsilon
+  (which slipped past `epsilon <= 0.0`) is normalized to the default instead of making `diff > NaN`
+  always false. The per-component test is now the NaN-safe negated form
+  `if (!(fabs(d) <= epsilon)) return 0;` so a NaN component difference counts as NOT equal — a
+  matrix containing NaN is never equal to any matrix, including itself (IEEE semantics), while
+  signed zeros still compare equal. math.md updated for both. Regression: new
+  `RTMatEqTests.cpp` (test_rt_mat_eq) covers the headline `Mat4.Eq(Zero, Identity, NaN)` case, NaN
+  components vs zero under a huge epsilon, NaN-not-equal-to-itself, ordinary inequality/equality,
+  and signed-zero equality for both Mat3 and Mat4. **Resolved.**
 
 ### VDOC-208 — Mat3 and Mat4 inverse failures have incompatible contracts
 
@@ -4049,6 +4894,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   unrelated location.
 - **Likely repair point:** give both inverse APIs one explicit failure model—preferably a trap or
   Result/TryInverse form—and never use identity as an ambiguous error sentinel.
+- **Review (2026-07-16):** Confirmed and fixed by unifying both inverse APIs on the trap model
+  (Mat3 already trapped). `rt_mat4_inverse` now traps on a null receiver (`Mat4.Inverse: null
+  matrix`), an invalid receiver (`invalid matrix`), and a singular / non-finite-determinant matrix
+  (`singular matrix`) instead of silently returning identity — identity is a valid transform that
+  would move geometry to an unrelated location. The cofactor math was extracted into a shared
+  `mat4_inverse_or_null` core so the trapping public API and a new non-trapping
+  `rt_mat4_try_inverse` (returns NULL on failure, classified INTERNAL in RuntimeSurfacePolicy.inc)
+  share it. The two internal engine callers that relied on the old identity fallback
+  (rt_game3d_controllers.c and rt_navagent3d.c, inverting a parent world transform) now call
+  `rt_mat4_try_inverse` and degrade gracefully on NULL (they already handled a NULL inverse). The
+  Mat4 header invariant claiming a silent identity return was corrected. Verified live: both
+  `Mat3.Inverse(Zero())` and `Mat4.Inverse(Zero())` trap `singular matrix`; `Mat4.Inverse(Identity)`
+  still works. math.md updated. Regression: `RTMatEqTests.cpp` extended to assert both inverses
+  trap+return NULL on a singular matrix, the invertible case still works, and `rt_mat4_try_inverse`
+  returns NULL without trapping. **Resolved.**
 
 ### VDOC-209 — Math runtime metadata marks trapping owned APIs as infallible or unknown
 
@@ -4064,6 +4924,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** annotate the math manifest's ownership/fallibility explicitly, use
   concrete object result types, and add contract assertions for known trapping/allocating entry
   points.
+- **Review (2026-07-16):** Confirmed and fixed the same way as the IO metadata (VDOC-198).
+  Ownership: a new rule marks every `Viper.Math.*` function returning an object (`obj`/`seq`) as
+  `owned`, since math values are immutable, freshly allocated results — this fixes the "fresh
+  BigInt/Vec/Mat/Quat/Spline results are unknown" class for the bare-`obj` returns the typed rule
+  missed. Fallibility: the explicit override table gained the trapping Math domain operations —
+  `BigInt.Div` / `Mod` / `Pow` / `PowMod` / `Sqrt` / `ToStringBase`, `Mat3.Inverse` / `Mat4.Inverse`
+  (now consistent after VDOC-208), `Quat.Inverse` / `Slerp`, and `Vec2.Div` / `Vec3.Div` — each
+  verified to trap in source. Non-trapping ops like `BigInt.Add` and (post-VDOC-201) `Spline.Eval`
+  correctly stay `infallible`, and all now report `owned`. Verified via `--dump-runtime-api`.
+  tools.md documents the Math coverage. Regression: `agent_cli` pins `Mat4.Inverse` and
+  `BigInt.Div` as `traps` / `owned`. **Resolved.**
 
 ### VDOC-210 — Native programs do not install the documented graceful-shutdown signal bridge
 
@@ -4079,6 +4950,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** install equivalent signal/console handlers in native runtime startup,
   retaining the current signal-safe flag-to-atomic handoff, or explicitly make OS integration a
   VM-only capability query.
+- **Review (2026-07-16):** Confirmed and fixed by exposing an explicit opt-in installer plus fixing
+  a deeper native-link gap the investigation surfaced. A new `rt_shutdown_install_signal_handlers()`
+  installs SIGINT/SIGTERM (POSIX) or the console control handler (Windows) that call
+  `rt_shutdown_request` — the same signal-safe flag-to-atomic handoff, callable directly from signal
+  context since `rt_shutdown_request` is only a lock-free atomic OR. It is idempotent and exposed as
+  `Viper.System.Shutdown.InstallSignalHandlers`. A blanket auto-install was rejected: native
+  programs use a raw `_start` stub with no C-startup hook, and a constructor would wrongly hijack
+  Ctrl-C for the `viper` compiler and tools (which also link the runtime). While testing, the
+  native link failed even for the EXISTING `Shutdown.Poll` — `RuntimeComponents.hpp` mapped the Exec
+  archive by `rt_exec_`/`rt_process_`/`rt_machine_` prefixes but omitted `rt_shutdown_`, so any
+  native Shutdown user got an undefined-symbol error; added `rt_shutdown_` and
+  `Viper.System.Shutdown.` to the Exec component matcher. End-to-end verified: a native program that
+  calls `InstallSignalHandlers()`, receives a real SIGINT, and observes `Interrupt` via `Poll` exits
+  gracefully (was VM-only). system.md updated (method table + capability note). Regression:
+  `test_installed_signal_handlers_publish` in `RTShutdownTests.cpp` raises real SIGINT/SIGTERM and
+  asserts `Poll` returns the reason. Completeness + strict surface audits pass. **Resolved.**
 
 ### VDOC-211 — Legacy argument initialization uses a non-atomic flag as a cross-thread lock
 
@@ -4093,6 +4980,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   entries, or spin indefinitely under compiler optimization.
 - **Likely repair point:** use a real once primitive/atomic state with acquire-release ordering and
   a portable wait/yield path, or move initialization into context construction before publication.
+- **Review (2026-07-16):** Confirmed and fixed by converting the flag to a real atomic once-init.
+  `g_legacy_args_host_init_state` is now `atomic_int`; the `0 -> 1` claim is a single
+  `atomic_compare_exchange_strong_explicit` (acq_rel), so exactly one thread imports the host argv,
+  it publishes state `2` with release ordering, and every other thread acquire-loads `2` and
+  observes the fully populated arguments — no partial reads, lost/duplicated entries, or UB spin on
+  a plain int. `rt_args_mark_legacy_host_initialized` uses a `0 -> 2` CAS that leaves an in-progress
+  (`1`) or done (`2`) state untouched. The spin-wait now yields on every platform via a new
+  `rt_args_spin_yield` (`sched_yield` on POSIX, `SwitchToThread` on Windows) instead of busy-looping
+  on non-Windows. Pure internal robustness — no user-facing contract change. Single-threaded
+  behavior is unchanged (existing `test_rt_args` green). Regression: `test_rt_args` gained an
+  8-thread × 2000-read concurrent stress that asserts a stable count with no crash (the one-shot
+  import can't be reset from a test, so this exercises the atomic read/CAS path rather than
+  reproducing the original race). **Resolved.**
 
 ### VDOC-212 — Windows Process passes a UTF-16 environment block as ANSI
 
@@ -4106,6 +5006,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   non-ASCII values are unusable and even ASCII `KEY=value` entries are not reliably delivered.
 - **Likely repair point:** add `CREATE_UNICODE_ENVIRONMENT`, sort/validate the Windows block as
   required, and add a Windows round-trip test containing multiple variables and non-ASCII text.
+- **Review (2026-07-16):** Confirmed and fixed. `rt_process_start_with_env`'s `CreateProcessW` call
+  now ORs `CREATE_UNICODE_ENVIRONMENT` into its creation flags whenever an explicit wide env block
+  is supplied (`build_env_block_wide` already produced a correct double-NUL-terminated UTF-16
+  block), so Windows no longer misinterprets it as ANSI and truncates/garbles the variables. This
+  matches the PTY backend, which already set the flag (the divergence the finding cited). A NULL
+  block still inherits the parent environment (flag omitted). The file-header note and system.md
+  were corrected. Windows-only branch (`#ifdef _WIN32`), so it does not compile on macOS; verified
+  by inspection against the MSDN requirement and the PTY precedent, and the POSIX env round-trip
+  (`test_process_cwd_and_env`) still passes. The Windows multi-variable / non-ASCII round-trip needs
+  a by-hand `build_viper_win.cmd` run to exercise the CreateProcessW path directly. **Resolved
+  (Windows behavior pending a by-hand Windows build).**
 
 ### VDOC-213 — Executable lookup changes across Process and PTY environment modes
 
@@ -4122,6 +5033,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** choose one policy, preferably explicit `PATH` search for bare names in
   every mode (using the supplied environment's PATH when present), and expose startup exec failure
   before returning an apparently valid PTY session.
+- **Review (2026-07-16):** Confirmed and fixed by unifying on explicit PATH search for bare names in
+  every mode. Process: a new `process_resolve_program_path` PATH-searches a bare name (using the
+  supplied environment's `PATH` via `process_env_lookup`, else the inherited `PATH`) and resolves it
+  to a full path before `posix_spawn` (which does no search); a name with `/` is used verbatim, and
+  an unresolved name is left unchanged so the spawn fails like `execvp`. PTY: the explicit-env child
+  branch no longer uses `execve` (no PATH search) — it adopts the explicit environment as `environ`
+  then `execvp`s, so it searches that environment's `PATH` and passes it to the child, identical to
+  Process. Second defect fixed too: the PTY now uses a close-on-exec exec-status pipe — the child
+  writes its `errno` on any pre-exec/exec failure, a successful exec closes the pipe (parent sees
+  EOF), so `rt_pty_open` returns NULL / `Err` on exec failure instead of an apparently-valid session
+  that only fails later. Verified: `Process.StartWithEnv("sh", …)` now succeeds (was false),
+  `Pty.Open` of a nonexistent program returns `Err`, and `Pty.Open("sh", env)` succeeds via PATH.
+  system.md updated in all three spots. Regressions: `test_process_bare_name_path_search_with_env`
+  (RTExecTests) and `PtyOpenSurfacesExecFailure` (TestRuntimeOpenLoadResultApis, PTY-supported here).
+  **Resolved.**
 
 ### VDOC-214 — PTY Resize reports success without observing backend success
 
@@ -4134,6 +5060,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   incorrect wrapping/layout with no recoverable diagnostic.
 - **Likely repair point:** make backend helpers return Boolean success, preserve OS diagnostics in
   the Result/LastError path, and propagate the value from `Resize`.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. All three `pty_resize_impl`
+  backends now return `int` success: POSIX checks `ioctl(TIOCSWINSZ)` and, on failure, records the
+  errno via `pty_set_last_errno("TIOCSWINSZ failed")`; Windows checks the `ResizePseudoConsole`
+  HRESULT with `FAILED(hr)` and records `pty_set_last_error`; the unsupported-platform stub returns
+  0. `rt_pty_resize` now returns `pty_resize_impl(...) ? 1 : 0` instead of unconditionally 1, so a
+  caller can distinguish a real OS resize from a discarded failure and read `LastError` on failure.
+  Verified live: `Resize` on a live `sh` PTY session returns 1. system.md updated. Regression:
+  `PtyOpenSurfacesExecFailure` (TestRuntimeOpenLoadResultApis) now also resizes the live session and
+  asserts the result is 1. **Resolved.**
 
 ### VDOC-215 — PTY LastError is an unsynchronized process-global buffer
 
@@ -4146,6 +5081,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   unrelated error message. A successful operation in one thread can erase another thread's error.
 - **Likely repair point:** make the side channel thread-local (as Exec does), or put the diagnostic
   exclusively in `OpenResult` and deprecate LastError; enforce any genuine main-thread rule.
+- **Review (2026-07-16):** Confirmed and fixed by making the buffer thread-local, exactly as Exec
+  does. `pty_last_error` is now declared `RT_THREAD_LOCAL` (the portable TLS macro:
+  `__declspec(thread)` / `_Thread_local` / `__thread`), so concurrent `Open` / `OpenResult` /
+  `IsSupported` calls on different threads write independent per-thread buffers and can never tear
+  or clobber each other's diagnostic; each thread reads back the error from the operation it
+  performed. The stale doc comment claiming an unsynchronized process-global was corrected, and
+  system.md now describes the thread-local behavior (still recommending `OpenResult` for structured
+  errors). Regression: `PtyLastErrorIsThreadLocal` in `TestRuntimeOpenLoadResultApis.cpp` runs 8
+  threads × 500 failing opens each and asserts every thread reads back its own non-empty, non-torn
+  error. **Resolved.**
 
 ### VDOC-216 — Windows Machine.OSVer can return a compatibility version
 
@@ -4160,6 +5105,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** use a supported version source such as `RtlGetVersion` with an explicit
   compatibility policy, ship an appropriate manifest, and test the packaged executable rather
   than only the runtime object.
+- **Review (2026-07-16):** Confirmed and fixed. `rt_machine_os_ver` now queries `RtlGetVersion`
+  from ntdll first (loaded via `GetModuleHandleW`/`GetProcAddress` since it has no linkable import
+  library), which returns the true OS version regardless of the executable's supported-OS
+  compatibility manifest — so an unmanifested native output or custom embedder no longer misreports
+  Windows 10/11 as an older release. It falls back to the deprecated `GetVersionExA` only if
+  `RtlGetVersion` is unavailable, and to `"unknown"` if both fail. The file-header note and
+  system.md were corrected. Windows-only branch (`#ifdef _WIN32`), so it does not compile on macOS;
+  verified by inspection against the documented `RtlGetVersion` behavior, and the macOS build is
+  unaffected. Exercising the manifest-independence needs a by-hand `build_viper_win.cmd` run on
+  Windows 10/11. **Resolved (Windows behavior pending a by-hand Windows build).**
 
 ### VDOC-217 — Windows Machine text queries bypass Viper's UTF-8 conversion path
 
@@ -4172,6 +5127,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   then fail downstream path/string APIs.
 - **Likely repair point:** switch Machine queries to their wide forms and reuse the validated
   conversion helpers; obtain home paths through wide environment or known-folder APIs.
+- **Review (2026-07-16):** Confirmed and fixed. `rt_machine_host`/`_user`/`_home`/`_temp` now use
+  the wide Win32 APIs on Windows — `GetComputerNameW`, `GetUserNameW`, `GetTempPathW`, and
+  `_wgetenv` for `USERPROFILE` / `HOMEDRIVE` / `HOMEPATH` — and convert through the shared,
+  validated `rt_file_path_wide_to_string` (the same UTF-8 boundary conversion the codebase uses
+  elsewhere), instead of the narrow `*A` APIs and `getenv` that copied ANSI bytes verbatim. Non-ASCII
+  host/user names and paths now round-trip as valid UTF-8, consistent with
+  `Viper.System.Environment`. system.md updated. Windows-only branches (`#ifdef _WIN32`), so they do
+  not compile on macOS; verified by inspection and the POSIX paths are unchanged (`test_rt_machine`
+  green, `Machine.User`/`Host` still resolve). The non-ASCII round-trip needs a by-hand Windows build
+  to exercise the wide APIs. **Resolved (Windows behavior pending a by-hand Windows build).**
 
 ### VDOC-218 — Machine.MemFree measures different memory categories by platform
 
@@ -4184,6 +5149,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   when the hosts have comparable usable memory; the name cannot support portable admission logic.
 - **Likely repair point:** define one portable “available” estimate and implement it per platform
   (for Linux, include the appropriate reclaimable/cache data), or expose distinctly named metrics.
+- **Review (2026-07-16):** Confirmed and fixed by unifying on an "available memory" estimate — the
+  memory usable for new work without swapping, including reclaimable cache. Windows
+  (`ullAvailPhys`) and macOS (`free + inactive` reclaimable pages) already reported this category;
+  Linux was the outlier, returning only strict `sysinfo.freeram`. `rt_machine_mem_free` on Linux
+  now parses `MemAvailable` from `/proc/meminfo` (the kernel's own available estimate, which
+  includes reclaimable page cache), falling back to `(freeram + bufferram) * mem_unit` on older
+  kernels lacking `MemAvailable`. The doc comment and system.md now define the single semantics.
+  macOS unchanged (verified: `MemoryFree` still reports ~available and `test_rt_machine` is green);
+  the Linux `/proc/meminfo` path is inspection-verified and needs a by-hand Linux run to confirm
+  against `free -b`. **Resolved.**
 
 ### VDOC-219 — macOS Machine.Cores can return a non-positive count
 
@@ -4196,6 +5171,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   safe-minimum contract.
 - **Likely repair point:** validate both macOS probes and return 1 for every non-positive/failing
   result.
+- **Review (2026-07-16):** Confirmed and fixed. The macOS branch of `rt_machine_cores` now only
+  returns the `hw.logicalcpu` sysctl value when it is `> 0`, otherwise falls back to a POSITIVE
+  `sysconf(_SC_NPROCESSORS_ONLN)`, else the safe minimum of 1 — it no longer returns the raw
+  (possibly 0 or -1) sysctl/sysconf result. Added a matching `> 0` guard to the Windows
+  `dwNumberOfProcessors` path for consistency; Linux/generic already guarded. The doc comment and
+  system.md now state every platform returns at least 1. Verified on macOS (`Cores` returns 14) and
+  the existing `test_cores` (`cores >= 1`) stays green — the fix guarantees that invariant even when
+  the OS probes fail. **Resolved.**
 
 ### VDOC-220 — SetAltScreen is not an idempotent toggle and cleanup does not exit it
 
@@ -4210,6 +5193,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   repairs the state.
 - **Likely repair point:** track one alt-screen Boolean, transition/batch only on state changes,
   and make the exit handler perform a best-effort balanced screen/batch cleanup.
+- **Review (2026-07-16):** Confirmed and fixed exactly as recommended. A new `g_alt_screen_active`
+  boolean tracks the alternate-screen state; `rt_term_alt_screen_i32` now enters (emit `?1049h`,
+  raw mode, `begin_batch`) only when not already active and exits (emit `?1049l`, `end_batch`,
+  restore raw) only when active — so it is an idempotent toggle that adjusts batch depth exactly
+  once per state change. The exit handler (`term_atexit_handler`) now performs balanced cleanup: if
+  the program is still on the alternate screen it ends the batch, emits `?1049l`, and clears the
+  flag, then restores raw mode. The file-header note and system.md were corrected. Verified
+  end-to-end under a real PTY: a program that calls `SetAltScreen(true)` three times then
+  `SetAltScreen(false)` once emits exactly one `?1049h` and one `?1049l`, and its subsequent
+  `Print` flushes (the sentinel appears) — proving the batch depth is balanced (the old code left
+  depth at 2 and would have stranded the output). **Resolved.**
 
 ### VDOC-221 — Terminal's public Integer parameters narrow silently to 32 bits
 
@@ -4223,6 +5217,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   color values can change sign and take unrelated branches.
 - **Likely repair point:** register the i64 wrappers and validate/clamp before narrowing, or change
   the public signature with the required compatibility/ADR treatment.
+- **Review (2026-07-16):** Confirmed and fixed by registering the i64 wrappers AND making them
+  clamp. The registry now maps `Viper.Terminal.ReadKeyFor` / `SetColor` / `SetPosition` to the
+  i64-parameter symbols `rt_getkey_timeout` / `rt_term_color` / `rt_term_locate` (was the `_i32`
+  variants, which silently dropped the high 32 bits at the ABI boundary). Those wrappers previously
+  still cast `(int32_t)` (same truncation); they now route each parameter through a new saturating
+  `term_clamp_i32` (clamps to `[INT32_MIN, INT32_MAX]` rather than taking the low 32 bits), so a
+  large positive value saturates to `INT32_MAX` instead of wrapping negative — a big timeout no
+  longer blocks forever and large cursor/color values no longer change sign. The now-internal `_i32`
+  symbols are classified `INTERNAL_SYMBOL` in RuntimeSurfacePolicy.inc (still the BASIC-lowering
+  targets). Completeness + strict audit pass. system.md updated. Regression: `RTTermColorTests.cpp`
+  gained a PTY-backed case — `rt_term_color(2^31, -1)` (which truncates to INT32_MIN and the i32
+  path would drop as `fg < -1`) now emits a valid non-empty SGR via the clamp, and in-range values
+  match the i32 path. **Resolved.**
 
 ### VDOC-222 — System runtime metadata hides nulls, traps, and owned results
 
@@ -4238,6 +5245,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   handle, plan cleanup for owned results, or install necessary error paths.
 - **Likely repair point:** annotate this surface explicitly for nullability, ownership, Result/
   Option use, side channels, and traps, and add audit assertions for known nullable/trapping APIs.
+- **Review (2026-07-16):** Confirmed and resolved. Audited the live `--dump-runtime-api` System
+  surface and found the trap/ownership heuristics already correct for most rows (Process/PTY reads
+  were fixed to `traps`/`owned` under VDOC-198, Environment reads report `owned`, `GC.Collect`
+  verified non-trapping in `rt_gc.c` so it correctly stays `infallible`). The genuine gaps were:
+  `Process.Start` / `StartWithEnv` returned a handle marked non-null even though a failed spawn
+  yields `NULL`; the unmanaged `Unsafe.Release` / `Unsafe.ReleaseStr` primitives (which
+  `rt_object.c` traps on an invalid/freed handle) were labeled `infallible`; and
+  `PtySession.Resize` — an `i1` status return after VDOC-214 — was labeled `infallible`. Added a
+  `kNullableReturns` list to `runtimeReturnNullable` (spawn handles now report `nullable: true`,
+  keeping the orthogonal `fallibility: infallible` since a null return is not a trap) and three
+  entries to the `explicitRuntimeFallibility` override table (`Unsafe.Release`/`ReleaseStr` →
+  `traps`, `PtySession.Resize` → `status`) in `src/tools/viper/main.cpp`. Pinned all three
+  corrected contracts in `src/tests/tools/AgentCliTests.cmake` (the `agent_cli` ctest) and
+  documented the System coverage of the override tables in `docs/tools.md`. **Resolved.**
 
 ### VDOC-223 — Time's POSIX failure fallback is not monotonic
 
@@ -4252,6 +5273,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   indistinguishable from a legitimate clock reading.
 - **Likely repair point:** treat monotonic-clock failure as a surfaced error, or maintain a
   process-local non-decreasing fallback and expose clock availability/quality explicitly.
+- **Review (2026-07-16):** Confirmed and resolved by the process-local non-decreasing fallback
+  option. Added `rt_time_monotonic_ratchet(int64_t *floor, int64_t candidate)` to `rt_time.c`
+  (declared in `rt_time.h`, registered `INTERNAL_SYMBOL`): a lock-free CAS-max that advances a
+  caller-owned floor when the candidate is newer and otherwise returns the retained floor. All
+  three POSIX `CLOCK_REALTIME` fallbacks now route through it — `rt_timer_ms` / `rt_clock_ticks_us`
+  in `rt_time.c` (separate ms/us floors), `get_timestamp_ns` in `rt_stopwatch.c`, and
+  `get_timestamp_ms` in `rt_countdown.c` — so a backward wall-clock adjustment on the failure path
+  can no longer make elapsed values decrease or a countdown deadline recede. The fast
+  `CLOCK_MONOTONIC` path is untouched and holds no shared state. The `0`-on-total-failure last
+  resort is retained per the documented contract (Countdown still traps on total failure). Added
+  `test_ratchet_non_decreasing` to `RTClockTests.cpp` (exercises forward/backward/equal streams and
+  independent floors directly, runs on all platforms), and rewrote the previously inaccurate
+  "can decrease" / "not monotonic" language in `rt_time.c`/`.h`, `rt_stopwatch.c`, `rt_countdown.c`,
+  and `docs/viperlib/time.md`. Build clean; `test_rt_clock`/`stopwatch`/`countdown`/`timer` and the
+  strict runtime audit all pass. **Resolved.**
 
 ### VDOC-224 — Windows time objects race while caching QPC frequency
 
@@ -4265,6 +5301,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   torn, stale, or otherwise invalid frequency and corrupt elapsed-time calculations.
 - **Likely repair point:** initialize frequency through a platform once primitive or immutable
   process startup state, and add a concurrent first-use regression test.
+- **Review (2026-07-16):** Confirmed and resolved. Both `get_timestamp_ns` (`rt_stopwatch.c`) and
+  `get_timestamp_ms` (`rt_countdown.c`) held a function-static `LARGE_INTEGER freq` written without
+  synchronization on first use — a genuine C data race regardless of the constant result. Replaced
+  each with a `*_qpc_freq()` helper that reads and publishes an `int64_t` cache slot through
+  `__atomic_load_n`/`__atomic_store_n` acquire/release (via `rt_atomic_compat.h`, which maps the
+  builtins to Interlocked intrinsics on MSVC). `QueryPerformanceFrequency` is constant for the life
+  of the system, so duplicate concurrent stores write the identical value and no once primitive is
+  needed for correctness; the acquire/release pair makes every read well-defined. `rt_time.c`'s
+  Windows branch was already race-free (it uses a per-call local `freq`, not a static cache), so it
+  needed no change. Added `test_concurrent_first_use` to `RTStopwatchTests.cpp`: eight threads spin
+  to a shared start gate and then hammer `rt_stopwatch_elapsed_ns` on their own stopwatches,
+  asserting every reading is non-negative and non-decreasing (a torn frequency would surface as a
+  negative/out-of-order value). The test races the process-global frequency cache on Windows and
+  exercises the monotonic path's thread safety on POSIX. Build clean; stopwatch/countdown/clock
+  tests pass. Updated the "not synchronized" language in `docs/viperlib/time.md`. **Resolved.**
 
 ### VDOC-225 — DateTime.Create cannot distinguish failure from a valid instant
 
@@ -4278,6 +5329,24 @@ the checked-in generators, documentation audits, and already-existing binaries o
   silently discard or process the wrong instant.
 - **Likely repair point:** add an Option/Result creation API and retain the numeric sentinel only as
   an explicitly named compatibility method.
+- **Review (2026-07-16):** Confirmed and resolved along the recommended path. The registry name for
+  the sentinel form is `Viper.Time.DateTime.FromParts` (bound to `rt_datetime_create`); it still
+  returns `-1` both for failure and for the valid instant one second before the epoch. Extracted the
+  full validation/`mktime`/round-trip logic into a shared `dt_create_impl(..., int64_t *out)` that
+  returns a success flag, so success is no longer encoded in the returned instant. `rt_datetime_create`
+  now delegates to it as the legacy sentinel compatibility form, and a new
+  `rt_datetime_create_option` returns `Some(i64)` for any valid instant — including the pre-epoch
+  `-1` — and `None` on failure, mirroring the existing `TryParseOption` convention (both use
+  `rt_option_some_i64`/`rt_option_none`). Registered as `Viper.Time.DateTime.TryFromParts`
+  (`obj<Viper.Option>(i64×6)`, RT_FUNC + RT_METHOD); `--dump-runtime-api` classifies it
+  `fallibility: option` / `ownership: owned`. Added `test_create_option` to `RTDatetimeTests.cpp`
+  (forces `TZ=UTC` portably via a `_WIN32`-guarded `set_tz` helper, then verifies the sentinel
+  collision, `Some(-1)` for the pre-epoch instant, `Some(0)` for the epoch, agreement with the
+  sentinel value for valid input, and `None` for invalid month/leap-day/huge-year). Ran
+  `check_runtime_completeness.sh`, regenerated `docs/generated/runtime`, and confirmed the strict
+  audit, `runtime_reference_docs`, `agent_cli`, and `test_rt_datetime` all pass. Documented the new
+  form in `docs/viperlib/time.md`. Note: this finding does not cover the repeated-DST-hour ambiguity
+  (that is VDOC-226, next). **Resolved.**
 
 ### VDOC-226 — Local DateTime construction leaves repeated DST hours host-defined
 

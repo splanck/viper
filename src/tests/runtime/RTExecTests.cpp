@@ -374,6 +374,25 @@ static void test_process_cwd_and_env() {
     rt_process_destroy(handle);
 }
 
+// VDOC-213: a bare program name is PATH-searched even with an explicit
+// environment, so Process resolves it the same way with or without env (adding
+// an env no longer turns a searchable name into exit code 127). The PATH search
+// uses the supplied environment's PATH.
+static void test_process_bare_name_path_search_with_env() {
+    void *args = make_shell_args("printf path-ok");
+    void *env = rt_seq_new();
+    rt_seq_push(env, make_string("PATH=/usr/bin:/bin"));
+    void *handle = rt_process_start_with_env(make_string("sh"), args, make_string("/tmp"), env);
+    assert(handle != nullptr);
+
+    int64_t code = rt_process_wait(handle);
+    std::string out;
+    append_runtime_string(out, rt_process_read_stdout(handle));
+    assert(code == 0);
+    assert(out.find("path-ok") != std::string::npos);
+    rt_process_destroy(handle);
+}
+
 static void test_process_accepts_boxed_args_from_object_abi() {
     void *args = rt_seq_new();
     rt_seq_push(args, rt_box_str(make_string("-c")));
@@ -490,6 +509,7 @@ int main() {
     test_process_streams_stdout_stderr();
     test_process_write_stdin();
     test_process_cwd_and_env();
+    test_process_bare_name_path_search_with_env();
     test_process_accepts_boxed_args_from_object_abi();
     test_process_empty_incremental_read();
     test_process_kill();

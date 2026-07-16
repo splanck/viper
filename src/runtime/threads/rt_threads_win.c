@@ -303,27 +303,25 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         return 1;
     }
 
-    // Wait with timeout - use a loop to handle spurious wakes
-    DWORD timeout_ms = (ms > MAXDWORD) ? MAXDWORD : (DWORD)ms;
+    // Wait against the full 64-bit deadline (VDOC-129): each condition wait
+    // is chunked to a DWORD, but the loop keeps waiting until the requested
+    // total elapses, matching the POSIX deadline semantics. A chunk that
+    // times out is only final when the whole budget is spent.
+    const ULONGLONG total_ms = (ULONGLONG)ms;
     ULONGLONG start = GetTickCount64();
     ULONGLONG elapsed = 0;
 
     while (!t->finished) {
-        DWORD remaining = (elapsed >= timeout_ms) ? 0 : (DWORD)(timeout_ms - elapsed);
-        if (remaining == 0) {
+        if (elapsed >= total_ms) {
             LeaveCriticalSection(&t->cs);
             thread_release_object(thread);
             return 0;
         }
+        ULONGLONG remaining64 = total_ms - elapsed;
+        DWORD remaining = remaining64 > (ULONGLONG)(MAXDWORD - 1) ? (MAXDWORD - 1)
+                                                                  : (DWORD)remaining64;
 
-        BOOL ok = SleepConditionVariableCS(&t->cv, &t->cs, remaining);
-        if (!ok && GetLastError() == ERROR_TIMEOUT) {
-            if (!t->finished) {
-                LeaveCriticalSection(&t->cs);
-                thread_release_object(thread);
-                return 0;
-            }
-        }
+        (void)SleepConditionVariableCS(&t->cv, &t->cs, remaining);
         elapsed = GetTickCount64() - start;
     }
 

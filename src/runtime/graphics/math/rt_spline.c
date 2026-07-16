@@ -20,8 +20,9 @@
 //   - Bezier evaluation uses the cubic Bernstein basis over exactly four points.
 //   - Spline objects are immutable after construction; the control point arrays
 //     are allocated with calloc and freed via the GC finalizer.
-//   - Finite out-of-range t values clamp for linear/Catmull-Rom evaluation but
-//     extrapolate for Bezier evaluation. Non-finite t is not validated.
+//   - Every spline kind clamps the parameter to [0,1] via spline_sanitize_param
+//     (-Inf/below-0 -> 0, +Inf/above-1 -> 1, NaN -> 0), so evaluation is
+//     well-defined for all kinds and all inputs (VDOC-201).
 //
 // Ownership/Lifetime:
 //   - ViperSpline structs are allocated via rt_obj_new_i64 (GC heap); the xs
@@ -419,13 +420,32 @@ static void tangent_catmull_rom(ViperSpline *s, double t, double *ox, double *oy
 // Public API
 //=============================================================================
 
+/// @brief Normalize a spline parameter to one rule for every spline kind.
+/// @details The parameter is clamped to [0,1]: `-Inf` and any value below 0 map
+///          to the curve start (0), `+Inf` and any value above 1 map to the
+///          curve end (1). NaN has no meaningful clamp target, so it maps to the
+///          curve start (0). This gives all spline kinds — including Bezier,
+///          which previously extrapolated — the same well-defined domain and
+///          ensures no evaluator ever converts a NaN/Inf to a segment index,
+///          which is undefined in C (VDOC-201).
+static double spline_sanitize_param(double t) {
+    if (isnan(t))
+        return 0.0;
+    if (t < 0.0) // also catches -Inf
+        return 0.0;
+    if (t > 1.0) // also catches +Inf
+        return 1.0;
+    return t;
+}
+
 /// @brief Evaluate the spline at parameter `t`, normally in [0, 1], and return a fresh Vec2.
-/// @details Linear and Catmull-Rom clamp finite out-of-range values; Bezier extrapolates.
-///          Non-finite parameters are unsafe for evaluators that convert t to a segment index.
+/// @details Every spline kind clamps `t` to [0,1]; a non-finite `t` maps to the
+///          curve start (0). See `spline_sanitize_param` (VDOC-201).
 void *rt_spline_eval(void *spline, double t) {
     ViperSpline *s = spline_checked(spline, "Spline.Eval: invalid spline");
     if (!s)
         return NULL;
+    t = spline_sanitize_param(t);
     double ox = 0.0, oy = 0.0;
     switch (s->kind) {
         case SPLINE_LINEAR:
@@ -448,6 +468,7 @@ void *rt_spline_tangent(void *spline, double t) {
     ViperSpline *s = spline_checked(spline, "Spline.Tangent: invalid spline");
     if (!s)
         return NULL;
+    t = spline_sanitize_param(t);
     double ox = 0.0, oy = 0.0;
     switch (s->kind) {
         case SPLINE_LINEAR:
@@ -489,6 +510,11 @@ double rt_spline_arc_length(void *spline, double t0, double t1, int64_t steps) {
         return 0.0;
     if (steps < 1)
         steps = 1;
+    // Sanitize both endpoints so every sampled t stays finite and in [0,1] — an
+    // unsanitized non-finite t0/t1 would feed NaN/Inf to the evaluators and the
+    // NaN→segment-index conversion is undefined (VDOC-201).
+    t0 = spline_sanitize_param(t0);
+    t1 = spline_sanitize_param(t1);
     double length = 0.0;
     double dt = (t1 - t0) / (double)steps;
     double px = 0.0, py = 0.0;

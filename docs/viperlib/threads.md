@@ -1323,6 +1323,7 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 | `IsDue(name)`              | `Boolean(String)`           | Check if a named task is due                     |
 | `IsDueGeneration(name, generation)` | `Boolean(String, Integer)` | Due **and** the entry still carries `generation` (`0`/false if superseded) |
 | `GenerationOf(name)`       | `Integer(String)`           | Generation currently scheduled for `name`, or `-1` if not scheduled |
+| `GenerationOfOption(name)` | `Option[Integer](String)`   | `Some(generation)` when `name` is scheduled (even generation `-1`), `None` otherwise |
 | `Poll()`                   | `Seq()`                     | Get all due tasks (removes them from scheduler)  |
 | `Clear()`                  | `Void()`                    | Remove all scheduled tasks                       |
 
@@ -1342,9 +1343,9 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
   due names are returned newest-scheduled first, not sorted by deadline. Replacing
   an existing name does not move its list position.
 - **Generation sentinel:** `GenerationOf` uses `-1` for "not scheduled," while
-  `ScheduleGeneration` accepts any Integer. A scheduled generation of `-1` is therefore
-  indistinguishable from absence through `GenerationOf`; reserve `-1` when that
-  query is part of the protocol.
+  `ScheduleGeneration` accepts any Integer. Use `GenerationOfOption` when `-1` is a
+  legitimate generation value: it returns `Some(generation)` for any scheduled name and
+  `None` only for absence.
 - **Immediate tasks:** A delay of 0 schedules a task that is immediately due on the next `Poll()`.
 - **Thread-safe:** Scheduler operations are internally synchronized; multiple threads may schedule, cancel, poll, and clear the same instance.
 

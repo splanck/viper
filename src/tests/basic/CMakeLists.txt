@@ -58,6 +58,10 @@ function(viper_add_basic_main_tests)
     target_link_libraries(test_basic_lowerer_string_assignment PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_lowerer_string_assignment test_basic_lowerer_string_assignment)
 
+    viper_add_test(test_basic_print_runtime_property ${_VIPER_BASIC_UNIT_DIR}/test_basic_print_runtime_property.cpp)
+    target_link_libraries(test_basic_print_runtime_property PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(test_basic_print_runtime_property test_basic_print_runtime_property)
+
     viper_add_test(test_basic_lowerer_string_escapes ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_string_escapes.cpp)
     target_link_libraries(test_basic_lowerer_string_escapes PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_lowerer_string_escapes test_basic_lowerer_string_escapes)
