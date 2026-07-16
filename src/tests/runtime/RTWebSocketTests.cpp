@@ -20,6 +20,7 @@
 #include "rt_bytes.h"
 #include "rt_netutils.h"
 #include "rt_network.h"
+#include "rt_object.h"
 #include "rt_string.h"
 #include "rt_websocket.h"
 
@@ -866,7 +867,13 @@ static void ws_close_handshake_server_thread(int port) {
     if (hdr && rt_bytes_len(hdr) == 2 && (rt_bytes_get(hdr, 0) & 0x0F) == 0x08) {
         ws_close_server_saw_close_frame = true;
         int payload_len = (int)(rt_bytes_get(hdr, 1) & 0x7F);
-        rt_tcp_recv(client, 4 + payload_len); // mask + payload (discard)
+        // TCP is a byte stream: a single recv is allowed to return only part
+        // of the mask/payload. Consume the complete client frame before
+        // waiting for EOF, otherwise a short read can be mistaken for a
+        // transport that remained open under parallel ctest load.
+        void *frame_body = rt_tcp_recv_exact(client, 4 + payload_len);
+        if (frame_body && rt_obj_release_check0(frame_body))
+            rt_obj_free(frame_body);
 
         // Echo the close reply (unmasked, code 1000).
         const uint8_t code[2] = {0x03, 0xE8};
@@ -878,6 +885,8 @@ static void ws_close_handshake_server_thread(int port) {
         void *tail = rt_tcp_recv(client, 16);
         if (tail && rt_bytes_len(tail) == 0)
             ws_close_server_saw_eof = true;
+        if (tail && rt_obj_release_check0(tail))
+            rt_obj_free(tail);
     }
 
     rt_tcp_close(client);

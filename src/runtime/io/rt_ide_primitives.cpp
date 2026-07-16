@@ -470,6 +470,10 @@ int64_t gitignoreCacheIdentity(const fs::path &path) {
     if (!fs::exists(path, ec) || ec)
         return -1;
 
+    const uintmax_t fileSize = fs::file_size(path, ec);
+    if (ec)
+        return -1;
+
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return -1;
@@ -478,14 +482,18 @@ int64_t gitignoreCacheIdentity(const fs::path &path) {
     const uint64_t prime = 1099511628211ULL;
     char buf[4096];
     uint64_t total = 0;
-    while (in.good()) {
-        in.read(buf, sizeof(buf));
-        std::streamsize got = in.gcount();
-        for (std::streamsize i = 0; i < got; ++i) {
+    uintmax_t remaining = fileSize;
+    while (remaining != 0) {
+        const size_t chunk = static_cast<size_t>(std::min<uintmax_t>(remaining, sizeof(buf)));
+        in.read(buf, static_cast<std::streamsize>(chunk));
+        if (!in)
+            return -1;
+        for (size_t i = 0; i < chunk; ++i) {
             h ^= static_cast<unsigned char>(buf[i]);
             h *= prime;
         }
-        total += static_cast<uint64_t>(got);
+        total += static_cast<uint64_t>(chunk);
+        remaining -= chunk;
     }
     // Fold the length so a truncation that leaves a hash-colliding prefix still
     // changes the identity.
