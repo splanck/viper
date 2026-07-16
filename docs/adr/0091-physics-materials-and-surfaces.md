@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0091: Per-Collider Physics Materials, Surface Tags, Body User Data
 
 Date: 2026-07-11

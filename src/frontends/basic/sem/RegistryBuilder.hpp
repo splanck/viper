@@ -9,7 +9,7 @@
 // Purpose: Build NamespaceRegistry from parsed BASIC program.
 // Key invariants: Registry and UsingContext are cleared before population.
 // Ownership/Lifetime: Does not own registry or usings; caller ensures lifetime.
-// Links: docs/codemap.md, CLAUDE.md
+// Links: docs/internals/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

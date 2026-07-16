@@ -9,7 +9,7 @@
 // Purpose: Verify AArch64 lowering for boolean zext/trunc and checked casts.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

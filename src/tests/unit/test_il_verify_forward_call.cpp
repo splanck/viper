@@ -9,7 +9,7 @@
 // Purpose: Ensure the verifier resolves forward callee lookups and rejects duplicates.
 // Key invariants: Forward calls verify successfully; duplicate function names still fail.
 // Ownership/Lifetime: Modules and functions are local to the test.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

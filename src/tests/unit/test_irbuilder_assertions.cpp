@@ -11,7 +11,7 @@
 //                 trigger assertions. Misuse scenarios are documented but
 //                 cannot be tested directly since assertions abort.
 // Ownership/Lifetime: Test constructs modules and inspects results.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

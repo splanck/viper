@@ -9,7 +9,7 @@
 // Purpose: Validate runtime file wrappers using Viper string inputs.
 // Key invariants: Missing files return Err_FileNotFound; closing unopened channel is invalid.
 // Ownership/Lifetime: Uses runtime library; relies on shared literals.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 #include "viper/runtime/rt.h"
 
 #include "tests/common/PosixCompat.h"

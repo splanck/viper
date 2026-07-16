@@ -10,7 +10,7 @@
 //                 loop/label stacks via ControlCheckContext and assert balance
 //                 on exit.
 // Ownership/Lifetime: Borrowed SemanticAnalyzer state only.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

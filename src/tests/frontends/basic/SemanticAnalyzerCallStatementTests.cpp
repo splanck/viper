@@ -9,7 +9,7 @@
 // Purpose: Validate semantic analysis of CALL statements for SUB vs FUNCTION targets.
 // Key invariants: Statement calls must target SUB procedures; function calls are rejected.
 // Ownership/Lifetime: Tests allocate parser/analyzer per snippet; diagnostics captured locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

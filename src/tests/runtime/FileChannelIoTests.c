@@ -9,7 +9,7 @@
 // Purpose: Exercise runtime channel I/O helpers with success paths.
 // Key invariants: Wrappers return Err_None on success and allocate readable strings.
 // Ownership/Lifetime: Runtime owns allocations; test releases acquired strings.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 #include "viper/runtime/rt.h"
 
 #include "tests/common/PosixCompat.h"

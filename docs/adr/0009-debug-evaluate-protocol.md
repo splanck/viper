@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0009: Debug Adapter Evaluate Protocol Extension
 
 Date: 2026-06-25

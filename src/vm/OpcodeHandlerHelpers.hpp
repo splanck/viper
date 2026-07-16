@@ -10,7 +10,7 @@
 //          boilerplate and improve consistency across handler implementations.
 // Key invariants: Helpers must preserve handler signatures and semantics.
 // Ownership/Lifetime: Macros have no runtime ownership implications.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

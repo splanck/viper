@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-30
+---
+
 # ADR 0024: Text/Editing Helpers (Viper.Text.Char + CodeEditor.InsertAndPlaceCursor)
 
 ## Status

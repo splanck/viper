@@ -10,7 +10,7 @@
 //   Category 1 - Tests verifying existing optimizations DO fire correctly.
 //   Category 2 - Tests documenting currently-MISSING optimizations that are
 //                expected NOT to fire (regression guard for future work).
-// Links: docs/architecture.md, il/transform/PassManager.hpp
+// Links: docs/internals/architecture.md, il/transform/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//
 

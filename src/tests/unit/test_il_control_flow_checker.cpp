@@ -9,7 +9,7 @@
 // Purpose: Check il::verify control-flow helpers for common failure modes.
 // Key invariants: Functions emit diagnostics for invalid block structure.
 // Ownership/Lifetime: Constructs temporary IL functions.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

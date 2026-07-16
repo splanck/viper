@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0026: Whole-Function Range Analysis for Checked-Arithmetic Demotion Proofs
 
 ## Status

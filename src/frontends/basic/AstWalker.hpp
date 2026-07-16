@@ -9,7 +9,7 @@
 // Purpose: Provides a reusable recursive AST walker for BASIC front-end passes.
 // Key invariants: Traversal order matches the legacy visitors for statements and expressions.
 // Ownership/Lifetime: Walker borrows AST nodes without owning them.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

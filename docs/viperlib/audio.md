@@ -26,13 +26,13 @@ handle can be produced.
 ## Contents
 
 - [Viper.Audio.Sound](#viperaudiosound)
-- [Viper.Audio.Music](#vipersoundmusic)
-- [Viper.Audio.Voice](#vipersoundvoice)
-- [Viper.Audio.Mixer (Static)](#vipersoundaudio)
-- [Viper.Audio.Playlist](#vipersoundplaylist)
+- [Viper.Audio.Music](#viperaudiomusic)
+- [Viper.Audio.Voice](#viperaudiovoice)
+- [Viper.Audio.Mixer (Static)](#viperaudiomixer)
+- [Viper.Audio.Playlist](#viperaudioplaylist)
 - [Viper.Audio.SoundBank](#viperaudiosoundbank)
-- [Viper.Audio.Synth](#vipersoundsynth)
-- [Viper.Audio.MusicGen](#vipersoundmusicgen)
+- [Viper.Audio.Synth](#viperaudiosynth)
+- [Viper.Audio.MusicGen](#viperaudiomusicgen)
 - [Mix Groups](#mix-groups)
 - [Mix Group Effects](#mix-group-effects)
 - [Spatial Audio](#spatial-audio)
@@ -758,20 +758,20 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 |-----------------------------------------------|----------------------------------------------------|----------------------------------------------------------------------------|
 | `New(bpm)`                                    | `MusicGen(Integer)`                                | Create a new song; BPM is clamped to 20–300                                |
 | `AddChannel(waveform)`                        | `Integer(Integer)`                                 | Add a channel (waveform clamps to 0–4). Returns index, or -1 if full/invalid |
-| `SetEnvelope(ch, attack, decay, sustain, release)` | `void(Integer, Integer, Integer, Integer, Integer)` | Set ADSR envelope: attack/decay/release in ms (0-5000), sustain in % (0-100) |
-| `SetChannelVolume(ch, volume)`                   | `void(Integer, Integer)`                           | Set channel volume (0-100, default 80)                                     |
-| `SetDuty(ch, duty)`                           | `void(Integer, Integer)`                           | Set square wave duty cycle (1-99, default 50). NES values: 12, 25, 50, 75 |
-| `SetPan(ch, pan)`                             | `void(Integer, Integer)`                           | Set stereo pan (-100=left, 0=center, 100=right)                            |
-| `SetDetune(ch, cents)`                        | `void(Integer, Integer)`                           | Constant pitch offset in cents (-1200 to 1200) for chorusing               |
+| `SetEnvelope(ch, attack, decay, sustain, release)` | `Void(Integer, Integer, Integer, Integer, Integer)` | Set ADSR envelope: attack/decay/release in ms (0-5000), sustain in % (0-100) |
+| `SetChannelVolume(ch, volume)`                   | `Void(Integer, Integer)`                           | Set channel volume (0-100, default 80)                                     |
+| `SetDuty(ch, duty)`                           | `Void(Integer, Integer)`                           | Set square wave duty cycle (1-99, default 50). NES values: 12, 25, 50, 75 |
+| `SetPan(ch, pan)`                             | `Void(Integer, Integer)`                           | Set stereo pan (-100=left, 0=center, 100=right)                            |
+| `SetDetune(ch, cents)`                        | `Void(Integer, Integer)`                           | Constant pitch offset in cents (-1200 to 1200) for chorusing               |
 
 ### Effect Methods
 
 | Method                                    | Signature                                   | Description                                                                              |
 |-------------------------------------------|---------------------------------------------|------------------------------------------------------------------------------------------|
-| `SetVibrato(ch, depth, speed)`            | `void(Integer, Integer, Integer)`           | Pitch modulation. depth: cents (0-200), speed: centi-Hz (500 = 5 Hz)                    |
-| `SetTremolo(ch, depth, speed)`            | `void(Integer, Integer, Integer)`           | Volume modulation. depth: % (0-100), speed: centi-Hz (400 = 4 Hz)                       |
-| `SetArpeggio(ch, semi1, semi2, speed)`    | `void(Integer, Integer, Integer, Integer)`  | Rapid pitch cycling through [root, +semi1, +semi2] at speed centi-Hz. 1500 = 15 Hz (classic) |
-| `SetPortamento(ch, speed)`                | `void(Integer, Integer)`                    | Pitch glide between consecutive notes. speed: ms (0=off, 20-500 typical)                 |
+| `SetVibrato(ch, depth, speed)`            | `Void(Integer, Integer, Integer)`           | Pitch modulation. depth: cents (0-200), speed: centi-Hz (500 = 5 Hz)                    |
+| `SetTremolo(ch, depth, speed)`            | `Void(Integer, Integer, Integer)`           | Volume modulation. depth: % (0-100), speed: centi-Hz (400 = 4 Hz)                       |
+| `SetArpeggio(ch, semi1, semi2, speed)`    | `Void(Integer, Integer, Integer, Integer)`  | Rapid pitch cycling through [root, +semi1, +semi2] at speed centi-Hz. 1500 = 15 Hz (classic) |
+| `SetPortamento(ch, speed)`                | `Void(Integer, Integer)`                    | Pitch glide between consecutive notes. speed: ms (0=off, 20-500 typical)                 |
 
 ### Note Methods
 
@@ -792,8 +792,8 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 
 | Method | Signature | Description |
 |---|---|---|
-| `SetSwing(amount)`         | `void(Integer)`         | Swing feel (0-100). Shifts off-beat notes forward. 0 = straight   |
-| `SetLoopable(flag)`        | `void(Boolean)`         | `true` = apply crossfade at loop boundary for click-free looping  |
+| `SetSwing(amount)`         | `Void(Integer)`         | Swing feel (0-100). Shifts off-beat notes forward. 0 = straight   |
+| `SetLoopable(flag)`        | `Void(Boolean)`         | `true` = apply crossfade at loop boundary for click-free looping  |
 | `Build()`                  | `Sound()`               | Pre-render all channels to a Sound object. Returns null on failure |
 
 `Length`, note positions, and note durations are clamped to the maximum renderable
@@ -933,7 +933,7 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Audio.SetGroupVolume(group, vol)` | `void(Integer, Integer)` | Set group volume (0-100, clamped) |
+| `Audio.SetGroupVolume(group, vol)` | `Void(Integer, Integer)` | Set group volume (0-100, clamped) |
 | `Audio.GetGroupVolume(group)` | `Integer(Integer)` | Get group volume (100 if invalid group) |
 | `Audio.RegisterGroup(name)` | `Integer(String)` | Register or find a named group. Built-ins `music` and `sfx` return 0 and 1 |
 | `Audio.FindGroup(name)` | `Integer(String)` | Return a named group id, or -1 |
@@ -1121,7 +1121,7 @@ successfully—otherwise the playlist swaps or stops without a fade.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Music.CrossfadeTo(newMusic, duration)` | `void(Music, Integer)` | Crossfade to new track over duration ms, preserving the destination track's loop flag |
+| `Music.CrossfadeTo(newMusic, duration)` | `Void(Music, Integer)` | Crossfade to new track over duration ms, preserving the destination track's loop flag |
 
 ### Audio Properties (Crossfade)
 
@@ -1133,7 +1133,7 @@ successfully—otherwise the playlist swaps or stops without a fade.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Audio.Update()` | `void()` | Advance active crossfades and service streaming music buffers; call once per frame when using `Music.CrossfadeTo` or direct `Music` playback (paused crossfades stay frozen) |
+| `Audio.Update()` | `Void()` | Advance active crossfades and service streaming music buffers; call once per frame when using `Music.CrossfadeTo` or direct `Music` playback (paused crossfades stay frozen) |
 
 ### Playlist Properties (Crossfade)
 

@@ -9,7 +9,7 @@
 // Purpose: Exercise VM interpreter handlers via a representative IL program.
 // Key invariants: Program executes one opcode from each handler group and returns expected sum.
 // Ownership/Lifetime: Test parses in-memory IL text and executes the VM in-process.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

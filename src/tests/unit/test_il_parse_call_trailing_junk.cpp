@@ -9,7 +9,7 @@
 // Purpose: Verify call operand parser rejects trailing tokens after the argument list.
 // Key invariants: Parser emits a malformed call diagnostic when extra text follows ')'.
 // Ownership/Lifetime: Test constructs modules and input buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

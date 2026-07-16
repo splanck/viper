@@ -13,7 +13,7 @@
 //                 respect the containing function signature.
 // Ownership/Lifetime: Operates entirely on caller-owned IL structures and
 //                     emits diagnostics without caching long-lived state.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

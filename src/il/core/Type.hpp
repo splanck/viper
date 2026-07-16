@@ -15,7 +15,7 @@
 //   - No parametric types: pointer and string types are opaque.
 //   - toString()/kindToString() always return valid spec mnemonic strings.
 // Ownership/Lifetime: Value type with no dynamic resources.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

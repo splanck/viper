@@ -201,10 +201,8 @@ Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF
 | `src/tools/common/packaging/WindowsPackageBuilder.*`, `MacOSPackageBuilder.*`, `LinuxPackageBuilder.*` | Platform-specific installer writers and payload layout policy. Keep staged-relative layout stable across all three. |
 | `src/tools/common/packaging/PkgVerify.*` | Structural verification for produced installer artifacts. Extend this rather than adding format-specific one-off verification scripts. |
 | `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper_win.cmd`, `scripts/build_installer.sh`, `scripts/build_installer.cmd` | Canonical build/test/install and toolchain-packaging entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_FAST_DEBUG`, `VIPER_JOBS`, `VIPER_CTEST_JOBS`, `VIPER_RUN_SLOW_TESTS`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
-| `viperdos/scripts/build_viperdos.sh` | Auto-installs prerequisites per OS: Homebrew (macOS), apt (Debian), yum (RedHat). UEFI ESP image creation uses platform-specific tools. |
-| `viperdos/scripts/build_viperdos.cmd` | Windows batch equivalent — QEMU/CMake/Clang detection with Windows-specific paths. |
 
-**[GAP]** ViperDOS Windows build has no UEFI ESP creation — falls back to direct boot (explicitly acknowledged in script).
+> ViperDOS build scripts now live in the separate ViperDOS repository; its platform targets remain listed above because the runtime still compiles for `RT_PLATFORM_VIPERDOS`.
 
 ---
 
@@ -233,7 +231,6 @@ Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF
 | ~~GAP-4~~ | ~~Codegen~~ | ~~Resolved: Both SysV and Win64 ABIs now implemented~~ | ~~Resolved~~ |
 | GAP-5 | Graphics | Linux requires X11 dev headers; configure now fails in `REQUIRE` mode and reports explicitly in `AUTO` mode | Low |
 | GAP-6 | Audio | Linux requires ALSA dev headers; configure now fails in `REQUIRE` mode and reports explicitly in `AUTO` mode | Low |
-| GAP-7 | Packaging | ViperDOS Windows build cannot create UEFI ESP images | Low |
 
 ---
 

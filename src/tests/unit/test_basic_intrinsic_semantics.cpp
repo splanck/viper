@@ -9,7 +9,7 @@
 // Purpose: Ensure semantic analyzer reports descriptive intrinsic diagnostics.
 // Key invariants: Invalid calls produce specific messages; float widths allowed.
 // Ownership/Lifetime: Test owns all objects locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

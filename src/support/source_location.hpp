@@ -9,7 +9,7 @@
 // Purpose: Declares lightweight source location POD for diagnostics and IL metadata.
 // Key invariants: file_id == 0 denotes an invalid location; line/column are 1-based when valid.
 // Ownership/Lifetime: Value type with no dynamic ownership.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

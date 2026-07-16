@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-26
+---
+
 # ADR 0013: Editor Input and Popup Runtime Surface
 
 Date: 2026-06-26

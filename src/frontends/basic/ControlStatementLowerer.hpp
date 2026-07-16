@@ -11,7 +11,7 @@
 //          Extracted from Lowerer to demonstrate modular extraction pattern.
 // Key invariants: Operates on Lowerer context; maintains deterministic block graphs
 // Ownership/Lifetime: Borrows Lowerer reference; does not own AST or IR
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Key invariants: Field access respects recorded offsets; nullable receivers
 //                 are handled with appropriate runtime checks.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ASTUtils.hpp"

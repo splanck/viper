@@ -9,7 +9,7 @@
 // Purpose: Comprehensive benchmark for interpreter dispatch strategies.
 // Key invariants: All dispatch modes execute identical code and yield identical checksums.
 // Ownership/Lifetime: Benchmarks build transient modules and execute immediately.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 // Benchmark scenarios:
 // 1. Arithmetic-heavy: Tests ALU throughput (add, mul, sub)

@@ -9,7 +9,7 @@
 // Purpose: Declare the peephole optimisation pass for the AArch64 codegen pipeline.
 // Key invariants: Must run after RegAllocPass (operates on physical-register MIR).
 // Ownership/Lifetime: Stateless pass; mutates AArch64Module::mir in place.
-// Links: docs/codemap.md, src/codegen/aarch64/Peephole.hpp
+// Links: docs/internals/codemap.md, src/codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

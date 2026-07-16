@@ -19,7 +19,7 @@
 //   - Tracing is handled by DISPATCH_NEXT_FAST() or the slow path
 //   - Requires GCC/Clang computed-goto extension (&&label address syntax)
 //
-// Links: docs/il-guide.md#reference, vm/ops/generated/ThreadedLabels.inc
+// Links: docs/il/il-guide.md#reference, vm/ops/generated/ThreadedLabels.inc
 //
 //===----------------------------------------------------------------------===//
 

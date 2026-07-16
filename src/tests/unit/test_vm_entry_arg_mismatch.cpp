@@ -9,7 +9,7 @@
 // Purpose: Ensure VM traps when entry frame argument counts do not match block parameters.
 // Key invariants: Calling a function with mismatched argument count emits InvalidOperation trap.
 // Ownership/Lifetime: Builds synthetic module and executes VM in forked child to capture
-// diagnostics. Links: docs/codemap.md
+// diagnostics. Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -12,7 +12,7 @@
 //                 instructions to the current block when one is selected.
 // Ownership/Lifetime: Emit borrows the Lowerer instance; IR objects remain
 //                     owned by the lowering pipeline.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

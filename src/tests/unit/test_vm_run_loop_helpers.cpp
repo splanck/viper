@@ -9,7 +9,7 @@
 // Purpose: Validate VM run loop helper behaviour for debug pauses and trap dispatch.
 // Key invariants: stepOnce honours breakpoints and trap dispatch clears context.
 // Ownership/Lifetime: Test constructs IL module and runs helper wrappers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -12,7 +12,7 @@
 //                 operating on signed integers; conversions honour the selected
 //                 overflow policy.
 // Ownership/Lifetime: Header-only utilities with no dynamic ownership.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -12,7 +12,7 @@
 //   - Qualified names live under the reserved root 'Viper'.
 //   - Seeding registers namespaces and class/interface names in NamespaceRegistry.
 // Ownership/Lifetime: Seeding writes into a caller-owned NamespaceRegistry.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

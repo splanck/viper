@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-16
+---
+
 # ADR 0062: PathResult StepCount API
 
 ## Status

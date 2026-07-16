@@ -90,7 +90,7 @@ The build script will:
 
 A successful build ends with output similar to:
 
-```
+```text
 [100%] Built target viper
 ...
 100% tests passed, 0 tests failed
@@ -172,7 +172,7 @@ viper run hello.zia
 
 **Expected output:**
 
-```
+```text
 Hello, World!
 ```
 
@@ -187,9 +187,9 @@ Hello, World!
 
 ## What to Read Next
 
-- **[Zia Tutorial](../zia-getting-started.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
-- **[Zia Reference](../zia-reference.md)** — Complete language reference
-- **[BASIC Tutorial](../basic-language.md)** — Viper also ships a BASIC frontend
+- **[Zia Tutorial](../tutorials/zia-tutorial.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
+- **[Zia Reference](../languages/zia-reference.md)** — Complete language reference
+- **[BASIC Tutorial](../tutorials/basic-tutorial.md)** — Viper also ships a BASIC frontend
 - **[Getting Started (general)](../getting-started.md)** — Project creation with `viper init`, the REPL, IL programs, and the full command reference
 
 ---
@@ -200,13 +200,13 @@ Hello, World!
 
 **Symptom:** CMake exits with:
 
-```
+```text
 CMake Error: CMAKE_CXX_COMPILER not set, not able to find compiler
 ```
 
 or the build script prints:
 
-```
+```text
 Error: No suitable C++ compiler found.
 ```
 
@@ -232,7 +232,7 @@ After installing, re-run the build script. Verify with `clang++ --version` or `g
 
 **Symptom:** During the CMake configure step you see status lines like:
 
-```
+```text
 -- ViperGFX: disabled (X11 not found; install libx11-dev/libX11-devel or set VIPER_GRAPHICS_MODE=OFF)
 -- ViperAUD: disabled (ALSA not found; install libasound2-dev/alsa-lib-devel or set VIPER_AUDIO_MODE=OFF)
 ```
@@ -262,7 +262,7 @@ If you only need the compiler, VM, and language frontends, these warnings are sa
 
 **Symptom:** CMake prints:
 
-```
+```text
 CMake Error at CMakeLists.txt:1:
   CMake 3.20 or higher is required.  You are running version 3.16.
 ```

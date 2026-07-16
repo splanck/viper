@@ -8,7 +8,7 @@
 // File: src/il/transform/PipelineExecutor.cpp
 // Purpose: Define the executor that materialises IL transformation passes and
 //          coordinates analysis invalidation between them.
-// Links: docs/architecture.md#passes
+// Links: docs/internals/architecture.md#passes
 //
 //===----------------------------------------------------------------------===//
 

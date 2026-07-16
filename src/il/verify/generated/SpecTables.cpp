@@ -16,12 +16,12 @@
 // Source of Truth: il/core/Opcode.def (X-macro opcode definitions)
 // Generator: Manually maintained (synchronized with Opcode enum).
 // Regenerate: Update when adding/removing opcodes in il/core/Opcode.def.
-//             See docs/generated-files.md for full instructions.
+//             See docs/internals/generated-files.md for full instructions.
 //
 // Key invariants: Table size MUST equal il::core::kNumOpcodes. Entry order
 //                 MUST match Opcode enum declaration order exactly.
 // Ownership/Lifetime: Static constexpr data; no dynamic allocation.
-// Links: docs/generated-files.md, il/core/Opcode.hpp, il/verify/SpecTables.hpp
+// Links: docs/internals/generated-files.md, il/core/Opcode.hpp, il/verify/SpecTables.hpp
 //
 //===----------------------------------------------------------------------===//
 

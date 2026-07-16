@@ -12,7 +12,7 @@
 //                 location tracked by the lowering context.
 // Ownership/Lifetime: Borrows the Lowerer without taking ownership of IR
 //                     builders, functions, or AST nodes.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

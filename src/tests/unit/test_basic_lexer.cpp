@@ -9,7 +9,7 @@
 // Purpose: Unit tests for BASIC lexer tokenization across common statements.
 // Key invariants: Tokens emitted match expected kinds and lexemes.
 // Ownership/Lifetime: N/A (test).
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

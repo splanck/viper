@@ -9,7 +9,7 @@
 // Purpose: Declare table-driven opcode specifications consumed by the verifier.
 // Key invariants: Entries mirror the schema in src/vm/ops/schema/ops.yaml.
 // Ownership/Lifetime: Returned references point to static storage.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

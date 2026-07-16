@@ -16,7 +16,7 @@
 // Ownership/Lifetime: Module owns Extern structs by value in a std::vector.
 //          Each Extern owns its name string and parameter type vector.
 //          External declarations persist for the module's lifetime.
-// Links: docs/il-guide.md#reference, il/core/Type.hpp
+// Links: docs/il/il-guide.md#reference, il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
 

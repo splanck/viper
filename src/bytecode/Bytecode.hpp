@@ -13,7 +13,7 @@
 // Ownership: Part of the bytecode subsystem; no external dependencies.
 // Lifetime: Constants and inline helpers are header-only; opcodeName() is defined
 //           in the corresponding .cpp translation unit.
-// Links: docs/architecture.md, BytecodeCompiler.hpp, BytecodeVM.hpp
+// Links: docs/internals/architecture.md, BytecodeCompiler.hpp, BytecodeVM.hpp
 //
 //===----------------------------------------------------------------------===//
 //

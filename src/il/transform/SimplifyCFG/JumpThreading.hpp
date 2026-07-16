@@ -9,7 +9,7 @@
 // Purpose: Declares jump threading routines for the SimplifyCFG pass.
 // Key invariants: Transformations preserve control flow semantics.
 // Ownership/Lifetime: Operates on caller-owned functions and blocks.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

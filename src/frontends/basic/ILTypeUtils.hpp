@@ -9,7 +9,7 @@
 // Purpose: Helper utilities for IL type checking in BASIC lowering
 // Key invariants: All functions are constexpr-compatible and stateless
 // Ownership/Lifetime: Non-owning utilities operating on IL types
-// Links: docs/codemap.md, docs/il-guide.md
+// Links: docs/internals/codemap.md, docs/il/il-guide.md
 //
 // NOTE: This file re-exports the common type utilities for backwards
 //       compatibility. New code should use frontends/common/TypeUtils.hpp.

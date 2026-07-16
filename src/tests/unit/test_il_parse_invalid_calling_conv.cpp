@@ -9,7 +9,7 @@
 // Purpose: Ensure the IL parser reports an error for unknown calling conventions.
 // Key invariants: Parser produces a diagnostic mentioning the invalid convention and source line.
 // Ownership/Lifetime: Test owns input buffers and module instance locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

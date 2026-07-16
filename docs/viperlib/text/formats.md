@@ -173,7 +173,7 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 - `GetInt()` accepts integer/double/boolean boxes and integer strings. Representable doubles are
   truncated toward zero; missing or incompatible values produce `0`. An out-of-range double is
   currently converted with a C cast and can produce platform-dependent results; see
-  [VDOC-037](../../documentation-review-findings.md#vdoc-037--json-derived-integer-accessors-have-undefined-out-of-range-conversion).
+  [VDOC-037](../../../misc/reviews/documentation-review-findings.md#vdoc-037--json-derived-integer-accessors-have-undefined-out-of-range-conversion).
 - `Get()`, `Has()`, `GetStr()`, `GetInt()`, and `Query()` also accept raw JSON source text as the
   root and parse it internally. A parsed JSON string scalar has the same runtime representation as
   source text and therefore cannot be used unambiguously as a root.
@@ -186,10 +186,10 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 - The registry return is a typed sequence, so member access resolves directly on the result.
 - Recursive descent (`..`), slices, filters, unions, and escaped quoted-key syntax are not
   implemented, despite broader syntax still named in the implementation header; see
-  [VDOC-022](../../documentation-review-findings.md#vdoc-022--the-jsonpath-source-contract-overstates-the-implemented-syntax).
+  [VDOC-022](../../../misc/reviews/documentation-review-findings.md#vdoc-022--the-jsonpath-source-contract-overstates-the-implemented-syntax).
 - Path parsing uses a C-string terminator rather than the runtime String length. An embedded `NUL`
   therefore discards the rest of the path and can select a different member; see
-  [VDOC-038](../../documentation-review-findings.md#vdoc-038--jsonpath-ignores-path-bytes-after-an-embedded-nul).
+  [VDOC-038](../../../misc/reviews/documentation-review-findings.md#vdoc-038--jsonpath-ignores-path-bytes-after-an-embedded-nul).
 
 ### Zia Example
 
@@ -570,7 +570,7 @@ either version.
 - Syntax errors recognized by the parser return NULL from `Parse()` rather than trapping. However,
   arbitrary bare values such as `x = alpha` are accepted even though TOML 1.0 does not permit them,
   so `IsValid()` is only an acceptance probe for this parser. See
-  [VDOC-024](../../documentation-review-findings.md#vdoc-024--the-toml-parser-is-not-the-v10-parser-described-by-its-source-contract).
+  [VDOC-024](../../../misc/reviews/documentation-review-findings.md#vdoc-024--the-toml-parser-is-not-the-v10-parser-described-by-its-source-contract).
 - Missing closing section or array brackets, trailing junk after section headers, duplicate keys,
   scalar/table conflicts, and section paths deeper than 200 components are rejected.
 - `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
@@ -584,7 +584,7 @@ either version.
   sequences make `Parse` return NULL and `IsValid` report false.
 - TOML and YAML numeric formatting uses the process numeric locale rather than an isolated C
   locale when called outside the VM's locale initialization; see
-  [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
+  [VDOC-041](../../../misc/reviews/documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
 
 ### Zia Example
 
@@ -808,7 +808,7 @@ formats with different data models.
 - `FormatFromName()` currently compares a NUL-terminated view, so a runtime String such as
   `json\0suffix` is incorrectly accepted as `json`. Generic-to-XML projection likewise truncates
   Map keys at an embedded `NUL`; see
-  [VDOC-043](../../documentation-review-findings.md#vdoc-043--serialize-name-and-xml-key-processing-truncates-at-embedded-nul).
+  [VDOC-043](../../../misc/reviews/documentation-review-findings.md#vdoc-043--serialize-name-and-xml-key-processing-truncates-at-embedded-nul).
 - `MimeType()` returns `application/json`, `application/xml`, `application/yaml`,
   `application/toml`, or `text/csv`; unknown values return `application/octet-stream`.
 - All returned strings are newly allocated. The facade dispatches to the format-specific runtime
@@ -970,7 +970,7 @@ child manipulation, and simple slash-path queries. All node values are opaque ob
 - Element, attribute, comment, and CDATA creation/mutation validate the runtime's name/content
   rules and report errors instead of creating malformed trees for ordinary NUL-free inputs.
   Embedded NUL in a programmatically supplied name is an open exception; see
-  [VDOC-032](../../documentation-review-findings.md#vdoc-032--xml-name-validation-stops-at-an-embedded-nul).
+  [VDOC-032](../../../misc/reviews/documentation-review-findings.md#vdoc-032--xml-name-validation-stops-at-an-embedded-nul).
 - Path syntax for `Find`/`FindAll`: slash-separated tag names from the given node or its direct children (e.g. `"books/book/title"`). A path without `/` remains a recursive tag search.
 - Attribute and child mutations are performed in-place on the node object.
 - `Append` and `Insert` reject non-node children, document children, cycles, and children that already have a parent.
@@ -1112,15 +1112,15 @@ Viper strings, integers, doubles, booleans, NULL, Maps, and Seqs.
   the requested width from 1 through 8, changes values below 1 to 2, and clamps values above 8.
 - The formatter is not lossless for every runtime scalar: `%g` formatting can round doubles, and
   string/key formatting stops at an embedded `NUL`. See
-  [VDOC-027](../../documentation-review-findings.md#vdoc-027--yaml-format-can-lose-double-precision-and-string-bytes).
+  [VDOC-027](../../../misc/reviews/documentation-review-findings.md#vdoc-027--yaml-format-can-lose-double-precision-and-string-bytes).
 - A plain scalar with an embedded `NUL` can be classified from only its numeric prefix while the
   remaining bytes are ignored—for example, `1\0garbage` is accepted as integer `1`. See
-  [VDOC-039](../../documentation-review-findings.md#vdoc-039--yaml-numeric-scalar-parsing-ignores-bytes-after-an-embedded-nul).
+  [VDOC-039](../../../misc/reviews/documentation-review-findings.md#vdoc-039--yaml-numeric-scalar-parsing-ignores-bytes-after-an-embedded-nul).
 - The parser validates the input is well-formed UTF-8 before parsing; malformed byte sequences
   make `Parse` return NULL and `IsValid` report false.
 - Finite double formatting depends on the process numeric locale when the runtime is embedded
   without the VM's locale initialization; see
-  [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
+  [VDOC-041](../../../misc/reviews/documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
 - Formatting depth is bounded (200 levels, matching the parser); cyclic or deeper containers fail
   closed with an empty string instead of recursing without bound.
 - YAML scalars with no explicit type tag are auto-typed for null, numbers, and YAML 1.2 booleans (`true`/`false`); legacy YAML 1.1 words such as `yes`, `no`, `on`, and `off` remain strings.

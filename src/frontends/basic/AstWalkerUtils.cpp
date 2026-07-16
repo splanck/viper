@@ -8,7 +8,7 @@
 // Key invariants: Utilities mirror BasicAstWalker traversal semantics and never
 //                 mutate AST nodes.
 // Ownership/Lifetime: Functions operate on borrowed nodes.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

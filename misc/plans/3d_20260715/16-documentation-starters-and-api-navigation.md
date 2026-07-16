@@ -24,7 +24,7 @@ approved APIs from plans 03–15. It must never document draft names before thei
 ADR lands. Plan 01–02 defect notes must reflect actual closure status.
 
 No ADR is required for ordinary docs/examples. Changes to normative
-`docs/il-guide.md#reference`, workflows, or public C ABI require their normal
+`docs/il/il-guide.md#reference`, workflows, or public C ABI require their normal
 ADR path.
 
 ## Scope
@@ -53,10 +53,10 @@ Out of scope:
 - `docs/viperlib/graphics/game3d.md`
 - `docs/viperlib/graphics/rendering3d.md`, `physics3d.md`, `scene.md` only for
   cross-links/changed low-level contracts;
-- `docs/graphics3d-architecture.md` for frame/ownership architecture;
+- `docs/internals/graphics3d-architecture.md` for frame/ownership architecture;
 - `docs/viperlib/game/README.md`, UI/core/persistence pages;
 - `docs/viperlib/io/assets.md`;
-- `docs/testing.md`, `docs/codemap*`, and generated runtime docs through their
+- `docs/internals/testing.md`, `docs/codemap*`, and generated runtime docs through their
   supported generator;
 - `examples/3d/game3d_hello.zia`, `game3d_starter/`, `game3d_scenes/`, plus a
   custom-phases starter if needed;

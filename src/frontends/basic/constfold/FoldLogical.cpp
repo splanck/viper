@@ -14,7 +14,7 @@
 //                 maintains canonical literal node types for folded results.
 // Ownership/Lifetime: Allocates new AST nodes for folded expressions while
 //                     leaving ownership with the caller via smart pointers.
-// Links: docs/codemap.md, docs/il-guide.md#basic-frontend-constant-folding
+// Links: docs/internals/codemap.md, docs/il/il-guide.md#basic-frontend-constant-folding
 //
 //===----------------------------------------------------------------------===//
 

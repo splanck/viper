@@ -9,7 +9,7 @@
 // Purpose: Provide privileged access to VM internals for unit tests.
 // Key invariants: Mirror VM friend expectations; must stay in sync across tests.
 // Ownership/Lifetime: Header-only utilities for unit test translation units.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Verify `ilc codegen arm64 -run-native` assembles, links, and runs a simple IL main.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

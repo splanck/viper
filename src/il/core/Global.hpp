@@ -17,7 +17,7 @@
 // Ownership/Lifetime: Module owns Global structs by value in a std::vector.
 //          Each Global owns its name string, type, and initializer data.
 //          Global lifetime matches the containing module's lifetime.
-// Links: docs/il-guide.md#reference, il/core/Type.hpp
+// Links: docs/il/il-guide.md#reference, il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
 

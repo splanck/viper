@@ -9,7 +9,7 @@
 // Purpose: Declares helpers specific to control-flow statement analysis for the
 // Key invariants: Helpers reuse shared RAII guards to keep loop tracking
 // Ownership/Lifetime: Non-owning views over SemanticAnalyzer state.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0086: Terrain Holes, 8 Splat Layers, and Slope/Height Auto-Blend
 
 Date: 2026-07-10

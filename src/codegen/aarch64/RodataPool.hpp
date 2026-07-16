@@ -11,7 +11,7 @@
 //                 ordered_ preserves first-seen insertion order for deterministic output.
 // Ownership/Lifetime: Constructed per-function or per-module; borrows IL Module
 //                     data during buildFromModule but does not retain references.
-// Links: codegen/x86_64/AsmEmitter.hpp (x86-64 equivalent), docs/architecture.md
+// Links: codegen/x86_64/AsmEmitter.hpp (x86-64 equivalent), docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

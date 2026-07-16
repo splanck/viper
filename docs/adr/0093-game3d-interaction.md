@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0093: Focus-and-Use Interaction (Interactable3D + Interactor3D)
 
 Date: 2026-07-11

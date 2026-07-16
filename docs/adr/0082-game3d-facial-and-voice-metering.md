@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-15
+---
+
 # ADR 0082: Game3D Facial Animation (LipSync3D) and Per-Voice Metering
 
 Date: 2026-07-10

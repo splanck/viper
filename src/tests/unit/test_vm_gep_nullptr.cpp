@@ -9,7 +9,7 @@
 // Purpose: Ensure VM getelementptr on null base with zero offset yields null result.
 // Key invariants: GEP computation must avoid UB and preserve null when offset is zero.
 // Ownership/Lifetime: Standalone unit test executable for VM pointer arithmetic semantics.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

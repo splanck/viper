@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC AST can construct SELECT CASE statements.
 // Key invariants: Node ownership flows through std::unique_ptr containers.
 // Ownership/Lifetime: Test owns allocated AST nodes locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

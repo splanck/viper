@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-04
+---
+
 # ADR 0066: Process And PTY Read Result APIs
 
 Date: 2026-07-04

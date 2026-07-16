@@ -2,7 +2,7 @@
 ## Purpose: Execute BASIC array fill/sum program and validate stdout.
 ## Key invariants: VM execution output equals expected sum.
 ## Ownership/Lifetime: Invoked by CTest via CMake script mode.
-## Links: docs/codemap.md
+## Links: docs/internals/codemap.md
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

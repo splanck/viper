@@ -14,7 +14,7 @@
 // Ownership/Lifetime: The loader materializes data into the supplied Config
 //                     instance and otherwise borrows file descriptors and
 //                     string views.
-// Links: docs/tools.md#configuration
+// Links: docs/tools/cli.md#configuration
 //
 //===----------------------------------------------------------------------===//
 

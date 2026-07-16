@@ -16,7 +16,7 @@
 //   - isBool is meaningful only when kind == Kind::ConstInt.
 // Ownership/Lifetime: Value type with lightweight value semantics; no heap
 //          allocation beyond std::string for string/global payloads.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

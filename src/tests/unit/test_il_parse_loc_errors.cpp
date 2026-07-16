@@ -9,7 +9,7 @@
 // Purpose: Ensure the IL function parser reports malformed .loc directives.
 // Key invariants: ParserState diagnostics identify incorrect location triplets.
 // Ownership/Lifetime: Constructs parser state locally for each scenario.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

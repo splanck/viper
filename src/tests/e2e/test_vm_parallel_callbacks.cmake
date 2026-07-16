@@ -3,7 +3,7 @@
 ## Purpose: Verify parallel callback execution on every interpreted VM backend.
 ## Key invariants: Parallel callbacks execute and VM teardown does not crash.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/codemap.md
+## Links: docs/internals/codemap.md
 
 # Regression: Parallel.For + Pool.Submit + DefaultPool callbacks must run on EVERY interpreted
 # backend (tree-walking VM, bytecode VM switch dispatch, bytecode VM threaded dispatch) and tear

@@ -34,11 +34,11 @@
 //     - Mapping: goto *kOpLabels[opcode] → LBL_X: { handle and dispatch next }
 //
 // All strategies rely on tables synchronized with il/core/Opcode.def.
-// See docs/generated-files.md for details on regeneration.
+// See docs/internals/generated-files.md for details on regeneration.
 //
 // Key invariants: Loop handles all control flow, strategies only map opcodes
 // Ownership/Lifetime: Strategies are owned by the VM instance
-// Links: docs/generated-files.md, docs/il-guide.md#reference
+// Links: docs/internals/generated-files.md, docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

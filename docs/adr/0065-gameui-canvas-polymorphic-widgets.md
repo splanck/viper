@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-03
+---
+
 # ADR 0065 — Game.UI widgets are canvas-polymorphic (2D Canvas + Canvas3D)
 
 ## Status

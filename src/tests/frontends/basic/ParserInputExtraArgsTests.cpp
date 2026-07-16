@@ -9,7 +9,7 @@
 // Purpose: Verify INPUT parser accepts comma-separated variable lists.
 // Key invariants: Parsed INPUT statement records each variable without diagnostics.
 // Ownership/Lifetime: Test owns parser/emitter instances and inspects AST and diagnostics.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

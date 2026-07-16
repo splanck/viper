@@ -9,7 +9,7 @@
 // Purpose: Assert that built-in external namespaced types are present in the registry.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

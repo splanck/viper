@@ -9,7 +9,7 @@
 // Purpose: Defines BASIC control-flow oriented statement nodes.
 // Key invariants: Control statements maintain ownership of nested bodies via
 // Ownership/Lifetime: Statements own nested statements through unique_ptr wrappers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -10,7 +10,7 @@
 // Key invariants: Never modifies or owns the underlying argument storage.
 // Ownership/Lifetime: Borrows pointers from the C runtime; callers must ensure
 //                     validity through the view's lifetime.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

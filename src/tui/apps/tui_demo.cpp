@@ -12,7 +12,7 @@
 //                 and performs a single render when headless.
 // Ownership/Lifetime: The App instance owns the widget tree while borrowing
 //                     terminal I/O objects and environment data.
-// Links: docs/tools.md#tui-demo
+// Links: docs/tools/cli.md#tui-demo
 //
 //===----------------------------------------------------------------------===//
 

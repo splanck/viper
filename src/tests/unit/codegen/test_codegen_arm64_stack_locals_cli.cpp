@@ -9,7 +9,7 @@
 // Purpose: Verify AArch64 CLI (-S) handles stack locals (alloca/load/store).
 // Key invariants: Emits FP-relative str/ldr and adjusts sp for locals.
 // Ownership/Lifetime: Test allocates temporary files under build/test-out/arm64.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

@@ -9,7 +9,7 @@
 // Purpose: Ensure lowering of "\"abcd\".Length" emits exactly one call to Viper.String.get_Length.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC lexer recognizes file I/O related keywords and '#'.
 // Key invariants: Lexer should classify new keywords distinctly.
 // Ownership/Lifetime: Test owns source buffers used for lexing.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

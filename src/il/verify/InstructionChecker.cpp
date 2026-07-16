@@ -6,13 +6,13 @@
 // File: src/il/verify/InstructionChecker.cpp
 // Purpose: Provide the central dispatch for verifying IL instructions against
 //          schema-derived opcode metadata.
-// Key invariants: Verification must align with /docs/il-guide.md#reference and
+// Key invariants: Verification must align with /docs/il/il-guide.md#reference and
 //                 report structured diagnostics without mutating the IR. The
 //                 dispatcher relies on generated tables for operand counts and
 //                 types and defers specialised checks to dedicated helpers.
 // Ownership/Lifetime: Operates on caller-owned verification contexts and
 //                     retains no global state beyond table references.
-// Links: docs/il-guide.md#reference, docs/codemap.md
+// Links: docs/il/il-guide.md#reference, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

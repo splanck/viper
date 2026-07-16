@@ -9,7 +9,7 @@
 // Purpose: Validate parser errors when the module omits the leading version directive.
 // Key invariants: Parser should reject modules without an `il` directive before other content or
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

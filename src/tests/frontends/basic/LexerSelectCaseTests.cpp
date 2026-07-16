@@ -9,7 +9,7 @@
 // Purpose: Verify BASIC lexer recognizes SELECT CASE constructs.
 // Key invariants: Keywords must be matched case-insensitively.
 // Ownership/Lifetime: Test owns the source buffers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

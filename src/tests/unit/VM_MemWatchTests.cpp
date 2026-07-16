@@ -9,7 +9,7 @@
 // Purpose: Verify memory watch events fire when writes hit watched ranges.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

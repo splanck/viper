@@ -120,7 +120,7 @@ func start() {
 Run it with:
 
 ```bash
-./build/src/tools/zia/zia hello.zia
+viper run hello.zia
 ```
 
 ### 10. What are classes in Zia?
@@ -221,14 +221,14 @@ The Viper Intermediate Language is a low-level, typed, control-flow graph repres
 Zia, BASIC) and backends (VM or native code). It's similar to LLVM IR or .NET CIL but designed specifically for this
 project's needs.
 
-See `/docs/il-guide.md` for the complete IL specification.
+See `/docs/il/il-guide.md` for the complete IL specification.
 
 ### 17. Can I write IL code directly?
 
 Yes! The IL has a textual assembly syntax. You can write `.il` files and run them:
 
 ```bash
-./build/src/tools/viper/viper run myprogram.il
+viper -run myprogram.il
 ```
 
 Tools available:
@@ -298,7 +298,7 @@ for language-specific function lists.
 3. Add the runtime implementation in `/src/runtime/`
 4. Add tests
 
-See `/docs/frontend-howto.md` for detailed guidance.
+See `/docs/internals/frontend-howto.md` for detailed guidance.
 
 ### 23. How do I report bugs or request features?
 
@@ -310,14 +310,14 @@ See `/docs/frontend-howto.md` for detailed guidance.
 
 Key documentation files:
 
-- `/docs/il-guide.md` - Complete IL specification (normative reference)
-- `/docs/architecture.md` - System architecture overview
-- `/docs/codemap.md` - Source code organization and navigation
-- `/docs/frontend-howto.md` - Guide to frontend development
-- `/docs/zia-getting-started.md` - Zia language tutorial
-- `/docs/zia-reference.md` - Zia language reference
-- `/docs/basic-language.md` - BASIC language tutorial
-- `/docs/basic-reference.md` - BASIC language reference
+- `/docs/il/il-guide.md` - Complete IL specification (normative reference)
+- `/docs/internals/architecture.md` - System architecture overview
+- `/docs/internals/codemap.md` - Source code organization and navigation
+- `/docs/internals/frontend-howto.md` - Guide to frontend development
+- `/docs/tutorials/zia-tutorial.md` - Zia language tutorial
+- `/docs/languages/zia-reference.md` - Zia language reference
+- `/docs/tutorials/basic-tutorial.md` - BASIC language tutorial
+- `/docs/languages/basic-reference.md` - BASIC language reference
 - `/CLAUDE.md` - Development workflow and contribution guidelines
 
 For code-level documentation, see header comments in source files.
@@ -329,27 +329,26 @@ For code-level documentation, see header comments in source files.
 **Build and run a Zia program:**
 
 ```bash
-cmake --build build -j
-./build/src/tools/zia/zia program.zia
+viper run program.zia
 ```
 
 **Build and run a BASIC program:**
 
 ```bash
-./build/src/tools/vbasic/vbasic program.bas
+viper run program.bas
 ```
 
 **Run with debugging:**
 
 ```bash
-./build/src/tools/ilrun/ilrun program.il --break main:10
+ilrun program.il --break main:10
 ```
 
 **View generated IL:**
 
 ```bash
-./build/src/tools/zia/zia program.zia --emit-il
-./build/src/tools/vbasic/vbasic program.bas --emit-il
+zia program.zia --emit-il
+vbasic program.bas --emit-il
 ```
 
 **Run tests:**

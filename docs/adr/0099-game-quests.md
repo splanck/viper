@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0099: Viper.Game.Quests — Objective Tracker with SaveData Integration
 
 Date: 2026-07-11

@@ -9,7 +9,7 @@
 // Purpose: Ensure the BASIC front-end rejects unsupported debugger flags.
 // Key invariants: `cmdFrontBasic` must fail fast on `--break` without invoking compilation.
 // Ownership/Lifetime: Test owns argv buffers and captures usage state locally.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

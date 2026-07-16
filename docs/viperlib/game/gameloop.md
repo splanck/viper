@@ -39,7 +39,7 @@ interface IScene {
 
 ### Scene Lifecycle
 
-```
+```text
 setScene(newScene) called
         │
         ▼ (next loop boundary; first boundary if called before run)

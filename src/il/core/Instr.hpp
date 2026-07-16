@@ -20,7 +20,7 @@
 //          Instruction owns all operands, labels, and branch arguments. String
 //          fields (callee, labels) use std::string value semantics and may be
 //          paired with Module-owned interned symbols.
-// Links: docs/il-guide.md#reference, il/core/Opcode.hpp, il/core/Type.hpp,
+// Links: docs/il/il-guide.md#reference, il/core/Opcode.hpp, il/core/Type.hpp,
 //        il/core/Value.hpp
 //
 //===----------------------------------------------------------------------===//

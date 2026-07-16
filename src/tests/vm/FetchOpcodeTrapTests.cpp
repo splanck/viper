@@ -9,7 +9,7 @@
 // Purpose: Verify fetchOpcode reports the trap opcode after exhausting a block.
 // Key invariants: Once a block has no remaining instructions the VM must clear the
 // Ownership/Lifetime: Constructs a temporary VM and execution state using
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

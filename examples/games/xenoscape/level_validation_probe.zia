@@ -12,7 +12,7 @@
 //   - Success requires every level, exit, checkpoint, boss, and named room route.
 // Ownership/Lifetime:
 //   - Probe owns one validator and its short-lived aggregate report.
-// Links: level_validation.zia, level.zia, docs/testing.md
+// Links: level_validation.zia, level.zia, docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

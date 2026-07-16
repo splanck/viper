@@ -21,7 +21,7 @@
 //   - Temporary data structures (liveness sets, removal masks) are stack
 //     allocated and do not outlive the call.
 //
-// Links: docs/architecture.md, codegen/common/PeepholeUtil.hpp
+// Links: docs/internals/architecture.md, codegen/common/PeepholeUtil.hpp
 //
 //===----------------------------------------------------------------------===//
 

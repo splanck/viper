@@ -9,7 +9,7 @@
 // Purpose: Verify phi node handling with register pressure across blocks.
 // Key invariants: Values crossing blocks via phi may require spilling.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

@@ -9,7 +9,7 @@
 // Purpose: Defines BASIC declaration aggregates composing higher-level program structure.
 // Key invariants: Program partitions procedure declarations from main statements while
 // Ownership/Lifetime: Nodes are owned via std::unique_ptr managed by callers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

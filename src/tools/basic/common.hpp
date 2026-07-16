@@ -9,7 +9,7 @@
 // Purpose: Shared utilities for BASIC command-line tools.
 // Key invariants: Helpers must preserve existing CLI diagnostics.
 // Ownership/Lifetime: Callers retain ownership of buffers and SourceManager instances.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

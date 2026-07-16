@@ -82,7 +82,7 @@ The build script will:
 
 A successful build ends with output similar to:
 
-```
+```text
 [100%] Built target viper
 ...
 100% tests passed, 0 tests failed
@@ -170,7 +170,7 @@ viper run hello.zia
 
 **Expected output:**
 
-```
+```text
 Hello, World!
 ```
 
@@ -185,9 +185,9 @@ Hello, World!
 
 ## What to Read Next
 
-- **[Zia Tutorial](../zia-getting-started.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
-- **[Zia Reference](../zia-reference.md)** — Complete language reference
-- **[BASIC Tutorial](../basic-language.md)** — Viper also ships a BASIC frontend
+- **[Zia Tutorial](../tutorials/zia-tutorial.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
+- **[Zia Reference](../languages/zia-reference.md)** — Complete language reference
+- **[BASIC Tutorial](../tutorials/basic-tutorial.md)** — Viper also ships a BASIC frontend
 - **[Getting Started (general)](../getting-started.md)** — Project creation with `viper init`, the REPL, IL programs, and the full command reference
 
 ---
@@ -216,7 +216,7 @@ If you previously had the tools installed but they were removed during a macOS u
 
 **Symptom:** CMake prints an error like:
 
-```
+```text
 CMake Error at CMakeLists.txt:1:
   CMake 3.20 or higher is required.  You are running version 3.16.
 ```
@@ -237,7 +237,7 @@ Confirm the output shows **3.20** or higher. If you installed CMake outside of H
 
 **Symptom:** The build script fails at the install step with:
 
-```
+```text
 file INSTALL cannot copy file ... Permission denied
 ```
 

@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC parser accepts zero-arg method calls without parentheses in statement
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

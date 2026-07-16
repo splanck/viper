@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR-0003: IL Linkage and Module Linking
 
 ## Status
@@ -32,7 +38,7 @@ backwards compatibility.
 
 ### 2. IL text syntax
 
-```
+```llvm
 func export @name(...) -> type { ... }   // Export linkage
 func import @name(...) -> type           // Import linkage (no body)
 func @name(...) -> type { ... }          // Internal (default, backwards compat)

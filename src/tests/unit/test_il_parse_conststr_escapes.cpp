@@ -9,7 +9,7 @@
 // Purpose: Ensure const_str operands decode escape sequences when parsed.
 // Key invariants: Operand parser stores decoded bytes for Value::ConstStr operands.
 // Ownership/Lifetime: Test owns the module produced by the parser.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

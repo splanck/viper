@@ -10,7 +10,7 @@
 //                 counts and propagating values before transferring control.
 // Ownership/Lifetime: Operates on VM-owned state; no allocations escape the
 //                     helper scope.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

@@ -12,13 +12,13 @@
 //
 // Generated Data: This file includes generated/RuntimeSignatures.inc which
 //                 contains DescriptorRow entries for all runtime functions.
-//                 See docs/generated-files.md for regeneration instructions.
+//                 See docs/internals/generated-files.md for regeneration instructions.
 //
 // Key invariants: The descriptor table is immutable, matches runtime helpers
 //                 one-to-one, and is initialised lazily in a thread-safe manner.
 // Ownership/Lifetime: All descriptors have static storage duration and remain
 //                     valid for the lifetime of the process.
-// Links: docs/generated-files.md, docs/il-guide.md#reference
+// Links: docs/internals/generated-files.md, docs/il/il-guide.md#reference
 //
 // Related files:
 //   - generated/RuntimeSignatures.inc: Generated descriptor rows

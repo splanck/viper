@@ -9,7 +9,7 @@
 // Purpose: Ensure USING directive parsing captures namespace paths and aliases.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

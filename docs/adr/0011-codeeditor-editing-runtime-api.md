@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-25
+---
+
 # ADR 0011: CodeEditor Editing Runtime API
 
 Date: 2026-06-25

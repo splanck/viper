@@ -9,7 +9,7 @@
 // Purpose: Verify callee-saved register preservation on AArch64.
 // Key invariants: x19-x28 and d8-d15 must be saved/restored if used.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

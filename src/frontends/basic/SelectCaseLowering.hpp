@@ -12,7 +12,7 @@
 // Key invariants: Selector is evaluated once and stored in a temporary.
 //                 All arm bodies branch to a common exit block.
 // Ownership/Lifetime: Borrows Lowerer reference; does not own AST or IL.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

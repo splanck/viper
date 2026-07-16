@@ -9,7 +9,7 @@
 // Purpose: Provide shared helpers for executing IL modules on the VM in tests
 // Key invariants: Trap execution helpers fork the current process to isolate the
 // Ownership/Lifetime: Stateless helper usable across multiple tests.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

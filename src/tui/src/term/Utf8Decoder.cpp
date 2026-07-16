@@ -14,7 +14,7 @@
 //                 error.
 // Ownership/Lifetime: Utf8Decoder stores only its internal state; callers
 //                     manage the buffers that feed bytes into @ref feed().
-// Links: docs/architecture.md#vipertui-architecture, Unicode Standard §3.9
+// Links: docs/internals/architecture.md#vipertui-architecture, Unicode Standard §3.9
 //
 //===----------------------------------------------------------------------===//
 

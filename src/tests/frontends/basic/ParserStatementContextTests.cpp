@@ -9,7 +9,7 @@
 // Purpose: Validate BASIC parser statement sequencing helper for colon chains and nested flows.
 // Key invariants: StatementSequencer centralizes separator handling without altering AST shape.
 // Ownership/Lifetime: Test owns parser/source manager objects and inspects resulting AST.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

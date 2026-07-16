@@ -9,7 +9,7 @@
 // Purpose: Verify that assigning to a global STRING array from a SUB uses rt_arr_str_put.
 // Key invariants: Lowering selects string array helper even from SUB scope.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

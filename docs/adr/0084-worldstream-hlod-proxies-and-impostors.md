@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0084: Cell-Level HLOD Proxies and Automated Impostors
 
 Date: 2026-07-10

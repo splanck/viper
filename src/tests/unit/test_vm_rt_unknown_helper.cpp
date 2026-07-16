@@ -9,7 +9,7 @@
 // Purpose: Ensure runtime bridge traps when unknown runtime helpers are invoked.
 // Key invariants: Calls to helpers absent from the runtime registry must produce traps in all build
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

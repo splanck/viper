@@ -13,7 +13,7 @@
 // Generator: Manually maintained (synchronized with Opcode enum).
 // Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
 //
-// Links: docs/il-guide.md#reference, vm/DispatchStrategy.hpp
+// Links: docs/il/il-guide.md#reference, vm/DispatchStrategy.hpp
 //
 //===----------------------------------------------------------------------===//
 

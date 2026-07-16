@@ -9,7 +9,7 @@
 // Purpose: Ensure TIMER() in BASIC lowers to a call to rt_timer_ms.
 // Key invariants: TIMER() produces i64 result via rt_timer_ms call.
 // Ownership/Lifetime: Test harness constructs and inspects lowered IL.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

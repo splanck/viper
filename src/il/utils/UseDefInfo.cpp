@@ -8,7 +8,7 @@
 // File: src/il/utils/UseDefInfo.cpp
 // Purpose: Implement temporary use-count tracking and safe SSA value
 //          replacement for mutable IL.
-// Links: docs/codemap.md#il-utils
+// Links: docs/internals/codemap.md#il-utils
 //
 //===----------------------------------------------------------------------===//
 

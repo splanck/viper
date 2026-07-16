@@ -9,7 +9,7 @@
 // Purpose: Ensure parser reports a clear diagnostic when branch targets omit labels.
 // Key invariants: Parser must detect and describe malformed branch targets before argument parsing.
 // Ownership/Lifetime: Test owns parser inputs and module state locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

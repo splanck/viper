@@ -46,5 +46,5 @@ and validation probe instead.
    - Resolution: `for _ in 0..N` is the supported discard idiom — sema skips
      `_` in the W001 unused-variable check and `_` is reusable across loops in
      the same scope (verified 2026-07-07). Now documented in
-     `docs/bible/part1-foundations/05-repetition.md` ("Discarding the Loop
+     `docs/book/part1-foundations/05-repetition.md` ("Discarding the Loop
      Variable").

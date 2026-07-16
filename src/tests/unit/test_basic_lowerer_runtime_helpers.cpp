@@ -9,7 +9,7 @@
 // Purpose: Verify BASIC lowering requests runtime helpers via the shared AST walker.
 // Key invariants: Array assignment, PRINT #, and INPUT trigger their respective helpers.
 // Ownership/Lifetime: Test constructs AST via parser and owns emitted module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

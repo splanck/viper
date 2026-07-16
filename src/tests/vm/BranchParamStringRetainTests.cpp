@@ -9,7 +9,7 @@
 // Purpose: Verify branch parameter transfers retain string handles.
 // Key invariants: Branch staging mirrors entry-path retention semantics.
 // Ownership/Lifetime: Builds a synthetic module and inspects runtime headers.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

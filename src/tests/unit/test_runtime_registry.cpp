@@ -9,7 +9,7 @@
 // Purpose: Validate runtime registry metadata coverage.
 // Key invariants: Every descriptor publishes a handler and signature mapping.
 // Ownership/Lifetime: To be documented.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

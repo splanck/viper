@@ -9,7 +9,7 @@
 // Purpose: Ensure every opcode declared in Opcode.def has an executable VM handler.
 // Key invariants: Handler table entries are non-null for all non-whitelisted opcodes.
 // Ownership/Lifetime: Test inspects static opcode metadata and dispatch table.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

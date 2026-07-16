@@ -10,7 +10,7 @@
 //          (standard BASIC behavior - no escape sequence processing).
 // Key invariants: Lowered globals store literal characters including backslash.
 // Ownership/Lifetime: Test owns parser, program, and module instances.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

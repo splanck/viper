@@ -10,7 +10,7 @@
 // Key invariants: Randomly generated IL programs remain well-formed and return
 //                 identical results before and after O0/O1/O2 pipelines.
 // Ownership/Lifetime: Builds ephemeral modules per iteration; no filesystem I/O.
-// Links: docs/devdocs/il-passes.md, src/il/transform/PassManager.cpp
+// Links: docs/devdocs/il/il-passes.md, src/il/transform/PassManager.cpp
 //
 //===----------------------------------------------------------------------===//
 

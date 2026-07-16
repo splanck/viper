@@ -9,7 +9,7 @@
 // Purpose: Ensure case-insensitive canonicalization for namespaces and proc names.
 // Key invariants: Resolver accepts mixed-case qualified names and strips suffix.
 // Ownership/Lifetime: Local parser/analyzer with in-memory source manager.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

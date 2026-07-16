@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-07-16
+---
+
 # Installer and Package Release Guide
 
 Viper produces native toolchain installers for Windows, macOS, and Linux from

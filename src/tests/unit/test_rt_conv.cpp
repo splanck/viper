@@ -9,7 +9,7 @@
 // Purpose: Verify numeric to string runtime conversions.
 // Key invariants: Returned strings match decimal formatting used by PRINT.
 // Ownership/Lifetime: Uses runtime library.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

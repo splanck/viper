@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-16
+---
+
 # ADR 0031: Core Parse Double Aliases
 
 ## Status

@@ -16,7 +16,7 @@ last-verified: 2026-05-17
 2D graphics canvas for visual applications and games.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Graphics.Canvas(title, width, height)`
+**Constructor:** Zia `Canvas.New(title, width, height)` · BASIC `NEW Viper.Graphics.Canvas(title, width, height)`
 
 ### Properties
 

@@ -37,24 +37,24 @@ Bit manipulation utilities for working with 64-bit integers at the bit level.
 
 | Method             | Signature       | Description                            |
 |--------------------|-----------------|----------------------------------------|
-| `And(a, b)`        | `i64(i64, i64)` | Bitwise AND                            |
-| `Or(a, b)`         | `i64(i64, i64)` | Bitwise OR                             |
-| `Xor(a, b)`        | `i64(i64, i64)` | Bitwise XOR                            |
-| `Not(val)`         | `i64(i64)`      | Bitwise NOT (complement)               |
-| `Shl(val, count)`  | `i64(i64, i64)` | Logical shift left                     |
-| `Shr(val, count)`  | `i64(i64, i64)` | Arithmetic shift right (sign-extended) |
-| `ShiftRightLogical(val, count)` | `i64(i64, i64)` | Logical shift right (zero-fill) |
-| `RotateLeft(val, count)` | `i64(i64, i64)` | Rotate left                            |
-| `RotateRight(val, count)` | `i64(i64, i64)` | Rotate right                           |
-| `Count(val)`       | `i64(i64)`      | Population count (number of 1 bits)    |
-| `CountLeadingZeros(val)` | `i64(i64)` | Count leading zeros                    |
-| `CountTrailingZeros(val)` | `i64(i64)` | Count trailing zeros                   |
-| `Flip(val)`        | `i64(i64)`      | Reverse all 64 bits                    |
-| `Swap(val)`        | `i64(i64)`      | Byte swap (endian swap)                |
-| `Get(val, bit)`    | `i1(i64, i64)`  | Get bit at position (0-63)             |
-| `Set(val, bit)`    | `i64(i64, i64)` | Set bit at position                    |
-| `Clear(val, bit)`  | `i64(i64, i64)` | Clear bit at position                  |
-| `Toggle(val, bit)` | `i64(i64, i64)` | Toggle bit at position                 |
+| `And(a, b)`        | `Integer(Integer, Integer)` | Bitwise AND                            |
+| `Or(a, b)`         | `Integer(Integer, Integer)` | Bitwise OR                             |
+| `Xor(a, b)`        | `Integer(Integer, Integer)` | Bitwise XOR                            |
+| `Not(val)`         | `Integer(Integer)`      | Bitwise NOT (complement)               |
+| `Shl(val, count)`  | `Integer(Integer, Integer)` | Logical shift left                     |
+| `Shr(val, count)`  | `Integer(Integer, Integer)` | Arithmetic shift right (sign-extended) |
+| `ShiftRightLogical(val, count)` | `Integer(Integer, Integer)` | Logical shift right (zero-fill) |
+| `RotateLeft(val, count)` | `Integer(Integer, Integer)` | Rotate left                            |
+| `RotateRight(val, count)` | `Integer(Integer, Integer)` | Rotate right                           |
+| `Count(val)`       | `Integer(Integer)`      | Population count (number of 1 bits)    |
+| `CountLeadingZeros(val)` | `Integer(Integer)` | Count leading zeros                    |
+| `CountTrailingZeros(val)` | `Integer(Integer)` | Count trailing zeros                   |
+| `Flip(val)`        | `Integer(Integer)`      | Reverse all 64 bits                    |
+| `Swap(val)`        | `Integer(Integer)`      | Byte swap (endian swap)                |
+| `Get(val, bit)`    | `Boolean(Integer, Integer)`  | Get bit at position (0-63)             |
+| `Set(val, bit)`    | `Integer(Integer, Integer)` | Set bit at position                    |
+| `Clear(val, bit)`  | `Integer(Integer, Integer)` | Clear bit at position                  |
+| `Toggle(val, bit)` | `Integer(Integer, Integer)` | Toggle bit at position                 |
 
 ### Method Details
 
@@ -437,9 +437,9 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 
 | Method      | Signature       | Description                               |
 |-------------|-----------------|-------------------------------------------|
-| `New(x, y)` | `obj(f64, f64)` | Create a new vector with given components |
-| `Zero()`    | `obj()`         | Create a vector at origin (0, 0)          |
-| `One()`     | `obj()`         | Create a vector (1, 1)                    |
+| `New(x, y)` | `Object(Double, Double)` | Create a new vector with given components |
+| `Zero()`    | `Object()`         | Create a vector at origin (0, 0)          |
+| `One()`     | `Object()`         | Create a vector (1, 1)                    |
 
 ### Properties
 
@@ -452,23 +452,23 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 
 | Method           | Signature       | Description                                                |
 |------------------|-----------------|------------------------------------------------------------|
-| `Add(other)`     | `obj(obj)`      | Add two vectors: self + other                              |
-| `Sub(other)`     | `obj(obj)`      | Subtract vectors: self - other                             |
-| `Mul(scalar)`    | `obj(f64)`      | Multiply by scalar: self * s                               |
-| `Scale(scalar)`  | `obj(f64)`      | Alias for `Mul(scalar)`                                    |
-| `Div(scalar)`    | `obj(f64)`      | Divide by scalar: self / s                                 |
-| `Neg()`          | `obj()`         | Negate vector: -self                                       |
-| `Dot(other)`     | `f64(obj)`      | Dot product of two vectors                                 |
-| `Cross(other)`   | `f64(obj)`      | 2D cross product (scalar z-component)                      |
-| `Length()`       | `f64()`         | Length (magnitude)                                          |
-| `LengthSquared()`        | `f64()`         | Squared length (avoids sqrt)                               |
-| `Norm()`         | `obj()`         | Normalize to unit length                                   |
-| `Normalize()`    | `obj()`         | Alias for `Norm()`                                         |
-| `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
-| `Distance(other)`| `f64(obj)`      | Alias for `Dist(other)`                                    |
-| `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
-| `Angle()`        | `f64()`         | Angle in radians (atan2(y, x))                             |
-| `Rotate(angle)`  | `obj(f64)`      | Rotate by angle in radians                                 |
+| `Add(other)`     | `Object(Object)`      | Add two vectors: self + other                              |
+| `Sub(other)`     | `Object(Object)`      | Subtract vectors: self - other                             |
+| `Mul(scalar)`    | `Object(Double)`      | Multiply by scalar: self * s                               |
+| `Scale(scalar)`  | `Object(Double)`      | Alias for `Mul(scalar)`                                    |
+| `Div(scalar)`    | `Object(Double)`      | Divide by scalar: self / s                                 |
+| `Neg()`          | `Object()`         | Negate vector: -self                                       |
+| `Dot(other)`     | `Double(Object)`      | Dot product of two vectors                                 |
+| `Cross(other)`   | `Double(Object)`      | 2D cross product (scalar z-component)                      |
+| `Length()`       | `Double()`         | Length (magnitude)                                          |
+| `LengthSquared()`        | `Double()`         | Squared length (avoids sqrt)                               |
+| `Norm()`         | `Object()`         | Normalize to unit length                                   |
+| `Normalize()`    | `Object()`         | Alias for `Norm()`                                         |
+| `Dist(other)`    | `Double(Object)`      | Distance to another point                                  |
+| `Distance(other)`| `Double(Object)`      | Alias for `Dist(other)`                                    |
+| `Lerp(other, t)` | `Object(Object, Double)` | Linear interpolation (t=0 returns self, t=1 returns other) |
+| `Angle()`        | `Double()`         | Angle in radians (atan2(y, x))                             |
+| `Rotate(angle)`  | `Object(Double)`      | Rotate by angle in radians                                 |
 
 ### Notes
 
@@ -554,9 +554,9 @@ END IF
 
 | Method         | Signature            | Description                               |
 |----------------|----------------------|-------------------------------------------|
-| `New(x, y, z)` | `obj(f64, f64, f64)` | Create a new vector with given components |
-| `Zero()`       | `obj()`              | Create a vector at origin (0, 0, 0)       |
-| `One()`        | `obj()`              | Create a vector (1, 1, 1)                 |
+| `New(x, y, z)` | `Object(Double, Double, Double)` | Create a new vector with given components |
+| `Zero()`       | `Object()`              | Create a vector at origin (0, 0, 0)       |
+| `One()`        | `Object()`              | Create a vector (1, 1, 1)                 |
 
 ### Properties
 
@@ -570,30 +570,30 @@ END IF
 
 | Method           | Signature       | Description                                                |
 |------------------|-----------------|------------------------------------------------------------|
-| `Add(other)`     | `obj(obj)`      | Add two vectors: self + other                              |
-| `Sub(other)`     | `obj(obj)`      | Subtract vectors: self - other                             |
-| `Mul(scalar)`    | `obj(f64)`      | Multiply by scalar: self * s                               |
-| `Scale(scalar)`  | `obj(f64)`      | Alias for `Mul(scalar)`                                    |
-| `Div(scalar)`    | `obj(f64)`      | Divide by scalar: self / s                                 |
-| `Neg()`          | `obj()`         | Negate vector: -self                                       |
-| `Dot(other)`     | `f64(obj)`      | Dot product of two vectors                                 |
-| `Cross(other)`   | `obj(obj)`      | Cross product (returns Vec3)                               |
-| `Length()`       | `f64()`         | Length (magnitude)                                          |
-| `LengthSquared()`        | `f64()`         | Squared length (avoids sqrt)                               |
-| `Norm()`         | `obj()`         | Normalize to unit length                                   |
-| `Normalize()`    | `obj()`         | Alias for `Norm()`                                         |
-| `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
-| `Distance(other)`| `f64(obj)`      | Alias for `Dist(other)`                                    |
-| `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
-| `Reflect(normal)`| `obj(obj)`      | Reflect across a normal, which is normalized internally   |
-| `Project(onto)`  | `obj(obj)`      | Project onto the line spanned by another vector            |
-| `ClampLength(max)`  | `obj(f64)`      | Limit magnitude to at most `max`                           |
-| `MoveTowards(target, delta)` | `obj(obj, f64)` | Move by at most `delta`, snapping when in reach |
-| `Angle(other)`   | `f64(obj)`      | Unsigned angle to another vector in `[0, pi]`              |
-| `Min(other)`     | `obj(obj)`      | Component-wise minimum                                     |
-| `Max(other)`     | `obj(obj)`      | Component-wise maximum                                     |
-| `Set(x, y, z)`   | `void(f64, f64, f64)` | Replace all components in place                      |
-| `CopyFrom(other)` | `void(obj)`    | Copy another Vec3's components in place                    |
+| `Add(other)`     | `Object(Object)`      | Add two vectors: self + other                              |
+| `Sub(other)`     | `Object(Object)`      | Subtract vectors: self - other                             |
+| `Mul(scalar)`    | `Object(Double)`      | Multiply by scalar: self * s                               |
+| `Scale(scalar)`  | `Object(Double)`      | Alias for `Mul(scalar)`                                    |
+| `Div(scalar)`    | `Object(Double)`      | Divide by scalar: self / s                                 |
+| `Neg()`          | `Object()`         | Negate vector: -self                                       |
+| `Dot(other)`     | `Double(Object)`      | Dot product of two vectors                                 |
+| `Cross(other)`   | `Object(Object)`      | Cross product (returns Vec3)                               |
+| `Length()`       | `Double()`         | Length (magnitude)                                          |
+| `LengthSquared()`        | `Double()`         | Squared length (avoids sqrt)                               |
+| `Norm()`         | `Object()`         | Normalize to unit length                                   |
+| `Normalize()`    | `Object()`         | Alias for `Norm()`                                         |
+| `Dist(other)`    | `Double(Object)`      | Distance to another point                                  |
+| `Distance(other)`| `Double(Object)`      | Alias for `Dist(other)`                                    |
+| `Lerp(other, t)` | `Object(Object, Double)` | Linear interpolation (t=0 returns self, t=1 returns other) |
+| `Reflect(normal)`| `Object(Object)`      | Reflect across a normal, which is normalized internally   |
+| `Project(onto)`  | `Object(Object)`      | Project onto the line spanned by another vector            |
+| `ClampLength(max)`  | `Object(Double)`      | Limit magnitude to at most `max`                           |
+| `MoveTowards(target, delta)` | `Object(Object, Double)` | Move by at most `delta`, snapping when in reach |
+| `Angle(other)`   | `Double(Object)`      | Unsigned angle to another vector in `[0, pi]`              |
+| `Min(other)`     | `Object(Object)`      | Component-wise minimum                                     |
+| `Max(other)`     | `Object(Object)`      | Component-wise maximum                                     |
+| `Set(x, y, z)`   | `Void(Double, Double, Double)` | Replace all components in place                      |
+| `CopyFrom(other)` | `Void(Object)`    | Copy another Vec3's components in place                    |
 
 ### Notes
 
@@ -682,10 +682,10 @@ smooth interpolation via SLERP.
 
 | Method                        | Signature             | Description                                              |
 |-------------------------------|-----------------------|----------------------------------------------------------|
-| `New(x, y, z, w)`             | `obj(f64,f64,f64,f64)` | Create quaternion from components (x, y, z, w order)    |
-| `Identity()`                  | `obj()`               | Create identity quaternion (0, 0, 0, 1)                 |
-| `FromAxisAngle(axis, angle)`  | `obj(obj, f64)`       | Create from a Vec3 axis and angle in radians            |
-| `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`  | Create from Euler angles in radians: pitch about X, yaw about Y, roll about Z (ZYX intrinsic order, matching `Transform3D.SetEuler`) |
+| `New(x, y, z, w)`             | `Object(Double,Double,Double,Double)` | Create quaternion from components (x, y, z, w order)    |
+| `Identity()`                  | `Object()`               | Create identity quaternion (0, 0, 0, 1)                 |
+| `FromAxisAngle(axis, angle)`  | `Object(Object, Double)`       | Create from a Vec3 axis and angle in radians            |
+| `FromEuler(pitch, yaw, roll)` | `Object(Double, Double, Double)`  | Create from Euler angles in radians: pitch about X, yaw about Y, roll about Z (ZYX intrinsic order, matching `Transform3D.SetEuler`) |
 
 ### Properties
 
@@ -700,18 +700,18 @@ smooth interpolation via SLERP.
 
 | Method            | Signature       | Description                                                    |
 |-------------------|-----------------|----------------------------------------------------------------|
-| `Angle()`         | `f64()`         | Return the rotation angle in radians                           |
+| `Angle()`         | `Double()`         | Return the rotation angle in radians                           |
 | `Axis()`          | `Vec3()`        | Return the normalized rotation axis as a Vec3                  |
-| `Conjugate()`     | `obj()`         | Return conjugate (inverse for unit quaternions)                |
-| `Dot(other)`      | `f64(obj)`      | Dot product with another quaternion                            |
-| `Inverse()`       | `obj()`         | Return the inverse quaternion                                  |
-| `LengthSquared()`         | `f64()`         | Squared magnitude (avoids sqrt)                                |
-| `Lerp(other, t)`  | `obj(obj, f64)` | Normalized linear interpolation (nlerp); `t` is not clamped    |
-| `Mul(other)`      | `obj(obj)`      | Multiply (compose) two quaternion rotations                    |
-| `Norm()`          | `obj()`         | Normalize to unit length                                       |
-| `RotateVec3(v)`   | `obj(obj)`      | Rotate a Vec3 by this quaternion, returns Vec3                 |
-| `Slerp(other, t)` | `obj(obj, f64)` | Spherical linear interpolation (t=0 returns self)              |
-| `ToMat4()`        | `obj()`         | Convert to a 4x4 rotation matrix                               |
+| `Conjugate()`     | `Object()`         | Return conjugate (inverse for unit quaternions)                |
+| `Dot(other)`      | `Double(Object)`      | Dot product with another quaternion                            |
+| `Inverse()`       | `Object()`         | Return the inverse quaternion                                  |
+| `LengthSquared()`         | `Double()`         | Squared magnitude (avoids sqrt)                                |
+| `Lerp(other, t)`  | `Object(Object, Double)` | Normalized linear interpolation (nlerp); `t` is not clamped    |
+| `Mul(other)`      | `Object(Object)`      | Multiply (compose) two quaternion rotations                    |
+| `Norm()`          | `Object()`         | Normalize to unit length                                       |
+| `RotateVec3(v)`   | `Object(Object)`      | Rotate a Vec3 by this quaternion, returns Vec3                 |
+| `Slerp(other, t)` | `Object(Object, Double)` | Spherical linear interpolation (t=0 returns self)              |
+| `ToMat4()`        | `Object()`         | Convert to a 4x4 rotation matrix                               |
 
 ### Notes
 
@@ -1333,7 +1333,7 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 
 | Method           | Signature                    | Description                         |
 |------------------|------------------------------|-------------------------------------|
-| `Get(m, row, col)` | `f64(Object, Integer, Integer)` | Get element at (row, col) 0-indexed |
+| `Get(m, row, col)` | `Double(Object, Integer, Integer)` | Get element at (row, col) 0-indexed |
 | `Row(m, i)`      | `Object(Object, Integer)`    | Return row i as a Vec3              |
 | `Col(m, i)`      | `Object(Object, Integer)`    | Return column i as a Vec3           |
 
@@ -1348,7 +1348,7 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 | `Neg(m)`            | `Object(Object)`             | Negate every element                  |
 | `Transpose(m)`      | `Object(Object)`             | Transpose rows and columns            |
 | `Inverse(m)`        | `Object(Object)`             | Matrix inverse (traps if singular)    |
-| `Det(m)`            | `f64(Object)`                | Determinant                           |
+| `Det(m)`            | `Double(Object)`                | Determinant                           |
 
 ### Transform Application
 
@@ -1480,7 +1480,7 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 
 | Method              | Signature                          | Description                           |
 |---------------------|------------------------------------|---------------------------------------|
-| `Get(m, row, col)`  | `f64(Object, Integer, Integer)`    | Get element at (row, col) 0-indexed   |
+| `Get(m, row, col)`  | `Double(Object, Integer, Integer)`    | Get element at (row, col) 0-indexed   |
 | `Add(a, b)`         | `Object(Object, Object)`           | Component-wise addition               |
 | `Sub(a, b)`         | `Object(Object, Object)`           | Component-wise subtraction            |
 | `Mul(a, b)`         | `Object(Object, Object)`           | Matrix multiplication                 |
@@ -1488,7 +1488,7 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 | `Neg(m)`            | `Object(Object)`                   | Negate every element                  |
 | `Transpose(m)`      | `Object(Object)`                   | Transpose rows and columns            |
 | `Inverse(m)`        | `Object(Object)`                   | Matrix inverse (traps if singular)             |
-| `Det(m)`            | `f64(Object)`                      | Determinant                           |
+| `Det(m)`            | `Double(Object)`                      | Determinant                           |
 | `Eq(a, b, eps)`     | `Boolean(Object, Object, f64)`     | True if every absolute difference is at most the effective tolerance |
 
 ### Transform Application

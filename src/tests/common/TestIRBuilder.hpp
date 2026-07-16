@@ -9,7 +9,7 @@
 // Purpose: Provide a lightweight IR construction helper tailored for tests.
 // Key invariants: Maintains a single active insertion block for SSA emission.
 // Ownership/Lifetime: Owns the underlying Module and VmFixture used by tests.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

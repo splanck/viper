@@ -9,7 +9,7 @@
 // Purpose: Declares command-line option parsing helpers.
 // Key invariants: None.
 // Ownership/Lifetime: Caller owns option values.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

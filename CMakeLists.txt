@@ -12,7 +12,7 @@
 #
 # Ownership/Lifetime: CMake owns generated files under the selected build tree.
 #
-# Links: AGENTS.md, docs/architecture.md, docs/testing.md
+# Links: AGENTS.md, docs/internals/architecture.md, docs/internals/testing.md
 #
 #===----------------------------------------------------------------------===#
 

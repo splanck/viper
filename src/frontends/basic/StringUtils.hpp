@@ -9,7 +9,7 @@
 // Purpose: String utility functions for BASIC frontend
 // Key invariants: All functions are constexpr-compatible where possible
 // Ownership/Lifetime: All functions are stateless and non-owning
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

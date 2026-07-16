@@ -154,7 +154,7 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
 
 The `plural_cardinal` / `plural_ordinal` entries use a CLDR-subset DSL:
 
-```
+```text
 Rule        = OrExpr | "true"
 OrExpr      = AndExpr ("or" AndExpr)*
 AndExpr     = Comparison ("and" Comparison)*
@@ -208,7 +208,7 @@ Join algorithm for N ≥ 3: apply `end` to `items[N-2], items[N-1]`, then `middl
 
 Locale data files can be embedded in the executable's asset blob (see [Viper.IO.Assets](../io/assets.md)):
 
-```
+```text
 # viper.project
 embed locales/fr-FR.json
 embed locales/de-DE.json
@@ -221,7 +221,7 @@ LocaleManager.LoadFromAsset("locales/fr-FR.json")
 
 For sidecar VPA files, the directive requires both a pack name and a source path:
 
-```
+```text
 # Both entries go into <project-name>-locales.vpa
 pack-compressed locales locales/fr-FR.json
 pack-compressed locales locales/de-DE.json

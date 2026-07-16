@@ -15,7 +15,7 @@
 // Ownership/Lifetime: Osc52Clipboard borrows the TermIO interface supplied by
 //                     the embedder; MockClipboard owns its captured escape
 //                     sequence without touching the terminal.
-// Links: docs/architecture.md#vipertui-architecture, ECMA-48 §8.3.93
+// Links: docs/internals/architecture.md#vipertui-architecture, ECMA-48 §8.3.93
 //
 //===----------------------------------------------------------------------===//
 

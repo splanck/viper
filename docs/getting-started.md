@@ -189,7 +189,7 @@ zia> square(7)
 49
 ```
 
-Type `.help` for available commands and `.quit` to exit. See the [REPL Guide](repl.md) for full documentation.
+Type `.help` for available commands and `.quit` to exit. See the [REPL Guide](tools/repl.md) for full documentation.
 
 ---
 
@@ -211,8 +211,8 @@ viper build examples/basic/ex1_hello_cond.bas -o hello.il
 ilrun hello.il
 ```
 
-For more examples, see the **[BASIC Tutorial](basic-language.md)**,
-**[Zia Tutorial](zia-getting-started.md)**, and the `examples/` directory.
+For more examples, see the **[BASIC Tutorial](tutorials/basic-tutorial.md)**,
+**[Zia Tutorial](tutorials/zia-tutorial.md)**, and the `examples/` directory.
 
 ---
 
@@ -262,18 +262,18 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 **Language Documentation:**
 
-- **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC by example
-- **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
-- **[Zia Tutorial](zia-getting-started.md)** — Learn Zia by example
-- **[Zia Reference](zia-reference.md)** — Complete Zia language reference
-- **[IL Guide](il-guide.md)** — Comprehensive IL documentation
+- **[BASIC Tutorial](tutorials/basic-tutorial.md)** — Learn Viper BASIC by example
+- **[BASIC Reference](languages/basic-reference.md)** — Complete BASIC language reference
+- **[Zia Tutorial](tutorials/zia-tutorial.md)** — Learn Zia by example
+- **[Zia Reference](languages/zia-reference.md)** — Complete Zia language reference
+- **[IL Guide](il/il-guide.md)** — Comprehensive IL documentation
 
 **Implementation Guides:**
 
-- **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
+- **[Frontend How-To](internals/frontend-howto.md)** — Build your own language frontend
 
 **Developer Documentation:**
 
-- [architecture.md](architecture.md) — System architecture overview
-- [vm.md](vm.md) — VM and runtime internals
-- [contributor-guide.md](contributor-guide.md) — Contribution guidelines
+- [architecture.md](internals/architecture.md) — System architecture overview
+- [vm.md](internals/vm.md) — VM and runtime internals
+- [contributor-guide.md](internals/contributor-guide.md) — Contribution guidelines

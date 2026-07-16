@@ -9,7 +9,7 @@
 // Purpose: Verify VM traps when load/store operate on null or misaligned pointers.
 // Key invariants: Null or misaligned pointer operands surface InvalidOperation traps with detail
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

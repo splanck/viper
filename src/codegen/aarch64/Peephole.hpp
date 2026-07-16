@@ -18,7 +18,7 @@
 // - Operates on mutable Machine IR owned by the caller.
 // - No dynamic resources are allocated beyond temporary vectors.
 //
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

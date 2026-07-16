@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser ignores comment lines.
 // Key invariants: Parser treats lines starting with '//' as comments.
 // Ownership/Lifetime: Test owns modules and buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

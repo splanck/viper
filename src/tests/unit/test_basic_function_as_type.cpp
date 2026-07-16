@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC functions with explicit return types lower to IL with correct signatures.
 // Key invariants: Parser accepts FUNCTION ... AS syntax and lowerer records string/double return
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -10,7 +10,7 @@
 // Key invariants: ParserState must reference a current function and basic
 //                 block for instruction insertion.
 // Ownership/Lifetime: Instructions are appended to the ParserState's active block.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

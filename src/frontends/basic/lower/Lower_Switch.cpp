@@ -12,7 +12,7 @@
 //                 current block and fallthrough semantics after lowering.
 // Ownership/Lifetime: Functions operate on the calling @ref Lowerer and do not
 //                     take ownership of IL blocks.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

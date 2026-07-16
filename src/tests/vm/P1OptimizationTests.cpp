@@ -16,7 +16,7 @@
 //   - Structural checks are added only where the optimisation could silently
 //     produce a wrong answer if the invariant is violated.
 // Ownership/Lifetime: builds synthetic modules per test; no shared state.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

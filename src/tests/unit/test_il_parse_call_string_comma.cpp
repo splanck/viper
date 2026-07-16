@@ -9,7 +9,7 @@
 // Purpose: Ensure call operand parsing preserves commas inside string literals.
 // Key invariants: Parser keeps string arguments intact even when containing delimiters.
 // Ownership/Lifetime: Test constructs modules and parser inputs locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

@@ -14,7 +14,7 @@
 // Complements: IntOverflowTests.cpp (I64 overflow checks),
 //              IntUnsignedOpsTests.cpp (I16 overflow, some I32 div/rem).
 //
-// Semantics (see docs/arithmetic-semantics.md):
+// Semantics (see docs/languages/arithmetic-semantics.md):
 //   - IAddOvf/ISubOvf/IMulOvf: Trap when result exceeds type's signed range.
 //   - SDivChk0: Traps on div-by-zero AND MIN/-1 at type width.
 //   - SRemChk0: Traps on div-by-zero. MIN%-1 = 0 (no trap).

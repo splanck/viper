@@ -14,7 +14,7 @@
 // Ownership/Lifetime: Loads checked-in IL corpus files and executes them within
 //                     the current process except for IL VM trap cases, which are
 //                     isolated because the IL VM terminates on unhandled traps.
-// Links: docs/BYTECODE_VM_DESIGN.md, docs/testing.md
+// Links: docs/internals/bytecode-vm.md, docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

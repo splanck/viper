@@ -9,7 +9,7 @@
 // Purpose: Declares helpers for parsing IL instruction statements.
 // Key invariants: Operates within a valid ParserState containing an active block.
 // Ownership/Lifetime: Writes instructions directly into the ParserState's current block.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

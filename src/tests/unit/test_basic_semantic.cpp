@@ -9,7 +9,7 @@
 // Purpose: Unit test verifying BASIC semantic analyzer and lowerer handle a
 // Key invariants: Analyzer collects symbols/labels and lowering produces
 // Ownership/Lifetime: Test owns all objects locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

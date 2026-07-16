@@ -9,7 +9,7 @@
 // Purpose: Unit tests for scope tracking, procedure registration, and diagnostics.
 // Key invariants: Components operate independently and report expected state.
 // Ownership/Lifetime: Test owns all objects locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

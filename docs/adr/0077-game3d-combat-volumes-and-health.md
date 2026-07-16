@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0077: Game3D Combat Volumes And Health
 
 Date: 2026-07-10

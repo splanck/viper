@@ -8,7 +8,7 @@
 // File: src/il/utils/Utils.cpp
 // Purpose: Provide shared helper utilities for inspecting IL blocks and
 //          instructions without pulling in heavy analysis headers.
-// Links: docs/codemap.md#il-utils
+// Links: docs/internals/codemap.md#il-utils
 //
 //===----------------------------------------------------------------------===//
 

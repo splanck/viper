@@ -9,7 +9,7 @@
 // Purpose: Verify runtime file mode parsing maps binary modifiers to platform flags.
 // Key invariants: Binary modifier must set the platform-specific binary bit on Windows builds.
 // Ownership/Lifetime: Uses static mode strings; relies on runtime library for parsing.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 #include "rt_file.h"
 #include "rt_file_path.h"
 

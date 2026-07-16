@@ -11,7 +11,7 @@
 // Key invariants: Provides consistent access to OOP metadata and lowering state.
 //                 Context must not outlive the Lowerer or OopIndex it borrows.
 // Ownership/Lifetime: Non-owning references to Lowerer and OopIndex; short-lived.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

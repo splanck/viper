@@ -8,7 +8,7 @@
 // File: src/il/core/Type.cpp
 // Purpose: Implement the minimal helpers for rendering and constructing IL type
 //          descriptors without exposing representation details in headers.
-// Links: docs/il-guide.md#types
+// Links: docs/il/il-guide.md#types
 //
 //===----------------------------------------------------------------------===//
 

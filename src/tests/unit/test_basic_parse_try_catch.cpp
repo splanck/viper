@@ -9,7 +9,7 @@
 // Purpose: Validate parsing and AST shape for TRY/CATCH in BASIC.
 // Key invariants: Parser produces a TryCatchStmt with optional catch variable
 // Ownership/Lifetime: Test constructs parser/source manager per case and inspects AST.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

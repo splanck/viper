@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0097: Streamed-World Entity-State Persistence + Save Slots
 
 Date: 2026-07-11

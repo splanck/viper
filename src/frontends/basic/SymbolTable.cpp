@@ -14,7 +14,7 @@
 //   - Symbol names are stored as-is (case sensitivity handled by caller)
 //
 // Ownership/Lifetime: See SymbolTable.hpp
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

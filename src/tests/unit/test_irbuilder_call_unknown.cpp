@@ -9,7 +9,7 @@
 // Purpose: Ensure IRBuilder emits an error when call targets are missing.
 // Key invariants: emitCall must throw for unknown callees.
 // Ownership/Lifetime: Test owns all constructed objects.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

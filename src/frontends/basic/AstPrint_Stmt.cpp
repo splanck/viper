@@ -10,7 +10,7 @@
 //                 behaviours such as PRINT# channel handling.
 // Ownership/Lifetime: Borrowed Printer and style instances; no persistent
 //                     allocations occur.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 //

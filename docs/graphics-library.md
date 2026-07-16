@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-18
+last-verified: 2026-07-16
 ---
 
 # ViperGFX Graphics Library

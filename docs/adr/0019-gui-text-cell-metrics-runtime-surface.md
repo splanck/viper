@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-30
+---
+
 # ADR 0019: GUI Text/Cell Metrics (Viper.GUI.OutputPane measurement)
 
 ## Status

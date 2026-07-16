@@ -13,7 +13,7 @@
 //                 active nesting depth.
 // Ownership/Lifetime: Operates on Lowerer-owned ProcedureContext and does not
 //                     allocate persistent resources beyond IL instructions.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

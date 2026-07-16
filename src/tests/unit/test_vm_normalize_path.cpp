@@ -9,7 +9,7 @@
 // Purpose: Verify debug path normalization collapses separators and dot segments.
 // Key invariants: Backslashes become slashes; './' removed; 'dir/../' collapsed.
 // Ownership/Lifetime: Standalone executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

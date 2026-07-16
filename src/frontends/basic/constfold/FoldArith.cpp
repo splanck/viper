@@ -11,7 +11,7 @@
 //                 original AST or Constant inputs.
 // Ownership/Lifetime: Operates purely on lightweight Value/Constant summaries;
 //                     callers retain ownership of AST nodes and runtime data.
-// Links: docs/basic-language.md, docs/codemap.md
+// Links: docs/tutorials/basic-tutorial.md, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

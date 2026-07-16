@@ -15,7 +15,7 @@
 // Ownership/Lifetime: Produces new AST nodes wrapped in unique_ptr instances;
 //                     ownership transfers to callers that splice them into the
 //                     AST.
-// Links: docs/codemap.md, docs/il-guide.md#basic-frontend-constant-folding
+// Links: docs/internals/codemap.md, docs/il/il-guide.md#basic-frontend-constant-folding
 //
 //===----------------------------------------------------------------------===//
 

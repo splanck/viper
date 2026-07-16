@@ -31,7 +31,7 @@
 //   Functions observe the EhModel and never take ownership of IR resources.
 //
 // Links:
-//   docs/il-guide.md#reference
+//   docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

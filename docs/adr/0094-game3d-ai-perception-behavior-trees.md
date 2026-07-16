@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0094: NPC AI — Perception3D and BehaviorTree3D
 
 Date: 2026-07-11

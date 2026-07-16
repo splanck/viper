@@ -9,7 +9,7 @@
 // Purpose: Provides forward declarations and common type aliases for BASIC AST nodes.
 // Key invariants: Type enumerators align with BASIC scalar kinds.
 // Ownership/Lifetime: Nodes are owned via std::unique_ptr by callers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

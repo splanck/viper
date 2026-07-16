@@ -11,7 +11,7 @@
 //                 prior pass results. Each pass receives the shared AArch64Module state.
 // Ownership/Lifetime: PassManager owns registered passes via unique_ptr and operates on
 //                     a caller-owned AArch64Module instance passed by reference.
-// Links: docs/codemap.md, src/codegen/aarch64/
+// Links: docs/internals/codemap.md, src/codegen/aarch64/
 //
 //===----------------------------------------------------------------------===//
 

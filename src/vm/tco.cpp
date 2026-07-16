@@ -19,7 +19,7 @@
 //   - Frame is reused in place; no new allocations except vector resizing.
 //   - Register count cache avoids repeated function scans.
 //
-// Links: docs/architecture.md, docs/vm.md
+// Links: docs/internals/architecture.md, docs/internals/vm.md
 //
 //===----------------------------------------------------------------------===//
 

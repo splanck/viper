@@ -11,7 +11,7 @@
 // Key invariants: Identical checks in dominated blocks are removed; loop-invariant
 //                 checks are hoisted when operands are defined outside the loop.
 // Ownership/Lifetime: Builds a transient module per test invocation.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

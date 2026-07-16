@@ -15,8 +15,8 @@
 //     resulting control flow remains well-structured.
 //   * Condition expressions are validated with shared helpers so diagnostics are
 //     consistent across IF and loop constructs.
-// References: docs/basic-language.md#loops,
-//             docs/codemap/basic.md#semantic-analyzer
+// References: docs/tutorials/basic-tutorial.md#loops,
+//             docs/internals/codemap/basic.md#semantic-analyzer
 //
 //===----------------------------------------------------------------------===//
 //

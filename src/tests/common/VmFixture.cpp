@@ -10,7 +10,7 @@
 // Key invariants: Trap helpers use process isolation (fork on POSIX,
 //                 CreateProcess on Windows) to survive rt_abort/exit calls.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

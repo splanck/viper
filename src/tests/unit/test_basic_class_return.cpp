@@ -9,7 +9,7 @@
 // Purpose: Repro and guard for BUG-040 — ensure FUNCTIONS returning custom
 // Key invariants: The ret operand must originate from a Load typed as Ptr.
 // Ownership/Lifetime: Standalone unit test executable.
-// Links: docs/codemap.md, docs/il-guide.md#reference
+// Links: docs/internals/codemap.md, docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

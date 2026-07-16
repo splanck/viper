@@ -9,7 +9,7 @@
 // Purpose: Declares the OOP index builder for BASIC AST processing.
 // Key invariants: Builder walks the AST once to populate the OopIndex.
 // Ownership/Lifetime: Builder does not own the AST or the OopIndex.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

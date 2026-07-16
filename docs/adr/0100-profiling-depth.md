@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0100: Profiling Depth — Per-Pass Draw Attribution + Hitch Tracer
 
 Date: 2026-07-11

@@ -9,7 +9,7 @@
 // Purpose: End-to-end multi-file namespace tests proving file-scoped USING and aliasing.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

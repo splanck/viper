@@ -13,7 +13,7 @@
 // Key invariants: Operates on IL CFG structures without mutating ownership.
 // Ownership/Lifetime: Stateless free functions that inspect/mutate
 //          caller-owned IR structures.
-// Links: docs/codemap.md, il/core/BasicBlock.hpp, il/core/Function.hpp,
+// Links: docs/internals/codemap.md, il/core/BasicBlock.hpp, il/core/Function.hpp,
 //        il/core/Instr.hpp, il/core/OpcodeInfo.hpp
 //
 //===----------------------------------------------------------------------===//

@@ -18,7 +18,7 @@
 // Ownership/Lifetime: Function owns BasicBlocks in stable storage. BasicBlock
 //          owns all Instructions in stable storage and Params by value. Labels
 //          are stored as std::string values owned by the block.
-// Links: docs/il-guide.md#reference, il/core/Instr.hpp, il/core/Param.hpp
+// Links: docs/il/il-guide.md#reference, il/core/Instr.hpp, il/core/Param.hpp
 //
 //===----------------------------------------------------------------------===//
 

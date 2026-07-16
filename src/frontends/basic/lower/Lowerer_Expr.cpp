@@ -11,7 +11,7 @@
 //                 mutate ownership of AST nodes.
 // Ownership/Lifetime: Operates on a borrowed Lowerer instance; AST nodes remain
 //                     owned by the caller.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

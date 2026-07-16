@@ -15,7 +15,7 @@
 // Ownership/Lifetime: Relies on caller-managed AST nodes and temporary
 //                     constants; newly created AST nodes are returned via
 //                     std::unique_ptr to transfer ownership back to the caller.
-// Links: docs/basic-language.md, docs/codemap.md
+// Links: docs/tutorials/basic-tutorial.md, docs/internals/codemap.md
 //
 // Dispatches BASIC constant folding requests to domain-specific helpers.
 //

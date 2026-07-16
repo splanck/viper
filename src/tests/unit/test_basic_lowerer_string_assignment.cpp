@@ -9,7 +9,7 @@
 // Purpose: Verify BASIC lowerer retains and releases strings on assignment.
 // Key invariants: String variables retain new values before releasing old ones.
 // Ownership/Lifetime: Test owns parser, lowerer, and resulting module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

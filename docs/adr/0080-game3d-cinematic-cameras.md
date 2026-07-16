@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0080: Game3D Cinematic Cameras (RailCamera3D + Timeline3D)
 
 Date: 2026-07-10

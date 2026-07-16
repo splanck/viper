@@ -15,7 +15,7 @@
 //                 together because they share reference-counted string handles.
 // Ownership/Lifetime: Registered metadata persists via the shared registry for
 //                     the life of the process.
-// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
+// Links: docs/il/il-guide.md#reference, docs/internals/architecture.md#runtime-signatures
 //
 //===----------------------------------------------------------------------===//
 

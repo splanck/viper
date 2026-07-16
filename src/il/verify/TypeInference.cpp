@@ -13,7 +13,7 @@
 //                 absent from both containers.
 // Ownership/Lifetime: The helper borrows all storage from callers (maps, sets,
 //                     diagnostic streams) and never assumes ownership.
-// Links: docs/il-guide.md#reference, docs/codemap.md
+// Links: docs/il/il-guide.md#reference, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

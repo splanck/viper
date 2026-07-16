@@ -10,7 +10,7 @@
 // Key invariants: Builder maintains null termination, grows without overflow, and
 //                 keeps small strings in inline storage.
 // Ownership/Lifetime: Each test initialises and frees its own builder instance.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 
 #include "viper/runtime/rt.h"
 

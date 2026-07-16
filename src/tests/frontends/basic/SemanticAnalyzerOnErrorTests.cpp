@@ -9,7 +9,7 @@
 // Purpose: Validate BASIC semantic analyzer error handler tracking and RESUME diagnostics.
 // Key invariants: ON ERROR establishes procedure-scoped handlers and RESUME requires active
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

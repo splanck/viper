@@ -12,7 +12,7 @@
 // Key invariants: Handler templates must match the RuntimeHandler signature.
 // Ownership/Lifetime: Templates are instantiated at compile time; adapters
 //                     have static duration.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

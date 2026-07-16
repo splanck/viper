@@ -10,7 +10,7 @@
 //                 diagnostics cover invalid configurations.
 // Ownership/Lifetime: Parser creates AST nodes managed by caller-owned
 //                     std::unique_ptr wrappers.
-// Links: docs/codemap.md, docs/basic-language.md#loops
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md#loops
 //
 //===----------------------------------------------------------------------===//
 

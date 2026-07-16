@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0064: IL Spec Version 0.2.0 → 0.3.0
 
 ## Status
@@ -22,7 +28,7 @@ changes since 0.2.0 include:
   demotion proofs that let the verifier re-prove a checked op can be demoted to
   its plain form (ADR 0026), and the narrower-width arithmetic lowering paths.
 
-`docs/il-guide.md#reference` is normative, and IL grammar/opcode changes are
+`docs/il/il-guide.md#reference` is normative, and IL grammar/opcode changes are
 ADR-gated (ADR 0006). Rather than fold each addition into a lingering `0.2.0`
 banner, this ADR advances the spec version so the version line honestly
 reflects the surface a module may use.
@@ -68,6 +74,6 @@ verbatim and never validates it; there is no supported-range check anywhere in
   would fail later (at an unknown-opcode error), not at the banner. Adding an
   explicit version gate is deferred to a future ADR if/when cross-version
   interop becomes a requirement.
-- Documentation that states the IL version (`docs/il-guide.md`,
-  `docs/architecture.md`, `README.md`, and the code-block banners throughout the
+- Documentation that states the IL version (`docs/il/il-guide.md`,
+  `docs/internals/architecture.md`, `README.md`, and the code-block banners throughout the
   docs/examples/tests corpus) was updated to `0.3.0` in the same change.

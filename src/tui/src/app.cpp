@@ -14,7 +14,7 @@
 // Ownership/Lifetime: App owns the widget tree, focus manager, and screen
 //                     buffer; it borrows the terminal I/O backend supplied by
 //                     the embedder.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

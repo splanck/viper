@@ -16,7 +16,7 @@
 //   - Folding must never change observable behavior.
 //   - Overflow/trap-producing operations must NOT be folded.
 //   - Non-finite float results must NOT be folded.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

@@ -11,7 +11,7 @@
 //                 overflow pseudos and backend-required entry sequences must
 //                 be expanded before register allocation and emission.
 // Ownership/Lifetime: Stateless pass; mutates AArch64Module::mir in place.
-// Links: docs/codemap.md, src/codegen/aarch64/LowerOvf.hpp
+// Links: docs/internals/codemap.md, src/codegen/aarch64/LowerOvf.hpp
 //
 //===----------------------------------------------------------------------===//
 

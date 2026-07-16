@@ -9,7 +9,7 @@
 // Purpose: Verify that label breakpoints halt execution before block entry.
 // Key invariants: VM prints a single BREAK line and executes no block instructions.
 // Ownership/Lifetime: Test creates temporary output file.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

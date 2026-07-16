@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-08
+---
+
 # ADR 0068: GUI App Activation API
 
 ## Status

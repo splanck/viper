@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC OOP lowering emits runtime helpers and mangled members.
 // Key invariants: Lowering produces required object runtime externs and class
 // Ownership/Lifetime: Test owns compilation inputs and inspects resulting module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

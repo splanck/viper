@@ -9,7 +9,7 @@
 // Purpose: Declares state container used in BASIC-to-IL lowering.
 // Key invariants: None.
 // Ownership/Lifetime: Does not own referenced module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

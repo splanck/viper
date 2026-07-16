@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0087: Height-Fog Sun Inscattering
 
 Date: 2026-07-10

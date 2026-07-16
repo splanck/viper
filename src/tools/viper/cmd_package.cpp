@@ -98,7 +98,7 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "  --verbose, -v             Show detailed packaging output\n"
         << "  --help, -h                Show this help\n"
         << "\n"
-        << "Target-specific install/signing options are documented in docs/tools.md.\n"
+        << "Target-specific install/signing options are documented in docs/tools/cli.md.\n"
         << "\n"
         << "Examples:\n"
         << "  viper package                       Package current dir for host platform\n"
@@ -117,7 +117,7 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "macOS code-signing/notarization run only on a macOS host; Windows Authenticode\n"
         << "signing runs only where signtool is available. .dmg builds on a macOS host and\n"
         << ".rpm on an rpmbuild-capable host.\n"
-        << "Manifest directives and signing options are documented in docs/tools.md.\n";
+        << "Manifest directives and signing options are documented in docs/tools/cli.md.\n";
 }
 
 /// @brief Parsed command-line arguments for the `viper package` subcommand.

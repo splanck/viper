@@ -16,7 +16,7 @@
 // Ownership/Lifetime: Operates on the Lowerer state machine, emitting IR into
 //                     the caller-provided module without taking ownership of AST
 //                     nodes or runtime resources.
-// Links: docs/codemap.md, docs/architecture.md#basic-lowering
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#basic-lowering
 //
 //===----------------------------------------------------------------------===//
 

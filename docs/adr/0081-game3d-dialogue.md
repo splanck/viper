@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0081: Game3D Dialogue System (Dialogue3D + Camera3D.WorldToScreen)
 
 Date: 2026-07-10

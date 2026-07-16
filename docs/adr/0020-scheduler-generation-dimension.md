@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-01
+---
+
 # ADR 0020: Revision-Aware Scheduling (Viper.Threads.Scheduler generations)
 
 ## Status
@@ -52,7 +58,7 @@ The existing `Schedule(key, delayMs)` is unchanged and tags entries with
 generation `0`; `IsDue`, `Poll`, `Cancel`, `Pending`, and `Clear` are unchanged
 and ignore the generation. The supersession identity:
 
-```
+```text
 IsDueGen(key, g) == (IsDue(key) && GenerationOf(key) == g)
 ```
 

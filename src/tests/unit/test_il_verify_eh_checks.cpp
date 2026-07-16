@@ -30,7 +30,7 @@
 //      - Detects invalid resume targets
 //
 // Ownership/Lifetime: Constructs temporary IL functions for verification.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

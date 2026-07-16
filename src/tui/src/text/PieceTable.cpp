@@ -17,7 +17,7 @@
 //                     contiguous strings.  Change objects capture copies of the
 //                     affected text to guarantee that callback receivers observe
 //                     stable payloads even if the table mutates again.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

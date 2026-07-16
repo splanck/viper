@@ -9,7 +9,7 @@
 // Purpose: Implementation of random IL module generation.
 // Key invariants: Generated modules always pass IL verification.
 // Ownership/Lifetime: Generator maintains RNG state across calls.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

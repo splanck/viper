@@ -26,7 +26,7 @@
 //   - Symbols persist for the duration of a procedure lowering pass
 //   - String literal labels persist across procedure boundaries
 //
-// Links: docs/architecture.md, docs/codemap.md
+// Links: docs/internals/architecture.md, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

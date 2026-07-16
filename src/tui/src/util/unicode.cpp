@@ -14,7 +14,7 @@
 //                 for malformed sequences.
 // Ownership/Lifetime: Functions borrow input views and return value-owned
 //                     containers so callers retain full control over storage.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

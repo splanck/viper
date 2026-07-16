@@ -9,7 +9,7 @@
 // Purpose: Verify CLI marshals >8 integer args by using stack slots.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

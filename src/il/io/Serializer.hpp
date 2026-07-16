@@ -12,10 +12,10 @@
 //          to the IL grammar and round-trips through parse(serialize(m)).
 // Key invariants:
 //   - Serializer is stateless; all methods are static and thread-safe.
-//   - Output conforms to docs/il-guide.md grammar.
+//   - Output conforms to docs/il/il-guide.md grammar.
 // Ownership/Lifetime: Stateless facade. The caller owns the ostream and
 //          Module passed to write()/toString().
-// Links: docs/il-guide.md, il/io/Parser.hpp, il/core/fwd.hpp
+// Links: docs/il/il-guide.md, il/io/Parser.hpp, il/core/fwd.hpp
 //
 //===----------------------------------------------------------------------===//
 

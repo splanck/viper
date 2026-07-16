@@ -9,7 +9,7 @@
 // Purpose: Validate that LoopSimplify inserts preheaders and preserves arguments.
 // Key invariants: Entry edge splits into a dedicated preheader with forwarded SSA values.
 // Ownership/Lifetime: Builds a local module for the duration of the test run.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

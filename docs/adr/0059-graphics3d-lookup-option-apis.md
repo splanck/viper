@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR 0059: Graphics3D Lookup Option APIs
 
 Date: 2026-07-02

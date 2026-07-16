@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0002: Shared-Memory Threads with FIFO Monitors and Safe Variables
 
 Date: 2025-12-18

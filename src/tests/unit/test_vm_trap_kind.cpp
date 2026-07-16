@@ -9,7 +9,7 @@
 // Purpose: Validate TrapKind helpers provide stable string names and decoding.
 // Key invariants: Bidirectional mapping covers every TrapKind enumerator and fallback path.
 // Ownership/Lifetime: Standalone unit test executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

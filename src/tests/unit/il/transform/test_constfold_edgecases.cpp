@@ -13,7 +13,7 @@
 //                 Operations that are well-defined must fold to the correct
 //                 constant value.
 // Ownership/Lifetime: Builds transient modules per test invocation.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

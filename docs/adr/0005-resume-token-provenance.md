@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0005: Resume Tokens Are Handler-Provenance Capabilities
 
 Date: 2026-06-12
@@ -79,6 +85,6 @@ Cons:
 
 ## Spec Impact
 
-This ADR updates the IL exception-handling contract in `docs/il-guide.md` and
+This ADR updates the IL exception-handling contract in `docs/il/il-guide.md` and
 `docs/specs/errors.md`. The grammar is unchanged; only verifier legality for
 `ResumeTok` flow is tightened.

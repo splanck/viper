@@ -13,7 +13,7 @@
 //                 verifier-clean checked unsigned div/rem, and O2 has a
 //                 bounded multi-block inliner.
 // Ownership/Lifetime: Ephemeral modules only.
-// Links: docs/il-passes.md
+// Links: docs/il/il-passes.md
 //
 //===----------------------------------------------------------------------===//
 

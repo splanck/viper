@@ -9,7 +9,7 @@
 // Purpose: Declares control-flow lowering helpers for BASIC statements such as
 // Key invariants: Helpers mutate the current block through the active Lowerer
 // Ownership/Lifetime: Declarations are included inside Lowerer to extend its
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-04
+---
+
 # ADR 0015: Workspace File Index Paging
 
 Date: 2026-06-26

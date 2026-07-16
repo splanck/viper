@@ -9,7 +9,7 @@
 // Purpose: Define the constructor logic for the shared ParserState object used
 //          by the textual IL parser so that the header can remain lightweight.
 // Ownership/Lifetime: ParserState keeps a reference to a caller-owned Module.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

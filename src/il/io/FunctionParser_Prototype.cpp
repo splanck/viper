@@ -10,7 +10,7 @@
 //          syntax including parameter parsing, calling convention, and attributes.
 // Key invariants: Creates new function entries in the module with proper temp ID setup.
 // Ownership/Lifetime: Populates functions directly within the supplied module.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

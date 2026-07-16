@@ -15,7 +15,7 @@
 // Ownership/Lifetime: Operates entirely on lightweight Value helpers without
 //                     owning AST nodes; callers remain responsible for
 //                     replacing nodes within the tree.
-// Links: docs/codemap.md, docs/il-guide.md#basic-frontend-constant-folding
+// Links: docs/internals/codemap.md, docs/il/il-guide.md#basic-frontend-constant-folding
 //
 //===----------------------------------------------------------------------===//
 

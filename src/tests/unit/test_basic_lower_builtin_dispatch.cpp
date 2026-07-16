@@ -9,7 +9,7 @@
 // Purpose: Validate BASIC builtin lowering registers family handlers through the
 // Key invariants: Each builtin family shares the same handler pointer after
 // Ownership/Lifetime: Test owns the Lowerer instance and relies on the builtin
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BuiltinRegistry.hpp"

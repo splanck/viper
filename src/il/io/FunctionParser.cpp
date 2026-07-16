@@ -10,7 +10,7 @@
 // Key invariants: ParserState maintains current function, block, and location
 //                 context while enforcing SSA identifier uniqueness.
 // Ownership/Lifetime: Populates functions directly within the supplied module.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 // Note: This file is split into multiple compilation units for maintainability:
 //   - FunctionParser_Prototype.cpp: Function header/prototype parsing

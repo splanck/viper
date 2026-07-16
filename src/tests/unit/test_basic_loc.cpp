@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC AST and IL instructions retain source locations.
 // Key invariants: Locations must match expected columns.
 // Ownership/Lifetime: Test owns constructed AST and module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

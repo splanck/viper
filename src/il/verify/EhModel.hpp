@@ -21,7 +21,7 @@
 //   guarantee the function outlives the model.
 //
 // Links:
-//   docs/il-guide.md#reference
+//   docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

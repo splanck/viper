@@ -9,7 +9,7 @@
 // Purpose: Ensure INPUT-style numeric parsing traps when trailing junk appears.
 // Key invariants: rt_to_double rejects non-whitespace suffixes and reports the INPUT trap.
 // Ownership/Lifetime: Uses runtime helpers directly.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

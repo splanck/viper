@@ -9,7 +9,7 @@
 // Purpose: Ensure every opcode annotated with a VM dispatch kind has a handler.
 // Key invariants: VM opcode handler table provides non-null entries for all
 // Ownership/Lifetime: Test uses static metadata only.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

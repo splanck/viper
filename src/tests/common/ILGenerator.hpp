@@ -9,7 +9,7 @@
 // Purpose: Generate random but well-typed IL modules for property-based testing.
 // Key invariants: Generated modules are always valid IL (no UB, valid SSA).
 // Ownership/Lifetime: Generator is stateless except for RNG seed.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: RAII helper for managing source location context in Lowerer.
 // Key invariants: Restores previous location on scope exit.
 // Ownership/Lifetime: Stack-based RAII, non-copyable, non-movable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

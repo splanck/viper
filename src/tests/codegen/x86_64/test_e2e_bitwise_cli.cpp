@@ -9,7 +9,7 @@
 // Purpose: Exercise the ilc CLI end-to-end for bitwise IL snippets and ensure
 // Key invariants: The parameterized scenarios describe IL programs that must
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

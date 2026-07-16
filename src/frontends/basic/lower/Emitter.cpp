@@ -11,7 +11,7 @@
 //                 location tracking when synthesising instructions.
 // Ownership/Lifetime: Emitter borrows the Lowerer context and never owns IR
 //                     functions, blocks, or runtime handles.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

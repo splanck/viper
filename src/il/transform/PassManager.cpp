@@ -8,7 +8,7 @@
 // File: src/il/transform/PassManager.cpp
 // Purpose: Implement the orchestration layer that registers passes, manages
 //          pipelines, and invokes the executor to run them.
-// Links: docs/architecture.md#passes
+// Links: docs/internals/architecture.md#passes
 //
 //===----------------------------------------------------------------------===//
 

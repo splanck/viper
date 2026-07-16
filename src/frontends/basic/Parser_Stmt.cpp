@@ -12,7 +12,7 @@
 // Ownership/Lifetime: Parser owns tokens produced by the lexer and returns
 //                     statements as std::unique_ptr nodes that the caller
 //                     manages.
-// Links: docs/codemap.md, docs/basic-language.md#statements
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md#statements
 //
 //===----------------------------------------------------------------------===//
 

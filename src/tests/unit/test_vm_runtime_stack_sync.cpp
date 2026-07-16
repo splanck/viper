@@ -9,7 +9,7 @@
 // Purpose: Verify runtime helpers writing through stack out-pointers propagate updates.
 // Key invariants: Runtime call result length matches the source line written to disk.
 // Ownership/Lifetime: Test manages temporary files and runtime handles locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

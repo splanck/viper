@@ -9,7 +9,7 @@
 // Purpose: Tracks file-scoped USING directives with declaration order and alias resolution.
 // Key invariants: // Key invariants:
 // Ownership/Lifetime: Owned by per-file semantic analysis context.
-// Links: docs/codemap.md, CLAUDE.md
+// Links: docs/internals/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

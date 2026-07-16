@@ -9,7 +9,7 @@
 // Purpose: Declarations for viper subcommand handlers and usage helper.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

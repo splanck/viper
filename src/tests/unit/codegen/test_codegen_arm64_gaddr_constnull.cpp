@@ -9,7 +9,7 @@
 // Purpose: Verify global address materialization and const.null on AArch64.
 // Key invariants: Global addresses use adrp+add, null is xzr or mov #0.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

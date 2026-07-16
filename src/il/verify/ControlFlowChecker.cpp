@@ -12,7 +12,7 @@
 //                 arguments must align with destination parameter lists.
 // Ownership/Lifetime: Operates on caller-managed verifier state without
 //                     persisting references beyond each call.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 
@@ -63,7 +63,7 @@ namespace {
 /// @return Empty on success; otherwise diagnostics describing duplicate names or
 ///         void parameters.
 /// @details Ensures block parameters are unique and non-void so predecessors can
-///          match arguments, per docs/il-guide.md#reference section "Basic Blocks".
+///          match arguments, per docs/il/il-guide.md#reference section "Basic Blocks".
 Expected<void> validateBlockParams_impl(const Function &fn,
                                         const BasicBlock &bb,
                                         TypeInference &types,
@@ -107,7 +107,7 @@ Expected<void> validateBlockParams_impl(const Function &fn,
 /// @return Propagates the first verification error produced by operand checking
 ///         or the callback; otherwise empty.
 /// @details Stops after the first terminator to honour the single-terminator
-///          rule outlined in docs/il-guide.md#reference ("Explicit control flow").
+///          rule outlined in docs/il/il-guide.md#reference ("Explicit control flow").
 Expected<void> iterateBlockInstructions_impl(
     const Function &fn,
     const BasicBlock &bb,
@@ -137,7 +137,7 @@ Expected<void> iterateBlockInstructions_impl(
 /// @return Diagnostic if the block is empty, has multiple terminators, contains
 ///         instructions after a terminator, or is missing a terminator.
 /// @details Implements the "explicit control flow" requirement described in
-///          docs/il-guide.md#reference: every block ends with exactly one terminator.
+///          docs/il/il-guide.md#reference: every block ends with exactly one terminator.
 Expected<void> checkBlockTerminators_impl(const Function &fn, const BasicBlock &bb) {
     if (bb.instructions.empty())
         return Expected<void>{makeError({}, formatBlockDiag(fn, bb, "empty block"))};

@@ -12,7 +12,7 @@
 #
 # Ownership/Lifetime: CTest owns generated unit-test outputs in the build tree.
 #
-# Links: docs/testing.md, src/tests/CMakeLists.txt
+# Links: docs/internals/testing.md, src/tests/CMakeLists.txt
 #
 #===----------------------------------------------------------------------===#
 

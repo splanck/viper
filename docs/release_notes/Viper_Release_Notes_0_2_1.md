@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-07-15
+---
+
 # Viper Compiler Platform - Release Notes
 
 > **Development Status**: Pre-Alpha

@@ -9,7 +9,7 @@
 // Purpose: Verify normalized paths yield correct basename.
 // Key invariants: Backslashes become slashes; '..' segments collapsed;
 // Ownership/Lifetime: Standalone executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

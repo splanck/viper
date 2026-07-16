@@ -9,7 +9,7 @@
 // Purpose: Verify entry block string parameters retain handles across caller release.
 // Key invariants: VM retains incoming strings before transferring to registers.
 // Ownership/Lifetime: Builds a synthetic module and inspects runtime heap headers.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

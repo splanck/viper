@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Script: audit_bible_examples.py
-# Purpose: Independently compile-check runnable code fences in docs/bible.
+# Purpose: Independently compile-check runnable code fences in docs/book.
 
 from __future__ import annotations
 
@@ -204,7 +204,7 @@ def pseudo_reason(code: str) -> str:
 
 
 def is_negative_example(fence: Fence) -> bool:
-    if Path(fence.path).name == "e-error-messages.md":
+    if Path(fence.path).name == "d-error-messages.md":
         return True
     if re.search(r"(?m)^\s*[^/\s].*//\s*(Error|Invalid)\b", fence.code):
         return True

@@ -9,7 +9,7 @@
 // Purpose: Ensure verifier accepts basic stack memory operations.
 // Key invariants: Memory instructions with matching pointer arithmetic and types pass verification.
 // Ownership/Lifetime: Constructs module locally for verification.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

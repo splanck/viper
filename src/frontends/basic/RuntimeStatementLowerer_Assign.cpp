@@ -11,7 +11,7 @@
 //          the common assignment coercion logic.
 // Key invariants: Maintains Lowerer's runtime lowering semantics exactly.
 // Ownership/Lifetime: Borrows Lowerer reference; coordinates with parent.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

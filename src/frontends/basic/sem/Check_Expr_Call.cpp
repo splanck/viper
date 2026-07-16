@@ -13,7 +13,7 @@
 //     selection stays consistent across the compiler pipeline.
 //   * Diagnostics surface both signature mismatches and invalid arguments while
 //     preserving the analyzer's contextual state (loop stacks, scope guards).
-// References: docs/codemap/basic.md, docs/basic-language.md#procedures
+// References: docs/internals/codemap/basic.md, docs/tutorials/basic-tutorial.md#procedures
 //
 //===----------------------------------------------------------------------===//
 //

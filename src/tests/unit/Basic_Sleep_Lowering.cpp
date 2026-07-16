@@ -9,7 +9,7 @@
 // Purpose: Verify SLEEP lowers to a call to rt_sleep_ms and declares extern.
 // Key invariants: Module contains extern @rt_sleep_ms when SLEEP is present.
 // Ownership/Lifetime: Compiles a tiny BASIC snippet and inspects the module and IL text.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

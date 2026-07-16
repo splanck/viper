@@ -42,7 +42,7 @@ void printUsage() {
               << "  vbasic game.bas -- arg1 arg2              Pass args to program\n"
               << "  vbasic game.bas --stdin-from input.txt    Redirect input\n"
               << "\n"
-              << "Documentation: docs/basic-reference.md\n";
+              << "Documentation: docs/languages/basic-reference.md\n";
 }
 
 } // namespace vbasic

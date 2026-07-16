@@ -13,7 +13,7 @@
 // Ownership/Lifetime: Operates entirely on VM-managed state without persisting
 //                     data, so helpers stay side-effect free aside from the
 //                     emitted trap.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

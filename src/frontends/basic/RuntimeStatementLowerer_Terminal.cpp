@@ -10,7 +10,7 @@
 //          Handles BEEP, CLS, COLOR, LOCATE, CURSOR, ALTSCREEN, SLEEP statements.
 // Key invariants: Terminal statements map to corresponding runtime helpers.
 // Ownership/Lifetime: Borrows Lowerer reference; coordinates with parent.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

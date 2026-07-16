@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - The process owns temporary Pixels buffers and releases them on exit.
 // Links: ../sprites.zia, ../player_animation.zia, ../assets/manifest.txt,
-//        ../docs/testing.md
+//        ../docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

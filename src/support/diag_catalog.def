@@ -16,7 +16,7 @@
 //     diag_catalog.cpp; add entries here as codes stabilize.
 // Ownership/Lifetime:
 //   - Static data compiled into viper_support.
-// Links: support/diag_catalog.hpp, docs/debugging.md
+// Links: support/diag_catalog.hpp, docs/tools/debugging.md
 //
 //===----------------------------------------------------------------------===//
 

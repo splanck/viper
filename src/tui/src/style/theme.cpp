@@ -13,7 +13,7 @@
 //                 observing mutation.
 // Ownership/Lifetime: Theme stores styles by value and owns no external
 //                     resources.
-// Links: docs/architecture.md#vipertui-architecture
+// Links: docs/internals/architecture.md#vipertui-architecture
 //
 //===----------------------------------------------------------------------===//
 

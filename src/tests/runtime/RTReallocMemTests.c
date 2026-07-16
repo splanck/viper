@@ -15,7 +15,7 @@
 //     large multi-limb values; and/or/xor with negative operands follow
 //     two's-complement semantics; capacity growth does not corrupt digits.
 // Ownership/Lifetime: Each test creates and discards its own objects.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

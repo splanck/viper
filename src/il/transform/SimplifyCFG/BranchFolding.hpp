@@ -9,7 +9,7 @@
 // Purpose: Declares branch folding routines for the SimplifyCFG pass.
 // Key invariants: Transformations preserve control flow equivalence.
 // Ownership/Lifetime: Operates on caller-owned functions and blocks.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

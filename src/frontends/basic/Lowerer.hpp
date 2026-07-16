@@ -13,7 +13,7 @@
 //                 top-level statements. Runtime helpers are declared lazily.
 // Ownership/Lifetime: Owns the produced Module via lowerProgram(). Uses IRBuilder
 //                     for structure emission. Does not own AST nodes.
-// Links: docs/architecture.md, docs/codemap.md
+// Links: docs/internals/architecture.md, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

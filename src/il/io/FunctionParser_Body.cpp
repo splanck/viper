@@ -10,7 +10,7 @@
 //          block labels, parameters, instructions, and .loc directives.
 // Key invariants: Maintains SSA identifier uniqueness across blocks.
 // Ownership/Lifetime: Populates blocks directly within the current function.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

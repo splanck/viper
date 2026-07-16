@@ -9,7 +9,7 @@
 // Purpose: Verify ARGC/ARG$/COMMAND$ semantic arity validation uses registry arity (no table
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -11,7 +11,7 @@
 //                 operate when a procedure context is active.
 // Ownership/Lifetime: Borrowed DiagnosticEmitter and Lowerer state; no AST
 //                     ownership.
-// Links: docs/codemap.md, docs/basic-language.md
+// Links: docs/internals/codemap.md, docs/tutorials/basic-tutorial.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Verify AArch64 lowering for IL switch.i32 into cmp + b.eq chains.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

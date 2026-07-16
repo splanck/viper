@@ -9,7 +9,7 @@
 // Purpose: Implement token-to-string conversion helpers used by diagnostics and
 //          debugging tools in the BASIC front end.
 // Key invariants: The generated table always matches TokenKind::Count.
-// Links: docs/basic-language.md#lexical-structure
+// Links: docs/tutorials/basic-tutorial.md#lexical-structure
 //
 //===----------------------------------------------------------------------===//
 

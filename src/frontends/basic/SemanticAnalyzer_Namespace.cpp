@@ -13,7 +13,7 @@
 //   - "Viper" root namespace is reserved.
 //   - Alias names cannot duplicate existing aliases or namespace names.
 // Ownership/Lifetime: Borrows DiagnosticEmitter; no AST ownership.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -214,7 +214,7 @@ void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl) {
 ///          - Aliases must be unique and not shadow namespaces.
 ///          - "Viper" root is reserved.
 void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl) {
-    // Placement rules (per docs/basic-language.md):
+    // Placement rules (per docs/tutorials/basic-tutorial.md):
     // - USING must appear at file scope (not inside namespace blocks)
     // - USING must appear before any namespace/class/interface declarations
     // - USING cannot appear inside procedures

@@ -1,12 +1,27 @@
 .TH il-dis 1 "Viper" "viper-il-dis" "User Commands"
 .SH NAME
-il-dis \- Demonstrate building and serializing IL programmatically
+il-dis \- lower textual IL to Viper bytecode and print the decoded listing
 .SH SYNOPSIS
 .B il-dis
+[\fIoptions\fR] \fIFILE.il\fR
 .SH DESCRIPTION
-Constructs a small IL module in memory using the IRBuilder and prints it to stdout. Intended as a developer sample and smoke test.
+\fBil-dis\fR parses a textual Viper IL module, lowers it to Viper bytecode,
+and prints the decoded bytecode listing to stdout, including the constant,
+global, and native pools.
+.SH OPTIONS
+.TP
+\fB--raw\fR
+Include raw 32-bit instruction words alongside the decoded listing.
+.TP
+\fB--no-pools\fR
+Omit the constant/global/native pool listings.
+.TP
+\fB--version\fR
+Show the IL version and exit.
+.TP
+\fB-h\fR, \fB--help\fR
+Show command help and exit.
 .SH EXIT STATUS
-Always returns 0 unless serialization fails unexpectedly.
+0 on success; non-zero on argument, I/O, parse, or lowering failure.
 .SH SEE ALSO
-\fBviper\fR(1)
-
+\fBviper\fR(1), \fBil-verify\fR(1), \fBilrun\fR(1)

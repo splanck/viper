@@ -9,7 +9,7 @@
 // Purpose: Verify module parser distinguishes global directives from labels sharing the prefix.
 // Key invariants: Only bare "global" followed by whitespace/end starts a directive.
 // Ownership/Lifetime: Test owns constructed module and buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

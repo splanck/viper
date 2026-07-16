@@ -9,7 +9,7 @@
 // Purpose: Microbench comparing procedural Len(s) vs property s.Length lowering.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

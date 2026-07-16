@@ -13,7 +13,7 @@
 //                 when the target handler remains live.
 // Ownership/Lifetime: Routines borrow the @ref Lowerer state and update handler
 //                     caches owned by @ref ProcedureContext.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

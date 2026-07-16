@@ -9,7 +9,7 @@
 // Purpose: Validate semantic analysis rules for SELECT CASE statements.
 // Key invariants: SELECT CASE requires integer-compatible selectors, unique
 // Ownership/Lifetime: Each test instantiates parser/analyzer per snippet;
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

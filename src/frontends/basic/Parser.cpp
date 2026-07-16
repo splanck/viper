@@ -8,7 +8,7 @@
 // File: src/frontends/basic/Parser.cpp
 // Purpose: Implement the façade that orchestrates BASIC parsing and routes work
 //          to specialised statement and expression modules.
-// Links: docs/basic-language.md#parser
+// Links: docs/tutorials/basic-tutorial.md#parser
 //
 //===----------------------------------------------------------------------===//
 

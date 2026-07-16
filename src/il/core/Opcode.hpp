@@ -15,7 +15,7 @@
 //   - toString() returns a spec-compliant lowercase mnemonic for every opcode.
 //   - Opcode values are contiguous starting from 0.
 // Ownership/Lifetime: Enum is a value type with no dynamic resources.
-// Links: docs/il-guide.md#reference, il/core/Opcode.def
+// Links: docs/il/il-guide.md#reference, il/core/Opcode.def
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,7 +26,7 @@
 namespace il::core {
 
 /// @brief All instruction opcodes defined by the IL.
-/// @see docs/il-guide.md#reference §3 for opcode descriptions.
+/// @see docs/il/il-guide.md#reference §3 for opcode descriptions.
 enum class Opcode {
 #define IL_OPCODE(NAME, ...) NAME,
 #include "il/core/Opcode.def"

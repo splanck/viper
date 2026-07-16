@@ -33,7 +33,10 @@ Emit IL instead of running the program.
 Enable execution tracing.
 .TP
 \fB--bounds-checks\fR
-Enable runtime bounds checks.
+Enable runtime bounds checks (default for source).
+.TP
+\fB--no-bounds-checks\fR
+Disable generated source bounds checks.
 .TP
 \fB--stdin-from\fR \fIFILE\fR
 Redirect stdin from \fIFILE\fR.
@@ -43,6 +46,12 @@ Limit executed instructions.
 .TP
 \fB--dump-trap\fR
 Show detailed trap diagnostics.
+.TP
+\fB--diagnostic-format\fR \fItext\fR|\fIjson\fR
+Select diagnostic output format.
+.TP
+\fB--strict-diagnostics\fR, \fB--no-strict-diagnostics\fR
+Control whether safety-critical warnings are fatal (fatal by default).
 .TP
 \fB-Wall\fR
 Enable all warnings.

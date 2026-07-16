@@ -14,7 +14,7 @@
 // Ownership/Lifetime: @ref DiagCapture owns its stringstream buffer and borrows
 //                     no external resources.  The bridging helper returns
 //                     @ref Expected<void> values that outlive the capture object.
-// Links: src/support/diag_capture.hpp, docs/codemap.md#support-library
+// Links: src/support/diag_capture.hpp, docs/internals/codemap.md#support-library
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,7 +9,7 @@
 // Purpose: Verify VM addr_of instruction returns a valid runtime string handle for globals.
 // Key invariants: Returned handle stays runtime-managed and preserves global contents.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

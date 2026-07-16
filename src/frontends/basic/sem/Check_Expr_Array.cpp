@@ -13,7 +13,7 @@
 //     arrays are detected early.
 //   * Index expressions must be integers; float indices trigger warnings.
 //   * Bounds checking is performed for constant indices when extents are known.
-// References: docs/codemap/basic.md, docs/basic-language.md#arrays
+// References: docs/internals/codemap/basic.md, docs/tutorials/basic-tutorial.md#arrays
 //
 //===----------------------------------------------------------------------===//
 //

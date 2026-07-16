@@ -18,7 +18,7 @@
 //          Function owns BasicBlocks in stable storage plus Params and metadata.
 //          Functions can be moved efficiently but are expensive to copy (deep
 //          copy of all blocks).
-// Links: docs/il-guide.md#reference, il/core/BasicBlock.hpp,
+// Links: docs/il/il-guide.md#reference, il/core/BasicBlock.hpp,
 //        il/core/Param.hpp, il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -46,7 +46,7 @@ enum class CallingConv {
 };
 
 /// @brief Definition of an IL function with parameters and basic blocks.
-/// @see docs/il-guide.md#reference
+/// @see docs/il/il-guide.md#reference
 struct Function {
     /// Human-readable identifier for the function.
     /// @ownership Stored by the containing Module; immutable after insertion.

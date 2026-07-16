@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0001: Derive BASIC Builtin Signatures from Registry
 
 Date: 2025-11-15

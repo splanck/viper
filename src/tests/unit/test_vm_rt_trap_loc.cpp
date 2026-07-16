@@ -9,7 +9,7 @@
 // Purpose: Verify runtime-originated traps report instruction source locations.
 // Key invariants: Trap output includes function, block, and location.
 // Ownership/Lifetime: Test builds IL calling runtime and runs VM.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

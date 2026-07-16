@@ -9,7 +9,7 @@
 // Purpose: Verify VM source tracing loads files with non-ASCII paths.
 // Key invariants: Trace sink must decode cached file contents when the
 // Ownership/Lifetime: Standalone unit test executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

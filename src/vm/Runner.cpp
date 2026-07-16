@@ -12,7 +12,7 @@
 //                 preserves observable behaviour exposed by existing tooling.
 // Ownership/Lifetime: Runner owns its VM instance while borrowing the module
 //                     and optional debug script supplied by callers.
-// Links: docs/codemap/vm-runtime.md
+// Links: docs/internals/codemap/vm-runtime.md
 //
 //===----------------------------------------------------------------------===//
 

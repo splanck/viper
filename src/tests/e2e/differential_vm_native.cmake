@@ -4,7 +4,7 @@
 #          (`viper -run`) and the host-native backend (`viper codegen <arch>
 #          -run-native`) and asserts identical stdout AND exit code. Unlike the
 #          self-checking native probes, this byte-diffs the two outputs.
-# Links: docs/architecture.md (determinism Core Principle)
+# Links: docs/internals/architecture.md (determinism Core Principle)
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

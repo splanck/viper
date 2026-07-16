@@ -9,7 +9,7 @@
 // Purpose: Validate BASIC OOP parser accepts a class with field, constructor,
 // Key invariants: Parser reports zero diagnostics and produces ClassDecl with
 // Ownership/Lifetime: Test owns parser, diagnostics, and resulting AST.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/DiagnosticEmitter.hpp"

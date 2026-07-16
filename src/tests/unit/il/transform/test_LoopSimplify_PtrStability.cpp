@@ -10,7 +10,7 @@
 // Key invariants: The pass must use indices or stable references when modifying
 //                 function.blocks to avoid use-after-reallocation bugs.
 // Ownership/Lifetime: Builds a local module for the duration of the test run.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

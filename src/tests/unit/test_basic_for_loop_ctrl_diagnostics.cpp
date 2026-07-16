@@ -10,7 +10,7 @@
 // Key invariants: Array elements and arbitrary expressions as FOR control
 //                 variables emit compile-time errors.
 // Ownership/Lifetime: Test owns compiler inputs and source manager.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

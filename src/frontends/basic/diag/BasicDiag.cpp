@@ -15,7 +15,7 @@
 //                 codes are stable identifiers consumed by tooling and goldens.
 // Ownership/Lifetime: kDiagTable has static storage duration; accessors return
 //                     views/copies into it and never transfer ownership.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 //

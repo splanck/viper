@@ -9,7 +9,7 @@
 // Purpose: Provides alignment utilities for memory and offset calculations.
 // Key invariants: Alignment arguments must be powers of two.
 // Ownership/Lifetime: Pure value-level functions, no allocations or state.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

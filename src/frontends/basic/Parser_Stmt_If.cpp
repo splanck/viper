@@ -11,7 +11,7 @@
 //                 control-flow keywords are validated against expected nesting.
 // Ownership/Lifetime: The parser allocates AST nodes with `std::unique_ptr`
 //                     ownership transferred to the caller.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

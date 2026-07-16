@@ -32,7 +32,7 @@
 //                 scaffolding with procedure emission.
 // Ownership/Lifetime: Operates on Lowerer state borrowed from the lowering
 //                     pipeline; owns no persistent resources.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

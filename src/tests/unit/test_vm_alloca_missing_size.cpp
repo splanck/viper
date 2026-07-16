@@ -9,7 +9,7 @@
 // Purpose: Ensure VM traps when alloca is missing size operand.
 // Key invariants: Alloca without size must emit "missing allocation size" trap.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

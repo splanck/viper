@@ -13,7 +13,7 @@
 //                 stable.
 // Ownership/Lifetime: All Extern data continues to live in headers; this file
 //                     should only gain stateless helpers or diagnostics wiring.
-// Links: docs/codemap.md, docs/architecture.md#cpp-overview
+// Links: docs/internals/codemap.md, docs/internals/architecture.md#cpp-overview
 //
 //===----------------------------------------------------------------------===//
 

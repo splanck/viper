@@ -106,7 +106,7 @@
 /// @see RuntimeClasses.cpp - Implementation of catalog and registry
 /// @see RuntimeClasses.inc - Generated class descriptors
 /// @see runtime.def - Source definitions for runtime library
-/// @see docs/il-guide.md - IL specification reference
+/// @see docs/il/il-guide.md - IL specification reference
 ///
 
 #pragma once

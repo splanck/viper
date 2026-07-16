@@ -9,7 +9,7 @@
 // Purpose: Verify that numeric array fields in classes store via rt_arr_i32_set
 // Key invariants: OOP lowering derives element type from class layout and uses
 // Ownership/Lifetime: Compiles BASIC source into an IL module and inspects the
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "frontends/basic/BasicCompiler.hpp"

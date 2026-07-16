@@ -9,7 +9,7 @@
 // Purpose: Verify BASIC semantic analysis validates NEW expression constructor calls.
 // Key invariants: Analyzer enforces constructor arity/type and accepts matching arguments.
 // Ownership/Lifetime: Test owns parser, analyzer, and diagnostics per scenario.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

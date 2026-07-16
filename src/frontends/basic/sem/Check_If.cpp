@@ -15,8 +15,8 @@
 //     loop condition checks.
 //   * Loop and label stacks maintained by @ref ControlCheckContext must remain
 //     balanced regardless of branch structure.
-// References: docs/basic-language.md#if-statements,
-//             docs/codemap/basic.md#semantic-analyzer
+// References: docs/tutorials/basic-tutorial.md#if-statements,
+//             docs/internals/codemap/basic.md#semantic-analyzer
 //
 //===----------------------------------------------------------------------===//
 //

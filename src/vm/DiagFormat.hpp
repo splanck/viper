@@ -9,7 +9,7 @@
 // Purpose: Centralized diagnostic string builders for VM error paths.
 // Key invariants: All helpers are cold-path only; never call in hot loops.
 // Ownership/Lifetime: Returns std::string by value; no ownership transfer.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -37,7 +37,7 @@ Per repository policy, implementation requires ADRs for:
 
 - runtime C ABI surface changes;
 - IL opcode, grammar, verifier-rule, or cross-layer dependency changes;
-- `docs/il-guide.md#reference` changes;
+- `docs/il/il-guide.md#reference` changes;
 - workflow changes under `.github/workflows/*`.
 
 Runtime API rename work often touches the C ABI and generated registry, so plan

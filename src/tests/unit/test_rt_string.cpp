@@ -9,7 +9,7 @@
 // Purpose: Verify runtime string helpers including substring operations clamp inputs.
 // Key invariants: Substring operations clamp start/length and avoid overflow.
 // Ownership/Lifetime: Uses runtime library.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -15,7 +15,7 @@
 //   - JSON output is a stable array of {code, subsystem, summary} objects.
 // Ownership/Lifetime:
 //   - Catalog data is static; no allocation beyond output formatting.
-// Links: support/diag_catalog.hpp, docs/debugging.md, docs/tools.md
+// Links: support/diag_catalog.hpp, docs/tools/debugging.md, docs/tools/cli.md
 //
 //===----------------------------------------------------------------------===//
 

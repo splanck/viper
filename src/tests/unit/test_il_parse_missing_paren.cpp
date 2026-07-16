@@ -9,7 +9,7 @@
 // Purpose: Ensure extern declarations without parentheses are rejected.
 // Key invariants: Parser diagnostics include the missing token reference and line number.
 // Ownership/Lifetime: Test owns module buffers and diagnostics.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

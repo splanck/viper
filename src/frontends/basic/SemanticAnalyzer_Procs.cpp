@@ -13,7 +13,7 @@
 //                 validation consults ProcRegistry signatures.
 // Ownership/Lifetime: Borrowed DiagnosticEmitter; ProcRegistry managed by the
 //                     analyzer instance.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

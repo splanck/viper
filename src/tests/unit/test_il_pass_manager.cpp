@@ -9,7 +9,7 @@
 // Purpose: Exercise PassManager pipelines, analysis caching, and preservation semantics.
 // Key invariants: Custom analyses should only recompute when passes invalidate them.
 // Ownership/Lifetime: Test constructs a module in-memory and runs passes locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

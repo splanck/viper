@@ -9,7 +9,7 @@
 // Purpose: Ensure runtime bridge traps when rt_print_str is called without required argument.
 // Key invariants: Calls with insufficient args should emit descriptive trap rather than crash.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

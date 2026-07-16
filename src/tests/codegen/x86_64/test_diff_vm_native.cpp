@@ -14,7 +14,7 @@
 // Ownership/Lifetime:
 //   - CodegenFixture owns all temporary files created for each scenario.
 //   - Runtime objects allocated by scenario IL live until process teardown.
-// Links: docs/architecture.md, src/tests/common/CodegenFixture.hpp
+// Links: docs/internals/architecture.md, src/tests/common/CodegenFixture.hpp
 //
 //===----------------------------------------------------------------------===//
 

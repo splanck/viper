@@ -9,7 +9,7 @@
 // Purpose: Ensure parser reports an error when operands include empty tokens.
 // Key invariants: Parser must diagnose consecutive commas as missing operands.
 // Ownership/Lifetime: Test owns parser inputs and module state locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

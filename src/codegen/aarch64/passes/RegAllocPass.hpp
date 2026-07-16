@@ -10,7 +10,7 @@
 // Key invariants: Requires AArch64Module::mir to be populated by LoweringPass.
 //                 Assigns physical registers to all virtual registers in-place.
 // Ownership/Lifetime: Stateless pass; mutates AArch64Module::mir in place.
-// Links: docs/codemap.md, src/codegen/aarch64/RegAllocLinear.hpp
+// Links: docs/internals/codemap.md, src/codegen/aarch64/RegAllocLinear.hpp
 //
 //===----------------------------------------------------------------------===//
 

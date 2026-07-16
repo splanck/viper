@@ -9,7 +9,7 @@
 // Purpose: Ensure source breakpoints coalesce repeated hits at the same location.
 // Key invariants: Re-executing the same file/line pair without reset should not
 // Ownership/Lifetime: Standalone unit test executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -13,7 +13,7 @@
 //                 handler semantics.
 // Ownership/Lifetime: Operates on module-provided IR structures without
 //                     retaining ownership beyond the call scope.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

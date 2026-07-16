@@ -119,7 +119,7 @@ Viper binary, without rebuilding Viper and without running Viper ctests:
   `RESULT: package_smoke_ok` from the packaged executable.
 
 The direct commands and CTest registrations are documented in
-`examples/games/xenoscape/docs/testing.md`.
+`examples/games/xenoscape/docs/internals/testing.md`.
 
 ## 1.0 authorization checklist
 

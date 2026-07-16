@@ -14,7 +14,7 @@
 // Ownership/Lifetime: Maps borrow label strings from BasicBlock::label. Callers
 //                     must ensure the source Function remains valid for the
 //                     lifetime of any BlockMap built from it.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

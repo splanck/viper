@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-04
+---
+
 # ADR 0016: PTY Runtime Surface (Viper.System.Pty) and Integrated Terminal
 
 ## Status

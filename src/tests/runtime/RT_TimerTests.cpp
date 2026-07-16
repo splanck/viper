@@ -9,7 +9,7 @@
 // Purpose: Validate rt_timer_ms returns monotonic increasing values.
 // Key invariants: Timer values are non-decreasing; elapsed time measurements are reasonably
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-16
+---
+
 # ADR 0103: Windows Developer Installer v2
 
 Date: 2026-07-15

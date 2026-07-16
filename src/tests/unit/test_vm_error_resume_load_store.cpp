@@ -9,7 +9,7 @@
 // Purpose: Ensure Error and ResumeTok memory loads preserve pointer values.
 // Key invariants: Stored pointers for Error/ResumeTok types must round-trip through memory helpers.
 // Ownership/Lifetime: Standalone unit test executable.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

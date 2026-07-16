@@ -1,6 +1,6 @@
 # ViperSQL
 
-ViperSQL is a complete, PostgreSQL-compatible SQL database engine written entirely in [Zia](../../../docs/zia-getting-started.md) — the statically-typed, object-oriented language frontend for the Viper compiler toolchain. It is both a showcase project (demonstrating that Zia can handle serious systems-level work) and a usable database engine in its own right.
+ViperSQL is a complete, PostgreSQL-compatible SQL database engine written entirely in [Zia](../../../docs/tutorials/zia-tutorial.md) — the statically-typed, object-oriented language frontend for the Viper compiler toolchain. It is both a showcase project (demonstrating that Zia can handle serious systems-level work) and a usable database engine in its own right.
 
 The engine implements a substantial subset of PostgreSQL SQL, including the full query pipeline from parser through optimizer to executor, a WAL-based storage layer with MVCC snapshot isolation, disk-based B-tree indexes, and a multi-user TCP server that speaks the PostgreSQL wire protocol. Standard clients — **psql**, **pgAdmin**, **ODBC drivers** — connect to it directly without modification.
 
@@ -116,7 +116,7 @@ OPEN 'mydb.vdb';   -- reload on next run
 
 The query pipeline goes: **SQL text → Lexer → Parser → AST → Semantic Analysis → Optimizer → Executor → Storage**. Each SELECT query walks through expression evaluation, join ordering, and predicate pushdown before hitting the storage layer. The executor is composed of modular operator nodes (scan, filter, join, aggregate, sort, limit) that form a tree — each node pulls rows from its children.
 
-The storage engine is independent of the query layer: it manages pages, buffer pools, B-tree index traversal, and the WAL. MVCC is implemented at the row level with xmin/xmax transaction IDs; snapshot visibility is computed on read without taking locks. The TCP server runs each accepted connection on a safe managed worker, with `--pool-size` bounding the number of active handlers. See [Architecture](docs/architecture.md) for the full breakdown.
+The storage engine is independent of the query layer: it manages pages, buffer pools, B-tree index traversal, and the WAL. MVCC is implemented at the row level with xmin/xmax transaction IDs; snapshot visibility is computed on read without taking locks. The TCP server runs each accepted connection on a safe managed worker, with `--pool-size` bounding the number of active handlers. See [Architecture](docs/internals/architecture.md) for the full breakdown.
 
 ---
 
@@ -128,5 +128,5 @@ The storage engine is independent of the query layer: it manages pages, buffer p
 | [SQL Reference](docs/sql-reference.md) | Complete reference for data types, DDL, DML, query clauses, operators, built-in functions, date/time functions, aggregates, regex, JSON, all join types, subqueries, set operations, indexes, and constraints |
 | [Advanced SQL](docs/advanced-sql.md) | Window functions and frame specs, CTEs and recursive CTEs, triggers, sequences, stored functions, table inheritance, generated columns, LATERAL joins, GROUPING SETS/ROLLUP/CUBE, DISTINCT ON, MVCC details, row-level locking, MERGE INTO, partial indexes, and more |
 | [Server](docs/server.md) | Multi-database, persistence and binary storage, CSV import/export, user management, GRANT/REVOKE privileges, all system views, VACUUM/ANALYZE, DO blocks, session variables, system functions |
-| [Architecture](docs/architecture.md) | Query pipeline stages, executor operator model, transaction management, storage engine internals, concurrency model, session architecture, TCP server design, PostgreSQL wire protocol, query optimizer |
-| [Testing](docs/testing.md) | Running the test suite, compiling and testing native builds, full reference of all 104 test files with descriptions, directory structure |
+| [Architecture](docs/internals/architecture.md) | Query pipeline stages, executor operator model, transaction management, storage engine internals, concurrency model, session architecture, TCP server design, PostgreSQL wire protocol, query optimizer |
+| [Testing](docs/internals/testing.md) | Running the test suite, compiling and testing native builds, full reference of all 104 test files with descriptions, directory structure |

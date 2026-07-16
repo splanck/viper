@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0088: Baked GI — LightBaker3D and LightProbeGrid3D
 
 Date: 2026-07-10

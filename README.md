@@ -9,9 +9,9 @@
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
 </p>
 
-**Viper** is a from-scratch, IL-first compiler toolchain and virtual machine for building platform-native applications and games. Source languages lower to a typed intermediate language, **[Viper IL](docs/il-guide.md)**, which can run on the [VM](docs/vm.md), feed the optimizer, or compile to native code through the built-in backends.
+**Viper** is a from-scratch, IL-first compiler toolchain and virtual machine for building platform-native applications and games. Source languages lower to a typed intermediate language, **[Viper IL](docs/il/il-guide.md)**, which can run on the [VM](docs/internals/vm.md), feed the optimizer, or compile to native code through the built-in backends.
 
-**[Zia](docs/zia-reference.md)** is the flagship language: a modern, statically typed language with classes, generics, enums, lambdas, modules, pattern matching, and direct access to the Viper runtime. A **[BASIC](docs/basic-reference.md)** frontend is included for education, compatibility experiments, and quick prototypes.
+**[Zia](docs/languages/zia-reference.md)** is the flagship language: a modern, statically typed language with classes, generics, enums, lambdas, modules, pattern matching, and direct access to the Viper runtime. A **[BASIC](docs/languages/basic-reference.md)** frontend is included for education, compatibility experiments, and quick prototypes.
 
 > **Status:** Pre-alpha, active development. The current source tree is `v0.2.99`; the IL reference is `0.3.0`. APIs, diagnostics, IL rules, and tooling are still evolving.
 
@@ -63,7 +63,7 @@ viper init my-app --lang basic # BASIC project
 viper run my-app
 ```
 
-Try the [REPL](docs/repl.md):
+Try the [REPL](docs/tools/repl.md):
 
 ```sh
 viper repl
@@ -84,16 +84,16 @@ See the [Getting Started Guide](docs/getting-started.md) for platform-specific s
 
 | Component | Description |
 |-----------|-------------|
-| **[Zia](docs/zia-reference.md)** | Statically typed application language with classes, generics, modules, lambdas, enums, and pattern matching |
-| **[BASIC](docs/basic-reference.md)** | Educational and prototyping frontend that lowers to the same IL |
-| **[Viper IL](docs/il-guide.md)** | Typed, block-structured SSA-style IR with a normative `0.3.0` reference |
-| **[Optimizer](docs/il-passes.md)** | Registered O1/O2 pipelines covering SSA promotion, SCCP, GVN, LICM, loop cleanup, inlining, devirtualization, runtime fast paths, and cleanup passes |
-| **[VM](docs/vm.md)** | IL execution engine for fast bring-up, tests, debugging, and step-budgeted runs |
-| **[Native backends](docs/backend.md)** | AArch64 and x86-64 code generators with backend optimization, register allocation, assembly emission, and executable output |
-| **[Assembler](docs/codegen/native-assembler.md) / [Linker](docs/codegen/native-linker.md)** | In-tree ELF, Mach-O, and PE object/link support with DWARF and platform packaging integration |
+| **[Zia](docs/languages/zia-reference.md)** | Statically typed application language with classes, generics, modules, lambdas, enums, and pattern matching |
+| **[BASIC](docs/languages/basic-reference.md)** | Educational and prototyping frontend that lowers to the same IL |
+| **[Viper IL](docs/il/il-guide.md)** | Typed, block-structured SSA-style IR with a normative `0.3.0` reference |
+| **[Optimizer](docs/il/il-passes.md)** | Registered O1/O2 pipelines covering SSA promotion, SCCP, GVN, LICM, loop cleanup, inlining, devirtualization, runtime fast paths, and cleanup passes |
+| **[VM](docs/internals/vm.md)** | IL execution engine for fast bring-up, tests, debugging, and step-budgeted runs |
+| **[Native backends](docs/internals/backend.md)** | AArch64 and x86-64 code generators with backend optimization, register allocation, assembly emission, and executable output |
+| **[Assembler](docs/internals/native-assembler.md) / [Linker](docs/internals/native-linker.md)** | In-tree ELF, Mach-O, and PE object/link support with DWARF and platform packaging integration |
 | **[Runtime](docs/viperlib/README.md)** | Shared standard library for collections, graphics, 3D, GUI, games, networking, crypto, text, threads, localization, and more |
-| **[Language servers](docs/zia-server.md)** | Zia and BASIC servers with LSP and MCP modes for editors and AI coding tools |
-| **[Tools](docs/tools.md)** | Unified `viper` driver plus `zia`, `vbasic`, `ilrun`, `il-verify`, `il-dis`, REPL, package, installer, and benchmark commands |
+| **[Language servers](docs/tools/zia-server.md)** | Zia and BASIC servers with LSP and MCP modes for editors and AI coding tools |
+| **[Tools](docs/tools/cli.md)** | Unified `viper` driver plus `zia`, `vbasic`, `ilrun`, `il-verify`, `il-dis`, REPL, package, installer, and benchmark commands |
 
 ### Why Viper?
 
@@ -163,13 +163,13 @@ viper build examples/apps/paint/ -o paint
 +-------------------------+
 ```
 
-See the [Architecture Overview](docs/architecture.md) and [Code Map](docs/codemap.md) for subsystem details.
+See the [Architecture Overview](docs/internals/architecture.md) and [Code Map](docs/internals/codemap.md) for subsystem details.
 
 ---
 
 ## IL at a Glance
 
-Frontends lower to typed [Viper IL](docs/il-guide.md) that is compact, explicit, and inspectable.
+Frontends lower to typed [Viper IL](docs/il/il-guide.md) that is compact, explicit, and inspectable.
 
 **Zia source:**
 
@@ -206,7 +206,7 @@ entry_0:
 }
 ```
 
-Use `--dump-il`, `--dump-il-opt`, and `viper il-opt` to inspect the pipeline. The [IL Quickstart](docs/il-quickstart.md) is the practical introduction; [IL Guide](docs/il-guide.md) is the normative reference.
+Use `--dump-il`, `--dump-il-opt`, and `viper il-opt` to inspect the pipeline. The [IL Quickstart](docs/il/il-guide.md#quickstart) is the practical introduction; [IL Guide](docs/il/il-guide.md) is the normative reference.
 
 ---
 
@@ -236,9 +236,9 @@ viper --dump-opcodes
 
 | Command                                | Purpose |
 |----------------------------------------|---------|
-| `viper run <file                       |dir>` | Build and run a source file, project directory, or manifest |
-| `viper build <file                     |dir> -o <out>` | Build IL or a native executable |
-| `viper check <file                     |dir> --diagnostic-format=json` | Type-check and verify without running; JSON diagnostics include ranges, notes, and fixits |
+| `viper run <file\|dir>` | Build and run a source file, project directory, or manifest |
+| `viper build <file\|dir> -o <out>` | Build IL or a native executable |
+| `viper check <file\|dir> --diagnostic-format=json` | Type-check and verify without running; JSON diagnostics include ranges, notes, and fixits |
 | `viper eval 'expr' --json --type --il` | Evaluate a Zia or BASIC snippet through the REPL pipeline |
 | `viper explain <CODE> --json`          | Explain a diagnostic code from the central catalog |
 | `viper repl [zia & basic]`             | Interactive REPL |
@@ -268,7 +268,7 @@ viper --dump-runtime-api
 viper --dump-opcodes
 ```
 
-See the [Tools Reference](docs/tools.md), [Debugging Guide](docs/debugging.md), and [MCP tool reference](docs/zia-server-mcp-tools.md) for full details.
+See the [Tools Reference](docs/tools/cli.md), [Debugging Guide](docs/tools/debugging.md), and [MCP tool reference](docs/tools/zia-server-mcp-tools.md) for full details.
 
 ---
 
@@ -320,15 +320,15 @@ Platform guides:
 
 ## Documentation
 
-**Getting Started**: [Setup Guide](docs/getting-started.md), [REPL Guide](docs/repl.md), [Zia Tutorial](docs/zia-getting-started.md), [Viper Bible](docs/bible/README.md)
+**Getting Started**: [Setup Guide](docs/getting-started.md), [REPL Guide](docs/tools/repl.md), [Zia Tutorial](docs/tutorials/zia-tutorial.md), [The Viper Book](docs/book/README.md)
 
-**Language References**: [Zia](docs/zia-reference.md), [BASIC](docs/basic-reference.md), [IL Guide](docs/il-guide.md), [IL Quickstart](docs/il-quickstart.md)
+**Language References**: [Zia](docs/languages/zia-reference.md), [BASIC](docs/languages/basic-reference.md), [IL Guide](docs/il/il-guide.md), [IL Quickstart](docs/il/il-guide.md#quickstart)
 
 **Runtime & APIs**: [Runtime Library](docs/viperlib/README.md), [3D Graphics](docs/graphics3d-guide.md), [Game Engine](docs/gameengine/README.md), [GUI](docs/viperlib/gui/README.md)
 
-**Internals**: [Architecture](docs/architecture.md), [VM](docs/vm.md), [Code Map](docs/codemap.md), [Backend](docs/backend.md), [IL Passes](docs/il-passes.md)
+**Internals**: [Architecture](docs/internals/architecture.md), [VM](docs/internals/vm.md), [Code Map](docs/internals/codemap.md), [Backend](docs/internals/backend.md), [IL Passes](docs/il/il-passes.md)
 
-**Contributors**: [Contributor Guide](docs/contributor-guide.md), [Frontend How-To](docs/frontend-howto.md), [Testing](docs/testing.md), [Dependencies](docs/dependencies.md)
+**Contributors**: [Contributor Guide](docs/internals/contributor-guide.md), [Frontend How-To](docs/internals/frontend-howto.md), [Testing](docs/internals/testing.md), [Dependencies](docs/internals/dependencies.md)
 
 ---
 
@@ -338,13 +338,13 @@ Viper is in active development and the architecture is still stabilizing. Small 
 
 Before proposing changes:
 
-- Read the relevant spec or reference first; [IL Guide](docs/il-guide.md) is normative for IL.
+- Read the relevant spec or reference first; [IL Guide](docs/il/il-guide.md) is normative for IL.
 - Keep the product dependency-free.
 - Preserve macOS, Windows, and Linux behavior.
 - Use the platform build scripts and keep tests green.
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
 
-See [Contributor Guide](docs/contributor-guide.md) and [Testing](docs/testing.md) for the full workflow.
+See [Contributor Guide](docs/internals/contributor-guide.md) and [Testing](docs/internals/testing.md) for the full workflow.
 
 ---
 

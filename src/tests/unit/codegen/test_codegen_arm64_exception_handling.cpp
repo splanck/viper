@@ -9,7 +9,7 @@
 // Purpose: Comprehensive EH opcode tests for AArch64 backend.
 // Key invariants: EH markers lower to runtime helper calls.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"

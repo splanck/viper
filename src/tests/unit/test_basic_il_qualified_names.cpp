@@ -9,7 +9,7 @@
 // Purpose: Validate IL emission preserves fully-qualified function names.
 // Key invariants: Lowering uses decl.qualifiedName; serializer prints names verbatim.
 // Ownership/Lifetime: Local parser/emitter; no persistent state.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

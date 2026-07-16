@@ -9,7 +9,7 @@
 // Purpose: Smoke test for AArch64 target descriptor: register naming, ABI sets, and arg orders.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 #include "codegen/aarch64/TargetAArch64.hpp"

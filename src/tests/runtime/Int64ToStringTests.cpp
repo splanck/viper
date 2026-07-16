@@ -9,7 +9,7 @@
 // Purpose: Lock down runtime formatting for critical 64-bit integer values.
 // Key invariants: Decimal spellings are canonical and portable across toolchains.
 // Ownership/Lifetime: Runtime integer formatting helpers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

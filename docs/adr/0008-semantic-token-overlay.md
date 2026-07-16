@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-06-27
+---
+
 # ADR 0008: Semantic Token Overlay Uses Registry-Only Semantics
 
 Date: 2026-06-25

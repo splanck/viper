@@ -9,7 +9,7 @@
 // Purpose: Declares the IL emission helper composed by the BASIC lowerer.
 // Key invariants: Appends instructions to the active basic block when one is set.
 // Ownership/Lifetime: References Lowerer state without owning IR structures.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

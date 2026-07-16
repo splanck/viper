@@ -10,7 +10,7 @@
 // Key invariants: Soft identifiers parse consistently across declarations, IO,
 //                 arrays, bounds intrinsics, and loop syntax.
 // Ownership/Lifetime: Test owns parser and semantic analyzer state.
-// Links: docs/basic-reference.md
+// Links: docs/languages/basic-reference.md
 //
 //===----------------------------------------------------------------------===//
 

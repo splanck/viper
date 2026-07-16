@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-09
+---
+
 # ADR 0071: Mesh3D Retained Bytes API
 
 Date: 2026-07-09

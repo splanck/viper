@@ -28,7 +28,7 @@
 //   - Stateless utility class; all state held in IRBuilder
 //   - Methods receive builder and emit IL instructions directly
 //
-// Links: docs/architecture.md, docs/il-guide.md
+// Links: docs/internals/architecture.md, docs/il/il-guide.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

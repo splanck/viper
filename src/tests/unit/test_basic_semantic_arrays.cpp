@@ -9,7 +9,7 @@
 // Purpose: Verify BASIC semantic analyzer handles array declarations, resizing,
 // Key invariants: DIM establishes array type metadata, REDIM validates existing
 // Ownership/Lifetime: Tests own parser, analyzer, and lowerer instances.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

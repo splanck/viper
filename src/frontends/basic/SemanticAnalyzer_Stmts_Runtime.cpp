@@ -11,7 +11,7 @@
 // Key invariants: Shared helpers guard loop-variable mutations and array/type
 //                 tracking remains in sync with procedure scopes.
 // Ownership/Lifetime: Borrowed SemanticAnalyzer state only.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

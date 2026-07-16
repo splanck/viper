@@ -151,4 +151,4 @@ Viper.Core.Diagnostics.AssertEq(value, 5, "value mismatch")
 
 - [Time & Timing](time.md) - `Stopwatch` for performance measurement
 - [Utilities](utilities.md) - `Log` for runtime diagnostics
-- [Debugging Guide](../debugging.md) - debugger adapter protocol and source-level debugging
+- [Debugging Guide](../tools/debugging.md) - debugger adapter protocol and source-level debugging

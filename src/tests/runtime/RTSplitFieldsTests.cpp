@@ -9,7 +9,7 @@
 // Purpose: Ensure rt_split_fields tokenizes comma-separated input lines.
 // Key invariants: Fields are trimmed, quotes removed, and extra fields counted.
 // Ownership/Lifetime: Test releases all allocated runtime strings.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

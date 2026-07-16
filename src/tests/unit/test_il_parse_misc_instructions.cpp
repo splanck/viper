@@ -9,7 +9,7 @@
 // Purpose: Exercise metadata-driven instruction parsing across varied opcode forms.
 // Key invariants: Parser accepts operands/results/labels for uncommon opcodes.
 // Ownership/Lifetime: Test owns all modules and buffers.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

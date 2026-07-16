@@ -9,7 +9,7 @@
 // Purpose: Validate BASIC semantic analyzer argument count checking for procedure calls.
 // Key invariants: Calls with mismatched argument counts emit B2008 diagnostics and halt further
 // Ownership/Lifetime: Tests construct parser/analyzer per snippet; diagnostics captured locally.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

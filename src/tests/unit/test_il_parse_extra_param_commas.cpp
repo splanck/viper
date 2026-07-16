@@ -9,7 +9,7 @@
 // Purpose: Ensure function headers reject empty parameter slots separated by commas.
 // Key invariants: Parser reports detailed diagnostics for malformed parameter lists.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

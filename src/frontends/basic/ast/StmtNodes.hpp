@@ -9,7 +9,7 @@
 // Purpose: Legacy umbrella header maintained for downstream compatibility.
 // Key invariants: Delegates to StmtNodesAll.hpp which aggregates every statement
 // Ownership/Lifetime: Statements follow ownership rules documented in family headers.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

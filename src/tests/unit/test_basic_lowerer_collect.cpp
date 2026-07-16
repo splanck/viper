@@ -9,7 +9,7 @@
 // Purpose: Ensure BASIC lowerer collects variables from all statement visitors.
 // Key invariants: RANDOMIZE/RETURN statements must allocate referenced variables.
 // Ownership/Lifetime: Test owns constructed AST and module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

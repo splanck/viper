@@ -9,7 +9,7 @@
 // Purpose: Verify switch traps record the executing block label in diagnostics.
 // Key invariants: handleSwitchI32 must attribute out-of-range traps to the active block.
 // Ownership/Lifetime: Constructs a synthetic module and triggers a trap in an isolated child
-// process. Links: docs/codemap.md
+// process. Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

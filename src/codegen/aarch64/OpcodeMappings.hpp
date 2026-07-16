@@ -27,7 +27,7 @@
 //     dynamic allocation and no retained mutable state.
 // Links: codegen/aarch64/MachineIR.hpp,
 //        codegen/aarch64/FpCompareLowering.hpp,
-//        il/core/Opcode.hpp, docs/architecture.md
+//        il/core/Opcode.hpp, docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

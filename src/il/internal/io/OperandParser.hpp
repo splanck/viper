@@ -9,7 +9,7 @@
 // Purpose: Declares a helper for parsing textual IL operands.
 // Key invariants: Requires ParserState to supply SSA mappings and diagnostics.
 // Ownership/Lifetime: Operates on instructions owned by the parser caller.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

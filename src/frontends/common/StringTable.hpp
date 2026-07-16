@@ -23,7 +23,7 @@
 //   - Lives for the duration of module lowering
 //   - Reset between modules (not between procedures)
 //
-// Links: docs/architecture.md, docs/codemap.md
+// Links: docs/internals/architecture.md, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

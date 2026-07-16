@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0095: Audio Immersion — Reverb Zones, Occlusion, Ambient Beds, Dialogue Ducking
 
 Date: 2026-07-11

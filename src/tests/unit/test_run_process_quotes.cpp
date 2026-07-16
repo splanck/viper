@@ -9,7 +9,7 @@
 // Purpose: Verify run_process correctly preserves shell-sensitive characters when quoting
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

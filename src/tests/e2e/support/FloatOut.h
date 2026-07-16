@@ -9,7 +9,7 @@
 // Purpose: Declare helper for comparing floating-point outputs in e2e tests.
 // Key invariants: Each EXPECT≈ directive corresponds to one output line.
 // Ownership/Lifetime: Stateless functions; no global state.
-// Links: docs/testing.md
+// Links: docs/internals/testing.md
 #pragma once
 
 #include <string>

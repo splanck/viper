@@ -9,7 +9,7 @@
 // Purpose: Provide convenience wrappers that format and forward BASIC semantic
 //          diagnostics to the shared DiagnosticEmitter.
 // Ownership/Lifetime: Holds a reference to an externally owned emitter.
-// Links: docs/codemap/basic.md
+// Links: docs/internals/codemap/basic.md
 //
 //===----------------------------------------------------------------------===//
 

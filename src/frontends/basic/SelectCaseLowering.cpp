@@ -9,7 +9,7 @@
 // Purpose: Implements the SelectCaseLowering helper for BASIC frontend lowering.
 // Key invariants: Respects Lowerer block allocation and terminator rules.
 // Ownership/Lifetime: Borrows Lowerer state; does not allocate persistent memory.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-02
+---
+
 # ADR-0041: Crypto Result APIs and Legacy Namespaces
 
 ## Status

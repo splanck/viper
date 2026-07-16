@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0098: Minimap3D, Compass, and World Markers
 
 Date: 2026-07-11

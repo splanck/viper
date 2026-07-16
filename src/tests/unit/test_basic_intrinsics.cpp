@@ -9,7 +9,7 @@
 // Purpose: Unit test for BASIC intrinsic registry lookups.
 // Key invariants: Verifies parameter counts/types for selected intrinsics.
 // Ownership/Lifetime: Test owns nothing.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

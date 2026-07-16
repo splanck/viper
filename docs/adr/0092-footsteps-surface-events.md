@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-11
+---
+
 # ADR 0092: Surface-Driven Footsteps (SurfaceTable3D + Footsteps3D)
 
 Date: 2026-07-11

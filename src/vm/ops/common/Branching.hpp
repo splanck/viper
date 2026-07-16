@@ -11,7 +11,7 @@
 //                 mappings used by switch-style dispatch.
 // Ownership/Lifetime: Helpers operate on VM-owned state and never assume
 //                     ownership of blocks, frames, or instructions.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

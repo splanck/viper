@@ -16,7 +16,7 @@ REM   - A failed validation stage causes the script to return a nonzero status.
 REM
 REM Ownership/Lifetime: Build outputs remain in VIPER_BUILD_DIR.
 REM
-REM Links: AGENTS.md, docs/testing.md
+REM Links: AGENTS.md, docs/internals/testing.md
 REM
 REM ===----------------------------------------------------------------------===
 

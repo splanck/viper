@@ -9,7 +9,7 @@
 // Purpose: Ensure the IL parser rejects duplicate version directives in module headers.
 // Key invariants: Parser reports a diagnostic referencing the second directive line.
 // Ownership/Lifetime: Test owns module state and diagnostic streams local to main.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

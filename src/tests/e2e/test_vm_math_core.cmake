@@ -2,7 +2,7 @@
 ## Purpose: Verify VM core math operations emit expected output.
 ## Key invariants: Execution output matches golden file.
 ## Ownership/Lifetime: Invoked by CTest.
-## Links: docs/codemap.md
+## Links: docs/internals/codemap.md
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

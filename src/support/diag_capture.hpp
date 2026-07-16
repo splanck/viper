@@ -11,7 +11,7 @@
 //                 failure, converted into a single error Diag with no location.
 // Ownership/Lifetime: DiagCapture is a value type that owns its buffered text; it
 //                     borrows the caller's output stream only for the call.
-// Links: docs/architecture.md
+// Links: docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

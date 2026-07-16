@@ -12,7 +12,7 @@
 // Ownership: Header-only semantic kernel; owns no state and borrows no VM objects.
 // Lifetime: All functions are stateless and safe to call from interpreters, JITs,
 //           validators, and conformance tests.
-// Links: docs/arithmetic-semantics.md, il/core/FPCast.hpp, vm/IntOpSupport.hpp,
+// Links: docs/languages/arithmetic-semantics.md, il/core/FPCast.hpp, vm/IntOpSupport.hpp,
 //        bytecode/BytecodeVM.cpp, bytecode/BytecodeVM_threaded.cpp
 //
 //===----------------------------------------------------------------------===//

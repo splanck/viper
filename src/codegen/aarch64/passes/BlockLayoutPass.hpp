@@ -12,7 +12,7 @@
 //                 never adds, removes, or modifies instructions.
 //                 Entry block (index 0) always remains first.
 // Ownership/Lifetime: Stateless pass; mutates AArch64Module::mir in place.
-// Links: docs/devdocs/codegen/aarch64.md
+// Links: docs/devdocs/specs/aarch64.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -2,7 +2,7 @@
 # Purpose: Ensure simplify-cfg preserves behavior while shrinking trivial blocks.
 # Key invariants: Optimized IL emits identical stdout and has fewer blocks/instructions.
 # Ownership/Lifetime: Invoked by CTest.
-# Links: docs/codemap.md
+# Links: docs/internals/codemap.md
 
 if (NOT DEFINED ILC)
     message(FATAL_ERROR "ILC not set")

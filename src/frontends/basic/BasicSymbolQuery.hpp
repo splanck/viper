@@ -11,7 +11,7 @@
 //                 where possible via string_view returns.
 // Ownership/Lifetime: Holds references to Lowerer and SemanticAnalyzer; caller
 //                     must ensure they outlive this object.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

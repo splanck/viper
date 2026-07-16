@@ -9,7 +9,7 @@
 // Purpose: Exercise exception-handler analysis helpers for success and failure scenarios.
 // Key invariants: Handler signatures and EH stack balance diagnostics behave as expected.
 // Ownership/Lifetime: Uses temporary IL objects constructed in-place.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 

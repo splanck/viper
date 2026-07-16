@@ -7,7 +7,7 @@
 // Purpose: Thin orchestrator delegating BASIC scan passes to specialized helpers.
 // Key invariants: Scan sets flags only; no IR emission.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

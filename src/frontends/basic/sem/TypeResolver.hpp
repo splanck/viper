@@ -9,7 +9,7 @@
 // Purpose: Resolve type names using NamespaceRegistry and UsingContext with ambiguity detection.
 // Key invariants: // Key invariants:
 // Ownership/Lifetime: TypeResolver does not own registry or context; caller ensures lifetime.
-// Links: docs/codemap.md, CLAUDE.md
+// Links: docs/internals/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

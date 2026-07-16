@@ -11,7 +11,7 @@
 //          verifier-rejected, so the --no-overflow-checks option must still
 //          emit verifier-legal checked arithmetic today.
 //
-// Reference: docs/arithmetic-semantics.md (Frontend Promotion Rules → Zia)
+// Reference: docs/languages/arithmetic-semantics.md (Frontend Promotion Rules → Zia)
 //
 //===----------------------------------------------------------------------===//
 

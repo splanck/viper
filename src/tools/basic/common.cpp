@@ -15,7 +15,7 @@
 //                     source manager, storing file contents directly into the
 //                     buffer so ownership never escapes the tool-specific
 //                     entrypoint.
-// Links: docs/codemap.md#tools, src/tools/basic/common.hpp
+// Links: docs/internals/codemap.md#tools, src/tools/basic/common.hpp
 //
 //===----------------------------------------------------------------------===//
 

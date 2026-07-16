@@ -24,7 +24,7 @@ in, existing physics character/controller out.
 
 - plan 03 fixed-step scheduling;
 - plan 10 entity-aware ground/query information;
-- current Character3D/CharacterController3D contracts and ADR 0064/0075/0076;
+- current Character3D/CharacterController3D contracts and ADR 0105/0075/0076;
 - API register and risk R6.
 
 ## ADR and API

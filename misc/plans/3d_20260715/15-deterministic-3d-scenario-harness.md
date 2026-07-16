@@ -52,7 +52,7 @@ Out of scope:
 - `src/tests/fixtures/runtime/` shared examples if a copy is needed;
 - `src/tests/CMakeLists.txt` helper patterns;
 - demo run-probe scripts and selected probes;
-- `docs/testing.md` and Game3D testing section.
+- `docs/internals/testing.md` and Game3D testing section.
 
 ## Harness design
 

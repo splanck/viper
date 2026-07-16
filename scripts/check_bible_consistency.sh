@@ -1,16 +1,14 @@
 #!/bin/bash
 # check_bible_consistency.sh
-# Validates the docs/bible/ documentation hierarchy for consistency:
-#   1. Every .md file in bible subdirectories is listed in README.md TOC
-#   2. Every chapter referenced in INVENTORY.md exists as a file
-#   3. IL opcode references in bible chapters exist in the canonical Opcode.def
+# Validates the docs/book/ documentation hierarchy for consistency:
+#   1. Every .md file in book subdirectories is listed in README.md TOC
+#   2. IL opcode references in book chapters exist in the canonical Opcode.def
 #
 # Usage: ./scripts/check_bible_consistency.sh
 
 set -euo pipefail
 
-BIBLE_DIR="docs/bible"
-INVENTORY="$BIBLE_DIR/INVENTORY.md"
+BIBLE_DIR="docs/book"
 README="$BIBLE_DIR/README.md"
 OPCODE_DEF="src/il/core/Opcode.def"
 
@@ -21,7 +19,7 @@ if [ ! -d "$BIBLE_DIR" ]; then
     exit 2
 fi
 
-for f in "$INVENTORY" "$README" "$OPCODE_DEF"; do
+for f in "$README" "$OPCODE_DEF"; do
     if [ ! -f "$f" ]; then
         echo "ERROR: $f not found." >&2
         exit 2
@@ -62,60 +60,9 @@ fi
 echo ""
 
 # ============================================================
-# Check 2: INVENTORY chapter numbers match actual files
+# Check 2: IL opcode references in book chapters
 # ============================================================
-echo "--- [2] INVENTORY.md Chapter Coverage ---"
-
-# Extract chapter numbers from INVENTORY (lines like "| 0. Getting Started |" or "| A. Zia Reference |")
-# Chapter files use these numbers: 00-getting-started.md, 01-the-machine.md, etc.
-# Appendices use: a-zia-reference.md, b-basic-reference.md, etc.
-
-# Extract chapter numbers from bible filenames
-sed 's|.*/||; s|-.*||' "$TMP_DIR/bible_files.txt" | sort -u > "$TMP_DIR/file_ids.txt"
-
-# Extract chapter numbers from INVENTORY table rows
-# Matches patterns like "| 0. Getting" or "| A. Zia"
-grep -E '^\|[[:space:]]+[0-9]+\.' "$INVENTORY" \
-    | sed 's/^|[[:space:]]*//' \
-    | sed 's/\..*//' \
-    | awk '{printf "%02d\n", $1}' \
-    | sort -u > "$TMP_DIR/inventory_chapter_nums.txt"
-
-# Also extract appendix letters
-grep -E '^\|[[:space:]]+[A-F]\.' "$INVENTORY" \
-    | sed 's/^|[[:space:]]*//' \
-    | sed 's/\..*//' \
-    | tr '[:upper:]' '[:lower:]' \
-    | sort -u >> "$TMP_DIR/inventory_chapter_nums.txt"
-
-sort -u -o "$TMP_DIR/inventory_chapter_nums.txt" "$TMP_DIR/inventory_chapter_nums.txt"
-
-missing_from_files=$(comm -23 "$TMP_DIR/inventory_chapter_nums.txt" "$TMP_DIR/file_ids.txt")
-missing_from_inventory=$(comm -13 "$TMP_DIR/inventory_chapter_nums.txt" "$TMP_DIR/file_ids.txt")
-
-has_issues=0
-if [ -n "$missing_from_files" ]; then
-    echo "  WARNING: Chapters in INVENTORY.md with no matching file:"
-    echo "$missing_from_files" | sed 's/^/    - chapter /'
-    ERRORS=$((ERRORS + 1))
-    has_issues=1
-fi
-if [ -n "$missing_from_inventory" ]; then
-    echo "  WARNING: Bible files with no matching INVENTORY.md entry:"
-    echo "$missing_from_inventory" | sed 's/^/    - id /'
-    ERRORS=$((ERRORS + 1))
-    has_issues=1
-fi
-if [ $has_issues -eq 0 ]; then
-    echo "  OK — INVENTORY.md chapters match bible files"
-fi
-
-echo ""
-
-# ============================================================
-# Check 3: IL opcode references in bible chapters
-# ============================================================
-echo "--- [3] IL Opcode Reference Validation ---"
+echo "--- [2] IL Opcode Reference Validation ---"
 
 # Extract canonical IL opcode mnemonics from Opcode.def
 # The mnemonic string is on the line after IL_OPCODE(Name,

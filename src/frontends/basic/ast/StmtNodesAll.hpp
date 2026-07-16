@@ -9,7 +9,7 @@
 // Purpose: Convenience umbrella header aggregating all BASIC statement node families.
 // Key invariants: Provides a single include for legacy translation units that require
 // Ownership/Lifetime: Nodes continue to follow ownership semantics defined in their
-// Links: docs/codemap.md
+// Links: docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

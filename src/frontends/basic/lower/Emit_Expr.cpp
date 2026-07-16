@@ -13,7 +13,7 @@
 //                 statement lowering routines.
 // Ownership/Lifetime: Operates on ProcedureContext owned by the active Lowerer
 //                     and returns IL values tracked by the lowerer's emitter.
-// Links: docs/basic-language.md, docs/codemap.md
+// Links: docs/tutorials/basic-tutorial.md, docs/internals/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

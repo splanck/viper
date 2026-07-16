@@ -13,7 +13,7 @@
 // Ownership/Lifetime:
 //   - Probe owns temporary levels, graph, validator, and ability state only.
 // Links: level_validation.zia, world_graph.zia, campaign_content.zia,
-//        docs/testing.md
+//        docs/internals/testing.md
 //
 //===----------------------------------------------------------------------===//
 

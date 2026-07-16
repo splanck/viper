@@ -9,7 +9,7 @@
 // Purpose: Ensure IL parser rejects globals that omit a type qualifier.
 // Key invariants: Parser must emit a diagnostic before attempting to read the name or initializer.
 // Ownership/Lifetime: Test owns parser state and module instance locally.
-// Links: docs/il-guide.md#reference
+// Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 
