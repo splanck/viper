@@ -235,6 +235,33 @@ if (NOT _api_out MATCHES
         "\"name\":\"Viper.System.Pty.PtySession.Resize\"[^\n]*\"fallibility\":\"status\"")
     message(FATAL_ERROR "--dump-runtime-api PtySession.Resize contract regressed (expected status)")
 endif ()
+# VDOC-228: TimeZone.Find carries its concrete class return type so Zia can chain
+# instance members, and stays "borrowed" because the handle is static, must-not-free
+# data (not an owned allocation).
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Time.TimeZone.Find\"[^\n]*\"class\":\"Viper.Time.TimeZone\"[^\n]*\"fallibility\":\"traps\"[^\n]*\"ownership\":\"borrowed\"")
+    message(FATAL_ERROR "--dump-runtime-api TimeZone.Find contract regressed (expected typed handle / traps / borrowed)")
+endif ()
+# VDOC-232: Time metadata surfaces sentinel parsers, nullable object returns, and
+# owned fresh allocations. ParseIso8601 signals failure with a sentinel (not a
+# trap); DateOnly.FromParts / DateRange.Intersection return NULL on ordinary
+# failure and own their fresh result; Stopwatch.StartNew is an owned allocation.
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Time.DateTime.ParseIso8601\"[^\n]*\"fallibility\":\"sentinel\"")
+    message(FATAL_ERROR "--dump-runtime-api DateTime.ParseIso8601 contract regressed (expected sentinel)")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Time.DateOnly.FromParts\"[^\n]*\"nullable\":true[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api DateOnly.FromParts contract regressed (expected nullable / owned)")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Time.DateRange.Intersection\"[^\n]*\"nullable\":true[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api DateRange.Intersection contract regressed (expected nullable / owned)")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Time.Stopwatch.StartNew\"[^\n]*\"ownership\":\"owned\"")
+    message(FATAL_ERROR "--dump-runtime-api Stopwatch.StartNew contract regressed (expected owned)")
+endif ()
 if (NOT _api_out MATCHES
         "\"name\":\"Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"[^\n]*\"fallibility\":\"status\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"three-d-boundary-policy\"")
     message(FATAL_ERROR "--dump-runtime-api missing the allocation-reusing Canvas3D status contract")

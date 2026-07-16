@@ -1455,9 +1455,9 @@ Constructor: `Viper.Graphics.SpriteSheet.New`
 |---|---|---|
 | <a id="viper-graphics-spritesheet-fromgrid"></a>`FromGrid` | `obj<Viper.Graphics.SpriteSheet>(obj,i64,i64)` | `Viper.Graphics.SpriteSheet.FromGrid` |
 | <a id="viper-graphics-spritesheet-setregion"></a>`SetRegion` | `void(str,i64,i64,i64,i64)` | `Viper.Graphics.SpriteSheet.SetRegion` |
-| <a id="viper-graphics-spritesheet-getregion"></a>`GetRegion` | `obj(str)` | `Viper.Graphics.SpriteSheet.GetRegion` |
+| <a id="viper-graphics-spritesheet-getregion"></a>`GetRegion` | `obj<Viper.Graphics.Pixels>(str)` | `Viper.Graphics.SpriteSheet.GetRegion` |
 | <a id="viper-graphics-spritesheet-hasregion"></a>`HasRegion` | `i1(str)` | `Viper.Graphics.SpriteSheet.HasRegion` |
-| <a id="viper-graphics-spritesheet-regionnames"></a>`RegionNames` | `obj()` | `Viper.Graphics.SpriteSheet.RegionNames` |
+| <a id="viper-graphics-spritesheet-regionnames"></a>`RegionNames` | `obj<Viper.Collections.Seq>()` | `Viper.Graphics.SpriteSheet.RegionNames` |
 | <a id="viper-graphics-spritesheet-removeregion"></a>`RemoveRegion` | `i1(str)` | `Viper.Graphics.SpriteSheet.RemoveRegion` |
 | <a id="viper-graphics-spritesheet-new"></a>`New` | `obj<Viper.Graphics.SpriteSheet>(obj)` | `Viper.Graphics.SpriteSheet.New` |
 
@@ -1683,12 +1683,12 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.SpriteSheet.New` | `obj<Viper.Graphics.SpriteSheet>(obj)` | `rt_spritesheet_new` |
 | `Viper.Graphics.SpriteSheet.FromGrid` | `obj<Viper.Graphics.SpriteSheet>(obj,i64,i64)` | `rt_spritesheet_from_grid` |
 | `Viper.Graphics.SpriteSheet.SetRegion` | `void(obj,str,i64,i64,i64,i64)` | `rt_spritesheet_set_region` |
-| `Viper.Graphics.SpriteSheet.GetRegion` | `obj(obj,str)` | `rt_spritesheet_get_region` |
+| `Viper.Graphics.SpriteSheet.GetRegion` | `obj<Viper.Graphics.Pixels>(obj,str)` | `rt_spritesheet_get_region` |
 | `Viper.Graphics.SpriteSheet.HasRegion` | `i1(obj,str)` | `rt_spritesheet_has_region` |
 | <a id="viper-graphics-spritesheet-get-regioncount"></a>`Viper.Graphics.SpriteSheet.get_RegionCount` | `i64(obj)` | `rt_spritesheet_region_count` |
 | <a id="viper-graphics-spritesheet-get-width"></a>`Viper.Graphics.SpriteSheet.get_Width` | `i64(obj)` | `rt_spritesheet_width` |
 | <a id="viper-graphics-spritesheet-get-height"></a>`Viper.Graphics.SpriteSheet.get_Height` | `i64(obj)` | `rt_spritesheet_height` |
-| `Viper.Graphics.SpriteSheet.RegionNames` | `obj(obj)` | `rt_spritesheet_region_names` |
+| `Viper.Graphics.SpriteSheet.RegionNames` | `obj<Viper.Collections.Seq>(obj)` | `rt_spritesheet_region_names` |
 | `Viper.Graphics.SpriteSheet.RemoveRegion` | `i1(obj,str)` | `rt_spritesheet_remove_region` |
 | `Viper.Graphics.Sprite.New` | `obj<Viper.Graphics.Sprite>(obj)` | `rt_sprite_new` |
 | `Viper.Graphics.Sprite.FromFile` | `obj<Viper.Graphics.Sprite>(str)` | `rt_sprite_from_file` |

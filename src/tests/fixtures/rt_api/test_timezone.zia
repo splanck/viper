@@ -1,0 +1,27 @@
+// test_timezone.zia — TimeZone.Find returns a typed handle (VDOC-228)
+// Before the registry gained the concrete obj<Viper.Time.TimeZone> return type,
+// the natural lookup expression produced an untyped value: instance chaining and
+// assignment to a TimeZone-typed local were both rejected by the front end.
+module TestTimeZone;
+
+bind Viper.Terminal;
+bind Viper.Time.TimeZone as TZ;
+
+func start() {
+    // Inferred-type chaining: the instance method resolves on the Find result
+    // directly instead of on Any.
+    var utc = TZ.Find("UTC");
+    SayInt(utc.OffsetAt(0)); // 0
+    SayBool(utc.IsDstAt(0)); // false
+    Say(utc.Name);           // UTC
+
+    // Typed-local assignment: the concrete return type is assignable to a
+    // TimeZone-typed local.
+    var tokyo: TZ = TZ.Find("Asia/Tokyo");
+    SayInt(tokyo.OffsetAt(0)); // 32400
+
+    // Direct chaining on the find expression.
+    SayInt(TZ.Find("Asia/Tokyo").OffsetAt(0)); // 32400
+
+    Say("done");
+}

@@ -632,6 +632,39 @@ static void test_load_rejects_invalid_decoded_key() {
 // Main
 // ============================================================================
 
+// VDOC-246: Save promises a Boolean failure result, so an un-creatable parent
+// directory (here: the home root is a regular file, not a directory) must return
+// false instead of trapping inside rt_dir_make_all. A trap would abort via the
+// non-expecting vm_trap, so reaching the assertion at all proves the soft-fail.
+static void test_save_soft_fails_when_parent_dir_uncreatable() {
+    printf("--- Save soft-fails on un-creatable parent dir ---\n");
+
+    // Point the per-user data root at a regular file so directory creation fails.
+    char fileRoot[256];
+    snprintf(fileRoot, sizeof(fileRoot), "/tmp/viper_savedata_filehome_%d", (int)GETPID());
+    std::remove(fileRoot);
+    write_file_exact(fileRoot, "x", 1);
+#ifdef _WIN32
+    // Skip on Windows: the APPDATA/USERPROFILE layering differs; the POSIX path
+    // exercises the shared trap-to-Boolean recovery.
+    std::remove(fileRoot);
+    (void)fileRoot;
+    return;
+#else
+    setenv("HOME", fileRoot, 1);
+
+    void *sd = rt_savedata_new(S("dir-fail-game"));
+    assert(sd != nullptr);
+    rt_savedata_set_int(sd, S("hp"), 100);
+    int8_t ok = rt_savedata_save(sd);
+    assert(ok == 0 && "Save must return false, not trap, when the parent dir cannot be created");
+
+    // Restore an isolated, valid save root for any later tests.
+    configure_test_save_root();
+    std::remove(fileRoot);
+#endif
+}
+
 int main() {
     printf("=== RTSaveDataTests ===\n\n");
     configure_test_save_root();
@@ -660,6 +693,7 @@ int main() {
     test_save_load_round_trip();
     test_load_nonexistent_returns_success_and_clears_entries();
     test_save_overwrite();
+    test_save_soft_fails_when_parent_dir_uncreatable();
 
     printf("\n--- Edge Cases ---\n");
     test_invalid_keys_trap();

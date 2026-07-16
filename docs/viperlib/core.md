@@ -267,11 +267,9 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 |-----------------------------|-------------------------------------|--------------------------------------------------------------------|
 | `TryInt(s)`                 | `Option<Integer>(String)`           | Parse integer; returns `None` if invalid                           |
 | `TryDouble(s)`              | `Option<Double>(String)`            | Parse double; returns `None` if invalid                            |
-| `TryNum(s)`                 | `Option<Double>(String)`            | Compatibility alias for `TryDouble`                               |
 | `TryBool(s)`                | `Option<Boolean>(String)`           | Parse boolean; returns `None` if invalid                           |
 | `IntOr(s, default)`         | `Integer(String, Integer)`          | Parse `s` as integer; return `default` on failure                  |
 | `DoubleOr(s, default)`      | `Double(String, Double)`            | Parse `s` as double; return `default` on failure                   |
-| `NumOr(s, default)`         | `Double(String, Double)`            | Compatibility alias for `DoubleOr`                                |
 | `BoolOr(s, default)`        | `Boolean(String, Boolean)`          | Parse `s` as boolean; return `default` on failure                  |
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |

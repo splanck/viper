@@ -33,8 +33,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_reltime.h"
+#include "rt_datetime.h"
 #include "rt_internal.h"
 #include "rt_string_builder.h"
+#include "rt_trap.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,12 +47,18 @@
 // ---------------------------------------------------------------------------
 
 /// @brief Return the current Unix time in seconds.
-/// @details Thin wrapper over `time(NULL)` that pre-casts the result so call
-///          sites use a uniform `int64_t` type without C-style casts at each
-///          callsite.
+/// @details Uses the shared checked wall-clock read so a genuine `time(NULL)`
+///          failure (which returns `(time_t)-1`, aliasing the valid pre-epoch
+///          instant) traps rather than being used as a bogus "now" that would
+///          produce wildly wrong relative-time strings (VDOC-230).
 /// @return Seconds since the Unix epoch (UTC).
 static int64_t current_unix_seconds(void) {
-    return (int64_t)time(NULL);
+    int64_t now;
+    if (!rt_datetime_wall_seconds(&now)) {
+        rt_trap("RelativeTime: system clock unavailable");
+        return 0;
+    }
+    return now;
 }
 
 /// @brief Absolute value of @p x, saturating at `INT64_MAX` for `INT64_MIN`.
@@ -167,15 +175,19 @@ rt_string rt_reltime_format(int64_t timestamp) {
 
 /// @brief Format a millisecond duration as compact whole-second components.
 /// @details Emits nonzero day/hour/minute/second fields such as `1d 5h 20m`.
-///          The millisecond remainder is discarded. Negative sub-second values
-///          currently preserve their sign and therefore render as `-0s` (VDOC-227).
+///          The millisecond remainder is discarded, so a negative magnitude that
+///          truncates to zero whole seconds renders as plain `0s` — the sign is
+///          only emitted when the displayed whole-second magnitude is nonzero, so
+///          there is no `-0s` (VDOC-227).
 /// @param duration_ms Duration in milliseconds.
 /// @return Newly allocated runtime string.
 rt_string rt_reltime_format_duration(int64_t duration_ms) {
     int64_t abs_ms = i64_abs(duration_ms);
-    int negative = duration_ms < 0;
 
     int64_t total_secs = abs_ms / 1000;
+    // Only sign a nonzero displayed magnitude; a sub-second negative input
+    // truncates to "0s", which must not carry a leading "-" (VDOC-227).
+    int negative = duration_ms < 0 && total_secs > 0;
     int64_t days = total_secs / 86400;
     int64_t hours = (total_secs % 86400) / 3600;
     int64_t minutes = (total_secs % 3600) / 60;

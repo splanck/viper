@@ -151,6 +151,25 @@ static int64_t dt_epoch_millis_from_parts(int64_t seconds, int64_t millis_part) 
     return result;
 }
 
+/// @brief Read the wall clock in whole seconds, distinguishing genuine failure.
+/// @details `time(NULL)` returns `(time_t)-1` on error, but `-1` is also the valid
+///          instant one second before the Unix epoch, so a bare cast cannot tell a
+///          clock failure from a 1969 timestamp (VDOC-230). POSIX sets `errno` on
+///          failure, so this helper clears `errno` first and only treats `-1` as a
+///          failure when `errno` was set. Shared by every current-time entry point
+///          (DateTime.Now, DateOnly.Today, RelativeTime) so they all detect the
+///          failure the same way instead of aliasing it to a plausible date.
+/// @param out Receives the current epoch seconds on success; untouched on failure.
+/// @return 1 on success, 0 when the wall clock is unavailable.
+int rt_datetime_wall_seconds(int64_t *out) {
+    errno = 0;
+    time_t t = time(NULL);
+    if (t == (time_t)-1 && errno != 0)
+        return 0;
+    *out = (int64_t)t;
+    return 1;
+}
+
 /// @brief Gets the current date/time as a Unix timestamp.
 ///
 /// Returns the current time as the number of seconds elapsed since the Unix
@@ -166,8 +185,9 @@ static int64_t dt_epoch_millis_from_parts(int64_t seconds, int64_t millis_part) 
 /// Print "Day: " & DateTime.Day(now)
 /// ```
 ///
-/// @return The current Unix timestamp in seconds. Returns 0 if the system
-///         time cannot be determined (extremely rare).
+/// @return The current Unix timestamp in seconds. Traps if the system clock is
+///         unavailable rather than returning `-1`, which would be indistinguishable
+///         from the valid instant one second before the epoch (VDOC-230).
 ///
 /// @note O(1) time complexity - single system call.
 /// @note Resolution is seconds. Use rt_datetime_now_ms for milliseconds.
@@ -176,7 +196,12 @@ static int64_t dt_epoch_millis_from_parts(int64_t seconds, int64_t millis_part) 
 /// @see rt_datetime_now_ms For millisecond precision
 /// @see rt_datetime_year For extracting the year component
 int64_t rt_datetime_now(void) {
-    return (int64_t)time(NULL);
+    int64_t now;
+    if (!rt_datetime_wall_seconds(&now)) {
+        rt_trap("DateTime.Now: system clock unavailable");
+        return 0;
+    }
+    return now;
 }
 
 /// @brief Gets the current date/time as milliseconds since the Unix epoch.

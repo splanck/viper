@@ -12,6 +12,7 @@
 
 #include "rt_countdown.h"
 #include "rt_internal.h"
+#include "rt_stopwatch.h"
 #include "tests/common/PosixCompat.h"
 
 #include <cassert>
@@ -290,6 +291,26 @@ static void test_null_receiver_traps() {
     printf("test_null_receiver_traps: PASSED\n");
 }
 
+// VDOC-229: an explicit receiver of another runtime class must trap rather than
+// be reinterpreted as a Countdown payload. A Stopwatch is a live heap object of a
+// different class, so every Countdown method must reject it.
+static void test_wrong_class_receiver_traps() {
+    void *sw = rt_stopwatch_new();
+    assert(sw != nullptr);
+
+    EXPECT_TRAP(rt_countdown_start(sw));
+    EXPECT_TRAP(rt_countdown_stop(sw));
+    EXPECT_TRAP(rt_countdown_reset(sw));
+    EXPECT_TRAP(rt_countdown_elapsed(sw));
+    EXPECT_TRAP(rt_countdown_remaining(sw));
+    EXPECT_TRAP(rt_countdown_expired(sw));
+    EXPECT_TRAP(rt_countdown_interval(sw));
+    EXPECT_TRAP(rt_countdown_set_interval(sw, 100));
+    EXPECT_TRAP(rt_countdown_is_running(sw));
+
+    printf("test_wrong_class_receiver_traps: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -325,6 +346,7 @@ int main() {
     test_wait_already_running();
     test_wait_already_expired();
     test_null_receiver_traps();
+    test_wrong_class_receiver_traps();
 
     printf("\nAll RTCountdownTests passed!\n");
     return 0;

@@ -34,7 +34,7 @@ frames. `PathFollower` is the exception: its `Update(dt)` argument is elapsed mi
 | Property | Type | Access | Meaning |
 |---|---|---|---|
 | `Value` | `Double` | read | Current interpolated value |
-| `ValueI64` | `Integer` | read | `Value` rounded half away from zero and saturated to the integer range |
+| `ValueI64` | `Integer` | read | Integer value; for `StartI64` tweens it is anchored on the exact endpoints (see below), otherwise `Value` rounded half away from zero and saturated |
 | `IsRunning` | `Boolean` | read | True only while active and not paused |
 | `IsComplete` | `Boolean` | read | True after natural completion; `Stop()` does not set it |
 | `IsPaused` | `Boolean` | read | True after a running tween is paused |
@@ -47,7 +47,7 @@ frames. `PathFollower` is the exception: its `Update(dt)` argument is elapsed mi
 | Method | Return | Behavior |
 |---|---|---|
 | `Start(from, to, duration, ease)` | `Void` | Start/restart a double tween |
-| `StartI64(from, to, duration, ease)` | `Void` | Convert integer endpoints to double, then start |
+| `StartI64(from, to, duration, ease)` | `Void` | Start an integer tween; the exact endpoints are retained so `ValueI64` preserves them |
 | `Update()` | `Boolean` | Advance one frame; true only on the call that completes naturally |
 | `Pause()` | `Void` | Pause a running, incomplete tween |
 | `Resume()` | `Void` | Clear pause; it does not restart a stopped or completed tween |
@@ -60,16 +60,18 @@ linear easing. A non-finite `from` becomes 0; a non-finite `to` becomes the sani
 Every successful update increments `Elapsed` once. The completion update pins `Value` exactly to
 `to`, clears `IsRunning`, sets `IsComplete`, and returns true. Later updates return false.
 
-`StartI64` and `LerpI64` internally convert integer endpoints to binary64. Integers whose magnitude
-exceeds 2^53 may therefore change before interpolation; use the double API only when that loss is
-acceptable. `ValueI64` itself saturates at the integer limits and returns zero for a non-finite
-intermediate result.
+`StartI64` and `LerpI64` retain their exact `int64` endpoints, so `ValueI64` reads them without the
+binary64 round-trip that used to drop bits above 2^53 (VDOC-273): a not-yet-advanced tween returns
+`from`, a completed tween returns `to`, and a constant (`from == to`) tween never drifts — even for
+magnitudes beyond 2^53. Eased *intermediate* frames still interpolate through the double easing curve
+(in `long double` for reduced loss), so a mid-animation sample of a very wide range may round; the
+endpoints and constants are always exact. `ValueI64` saturates at the integer limits.
 
 ### Static methods and easing codes
 
 | Method | Return | Behavior |
 |---|---|---|
-| `LerpI64(from, to, t)` | `Integer` | Clamp finite `t` to 0–1, interpolate through double, then round |
+| `LerpI64(from, to, t)` | `Integer` | Anchored on the integer endpoints: `t <= 0` returns `from`, `t >= 1` returns `to`, otherwise interpolate (long double) and round |
 | `Ease(t, type)` | `Double` | Apply one curve; non-finite/`t <= 0` returns 0 and `t >= 1` returns 1 |
 
 An unknown `Ease` type returns the already-clamped linear `t`. The `Start` methods instead replace
@@ -235,15 +237,16 @@ it to an explicitly typed string when string operations are needed.
 | `AddEvent(stateId, frame, eventId)` | `Boolean` | Add one event to a frame in that clip |
 | `ClearEvents(stateId)` | `Void` | Remove all multi-events from one clip |
 | `PollEvents()` | `AnimationEventBatch` | Snapshot IDs fired by the most recent update |
-| `SetEventFrame(frame)` | `Void` | Configure the obsolete single-event path; see warning below |
 
 ### Registration and transition rules
 
 - Numeric state IDs must be non-negative. A negative ID is ignored.
 - Negative start/end frames are independently clamped to zero. `start > end` creates a supported
   reverse clip. Duration is clamped to at least one update per frame.
-- Re-registering an ID overwrites its clip and clears that clip's events. If it is already active,
-  the current playback fields are not reapplied until a later transition.
+- Re-registering an ID overwrites its clip and clears that clip's events. If it is the active state,
+  its clip is immediately restarted — `CurrentFrame`, timing, direction, and events track the new
+  range (VDOC-275). This is a redefinition, not a transition, so the state and edge flags
+  (`JustEntered`/`JustExited`) are left unchanged.
 - Adding a 33rd distinct state traps. Each state holds at most eight events; a ninth returns false.
 - `SetInitial` sets `JustEntered`, clears the previous state, and starts the clip. Unknown IDs
   return false.
@@ -251,10 +254,11 @@ it to an explicitly typed string when string operations are needed.
   relatches flags. A real transition resets the frame and event masks.
 - Transition flags remain true until `ClearFlags()`; reading them does not consume them.
 
-`AddNamed` copies at most 31 bytes of the name. The current auto-ID algorithm uses the clip count,
-not an unused-ID search. Mixing sparse numeric IDs with named registration can overwrite a numeric
-clip and store the name into the wrong slot. Until that defect is fixed, use either sequential
-numeric states starting at zero or named states on a fresh machine; do not mix the two styles.
+`AddNamed` copies at most 31 bytes of the name. It allocates the lowest state ID not already in use
+and stores the name at the clip's actual index, so it never overwrites a numeric state or strands a
+name (VDOC-274); mixing sparse numeric IDs with named registration is safe. Note the two styles
+share one ID space: a later `AddState(id)` targeting an ID a named clip already holds still replaces
+that clip, so pick numeric IDs that do not collide with your named states if you mix them.
 
 ### Playback and events
 
@@ -269,24 +273,27 @@ cycle. A looping wrap clears the masks so they can fire next cycle. Merely enter
 not fire an event attached to its starting frame. Call `PollEvents()` after each `Update()` before
 the next update replaces the producer's current event list.
 
-`SetEventFrame` remains in the public registry, but its only observer (`EventFired`) is no longer
-registered. It has no usable public result. Use `AddEvent` and `PollEvents` instead. The former
-`EventsFiredCount` and `EventFiredId` compatibility members are also no longer public.
+The legacy single-event API is fully retired (VDOC-276): `SetEventFrame` was removed from the public
+registry, matching the earlier internalization of its only observer (`EventFired`) and the former
+`EventsFiredCount`/`EventFiredId` compatibility members. Use `AddEvent` and `PollEvents` for frame
+events.
 
 ### Viper.Game.AnimationEventBatch
 
 The result of `PollEvents()` is an immutable copy that remains valid after later animation updates.
+It is snapshotted transactionally: if copying the fired IDs cannot be allocated, `PollEvents()`
+returns `null` rather than an empty batch, so `Count == 0` always means a genuine zero-event frame
+and never a silently dropped one under memory pressure (VDOC-279).
 
 | Member | Return | Behavior |
 |---|---|---|
 | `Count` | `Integer` | Number of copied IDs |
 | `GetId(index)` | `Integer` | ID at a valid zero-based index; otherwise 0 |
 | `Contains(eventId)` | `Boolean` | Linear membership test |
-| `Ids()` | `Object` | New owned `Seq` of boxed integers |
+| `Ids()` | `Seq` | New owned `Viper.Collections.Seq` of boxed integers |
 
-`Ids()` is registered as bare `Object`, not `Viper.Collections.Seq`. `GetId` is the most portable
-way to iterate. The integer 0 is a valid event ID, so use `Count` to distinguish it from an invalid
-index.
+`Ids()` is typed as `Viper.Collections.Seq`. `GetId` is the most portable way to iterate. The integer
+0 is a valid event ID, so use `Count` to distinguish it from an invalid index.
 
 ### Zia example
 
@@ -329,9 +336,9 @@ func start() {
 ## Viper.Game.AnimTimeline
 
 `AnimTimeline` is a passive frame scheduler. It stores track spans and payload integers, advances a
-playhead, and reports crossed marker IDs. It does **not** own or update a `Tween`,
-`SpriteAnimation`, or `AnimStateMachine`; application code must query the timeline and drive those
-objects itself.
+playhead, reports crossed marker IDs, and computes each tween track's current interpolated value. It
+does **not** own or push values to a `Tween`, `SpriteAnimation`, or `AnimStateMachine`; application
+code reads the timeline and applies the values to those objects itself.
 
 - **Type:** instance class
 - **Constructor:** `AnimTimeline.New(totalDurationFrames)`
@@ -356,8 +363,8 @@ There is no public getter for `Looping`.
 | Method | Return | Behavior |
 |---|---|---|
 | `AddAnimTrack(name, start, duration, stateId)` | `Integer` | Add a span whose payload A is `stateId` |
-| `AddTweenTrack(name, start, duration, from, to)` | `Integer` | Add a span with A=`from`, B=`to`, C=0 |
-| `AddMarker(frame, eventId)` | `Integer` | Add a marker |
+| `AddTweenTrack(name, start, duration, from, to)` | `Integer` | Add a tween span with A=`from`, B=`to`; C reports the current interpolated value |
+| `AddMarker(frame, eventId)` | `Integer` | Add a marker in `[0, totalDuration]`; frames beyond the end return -1 |
 | `Play()` | `Void` | Start/resume at the current frame and clear finish state |
 | `Pause()` | `Void` | Stop advancing without rewinding |
 | `Stop()` | `Void` | Stop, rewind to zero, and reset marker fired flags |
@@ -365,17 +372,26 @@ There is no public getter for `Looping`.
 | `PollEvents()` | `AnimationEventBatch` | Snapshot marker IDs from the latest advance |
 | `TrackIsActive(index)` | `Boolean` | Test the track's half-open active span |
 | `TrackProgress(index)` | `Double` | Return its clamped 0.0–1.0 playhead position |
-| `TrackPayloadA/B/C(index)` | `Integer` | Read stored payload slots; invalid indices return 0 |
+| `TrackPayloadA/B(index)` | `Integer` | Read the raw `from`/`to` (tween) or state ID (anim, in A); invalid indices return 0 |
+| `TrackPayloadC(index)` | `Integer` | Tween: current interpolated value between A and B at the playhead; other kinds: 0 |
 
 Track starts are clamped to zero, durations to at least one, and names are copied into 31-byte
 internal fields. Names have no public query. The add methods return insertion-order indices or -1
 at capacity. Track spans are half-open: `[start, start + duration)`. `TrackProgress` is zero at and
 before the start and one at and after the end.
 
-The current implementation never updates payload C. For tween tracks it remains zero at every
-playhead position; callers must calculate the interpolated value from payload A, payload B, and
-`TrackProgress`, or use a real `Tween`. Anim tracks similarly only expose a state ID; they do not
-transition a state machine.
+Markers must land in `[0, totalDuration]` (VDOC-278): a frame beyond the end can never be crossed —
+a non-looping playhead stops at `totalDuration` and a looping one wraps before it — so `AddMarker`
+rejects it with -1 rather than registering a permanently silent marker (negative frames clamp to 0).
+A marker on the start frame (frame 0) fires on the first positive `Advance` after `Play`, and again
+on each loop wrap, so frame-zero behavior is consistent across cycles.
+
+For a tween track, `TrackPayloadC` returns the current interpolated value between `from` (A) and
+`to` (B) at the playhead (VDOC-277): `from` before the track starts, the linearly interpolated value
+while active, and exactly `to` at and after its end — the endpoints are bit-exact even for
+magnitudes beyond 2^53. The caller applies that value to its own target. Anim tracks expose their
+target state ID in payload A; the caller transitions its own `AnimStateMachine` when the track is
+active. The timeline remains passive: it computes and reports, it does not drive.
 
 ### Playback and marker rules
 
@@ -401,7 +417,6 @@ public registry. Use `PollEvents()`.
 module TimelineDemo;
 
 bind Viper.Game.AnimTimeline as AnimTimeline;
-bind Viper.Game.Tween as Tween;
 bind Viper.Terminal;
 
 final SWAP_SCENE = 90;
@@ -414,10 +429,8 @@ func start() {
     timeline.Advance(15);
 
     if timeline.TrackIsActive(track) {
-        var x = Tween.LerpI64(
-            timeline.TrackPayloadA(track),
-            timeline.TrackPayloadB(track),
-            timeline.TrackProgress(track));
+        // Payload C is the current interpolated value between A (from) and B (to).
+        var x = timeline.TrackPayloadC(track);
         SayInt(x);
     }
 
@@ -446,18 +459,19 @@ names to rectangular regions. Extraction creates a new independent `Pixels` buff
 | `Width` | `Integer`, read | Atlas width |
 | `Height` | `Integer`, read | Atlas height |
 | `SetRegion(name, x, y, w, h)` | `Void` | Add or replace a valid in-bounds rectangle |
-| `GetRegion(name)` | `Object` | New `Pixels` copy, or null when missing/allocation fails |
+| `GetRegion(name)` | `Pixels?` | New `Pixels` copy, or null when missing/allocation fails |
 | `HasRegion(name)` | `Boolean` | Whether the name exists |
-| `RegionNames()` | `Object` | New owned `Seq` of names in insertion order |
+| `RegionNames()` | `Seq` | New owned `Seq` of names in insertion order |
 | `RemoveRegion(name)` | `Boolean` | Remove a region while preserving remaining order |
 
-The two object-returning methods are not registered with their concrete `Pixels`/`Seq` result
-types. In Zia, call an explicit class accessor such as `Pixels.get_Width(value)` or
-`Seq.get_Count(value)` when member inference cannot recover the erased type.
+`GetRegion` is registered as a concrete, nullable `Viper.Graphics.Pixels` and `RegionNames` as a
+concrete `Viper.Collections.Seq` (VDOC-284), so their results assign to typed locals and expose their
+members directly — no static-accessor workaround is needed.
 
-Both constructors require an actual `Pixels` handle. `New` returns null for a null or wrong-class
-atlas. `FromGrid` additionally requires positive cell dimensions and exact divisibility in both
-directions. It names cells `"0"`, `"1"`, and so on in row-major order.
+Both constructors require an actual `Pixels` handle and are registered as nullable: `New` returns null
+for a null or wrong-class atlas, and `FromGrid` additionally requires positive cell dimensions and
+exact divisibility in both directions (returning null otherwise). `FromGrid` names cells `"0"`, `"1"`,
+and so on in row-major order.
 
 `SetRegion` silently ignores a null/empty name, non-positive dimensions, negative coordinates, or
 a rectangle outside the atlas. Replacing a name keeps its insertion position. Adding copies the
@@ -549,22 +563,23 @@ or traversal-direction flags.
 Positive Y is treated as down. It reflects reverse traversal in ping-pong mode. It is not an
 `atan2` result for the actual segment slope.
 
-### Current precision and degenerate-path limitations
+### Precision and degenerate-path behavior
 
-Adjacent duplicate waypoints are skipped when positive movement reaches them, but a path whose
-total length is zero remains active forever and never becomes finished. Do not start an all-equal
-path.
+Adjacent duplicate waypoints are skipped when positive movement reaches them. A path whose total
+length is zero (all waypoints coincide) completes on the first `Update` instead of staying active
+forever (VDOC-281): a once-mode path becomes finished, and a looping path deactivates while keeping
+`IsFinished` false.
 
-Movement has no fractional-distance remainder, and segment position is stored in only 1001 steps.
-If `Speed * dt / 1000` is below one fixed-point unit, the entire update is lost. Even above that,
-movement smaller than one-thousandth of the current segment produces a zero progress delta and is
-also lost. Repeated small updates can therefore stall permanently instead of accumulating. Choose
-a timestep/speed for which each update advances at least one per-mille step of the longest segment,
-or perform the accumulation in application code until this defect is fixed.
+Movement carries both a sub-unit distance remainder and a sub-per-mille progress remainder across
+updates (VDOC-280), so a `Speed * dt / 1000` below one fixed-point unit, or motion smaller than
+one-thousandth of the current segment, is accumulated rather than discarded — repeated small updates
+make progress instead of stalling. Segment position is still stored in 1001 per-mille steps, so the
+reported position changes in discrete jumps when the accumulated progress crosses a per-mille
+boundary; the underlying travel is not lost.
 
-If allocation of the internal segment-length cache fails, length becomes zero and the follower can
-likewise remain active without motion; no public error is reported and the cache is not retried
-until another point is added.
+If allocation of the internal segment-length cache fails, the follower stays active (not finished)
+and retries the build on the next update rather than silently appearing complete; any previously
+valid cache is preserved (VDOC-281).
 
 ### Zia example
 
@@ -629,10 +644,11 @@ application values; the group does not retain Button objects or draw UI.
 | `SelectPrevious()` | `Integer` | Cycle backward with wrap |
 | `Destroy()` | `Void` | Release the handle |
 
-`Add` normally returns false for a duplicate. The current implementation checks capacity before
-checking duplicates, so *any* `Add` call after the group reaches 256 IDs traps—even an attempt to
-re-add an existing ID. `GetAt` returning -1 is also ambiguous because -1 is a valid registered ID;
-iterate only from zero to `Count - 1`.
+`Add` returns false for a duplicate, including at full capacity: the duplicate check now precedes the
+capacity check, so re-adding an already-present ID returns false rather than trapping just because
+the group is full (VDOC-282). The capacity trap is reserved for a genuinely new ID that would exceed
+256. `GetAt` returning -1 is ambiguous because -1 is a valid registered ID; iterate only from zero to
+`Count - 1`.
 
 Selecting an unknown ID returns false. Selecting the already selected ID returns true without
 setting the change latch. Removing the selected ID or clearing a real selection sets the latch;

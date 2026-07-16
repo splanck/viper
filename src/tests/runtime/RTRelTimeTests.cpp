@@ -166,6 +166,34 @@ static void test_duration_negative() {
     rt_string_unref(r);
 }
 
+// VDOC-227: a negative sub-second magnitude truncates to zero whole seconds and
+// must render as plain "0s", not "-0s", matching the positive sub-second result.
+static void test_duration_negative_subsecond() {
+    rt_string r = rt_reltime_format_duration(-1);
+    assert(str_eq(r, "0s"));
+    rt_string_unref(r);
+
+    rt_string r2 = rt_reltime_format_duration(-999);
+    assert(str_eq(r2, "0s"));
+    rt_string_unref(r2);
+
+    // The positive counterpart is unchanged, so the two format symmetrically.
+    rt_string r3 = rt_reltime_format_duration(999);
+    assert(str_eq(r3, "0s"));
+    rt_string_unref(r3);
+
+    // A negative magnitude of a full second still keeps its sign.
+    rt_string r4 = rt_reltime_format_duration(-1000);
+    assert(str_eq(r4, "-1s"));
+    rt_string_unref(r4);
+
+    // A negative value whose whole-second part is nonzero but has a sub-second
+    // remainder still signs the displayed magnitude.
+    rt_string r5 = rt_reltime_format_duration(-1500);
+    assert(str_eq(r5, "-1s"));
+    rt_string_unref(r5);
+}
+
 // ---------------------------------------------------------------------------
 // format_short tests
 // ---------------------------------------------------------------------------
@@ -216,6 +244,7 @@ int main() {
     test_duration_days();
     test_duration_zero();
     test_duration_negative();
+    test_duration_negative_subsecond();
 
     // format_short
     test_short_format();

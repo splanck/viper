@@ -107,6 +107,33 @@ TEST(Entity, SweptTileCollisionStopsTunneling) {
     EXPECT_TRUE(rt_entity_hit_right(e));
 }
 
+// VDOC-241: entity_sweep_y only sets OnGround on a nonzero downward landing, so a
+// resting entity (zero vertical velocity) used to lose OnGround on the next frame.
+// A persistent contact probe must keep it grounded while flush on a solid tile.
+TEST(Entity, OnGroundPersistsWhileRestingOnSolidTile) {
+    void *tm = rt_tilemap_new(10, 4, 16, 16);
+    rt_tilemap_set_tile(tm, 0, 2, 1); // solid tile at column 0, row 2 (y = 32..47)
+    rt_tilemap_set_collision(tm, 1, RT_TILE_COLLISION_SOLID);
+
+    void *e = rt_entity_new(0, 0, 8, 8); // 8x8 at the top-left
+    rt_entity_set_vy(e, 8000);           // fall fast enough to land this frame
+    rt_entity_move_and_collide(e, tm, 16);
+    EXPECT_TRUE(rt_entity_on_ground(e)); // landed flush on the tile
+    EXPECT_EQ(rt_entity_get_vy(e), 0);   // landing zeroed the vertical velocity
+
+    // Resting with zero vertical displacement must keep OnGround across frames.
+    for (int i = 0; i < 3; ++i) {
+        rt_entity_move_and_collide(e, tm, 16);
+        EXPECT_TRUE(rt_entity_on_ground(e));
+    }
+
+    // Stepping off the tile (moving up) clears it, confirming the probe reflects
+    // actual contact rather than latching true forever.
+    rt_entity_set_vy(e, -8000);
+    rt_entity_move_and_collide(e, tm, 16);
+    EXPECT_FALSE(rt_entity_on_ground(e));
+}
+
 TEST(Entity, HPProperties) {
     void *e = rt_entity_new(0, 0, 10, 10);
     rt_entity_set_hp(e, 5);

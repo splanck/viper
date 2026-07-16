@@ -57,6 +57,16 @@ TEST(LevelData, EmptyFileReturnsNull) {
     std::remove(path.c_str());
 }
 
+// VDOC-238: Load is a nullable factory, so a missing file must soft-fail to NULL
+// (mirroring Config.Load) rather than trapping inside the hardened read path.
+TEST(LevelData, MissingFileReturnsNull) {
+    auto path = temp_path("does_not_exist.json");
+    std::remove(path.c_str()); // ensure absent
+
+    void *level = rt_leveldata_load(rt_const_cstr(path.c_str()));
+    EXPECT_EQ(level, nullptr);
+}
+
 TEST(LevelData, ValidFileLoadsTilemapAndObjects) {
     auto path = temp_path("valid.json");
     write_file(path,
@@ -103,6 +113,58 @@ TEST(LevelData, MalformedLayersAndObjectsAreSkipped) {
     // nodes are ignored instead of trapping.
     ASSERT_TRUE(level != nullptr);
     EXPECT_EQ(rt_leveldata_object_count(level), 0);
+
+    release_obj(level);
+    std::remove(path.c_str());
+}
+
+// Return true if s is well-formed UTF-8 (no truncated multi-byte sequence).
+static bool is_valid_utf8(const char *s) {
+    const unsigned char *p = reinterpret_cast<const unsigned char *>(s);
+    while (*p) {
+        int extra;
+        if (*p < 0x80)
+            extra = 0;
+        else if ((*p & 0xE0) == 0xC0)
+            extra = 1;
+        else if ((*p & 0xF0) == 0xE0)
+            extra = 2;
+        else if ((*p & 0xF8) == 0xF0)
+            extra = 3;
+        else
+            return false; // stray continuation or invalid lead byte
+        ++p;
+        for (int i = 0; i < extra; ++i) {
+            if ((*p & 0xC0) != 0x80)
+                return false; // truncated or malformed sequence
+            ++p;
+        }
+    }
+    return true;
+}
+
+// VDOC-239: the fixed-size theme/type/id fields (32 bytes) must truncate on a
+// UTF-8 character boundary, never mid-sequence, so the stored value is always
+// valid UTF-8. Here the 3-byte euro sign straddles the 31-byte cutoff.
+TEST(LevelData, MetadataTruncatesOnUtf8Boundary) {
+    // 30 ASCII bytes, then "€" (E2 82 AC). The euro's lead byte lands at index 30,
+    // so a naive 31-byte copy would keep a lone E2 and drop the continuation bytes.
+    std::string theme(30, 'a');
+    theme += "\xE2\x82\xAC"; // U+20AC EURO SIGN
+    std::string json = "{\"width\":1,\"height\":1,\"tileWidth\":8,\"tileHeight\":8,"
+                       "\"properties\":{\"theme\":\"" +
+                       theme + "\"}}";
+
+    auto path = temp_path("utf8.json");
+    write_file(path, json.c_str());
+
+    void *level = rt_leveldata_load(rt_const_cstr(path.c_str()));
+    ASSERT_TRUE(level != nullptr);
+
+    const char *stored = rt_string_cstr(rt_leveldata_get_theme(level));
+    EXPECT_TRUE(is_valid_utf8(stored));
+    // The incomplete euro character was dropped whole, leaving the 30 ASCII bytes.
+    EXPECT_EQ(std::string(stored), std::string(30, 'a'));
 
     release_obj(level);
     std::remove(path.c_str());

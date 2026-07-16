@@ -58,6 +58,29 @@ TEST(Lighting2D, ClampsStyleInputsAndRejectsInvalidRadii) {
     rt_lighting2d_destroy(lit);
 }
 
+// VDOC-271: a base radius of zero disables the player light. SetPlayerLight maps
+// non-positive radii to the zero sentinel, and Draw now skips every player-light
+// pass (including the +40 outer glow) when the base radius is zero. PlayerRadius
+// exposes the sentinel so the disabled state is observable.
+TEST(Lighting2D, ZeroPlayerRadiusDisablesPlayerLight) {
+    rt_lighting2d lit = rt_lighting2d_new(4);
+
+    // Default constructor gives a lit player light.
+    EXPECT_EQ(rt_lighting2d_get_player_radius(lit), 180);
+
+    // Zero and negative radii both collapse to the disabled sentinel.
+    rt_lighting2d_set_player_light(lit, 0, 0x808080);
+    EXPECT_EQ(rt_lighting2d_get_player_radius(lit), 0);
+    rt_lighting2d_set_player_light(lit, -50, 0x808080);
+    EXPECT_EQ(rt_lighting2d_get_player_radius(lit), 0);
+
+    // A positive radius re-enables it.
+    rt_lighting2d_set_player_light(lit, 150, 0x808080);
+    EXPECT_EQ(rt_lighting2d_get_player_radius(lit), 150);
+
+    rt_lighting2d_destroy(lit);
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

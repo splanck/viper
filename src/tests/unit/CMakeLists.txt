@@ -189,6 +189,12 @@ if (NOT TARGET test_basic_soft_identifier_contexts)
     viper_add_ctest(test_basic_soft_identifier_contexts test_basic_soft_identifier_contexts)
 endif ()
 
+if (NOT TARGET test_basic_control_recovery)
+    viper_add_test(test_basic_control_recovery ${VIPER_TESTS_DIR}/unit/test_basic_control_recovery.cpp)
+    target_link_libraries(test_basic_control_recovery PRIVATE fe_basic)
+    viper_add_ctest(test_basic_control_recovery test_basic_control_recovery)
+endif ()
+
 # Builtins ARGC/ARG$/COMMAND$ lowering test
 if (NOT TARGET test_basic_builtins_args_cmd)
     viper_add_test(test_basic_builtins_args_cmd ${VIPER_TESTS_DIR}/unit/test_basic_builtins_args_cmd.cpp)
@@ -2092,6 +2098,10 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_config ${VIPER_TESTS_DIR}/unit/runtime/TestConfig.cpp)
     target_link_libraries(test_rt_config PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_config test_rt_config)
+
+    viper_add_test(test_rt_quests ${VIPER_TESTS_DIR}/unit/runtime/TestQuests.cpp)
+    target_link_libraries(test_rt_quests PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_quests test_rt_quests)
 
     viper_add_test(test_rt_leveldata ${VIPER_TESTS_DIR}/unit/runtime/TestLevelData.cpp)
     target_link_libraries(test_rt_leveldata PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

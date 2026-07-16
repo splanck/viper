@@ -60,6 +60,7 @@ Constructor: `Viper.Game.Timer.New`
 | <a id="viper-game-timer-isrunning"></a>`IsRunning` | `i1` | read-only |
 | <a id="viper-game-timer-isexpired"></a>`IsExpired` | `i1` | read-only |
 | <a id="viper-game-timer-isrepeating"></a>`IsRepeating` | `i1` | read-only |
+| <a id="viper-game-timer-isms"></a>`IsMs` | `i1` | read-only |
 | <a id="viper-game-timer-elapsed"></a>`Elapsed` | `i64` | read-only |
 | <a id="viper-game-timer-remaining"></a>`Remaining` | `i64` | read-only |
 | <a id="viper-game-timer-progress"></a>`Progress` | `i64` | read-only |
@@ -157,7 +158,6 @@ Constructor: `Viper.Game.AnimStateMachine.New`
 | <a id="viper-game-animstatemachine-setinitial"></a>`SetInitial` | `i1(i64)` | `Viper.Game.AnimStateMachine.SetInitial` |
 | <a id="viper-game-animstatemachine-transition"></a>`Transition` | `i1(i64)` | `Viper.Game.AnimStateMachine.Transition` |
 | <a id="viper-game-animstatemachine-play"></a>`Play` | `void(str)` | `Viper.Game.AnimStateMachine.Play` |
-| <a id="viper-game-animstatemachine-seteventframe"></a>`SetEventFrame` | `void(i64)` | `Viper.Game.AnimStateMachine.SetEventFrame` |
 | <a id="viper-game-animstatemachine-update"></a>`Update` | `void()` | `Viper.Game.AnimStateMachine.Update` |
 | <a id="viper-game-animstatemachine-clearflags"></a>`ClearFlags` | `void()` | `Viper.Game.AnimStateMachine.ClearFlags` |
 | <a id="viper-game-animstatemachine-new"></a>`New` | `obj()` | `Viper.Game.AnimStateMachine.New` |
@@ -183,7 +183,7 @@ and operations including `GetId`, `Contains`, `Ids`.
 |---|---|---|
 | <a id="viper-game-animationeventbatch-getid"></a>`GetId` | `i64(i64)` | `Viper.Game.AnimationEventBatch.GetId` |
 | <a id="viper-game-animationeventbatch-contains"></a>`Contains` | `i1(i64)` | `Viper.Game.AnimationEventBatch.Contains` |
-| <a id="viper-game-animationeventbatch-ids"></a>`Ids` | `obj()` | `Viper.Game.AnimationEventBatch.Ids` |
+| <a id="viper-game-animationeventbatch-ids"></a>`Ids` | `obj<Viper.Collections.Seq>()` | `Viper.Game.AnimationEventBatch.Ids` |
 
 <a id="viper-game-animtimeline"></a>
 ### `Viper.Game.AnimTimeline`
@@ -816,6 +816,19 @@ Constructor: `Viper.Game.ScreenFX.New`
 | <a id="viper-game-screenfx-shakey"></a>`ShakeY` | `i64` | read-only |
 | <a id="viper-game-screenfx-overlaycolor"></a>`OverlayColor` | `i64` | read-only |
 | <a id="viper-game-screenfx-overlayalpha"></a>`OverlayAlpha` | `i64` | read-only |
+| <a id="viper-game-screenfx-typeshake"></a>`TypeShake` | `i64` | read-only |
+| <a id="viper-game-screenfx-typeflash"></a>`TypeFlash` | `i64` | read-only |
+| <a id="viper-game-screenfx-typefadein"></a>`TypeFadeIn` | `i64` | read-only |
+| <a id="viper-game-screenfx-typefadeout"></a>`TypeFadeOut` | `i64` | read-only |
+| <a id="viper-game-screenfx-typewipe"></a>`TypeWipe` | `i64` | read-only |
+| <a id="viper-game-screenfx-typecirclein"></a>`TypeCircleIn` | `i64` | read-only |
+| <a id="viper-game-screenfx-typecircleout"></a>`TypeCircleOut` | `i64` | read-only |
+| <a id="viper-game-screenfx-typedissolve"></a>`TypeDissolve` | `i64` | read-only |
+| <a id="viper-game-screenfx-typepixelate"></a>`TypePixelate` | `i64` | read-only |
+| <a id="viper-game-screenfx-dirleft"></a>`DirLeft` | `i64` | read-only |
+| <a id="viper-game-screenfx-dirright"></a>`DirRight` | `i64` | read-only |
+| <a id="viper-game-screenfx-dirup"></a>`DirUp` | `i64` | read-only |
+| <a id="viper-game-screenfx-dirdown"></a>`DirDown` | `i64` | read-only |
 | <a id="viper-game-screenfx-isfinished"></a>`IsFinished` | `i1` | read-only |
 | <a id="viper-game-screenfx-transitionprogress"></a>`TransitionProgress` | `i64` | read-only |
 
@@ -823,6 +836,9 @@ Constructor: `Viper.Game.ScreenFX.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
+| <a id="viper-game-screenfx-rgba"></a>`Rgba` | `i64(i64,i64,i64,i64)` | `Viper.Game.ScreenFX.Rgba` |
+| <a id="viper-game-screenfx-rgb"></a>`Rgb` | `i64(i64,i64,i64)` | `Viper.Game.ScreenFX.Rgb` |
+| <a id="viper-game-screenfx-destroy"></a>`Destroy` | `void()` | `Viper.Game.ScreenFX.Destroy` |
 | <a id="viper-game-screenfx-update"></a>`Update` | `void(i64)` | `Viper.Game.ScreenFX.Update` |
 | <a id="viper-game-screenfx-shake"></a>`Shake` | `void(i64,i64,i64)` | `Viper.Game.ScreenFX.Shake` |
 | <a id="viper-game-screenfx-flash"></a>`Flash` | `void(i64,i64)` | `Viper.Game.ScreenFX.Flash` |
@@ -837,8 +853,7 @@ Constructor: `Viper.Game.ScreenFX.New`
 | <a id="viper-game-screenfx-dissolve"></a>`Dissolve` | `void(i64,i64)` | `Viper.Game.ScreenFX.Dissolve` |
 | <a id="viper-game-screenfx-pixelate"></a>`Pixelate` | `void(i64,i64)` | `Viper.Game.ScreenFX.Pixelate` |
 | <a id="viper-game-screenfx-draw"></a>`Draw` | `void(obj,i64,i64)` | `Viper.Game.ScreenFX.Draw` |
-| <a id="viper-game-screenfx-new"></a>`New` | `obj()` | `Viper.Game.ScreenFX.New` |
-| <a id="viper-game-screenfx-destroy"></a>`Destroy` | `void(obj)` | `Viper.Game.ScreenFX.Destroy` |
+| <a id="viper-game-screenfx-new"></a>`New` | `obj<Viper.Game.ScreenFX>()` | `Viper.Game.ScreenFX.New` |
 
 <a id="viper-game-dialogue"></a>
 ### `Viper.Game.Dialogue`
@@ -905,6 +920,7 @@ Constructor: `Viper.Game.Lighting2D.New`
 | <a id="viper-game-lighting2d-darkness"></a>`Darkness` | `i64` | read/write |
 | <a id="viper-game-lighting2d-tintcolor"></a>`TintColor` | `i64` | read/write |
 | <a id="viper-game-lighting2d-lightcount"></a>`LightCount` | `i64` | read-only |
+| <a id="viper-game-lighting2d-playerradius"></a>`PlayerRadius` | `i64` | read-only |
 
 #### Methods
 
@@ -917,7 +933,7 @@ Constructor: `Viper.Game.Lighting2D.New`
 | <a id="viper-game-lighting2d-clearlights"></a>`ClearLights` | `void()` | `Viper.Game.Lighting2D.ClearLights` |
 | <a id="viper-game-lighting2d-update"></a>`Update` | `void()` | `Viper.Game.Lighting2D.Update` |
 | <a id="viper-game-lighting2d-draw"></a>`Draw` | `void(obj,i64,i64,i64,i64)` | `Viper.Game.Lighting2D.Draw` |
-| <a id="viper-game-lighting2d-new"></a>`New` | `obj(i64)` | `Viper.Game.Lighting2D.New` |
+| <a id="viper-game-lighting2d-new"></a>`New` | `obj<Viper.Game.Lighting2D>(i64)` | `Viper.Game.Lighting2D.New` |
 
 <a id="viper-game-platformercontroller"></a>
 ### `Viper.Game.PlatformerController`
@@ -1551,7 +1567,7 @@ construct the class directly. Its public surface exposes properties such as `Fou
 | <a id="viper-game-pathresult-steps"></a>`Steps` | `i64` | read-only |
 | <a id="viper-game-pathresult-cost"></a>`Cost` | `i64` | read-only |
 | <a id="viper-game-pathresult-stepcount"></a>`StepCount` | `i64` | read-only |
-| <a id="viper-game-pathresult-path"></a>`Path` | `obj` | read-only |
+| <a id="viper-game-pathresult-path"></a>`Path` | `obj<Viper.Collections.List>` | read-only |
 
 <a id="viper-game-pathfinder"></a>
 ### `Viper.Game.Pathfinder`
@@ -1586,8 +1602,8 @@ Constructor: `Viper.Game.Pathfinder.New`
 | <a id="viper-game-pathfinder-findnearest"></a>`FindNearest` | `obj<Viper.Game.PathResult>(i64,i64,i64)` | `Viper.Game.Pathfinder.FindNearest` |
 | <a id="viper-game-pathfinder-destroy"></a>`Destroy` | `void()` | `Viper.Game.Pathfinder.Destroy` |
 | <a id="viper-game-pathfinder-new"></a>`New` | `obj(i64,i64)` | `Viper.Game.Pathfinder.New` |
-| <a id="viper-game-pathfinder-fromtilemap"></a>`FromTilemap` | `obj(obj)` | `Viper.Game.Pathfinder.FromTilemap` |
-| <a id="viper-game-pathfinder-fromgrid2d"></a>`FromGrid2D` | `obj(obj)` | `Viper.Game.Pathfinder.FromGrid2D` |
+| <a id="viper-game-pathfinder-fromtilemap"></a>`FromTilemap` | `obj<Viper.Game.Pathfinder>(obj)` | `Viper.Game.Pathfinder.FromTilemap` |
+| <a id="viper-game-pathfinder-fromgrid2d"></a>`FromGrid2D` | `obj<Viper.Game.Pathfinder>(obj)` | `Viper.Game.Pathfinder.FromGrid2D` |
 
 <a id="viper-game-pathfollower"></a>
 ### `Viper.Game.PathFollower`
@@ -1771,6 +1787,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-timer-get-progress"></a>`Viper.Game.Timer.get_Progress` | `i64(obj)` | `rt_timer_progress` |
 | <a id="viper-game-timer-get-duration"></a>`Viper.Game.Timer.get_Duration` | `i64(obj)` | `rt_timer_duration` |
 | <a id="viper-game-timer-get-isrepeating"></a>`Viper.Game.Timer.get_IsRepeating` | `i1(obj)` | `rt_timer_is_repeating` |
+| <a id="viper-game-timer-get-isms"></a>`Viper.Game.Timer.get_IsMs` | `i1(obj)` | `rt_timer_is_ms` |
 | <a id="viper-game-timer-set-duration"></a>`Viper.Game.Timer.set_Duration` | `void(obj,i64)` | `rt_timer_set_duration` |
 | `Viper.Game.Timer.StartMs` | `void(obj,i64)` | `rt_timer_start_ms` |
 | `Viper.Game.Timer.StartRepeatingMs` | `void(obj,i64)` | `rt_timer_start_repeating_ms` |
@@ -1809,14 +1826,13 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.AnimStateMachine.AddNamed` | `void(obj,str,i64,i64,i64,i1)` | `rt_animstate_add_named` |
 | `Viper.Game.AnimStateMachine.Play` | `void(obj,str)` | `rt_animstate_play` |
 | <a id="viper-game-animstatemachine-get-statename"></a>`Viper.Game.AnimStateMachine.get_StateName` | `obj(obj)` | `rt_animstate_current_name` |
-| `Viper.Game.AnimStateMachine.SetEventFrame` | `void(obj,i64)` | `rt_animstate_set_event_frame` |
 | `Viper.Game.AnimStateMachine.AddEvent` | `i1(obj,i64,i64,i64)` | `rt_animstate_add_event` |
 | `Viper.Game.AnimStateMachine.ClearEvents` | `void(obj,i64)` | `rt_animstate_clear_events` |
 | `Viper.Game.AnimStateMachine.PollEvents` | `obj<Viper.Game.AnimationEventBatch>(obj)` | `rt_animstate_poll_events` |
 | <a id="viper-game-animationeventbatch-get-count"></a>`Viper.Game.AnimationEventBatch.get_Count` | `i64(obj)` | `rt_animation_event_batch_count` |
 | `Viper.Game.AnimationEventBatch.GetId` | `i64(obj,i64)` | `rt_animation_event_batch_get_id` |
 | `Viper.Game.AnimationEventBatch.Contains` | `i1(obj,i64)` | `rt_animation_event_batch_contains` |
-| `Viper.Game.AnimationEventBatch.Ids` | `obj(obj)` | `rt_animation_event_batch_ids` |
+| `Viper.Game.AnimationEventBatch.Ids` | `obj<Viper.Collections.Seq>(obj)` | `rt_animation_event_batch_ids` |
 | `Viper.Game.AnimTimeline.New` | `obj(i64)` | `rt_animtimeline_new` |
 | `Viper.Game.AnimTimeline.AddAnimTrack` | `i64(obj,str,i64,i64,i64)` | `rt_animtimeline_add_anim_track` |
 | `Viper.Game.AnimTimeline.AddTweenTrack` | `i64(obj,str,i64,i64,i64,i64)` | `rt_animtimeline_add_tween_track` |
@@ -2063,7 +2079,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.ObjectPool.NextActive` | `i64(obj,i64)` | `rt_objpool_next_active` |
 | `Viper.Game.ObjectPool.SetData` | `i1(obj,i64,i64)` | `rt_objpool_set_data` |
 | `Viper.Game.ObjectPool.GetData` | `i64(obj,i64)` | `rt_objpool_get_data` |
-| `Viper.Game.ScreenFX.New` | `obj()` | `rt_screenfx_new` |
+| `Viper.Game.ScreenFX.New` | `obj<Viper.Game.ScreenFX>()` | `rt_screenfx_new` |
 | `Viper.Game.ScreenFX.Destroy` | `void(obj)` | `rt_screenfx_destroy` |
 | `Viper.Game.ScreenFX.Update` | `void(obj,i64)` | `rt_screenfx_update` |
 | `Viper.Game.ScreenFX.Shake` | `void(obj,i64,i64,i64)` | `rt_screenfx_shake` |
@@ -2078,6 +2094,21 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-screenfx-get-shakey"></a>`Viper.Game.ScreenFX.get_ShakeY` | `i64(obj)` | `rt_screenfx_get_shake_y` |
 | <a id="viper-game-screenfx-get-overlaycolor"></a>`Viper.Game.ScreenFX.get_OverlayColor` | `i64(obj)` | `rt_screenfx_get_overlay_color` |
 | <a id="viper-game-screenfx-get-overlayalpha"></a>`Viper.Game.ScreenFX.get_OverlayAlpha` | `i64(obj)` | `rt_screenfx_get_overlay_alpha` |
+| `Viper.Game.ScreenFX.Rgba` | `i64(i64,i64,i64,i64)` | `rt_screenfx_rgba` |
+| `Viper.Game.ScreenFX.Rgb` | `i64(i64,i64,i64)` | `rt_screenfx_rgb` |
+| <a id="viper-game-screenfx-get-typeshake"></a>`Viper.Game.ScreenFX.get_TypeShake` | `i64()` | `rt_screenfx_type_shake` |
+| <a id="viper-game-screenfx-get-typeflash"></a>`Viper.Game.ScreenFX.get_TypeFlash` | `i64()` | `rt_screenfx_type_flash` |
+| <a id="viper-game-screenfx-get-typefadein"></a>`Viper.Game.ScreenFX.get_TypeFadeIn` | `i64()` | `rt_screenfx_type_fade_in` |
+| <a id="viper-game-screenfx-get-typefadeout"></a>`Viper.Game.ScreenFX.get_TypeFadeOut` | `i64()` | `rt_screenfx_type_fade_out` |
+| <a id="viper-game-screenfx-get-typewipe"></a>`Viper.Game.ScreenFX.get_TypeWipe` | `i64()` | `rt_screenfx_type_wipe` |
+| <a id="viper-game-screenfx-get-typecirclein"></a>`Viper.Game.ScreenFX.get_TypeCircleIn` | `i64()` | `rt_screenfx_type_circle_in` |
+| <a id="viper-game-screenfx-get-typecircleout"></a>`Viper.Game.ScreenFX.get_TypeCircleOut` | `i64()` | `rt_screenfx_type_circle_out` |
+| <a id="viper-game-screenfx-get-typedissolve"></a>`Viper.Game.ScreenFX.get_TypeDissolve` | `i64()` | `rt_screenfx_type_dissolve` |
+| <a id="viper-game-screenfx-get-typepixelate"></a>`Viper.Game.ScreenFX.get_TypePixelate` | `i64()` | `rt_screenfx_type_pixelate` |
+| <a id="viper-game-screenfx-get-dirleft"></a>`Viper.Game.ScreenFX.get_DirLeft` | `i64()` | `rt_screenfx_dir_left` |
+| <a id="viper-game-screenfx-get-dirright"></a>`Viper.Game.ScreenFX.get_DirRight` | `i64()` | `rt_screenfx_dir_right` |
+| <a id="viper-game-screenfx-get-dirup"></a>`Viper.Game.ScreenFX.get_DirUp` | `i64()` | `rt_screenfx_dir_up` |
+| <a id="viper-game-screenfx-get-dirdown"></a>`Viper.Game.ScreenFX.get_DirDown` | `i64()` | `rt_screenfx_dir_down` |
 | `Viper.Game.ScreenFX.Wipe` | `void(obj,i64,i64,i64)` | `rt_screenfx_wipe` |
 | `Viper.Game.ScreenFX.CircleIn` | `void(obj,i64,i64,i64,i64)` | `rt_screenfx_circle_in` |
 | `Viper.Game.ScreenFX.CircleOut` | `void(obj,i64,i64,i64,i64)` | `rt_screenfx_circle_out` |
@@ -2259,7 +2290,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-dialogue-get-currentline"></a>`Viper.Game.Dialogue.get_CurrentLine` | `i64(obj)` | `rt_dialogue_get_current_line` |
 | <a id="viper-game-dialogue-get-speaker"></a>`Viper.Game.Dialogue.get_Speaker` | `str(obj)` | `rt_dialogue_get_speaker` |
 | `Viper.Game.Dialogue.Draw` | `void(obj,obj)` | `rt_dialogue_draw` |
-| `Viper.Game.Lighting2D.New` | `obj(i64)` | `rt_lighting2d_new` |
+| `Viper.Game.Lighting2D.New` | `obj<Viper.Game.Lighting2D>(i64)` | `rt_lighting2d_new` |
 | `Viper.Game.Lighting2D.Destroy` | `void(obj)` | `rt_lighting2d_destroy` |
 | <a id="viper-game-lighting2d-set-darkness"></a>`Viper.Game.Lighting2D.set_Darkness` | `void(obj,i64)` | `rt_lighting2d_set_darkness` |
 | <a id="viper-game-lighting2d-get-darkness"></a>`Viper.Game.Lighting2D.get_Darkness` | `i64(obj)` | `rt_lighting2d_get_darkness` |
@@ -2272,6 +2303,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | `Viper.Game.Lighting2D.Update` | `void(obj)` | `rt_lighting2d_update` |
 | `Viper.Game.Lighting2D.Draw` | `void(obj,obj,i64,i64,i64,i64)` | `rt_lighting2d_draw` |
 | <a id="viper-game-lighting2d-get-lightcount"></a>`Viper.Game.Lighting2D.get_LightCount` | `i64(obj)` | `rt_lighting2d_get_light_count` |
+| <a id="viper-game-lighting2d-get-playerradius"></a>`Viper.Game.Lighting2D.get_PlayerRadius` | `i64(obj)` | `rt_lighting2d_get_player_radius` |
 | `Viper.Game.PlatformerController.New` | `obj()` | `rt_platformer_ctrl_new` |
 | `Viper.Game.PlatformerController.Destroy` | `void(obj)` | `rt_platformer_ctrl_destroy` |
 | `Viper.Game.PlatformerController.SetJumpBuffer` | `void(obj,i64)` | `rt_platformer_ctrl_set_jump_buffer` |
@@ -2359,8 +2391,8 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-scenemanager-switch"></a>`Viper.Game.SceneManager.Switch` | `void(obj,str)` | `rt_scenemanager_switch` |
 | <a id="viper-game-scenemanager-switchtransition"></a>`Viper.Game.SceneManager.SwitchTransition` | `void(obj,str,i64)` | `rt_scenemanager_switch_transition` |
 | <a id="viper-game-scenemanager-update"></a>`Viper.Game.SceneManager.Update` | `void(obj,i64)` | `rt_scenemanager_update` |
-| <a id="viper-game-scenemanager-get-current"></a>`Viper.Game.SceneManager.get_Current` | `obj(obj)` | `rt_scenemanager_current` |
-| <a id="viper-game-scenemanager-get-previous"></a>`Viper.Game.SceneManager.get_Previous` | `obj(obj)` | `rt_scenemanager_previous` |
+| <a id="viper-game-scenemanager-get-current"></a>`Viper.Game.SceneManager.get_Current` | `str(obj)` | `rt_scenemanager_current` |
+| <a id="viper-game-scenemanager-get-previous"></a>`Viper.Game.SceneManager.get_Previous` | `str(obj)` | `rt_scenemanager_previous` |
 | <a id="viper-game-scenemanager-isscene"></a>`Viper.Game.SceneManager.IsScene` | `i1(obj,str)` | `rt_scenemanager_is_scene` |
 | <a id="viper-game-scenemanager-get-justentered"></a>`Viper.Game.SceneManager.get_JustEntered` | `i1(obj)` | `rt_scenemanager_just_entered` |
 | <a id="viper-game-scenemanager-get-justexited"></a>`Viper.Game.SceneManager.get_JustExited` | `i1(obj)` | `rt_scenemanager_just_exited` |
@@ -2369,7 +2401,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-config-load"></a>`Viper.Game.Config.Load` | `obj(str)` | `rt_config_load` |
 | <a id="viper-game-config-fromstring"></a>`Viper.Game.Config.FromString` | `obj(str)` | `rt_config_from_string` |
 | <a id="viper-game-config-getint"></a>`Viper.Game.Config.GetInt` | `i64(obj,str,i64)` | `rt_config_get_int` |
-| <a id="viper-game-config-getstr"></a>`Viper.Game.Config.GetStr` | `obj(obj,str,str)` | `rt_config_get_str` |
+| <a id="viper-game-config-getstr"></a>`Viper.Game.Config.GetStr` | `str(obj,str,str)` | `rt_config_get_str` |
 | <a id="viper-game-config-getbool"></a>`Viper.Game.Config.GetBool` | `i1(obj,str,i1)` | `rt_config_get_bool` |
 | <a id="viper-game-config-has"></a>`Viper.Game.Config.Has` | `i1(obj,str)` | `rt_config_has` |
 | `Viper.Game.AchievementTracker.New` | `obj(i64)` | `rt_achievement_new` |
@@ -2402,8 +2434,8 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-typewriter-get-charcount"></a>`Viper.Game.Typewriter.get_CharCount` | `i64(obj)` | `rt_typewriter_char_count` |
 | <a id="viper-game-typewriter-get-totalchars"></a>`Viper.Game.Typewriter.get_TotalChars` | `i64(obj)` | `rt_typewriter_total_chars` |
 | `Viper.Game.Pathfinder.New` | `obj(i64,i64)` | `rt_pathfinder_new` |
-| `Viper.Game.Pathfinder.FromTilemap` | `obj(obj)` | `rt_pathfinder_from_tilemap` |
-| `Viper.Game.Pathfinder.FromGrid2D` | `obj(obj)` | `rt_pathfinder_from_grid2d` |
+| `Viper.Game.Pathfinder.FromTilemap` | `obj<Viper.Game.Pathfinder>(obj)` | `rt_pathfinder_from_tilemap` |
+| `Viper.Game.Pathfinder.FromGrid2D` | `obj<Viper.Game.Pathfinder>(obj)` | `rt_pathfinder_from_grid2d` |
 | `Viper.Game.Pathfinder.Destroy` | `void(obj)` | `rt_pathfinder_destroy` |
 | `Viper.Game.Pathfinder.SetWalkable` | `void(obj,i64,i64,i1)` | `rt_pathfinder_set_walkable` |
 | `Viper.Game.Pathfinder.IsWalkable` | `i1(obj,i64,i64)` | `rt_pathfinder_is_walkable` |
@@ -2419,7 +2451,7 @@ Constructor: `Viper.Game.DebugOverlay.New`
 | <a id="viper-game-pathresult-get-steps"></a>`Viper.Game.PathResult.get_Steps` | `i64(obj)` | `rt_path_result_steps` |
 | <a id="viper-game-pathresult-get-cost"></a>`Viper.Game.PathResult.get_Cost` | `i64(obj)` | `rt_path_result_cost` |
 | <a id="viper-game-pathresult-get-stepcount"></a>`Viper.Game.PathResult.get_StepCount` | `i64(obj)` | `rt_path_result_step_count` |
-| <a id="viper-game-pathresult-get-path"></a>`Viper.Game.PathResult.get_Path` | `obj(obj)` | `rt_path_result_path` |
+| <a id="viper-game-pathresult-get-path"></a>`Viper.Game.PathResult.get_Path` | `obj<Viper.Collections.List>(obj)` | `rt_path_result_path` |
 | `Viper.Game.PathFollower.New` | `obj()` | `rt_pathfollow_new` |
 | `Viper.Game.PathFollower.Destroy` | `void(obj)` | `rt_pathfollow_destroy` |
 | `Viper.Game.PathFollower.Clear` | `void(obj)` | `rt_pathfollow_clear` |

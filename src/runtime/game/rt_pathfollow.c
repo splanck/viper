@@ -20,7 +20,9 @@
 //     to scale results in the follower appearing to advance by a factor of 1000
 //     too quickly.
 //   - Speed uses the same fixed-point scale per second. Update() accepts elapsed
-//     milliseconds and truncates sub-unit distance; no remainder accumulates.
+//     milliseconds and carries the sub-unit distance and sub-per-mille progress
+//     remainders across calls, so slow speeds and long segments still accumulate
+//     motion instead of truncating every frame's fraction to zero (VDOC-280).
 //   - Segment progress is an integer from 0 through 1000. Segment lengths are
 //     Euclidean distances between adjacent fixed-point waypoints.
 //   - When the follower reaches the last waypoint it either stops (one-shot) or
@@ -65,6 +67,8 @@ struct rt_pathfollow_impl {
     int64_t current_y;         ///< Current Y position.
     int64_t segment;           ///< Current segment index.
     int64_t segment_progress;  ///< Progress within segment (0-1000).
+    int64_t move_remainder;    ///< Sub-unit distance carried between updates (milliunits, 0-999).
+    int64_t progress_remainder;///< Sub-per-mille progress carried within the current segment.
     int64_t total_length;      ///< Total path length (cached).
     int64_t *segment_lengths;  ///< Cached segment lengths.
     int8_t lengths_dirty;      ///< 1 if the length cache must be rebuilt before use.
@@ -135,6 +139,8 @@ static void rt_pathfollow_rewind(rt_pathfollow path) {
 
     path->segment = 0;
     path->segment_progress = 0;
+    path->move_remainder = 0;
+    path->progress_remainder = 0;
     path->reverse = 0;
 
     if (path->point_count > 0) {
@@ -150,6 +156,10 @@ static void rt_pathfollow_rewind(rt_pathfollow path) {
 ///        applying loop / ping-pong (reverse) / clamp end behavior.
 static void rt_pathfollow_advance_segment_boundary(rt_pathfollow path) {
     int64_t seg = path->segment;
+
+    // A new segment has a different length, so the sub-per-mille progress
+    // remainder accumulated against the old segment no longer applies.
+    path->progress_remainder = 0;
 
     if (path->reverse) {
         if (seg > 0) {
@@ -189,28 +199,24 @@ static void rt_pathfollow_advance_segment_boundary(rt_pathfollow path) {
 /// @brief Rebuild the cached `segment_lengths` array and `total_length` from the waypoint list.
 /// Called lazily by ensure_lengths() after one or more points are added. Frees and re-mallocs the
 /// array (no in-place realloc). For paths with fewer than 2 points the cache is cleared.
-static void recalculate_lengths(rt_pathfollow path) {
+/// @return 1 on success (cache is current), 0 if the array could not be allocated — in which case
+///         the previous valid cache is preserved so a retry can succeed later (VDOC-281).
+static int8_t recalculate_lengths(rt_pathfollow path) {
     if (!path)
-        return;
+        return 0;
     if (path->point_count < 2) {
         if (path->segment_lengths) {
             free(path->segment_lengths);
             path->segment_lengths = NULL;
         }
         path->total_length = 0;
-        return;
+        return 1;
     }
 
     int64_t segments = path->point_count - 1;
     int64_t *new_lengths = malloc((size_t)segments * sizeof(int64_t));
-    if (!new_lengths) {
-        if (path->segment_lengths) {
-            free(path->segment_lengths);
-            path->segment_lengths = NULL;
-        }
-        path->total_length = 0;
-        return;
-    }
+    if (!new_lengths)
+        return 0; // preserve the previous cache and total_length; caller retries
 
     if (path->segment_lengths)
         free(path->segment_lengths);
@@ -223,6 +229,7 @@ static void recalculate_lengths(rt_pathfollow path) {
         path->total_length =
             pathfollow_saturating_add(path->total_length, path->segment_lengths[i]);
     }
+    return 1;
 }
 
 /// @brief Rebuild the length cache only if a point was added since the last build.
@@ -232,8 +239,11 @@ static void recalculate_lengths(rt_pathfollow path) {
 ///          total_length before it touches the cache.
 static void ensure_lengths(rt_pathfollow path) {
     if (path && path->lengths_dirty) {
-        recalculate_lengths(path);
-        path->lengths_dirty = 0;
+        // Clear the dirty flag only on success; a failed (allocation-starved) build
+        // stays dirty so the next reader retries instead of caching a broken state
+        // permanently (VDOC-281).
+        if (recalculate_lengths(path))
+            path->lengths_dirty = 0;
     }
 }
 
@@ -281,6 +291,8 @@ void rt_pathfollow_clear(rt_pathfollow path) {
     path->point_count = 0;
     path->segment = 0;
     path->segment_progress = 0;
+    path->move_remainder = 0;
+    path->progress_remainder = 0;
     path->current_x = 0;
     path->current_y = 0;
     path->active = 0;
@@ -414,16 +426,34 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
         return;
 
     ensure_lengths(path);
-    if (!path->segment_lengths || path->total_length == 0)
+    if (path->lengths_dirty) {
+        // The length cache could not be allocated. Stay active (not finished) so a
+        // later update retries once memory frees — an allocation failure must not
+        // masquerade as a completed path (VDOC-281).
         return;
-    if (dt <= 0)
+    }
+    if (!path->segment_lengths || path->total_length == 0) {
+        // Degenerate path: every waypoint coincides, so there is no distance to
+        // cover. Complete immediately instead of staying active forever — a
+        // once-mode loop waiting on IsFinished would otherwise hang (VDOC-281).
+        path->active = 0;
+        if (path->mode == RT_PATHFOLLOW_ONCE)
+            path->finished = 1;
+        return;
+    }
+    if (dt <= 0 || path->speed <= 0)
         return;
 
-    // Calculate distance to move this frame
-    // speed is units/sec (fixed-point 1000), dt is ms
-    long double scaled_move_dist = ((long double)path->speed * (long double)dt) / 1000.0L;
-    int64_t move_dist =
-        scaled_move_dist >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scaled_move_dist;
+    // Distance to move this frame = speed(units/sec, fixed-point) * dt(ms) / 1000.
+    // Carry the sub-unit remainder (in milliunits) across calls so slow speeds no
+    // longer truncate every frame's fraction to zero and stall forever (VDOC-280).
+    int64_t numerator;
+    if (dt > (INT64_MAX - path->move_remainder) / path->speed)
+        numerator = INT64_MAX; // saturate on overflow; the leftover fraction is negligible here
+    else
+        numerator = path->speed * dt + path->move_remainder;
+    int64_t move_dist = numerator / 1000;
+    path->move_remainder = numerator % 1000;
     int64_t zero_hops = 0;
 
     while (move_dist > 0 && !path->finished) {
@@ -459,8 +489,21 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
             move_dist -= seg_remaining;
             rt_pathfollow_advance_segment_boundary(path);
         } else {
-            // Partial movement within segment
-            int64_t progress_delta = pathfollow_scaled(move_dist, 1000, seg_len);
+            // Partial movement within segment. Convert distance to per-mille
+            // progress while carrying the sub-per-mille remainder across calls, so
+            // slow movement over a long segment accumulates instead of truncating
+            // to zero progress every frame (VDOC-280).
+            long double pnum =
+                (long double)move_dist * 1000.0L + (long double)path->progress_remainder;
+            int64_t progress_delta;
+            if (pnum >= (long double)INT64_MAX) {
+                progress_delta = 1000; // saturate (never exceeds a full segment here)
+                path->progress_remainder = 0;
+            } else {
+                int64_t pn = (int64_t)pnum;
+                progress_delta = pn / seg_len;
+                path->progress_remainder = pn % seg_len;
+            }
             if (path->reverse)
                 path->segment_progress -= progress_delta;
             else
@@ -542,6 +585,10 @@ void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
         progress = 0;
     if (progress > 1000)
         progress = 1000;
+
+    // A teleport starts fresh: discard carried movement/progress fractions.
+    path->move_remainder = 0;
+    path->progress_remainder = 0;
 
     // Find the segment for this progress
     int64_t target_dist = pathfollow_scaled(path->total_length, progress, 1000);

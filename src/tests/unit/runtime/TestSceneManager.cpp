@@ -21,6 +21,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 extern "C" {
 #include "rt_string.h"
@@ -174,6 +175,34 @@ TEST(SceneManager, LongSceneNamesCanBeSwitchedByOriginalName) {
 
     EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr(longName)));
     EXPECT_EQ(std::strcmp(rt_string_cstr((rt_string)rt_scenemanager_current(mgr)), longName), 0);
+}
+
+// VDOC-243: names longer than the 127-byte buffer are rejected outright rather
+// than truncated, so two distinct long names sharing a 127-byte prefix cannot
+// alias to the same registered scene under the strcmp lookup.
+TEST(SceneManager, OverlongSceneNamesAreRejectedNotAliased) {
+    void *mgr = rt_scenemanager_new();
+
+    // A 127-byte name fits exactly and is accepted.
+    std::string fits(127, 'a');
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr(fits.c_str()));
+    EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr(fits.c_str())));
+
+    // Two 128-byte names sharing the first 127 bytes: previously both truncated to
+    // the same key so the second was silently deduped. Now both are rejected, so
+    // neither registers and they never alias each other.
+    std::string prefix(127, 'b');
+    std::string nameA = prefix + "1";
+    std::string nameB = prefix + "2";
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr(nameA.c_str()));
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr(nameB.c_str()));
+    EXPECT_FALSE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr(nameA.c_str())));
+    EXPECT_FALSE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr(nameB.c_str())));
+
+    // Switching to an overlong name is a no-op, so the current scene never becomes
+    // a prefix-colliding alias.
+    rt_scenemanager_switch(mgr, (void *)rt_const_cstr(nameA.c_str()));
+    EXPECT_FALSE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr(nameB.c_str())));
 }
 
 int main() {

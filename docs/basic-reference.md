@@ -870,8 +870,9 @@ Type parsing (with explicit error handling):
 - `Viper.Core.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default; `+` and `-` are accepted only for decimal, prefixes are rejected
 
 Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
-`TryNum` and `NumOr` remain available as compatibility aliases for
-`TryDouble` and `DoubleOr`.
+Use `TryDouble` and `DoubleOr` for double parsing; the former `TryNum` / `NumOr`
+spellings were retired by the public-surface standardization and are no longer
+available.
 
 #### Viper.Diagnostics
 

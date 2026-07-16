@@ -284,29 +284,34 @@ void rt_lighting2d_draw(rt_lighting2d lit,
     // Step 1: Full-screen darkness overlay
     rt_canvas_box_alpha(canvas, 0, 0, w, h, lit->tint_color, dark);
 
-    // Step 2: Player light — concentric rings for soft falloff
-    int64_t pulse = 0;
-    if (lit->player_pulse < 60)
-        pulse = lit->player_pulse / 6;
-    else
-        pulse = (120 - lit->player_pulse) / 6;
-    int64_t radius = lighting_add_sat_i64(lit->player_radius, pulse);
-    if (radius < 0)
-        radius = 0;
+    // Step 2: Player light — concentric rings for soft falloff. A base radius of
+    // zero disables the player light entirely (including the outer glow), so the
+    // sentinel radius set by SetPlayerLight(0) is a real off switch (VDOC-271).
+    if (lit->player_radius > 0) {
+        int64_t pulse = 0;
+        if (lit->player_pulse < 60)
+            pulse = lit->player_pulse / 6;
+        else
+            pulse = (120 - lit->player_pulse) / 6;
+        int64_t radius = lighting_add_sat_i64(lit->player_radius, pulse);
+        if (radius < 0)
+            radius = 0;
 
-    // Outer glow
-    rt_canvas_disc_alpha(
-        canvas, player_sx, player_sy, lighting_add_sat_i64(radius, 40), lit->player_color, 30);
-    // Main light rings
-    for (int ring = 0; ring < 6; ring++) {
-        int64_t r = radius - ring * (radius / 6);
-        int64_t alpha = 40 + ring * 15;
-        if (alpha > dark)
-            alpha = dark;
-        rt_canvas_disc_alpha(canvas, player_sx, player_sy, r, lit->player_color, alpha);
+        // Outer glow
+        rt_canvas_disc_alpha(
+            canvas, player_sx, player_sy, lighting_add_sat_i64(radius, 40), lit->player_color, 30);
+        // Main light rings
+        for (int ring = 0; ring < 6; ring++) {
+            int64_t r = radius - ring * (radius / 6);
+            int64_t alpha = 40 + ring * 15;
+            if (alpha > dark)
+                alpha = dark;
+            rt_canvas_disc_alpha(canvas, player_sx, player_sy, r, lit->player_color, alpha);
+        }
+        // Inner bright core
+        rt_canvas_disc_alpha(
+            canvas, player_sx, player_sy, radius / 4, lit->player_color, dark / 2);
     }
-    // Inner bright core
-    rt_canvas_disc_alpha(canvas, player_sx, player_sy, radius / 4, lit->player_color, dark / 2);
 
     // Step 3: Dynamic lights
     for (int64_t i = 0; i < lit->max_lights; i++) {
@@ -353,6 +358,13 @@ void rt_lighting2d_draw(rt_lighting2d lit,
                              dark);
     }
     lit->tile_count = 0;
+}
+
+/// @brief Read the player light's base radius. A value of 0 means the player light is
+/// disabled — Draw renders no player glow at all (VDOC-271). Returns 0 for null handles.
+int64_t rt_lighting2d_get_player_radius(rt_lighting2d lit) {
+    lit = checked_lighting2d(lit, "Lighting2D.PlayerRadius: expected Viper.Game.Lighting2D");
+    return lit ? lit->player_radius : 0;
 }
 
 /// @brief Number of currently active dynamic lights (excludes the always-on player light).

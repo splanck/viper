@@ -6,11 +6,11 @@
 // TUTORIAL — ATMOSPHERE FROM LIGHT
 // --------------------------------
 // One of the cheapest ways to make a 2D platformer feel atmospheric
-// is a darkness overlay with a few soft light sources cut out of
-// it.  Torches in corridors, a lamp on the player's helmet, a red
-// pulse when a boss changes phase — those effects completely
-// change how a scene *feels* without changing a single pixel of
-// the underlying artwork.
+// is a darkness overlay with a few soft, glowing light sources
+// blended on top of it.  Torches in corridors, a lamp on the
+// player's helmet, a red pulse when a boss changes phase — those
+// effects completely change how a scene *feels* without changing a
+// single pixel of the underlying artwork.
 //
 // This file is a thin wrapper over `Viper.Game.Lighting2D`, a
 // runtime class that implements the overlay + lights for us.  We
@@ -40,8 +40,10 @@
 //     color)`.  These don't persist; you call it every frame
 //     while the tile is visible.
 //   * Call `Draw()` after your regular scene draw.  The runtime
-//     composites a darkness layer over the screen with the
-//     lights punched out.
+//     composites a darkness layer over the screen, then blends the
+//     colored glow discs on top (source-over) — the lights are
+//     additive glows, not holes cut through the darkness, so the
+//     scene under a light is tinted, not fully revealed.
 //
 // WHERE THIS FITS
 // ---------------
@@ -67,7 +69,8 @@
 //   1. The `LIGHT_*` id table (currently informational; future
 //      code may dispatch on these).
 //   2. `MAX_DYN_LIGHTS` — hard cap on concurrent transient
-//      lights; older ones evict if the pool is full.
+//      lights; when the pool is full a new light is silently
+//      dropped (older lights are not evicted).
 //   3. `DARK_*` table — target darkness per biome, chosen by
 //      hand to match the mood (surface fully lit, cavern
 //      nearly black, corrupted core practically pitch).

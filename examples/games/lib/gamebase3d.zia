@@ -89,7 +89,11 @@ class GameBase3D {
     expose func run() {
         while running {
             if world.Update() == false {
+                // Stop immediately once the window/world signals close: do not run
+                // scene callbacks, draw, or present another frame against a backend
+                // already tearing down (VDOC-258).
                 running = false;
+                break;
             }
 
             // Delta-time clamping (seconds).
@@ -197,9 +201,16 @@ class GameBase3D {
         return dt;
     }
 
-    // Set maximum delta time clamp in seconds (default 0.05).
+    // Set maximum delta time clamp in seconds (default 0.05). A nonpositive
+    // maximum is rejected and floored to one frame (0.016s): dt is floored to a
+    // positive value each frame, so a dtMax at or below zero would drive the upper
+    // clamp to zero or negative dt (VDOC-257).
     expose func setDTMax(max: Number) {
-        dtMax = max;
+        if max <= 0.0 {
+            dtMax = 0.016;
+        } else {
+            dtMax = max;
+        }
     }
 
     // Signal the game to stop at the end of the current frame.

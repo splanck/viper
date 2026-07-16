@@ -36,6 +36,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_dateonly.h"
+#include "rt_datetime.h"
 #include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_string.h"
@@ -343,22 +344,29 @@ static int from_days_since_epoch_checked(int64_t days,
 //=============================================================================
 
 /// @brief Create a DateOnly from explicit year, month, and day components.
-/// @details Validates that month is in [1,12] and day is in [1, days-in-month].
-///          Returns NULL for invalid inputs rather than trapping, allowing callers
-///          to provide their own error handling.
-/// @param year Gregorian year (e.g. 2026).
+/// @details Validates that year is in [0,9999], month is in [1,12], and day is in
+///          [1, days-in-month]. Returns NULL for invalid inputs rather than
+///          trapping, allowing callers to provide their own error handling. The
+///          year domain is the four-digit ISO 8601 range so that every constructed
+///          value round-trips through `ToString`/`Parse`; years outside it (e.g.
+///          negative or five-digit) are rejected rather than producing a string
+///          the exact parser cannot read back (VDOC-231).
+/// @param year Gregorian year in [0,9999] (e.g. 2026).
 /// @param month Month number (1=January, 12=December).
 /// @param day Day of month (1-based).
 /// @return New GC-managed DateOnly, or NULL if inputs are out of range.
 void *rt_dateonly_create(int64_t year, int64_t month, int64_t day) {
-    // Validate inputs
+    // Validate inputs. The year domain matches the four-digit serializer/parser
+    // domain so construction and round-trip agree (VDOC-231).
+    if (year < 0 || year > 9999)
+        return NULL;
     if (month < 1 || month > 12)
         return NULL;
     int64_t max_day = days_in_month_impl(year, month);
     if (day < 1 || day > max_day)
         return NULL;
 
-    DateOnly *d = (DateOnly *)rt_obj_new_i64(0, (int64_t)sizeof(DateOnly));
+    DateOnly *d = (DateOnly *)rt_obj_new_i64(RT_DATEONLY_CLASS_ID, (int64_t)sizeof(DateOnly));
     if (!d) {
         rt_trap("DateOnly.New: memory allocation failed");
         return NULL;
@@ -373,10 +381,16 @@ void *rt_dateonly_create(int64_t year, int64_t month, int64_t day) {
 /// @brief Return a DateOnly representing today's date in local time.
 /// @details Uses the platform's localtime_r to convert the current Unix
 ///          timestamp to a calendar date. The result reflects the system's
-///          local timezone setting (not UTC).
+///          local timezone setting (not UTC). A genuine wall-clock failure is
+///          detected via the shared checked read rather than being converted into
+///          a plausible 1969 date (VDOC-230).
 /// @return New DateOnly for today, or NULL if the system clock fails.
 void *rt_dateonly_today(void) {
-    time_t now = time(NULL);
+    int64_t seconds;
+    if (!rt_datetime_wall_seconds(&seconds))
+        return NULL;
+    // seconds was produced from a live time_t, so the round-trip cast is exact.
+    time_t now = (time_t)seconds;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&now, &tm_buf);
     if (!tm)
@@ -427,13 +441,31 @@ void *rt_dateonly_from_days(int64_t days) {
 // Component Access
 //=============================================================================
 
+/// @brief Validate an explicit DateOnly receiver, trapping on a wrong class.
+/// @details Returns NULL for a NULL receiver so callers keep their existing
+///          null-sentinel contract, but a non-NULL object of another class (e.g.
+///          a Seq handed to the static compatibility form) traps rather than
+///          being reinterpreted as a DateOnly payload (VDOC-229). The heap kind,
+///          class ID, and payload size are all checked by rt_obj_is_instance.
+/// @param obj Candidate receiver pointer.
+/// @return The validated DateOnly, or NULL when @p obj is NULL.
+static DateOnly *as_dateonly(void *obj) {
+    if (!obj)
+        return NULL;
+    if (!rt_obj_is_instance(obj, RT_DATEONLY_CLASS_ID, sizeof(DateOnly))) {
+        rt_trap("DateOnly: invalid receiver");
+        return NULL;
+    }
+    return (DateOnly *)obj;
+}
+
 /// @brief Return the year component of a DateOnly (e.g. 2026).
 /// @param obj DateOnly object pointer; returns 0 if NULL.
 /// @return Four-digit year.
 int64_t rt_dateonly_year(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return d->year;
 }
 
@@ -443,7 +475,7 @@ int64_t rt_dateonly_year(void *obj) {
 int64_t rt_dateonly_month(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return d->month;
 }
 
@@ -453,7 +485,7 @@ int64_t rt_dateonly_month(void *obj) {
 int64_t rt_dateonly_day(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return d->day;
 }
 
@@ -466,7 +498,7 @@ int64_t rt_dateonly_day(void *obj) {
 int64_t rt_dateonly_day_of_week(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
 
     // Zeller's formula (modified for Sunday = 0)
     int64_t days = to_days_since_epoch(d->year, d->month, d->day);
@@ -483,7 +515,7 @@ int64_t rt_dateonly_day_of_week(void *obj) {
 int64_t rt_dateonly_day_of_year(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
 
     int64_t doy = 0;
     for (int64_t m = 1; m < d->month; m++) {
@@ -501,7 +533,7 @@ int64_t rt_dateonly_day_of_year(void *obj) {
 int64_t rt_dateonly_to_days(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return to_days_since_epoch(d->year, d->month, d->day);
 }
 
@@ -519,7 +551,7 @@ int64_t rt_dateonly_to_days(void *obj) {
 void *rt_dateonly_add_days(void *obj, int64_t days) {
     if (!obj)
         return NULL;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     int64_t base = to_days_since_epoch(d->year, d->month, d->day);
     int64_t total;
     if (date_checked_add_i64(base, days, &total)) {
@@ -540,7 +572,7 @@ void *rt_dateonly_add_days(void *obj, int64_t days) {
 void *rt_dateonly_add_months(void *obj, int64_t months) {
     if (!obj)
         return NULL;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
 
     int64_t month_index;
     if (date_checked_add_i64(d->month - 1, months, &month_index)) {
@@ -581,7 +613,7 @@ void *rt_dateonly_add_months(void *obj, int64_t months) {
 void *rt_dateonly_add_years(void *obj, int64_t years) {
     if (!obj)
         return NULL;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
 
     int64_t year;
     if (date_checked_add_i64(d->year, years, &year)) {
@@ -628,7 +660,7 @@ int64_t rt_dateonly_diff_days(void *a, void *b) {
 int8_t rt_dateonly_is_leap_year(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return is_leap_year(d->year);
 }
 
@@ -639,7 +671,7 @@ int8_t rt_dateonly_is_leap_year(void *obj) {
 int64_t rt_dateonly_days_in_month(void *obj) {
     if (!obj)
         return 0;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return days_in_month_impl(d->year, d->month);
 }
 
@@ -647,7 +679,7 @@ int64_t rt_dateonly_days_in_month(void *obj) {
 void *rt_dateonly_start_of_month(void *obj) {
     if (!obj)
         return NULL;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return rt_dateonly_create(d->year, d->month, 1);
 }
 
@@ -655,7 +687,7 @@ void *rt_dateonly_start_of_month(void *obj) {
 void *rt_dateonly_end_of_month(void *obj) {
     if (!obj)
         return NULL;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return rt_dateonly_create(d->year, d->month, days_in_month_impl(d->year, d->month));
 }
 
@@ -663,7 +695,7 @@ void *rt_dateonly_end_of_month(void *obj) {
 void *rt_dateonly_start_of_year(void *obj) {
     if (!obj)
         return NULL;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return rt_dateonly_create(d->year, 1, 1);
 }
 
@@ -671,7 +703,7 @@ void *rt_dateonly_start_of_year(void *obj) {
 void *rt_dateonly_end_of_year(void *obj) {
     if (!obj)
         return NULL;
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     return rt_dateonly_create(d->year, 12, 31);
 }
 
@@ -716,16 +748,18 @@ int8_t rt_dateonly_equals(void *a, void *b) {
 //=============================================================================
 
 /// @brief Format the date as an ISO 8601 string (YYYY-MM-DD).
-/// @details Uses a minimum width of four year digits (e.g. "2026-03-29"). Years
-///          outside 0000-9999 produce longer or signed text that the exact parser
-///          does not accept, so only that four-digit domain round-trips (VDOC-231).
+/// @details Emits exactly four year digits (e.g. "2026-03-29"). Every DateOnly is
+///          constructed with a year in [0,9999] (rt_dateonly_create enforces that
+///          domain), so the output is always a fixed ten-byte string that
+///          `Parse` reads back — construction, formatting, and parsing share one
+///          year domain (VDOC-231).
 /// @param obj DateOnly object pointer; returns "" if NULL.
 /// @return Newly allocated runtime string in ISO 8601 format.
 rt_string rt_dateonly_to_string(void *obj) {
     if (!obj)
         return rt_const_cstr("");
 
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     char buf[32];
     int len = snprintf(buf,
                        sizeof(buf),
@@ -753,7 +787,7 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt) {
     if (!obj)
         return rt_const_cstr("");
 
-    DateOnly *d = (DateOnly *)obj;
+    DateOnly *d = as_dateonly(obj);
     if (!fmt)
         return rt_const_cstr("");
     int64_t fmt_len = rt_str_len(fmt);

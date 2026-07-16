@@ -100,13 +100,17 @@ int8_t rt_buttongroup_add(rt_buttongroup group, int64_t button_id) {
     group = checked_group(group, "ButtonGroup.Add: expected Viper.Game.ButtonGroup");
     if (!group)
         return 0;
+    // Check for an existing ID before enforcing capacity so an idempotent re-add of
+    // an already-present button returns false (its normal duplicate contract) rather
+    // than trapping just because the group happens to be full (VDOC-282). The trap is
+    // reserved for a genuinely new ID that would overflow the array.
+    if (find_button_index(group, button_id) >= 0)
+        return 0; // Already exists
     if (group->count >= RT_BUTTONGROUP_MAX) {
         rt_trap("ButtonGroup.Add: button limit (" RT_BUTTONGROUP_MAX_STR
                 ") exceeded — increase RT_BUTTONGROUP_MAX and recompile");
         return 0;
     }
-    if (find_button_index(group, button_id) >= 0)
-        return 0; // Already exists
 
     group->buttons[group->count] = button_id;
     group->count++;
@@ -258,7 +262,7 @@ int64_t rt_buttongroup_select_next(rt_buttongroup group) {
 
 /// @brief Move selection to the previous button in the group, wrapping at the start.
 int64_t rt_buttongroup_select_prev(rt_buttongroup group) {
-    group = checked_group(group, "ButtonGroup.SelectPrev: expected Viper.Game.ButtonGroup");
+    group = checked_group(group, "ButtonGroup.SelectPrevious: expected Viper.Game.ButtonGroup");
     if (!group || group->count == 0)
         return -1;
 

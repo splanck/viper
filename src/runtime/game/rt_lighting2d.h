@@ -79,6 +79,8 @@ void rt_lighting2d_draw(rt_lighting2d lit,
 // Queries
 /// @brief Number of active dynamic lights.
 int64_t rt_lighting2d_get_light_count(rt_lighting2d lit);
+/// @brief Player light base radius; 0 means the player light is disabled (no glow drawn).
+int64_t rt_lighting2d_get_player_radius(rt_lighting2d lit);
 
 #ifdef __cplusplus
 }

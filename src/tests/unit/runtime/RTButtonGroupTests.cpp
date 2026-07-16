@@ -207,6 +207,21 @@ TEST(add_overflow_traps) {
     rt_buttongroup_destroy(bg);
 }
 
+// VDOC-282: re-adding an already-present ID at full capacity must return false
+// (its normal duplicate contract), not trap. The duplicate check now precedes the
+// capacity check. A trap here would abort (g_trap_expected is false), failing loudly.
+TEST(duplicate_add_at_capacity_returns_false_not_traps) {
+    rt_buttongroup bg = rt_buttongroup_new();
+    for (int64_t i = 0; i < RT_BUTTONGROUP_MAX; i++)
+        rt_buttongroup_add(bg, i);
+    ASSERT(rt_buttongroup_count(bg) == RT_BUTTONGROUP_MAX);
+
+    ASSERT(rt_buttongroup_add(bg, 0) == 0); // existing ID → false, no trap
+    ASSERT(rt_buttongroup_count(bg) == RT_BUTTONGROUP_MAX);
+
+    rt_buttongroup_destroy(bg);
+}
+
 TEST(get_at) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 100);
@@ -234,6 +249,7 @@ int main() {
     RUN_TEST(remove);
     RUN_TEST(get_at);
     RUN_TEST(add_overflow_traps);
+    RUN_TEST(duplicate_add_at_capacity_returns_false_not_traps);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

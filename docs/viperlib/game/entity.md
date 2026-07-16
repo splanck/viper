@@ -24,7 +24,7 @@ dimensions to 1 pixel, starts facing right, and starts active. Allocation can re
 | `Health`, `MaxHealth` | get/set | Unrestricted signed integers; neither setter clamps the other value. Both initially zero. |
 | `Type` | get/set | Uninterpreted application tag. |
 | `Active` | get/set | Passive flag only; Entity methods do not skip inactive values automatically. |
-| `OnGround`, `HitLeft`, `HitRight`, `HitCeiling` | get | Collision state reset at the start of each positive-delta movement call. |
+| `OnGround`, `HitLeft`, `HitRight`, `HitCeiling` | get | Collision flags recomputed each `MoveAndCollide` call; `OnGround` also reflects a persistent tile-beneath probe (VDOC-241). |
 
 The historical abbreviations `VX`, `VY`, `HP`, and `MaxHP` are not public property names.
 
@@ -39,8 +39,9 @@ The historical abbreviations `VX`, `VY`, `HP`, and `MaxHP` are not public proper
 - `PatrolReverse(speed)` changes direction/velocity only when the last movement set a wall flag.
 - `Overlaps(other)` uses half-open pixel AABBs; touching edges do not overlap.
 
-Centipixel-to-pixel collision conversion floors negative coordinates. A stationary call currently
-clears a prior grounded contact without probing the supporting tile (VDOC-241).
+Centipixel-to-pixel collision conversion floors negative coordinates. `MoveAndCollide` resets the
+collision flags each call but then probes the tile row directly beneath the entity, so `OnGround`
+stays true while resting flush on a solid tile even on a zero-displacement frame (VDOC-241).
 
 ## Example
 

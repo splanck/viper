@@ -67,7 +67,12 @@ static void test_wipe_completes(void) {
     TEST("Wipe completes after duration");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0x000000, 500);
+    // Reaching the duration enters the terminal frame (fully covered, still
+    // active for one draw); the next update reclaims the slot (VDOC-265).
     rt_screenfx_update(fx, 500);
+    assert(rt_screenfx_is_active(fx) == 1);
+    assert(rt_screenfx_get_transition_progress(fx) == 1000);
+    rt_screenfx_update(fx, 1);
     assert(rt_screenfx_is_finished(fx) == 1);
     assert(rt_screenfx_is_active(fx) == 0);
     PASS();
@@ -89,7 +94,8 @@ static void test_wipe_all_directions(void) {
         rt_screenfx fx = rt_screenfx_new();
         rt_screenfx_wipe(fx, dir, 0xFF0000, 100);
         assert(rt_screenfx_is_active(fx) == 1);
-        rt_screenfx_update(fx, 100);
+        rt_screenfx_update(fx, 100); // terminal frame
+        rt_screenfx_update(fx, 1);   // reclaim (VDOC-265)
         assert(rt_screenfx_is_finished(fx) == 1);
     }
     PASS();
@@ -100,7 +106,8 @@ static void test_wipe_invalid_direction(void) {
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 99, 0x000000, 100); // Invalid direction
     assert(rt_screenfx_is_active(fx) == 1);  // Still works
-    rt_screenfx_update(fx, 100);
+    rt_screenfx_update(fx, 100);             // terminal frame
+    rt_screenfx_update(fx, 1);               // reclaim (VDOC-265)
     assert(rt_screenfx_is_finished(fx) == 1);
     PASS();
 }
@@ -116,7 +123,8 @@ static void test_circle_in_lifecycle(void) {
     assert(rt_screenfx_is_active(fx) == 1);
     assert(rt_screenfx_is_finished(fx) == 0);
 
-    rt_screenfx_update(fx, 1000);
+    rt_screenfx_update(fx, 1000); // terminal frame
+    rt_screenfx_update(fx, 1);    // reclaim (VDOC-265)
     assert(rt_screenfx_is_finished(fx) == 1);
     PASS();
 }
@@ -127,7 +135,8 @@ static void test_circle_out_lifecycle(void) {
     rt_screenfx_circle_out(fx, 160, 120, 0x000000, 500);
     assert(rt_screenfx_is_active(fx) == 1);
 
-    rt_screenfx_update(fx, 500);
+    rt_screenfx_update(fx, 500); // terminal frame
+    rt_screenfx_update(fx, 1);   // reclaim (VDOC-265)
     assert(rt_screenfx_is_finished(fx) == 1);
     PASS();
 }
@@ -138,6 +147,25 @@ static void test_circle_type_active(void) {
     rt_screenfx_circle_in(fx, 100, 100, 0x000000, 500);
     assert(rt_screenfx_is_type_active(fx, RT_SCREENFX_CIRCLE_IN) == 1);
     assert(rt_screenfx_is_type_active(fx, RT_SCREENFX_WIPE) == 0);
+    PASS();
+}
+
+// VDOC-269: CircleIn/CircleOut now render a genuinely circular opening. The
+// half-chord (opening half-width per scanline) equals the radius at the center
+// row, shrinks with vertical offset, and vanishes past the radius — a square
+// mask would keep a constant half-width. A diagonal point inside the bounding
+// square but outside the disc must fall beyond the half-chord.
+static void test_circle_mask_is_circular(void) {
+    TEST("CircleIn/Out opening is circular, not square");
+    assert(rt_screenfx_circle_half_chord(50, 0) == 50);  // center row: full radius
+    assert(rt_screenfx_circle_half_chord(50, 30) == 40); // sqrt(2500-900)
+    assert(rt_screenfx_circle_half_chord(50, 40) == 30); // sqrt(2500-1600)
+    assert(rt_screenfx_circle_half_chord(50, 50) == 0);  // boundary row
+    assert(rt_screenfx_circle_half_chord(50, 60) == 0);  // outside the disc
+    assert(rt_screenfx_circle_half_chord(0, 0) == 0);    // degenerate radius
+    // At dy=40 the opening is 30 wide, so a point at dx=40 (inside a 50-square)
+    // lies outside the disc and is covered — proving circularity vs a square.
+    assert(rt_screenfx_circle_half_chord(50, 40) < 40);
     PASS();
 }
 
@@ -155,7 +183,9 @@ static void test_dissolve_lifecycle(void) {
     assert(rt_screenfx_is_active(fx) == 1);
     assert(rt_screenfx_is_finished(fx) == 0);
 
-    rt_screenfx_update(fx, 500);
+    rt_screenfx_update(fx, 500); // reaches duration → terminal frame
+    assert(rt_screenfx_is_active(fx) == 1);
+    rt_screenfx_update(fx, 1);   // reclaim (VDOC-265)
     assert(rt_screenfx_is_finished(fx) == 1);
     PASS();
 }
@@ -178,7 +208,8 @@ static void test_pixelate_lifecycle(void) {
     rt_screenfx_pixelate(fx, 16, 500);
     assert(rt_screenfx_is_active(fx) == 1);
 
-    rt_screenfx_update(fx, 500);
+    rt_screenfx_update(fx, 500); // terminal frame
+    rt_screenfx_update(fx, 1);   // reclaim (VDOC-265)
     assert(rt_screenfx_is_finished(fx) == 1);
     PASS();
 }
@@ -203,8 +234,11 @@ static void test_multiple_transitions(void) {
     assert(rt_screenfx_is_type_active(fx, RT_SCREENFX_WIPE) == 1);
     assert(rt_screenfx_is_type_active(fx, RT_SCREENFX_DISSOLVE) == 1);
 
-    // After 500ms, wipe done but dissolve still running
+    // At 500ms the wipe hits its terminal frame (still active for one draw);
+    // one more tick reclaims it while the dissolve keeps running (VDOC-265).
     rt_screenfx_update(fx, 500);
+    assert(rt_screenfx_is_type_active(fx, RT_SCREENFX_WIPE) == 1); // terminal frame
+    rt_screenfx_update(fx, 1);
     assert(rt_screenfx_is_type_active(fx, RT_SCREENFX_WIPE) == 0);
     assert(rt_screenfx_is_type_active(fx, RT_SCREENFX_DISSOLVE) == 1);
     assert(rt_screenfx_is_finished(fx) == 0);
@@ -300,6 +334,7 @@ int main() {
     test_circle_in_lifecycle();
     test_circle_out_lifecycle();
     test_circle_type_active();
+    test_circle_mask_is_circular();
 
     // Dissolve
     test_dissolve_lifecycle();

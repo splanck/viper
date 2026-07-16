@@ -66,6 +66,23 @@ rt_string rt_jsonpath_get_str(void *root, rt_string path);
 /// @return Integer value at path.
 int64_t rt_jsonpath_get_int(void *root, rt_string path);
 
+/// @brief Resolve @p path and convert it to an integer, reporting success.
+/// @details Returns 1 and writes @p out when the value exists and is convertible
+/// (number, boolean, or numeric string); returns 0 for an absent path or a value
+/// of an inconvertible type (object/array/null, or non-numeric string), leaving
+/// @p out untouched. Lets callers distinguish a genuine 0 from a failure and
+/// supply their own default (VDOC-245). Internal helper.
+/// @return 1 on a convertible value, 0 otherwise.
+int8_t rt_jsonpath_try_get_int(void *root, rt_string path, int64_t *out);
+
+/// @brief Resolve @p path and convert it to a string, reporting success.
+/// @details Returns 1 and writes a fresh caller-owned @p out when the value exists
+/// and is a string or scalar (number/boolean coerced to text); returns 0 for an
+/// absent path or an inconvertible type (object/array/null), leaving @p out
+/// untouched (VDOC-245). Internal helper.
+/// @return 1 on a convertible value, 0 otherwise.
+int8_t rt_jsonpath_try_get_str(void *root, rt_string path, rt_string *out);
+
 #ifdef __cplusplus
 }
 #endif

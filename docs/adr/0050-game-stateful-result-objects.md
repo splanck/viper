@@ -2,7 +2,14 @@
 
 ## Status
 
-Accepted
+Accepted — with the naming superseded by the public-surface standardization. The
+result-object decision stands, but the public method names were shortened: the
+`*Result` suffix was dropped (`Pathfinder.FindPathResult` → `Pathfinder.FindPath`,
+`FindNearestResult` → `FindNearest`, since the `obj<Viper.Game.PathResult>` return
+type already conveys the shape), and the `PathResult.Length` compatibility alias
+was retired in favour of `PathResult.StepCount` (see ADR 0062, now Superseded). The
+underlying C symbols are retained internally, so this is a scripting-surface rename
+only (VDOC-260).
 
 ## Context
 

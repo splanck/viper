@@ -233,7 +233,9 @@ and `Update(dt)` use integer milliseconds. Shake intensity and offsets use fixed
 | `Dissolve(color, duration)` | `Void` | Add a 4×4 ordered-dither dissolve |
 | `Pixelate(maxBlock, duration)` | `Void` | Add the current dark-grid pixelation approximation |
 | `Draw(canvas, width, height)` | `Void` | Draw cached flash/fade output and every active transition |
-| `Destroy()` | `Void` | Release the handle; receiver form is frontend sugar for the static target |
+| `Rgba(r, g, b, a)` | `Integer` | Static. Pack an overlay color as `0xRRGGBBAA` for `Flash`/`FadeIn`/`FadeOut` |
+| `Rgb(r, g, b)` | `Integer` | Static. Pack a transition color as `0x00RRGGBB` for `Wipe`/`Circle*`/`Dissolve` |
+| `Destroy()` | `Void` | Release the handle (instance method; the static `ScreenFX.Destroy(fx)` form also works) |
 
 Non-positive durations are ignored. `Update()` ignores non-positive `dt` without recomputing the
 cached shake or overlay. Elapsed addition saturates at the integer maximum.
@@ -242,27 +244,29 @@ The manager initially reserves eight effect slots and grows its array when neces
 normal eight-effect ceiling. If growth allocation fails, the newly requested effect is silently
 dropped.
 
-### Numeric effect and direction codes
+### Effect and direction constants
 
-The runtime registry does not currently export named constants for these values; the names below
-come from the C header. Zia and BASIC callers pass the integer values.
+The class exposes stable named constants for `IsTypeActive`/`CancelType` and the `Wipe` direction,
+so callers never copy raw integers or guess the value. Prefer these over literals — `TypeShake`
+is `1`, not `0` (`0` is the internal "none" sentinel, which selects no effect).
 
-| Effect type | Value | Effect type | Value |
+| Effect constant | Value | Effect constant | Value |
 |---|---:|---|---:|
-| none | 0 | wipe | 5 |
-| shake | 1 | circle in | 6 |
-| flash | 2 | circle out | 7 |
-| fade in | 3 | dissolve | 8 |
-| fade out | 4 | pixelate | 9 |
+| `TypeShake` | 1 | `TypeCircleIn` | 6 |
+| `TypeFlash` | 2 | `TypeCircleOut` | 7 |
+| `TypeFadeIn` | 3 | `TypeDissolve` | 8 |
+| `TypeFadeOut` | 4 | `TypePixelate` | 9 |
+| `TypeWipe` | 5 | | |
 
-| Wipe direction | Value | Visual growth |
+| Direction constant | Value | Visual growth |
 |---|---:|---|
-| left | 0 | left edge toward right |
-| right | 1 | right edge toward left |
-| up | 2 | top edge toward bottom |
-| down | 3 | bottom edge toward top |
+| `DirLeft` | 0 | left edge toward right |
+| `DirRight` | 1 | right edge toward left |
+| `DirUp` | 2 | top edge toward bottom |
+| `DirDown` | 3 | bottom edge toward top |
 
-An invalid direction is treated as 0 (left).
+Read them off the class, e.g. `fx.IsTypeActive(ScreenFX.TypeShake)` or
+`fx.Wipe(ScreenFX.DirLeft, color, 500)`. An invalid direction is treated as `DirLeft`.
 
 ### Shake behavior
 
@@ -288,13 +292,20 @@ FadeOut cancels both existing fade types. Flashes do not replace one another. If
 are active, the slot with the greatest current alpha supplies both `OverlayColor` and
 `OverlayAlpha`; the earlier slot wins ties.
 
+ScreenFX colors deliberately use their own byte orders — `0xRRGGBBAA` for overlays and `0x00RRGGBB`
+for transitions — which are **not** the canonical `Viper.Graphics.Color` order (`0xAARRGGBB`).
+Passing a `Color.Rgba()` value straight into `Flash` reads the wrong alpha channel and shifts the
+color. Build ScreenFX colors with the in-namespace constructors so the encoding is explicit:
+`ScreenFX.Rgba(r, g, b, a)` for `Flash`/`FadeIn`/`FadeOut`, and `ScreenFX.Rgb(r, g, b)` for the
+transitions. Both clamp each channel to `[0, 255]`.
+
 Starting one of these effects changes `IsActive` immediately, but its cached overlay is not
 computed until the next positive `Update()`. `Draw()` already renders the cached overlay, so do not
 also draw `OverlayColor` manually unless you intentionally want a second blend.
 
-`CancelType()` marks matching slots inactive but does not clear cached shake/overlay values. Those
-values—and `Draw()`'s cached overlay—can remain for one frame until the next positive `Update()`.
-`CancelAll()` clears them immediately.
+`CancelType()` removes matching slots and immediately recomputes the composited shake and overlay
+from the surviving effects, so a canceled flash/fade cannot keep drawing its cached overlay and a
+canceled shake cannot leave a stale camera offset. `CancelAll()` clears everything at once.
 
 ### Transitions and completion
 
@@ -302,21 +313,25 @@ Transition colors use Canvas `0x00RRGGBB`, not flash/fade raw RGBA. Multiple tra
 and draw concurrently. `TransitionProgress` reports the first active transition in slot order, not
 the newest or the longest-running one.
 
-Current rendering is intentionally approximate:
+Rendering notes:
 
-- `CircleIn`/`CircleOut` draw four rectangles around an axis-aligned clear region. The boundary is
-  rectangular rather than circular.
+- `CircleIn`/`CircleOut` fill the overlay outside a genuinely circular opening, scanline by
+  scanline, using the Euclidean distance to the farthest corner as the maximum radius. Cost is
+  proportional to screen height each draw.
 - `Dissolve` tests every screen pixel against a repeated 4×4 Bayer matrix, so its cost is
   proportional to `width × height` each draw.
-- `Pixelate` cannot read Canvas pixels back. It draws an increasingly spaced, increasingly dark
-  one-pixel grid; it does not average the image into larger pixel blocks.
+- `Pixelate` is a stylized mosaic-grid approximation, not true block-averaging. The runtime has no
+  Canvas read-back path, so it cannot sample and average the underlying image into larger blocks;
+  it instead draws an increasingly spaced, increasingly dark one-pixel grid. Choose `Dissolve` or a
+  circle/wipe when you need a faithful covering transition.
 
-There is also a terminal-frame defect in the current lifecycle. `Update()` removes an effect as
-soon as `elapsed >= duration`, before `Draw()` can render progress 1000. Consequently a FadeOut,
-closing wipe, circle-in, or dissolve never exposes its fully covered terminal frame;
-`TransitionProgress` advances only through 0–999 and then returns 0 once the slot is removed. If a
-scene swap must happen while covered, track the duration separately or trigger before completion
-rather than waiting for `IsFinished` to become true.
+The lifecycle separates "finished advancing" from "removed" so the final frame is always drawable.
+The update that reaches `elapsed >= duration` clamps the effect to its exact end (progress 1000)
+and holds it one extra frame in a terminal state — still active, still drawn — before the slot is
+reclaimed on the following `Update()`. A FadeOut, closing wipe, circle-in, or dissolve therefore
+exposes its fully covered terminal frame, and `TransitionProgress` reads 1000 on that frame before
+returning 0. Waiting for `IsFinished` to become true is safe: it only reports true after the
+covered frame has been drawn, so a scene swap gated on it never flashes the underlying scene.
 
 ### Zia example
 
@@ -330,16 +345,15 @@ func start() {
     var fx = FX.New();
 
     fx.Shake(5000, 300, 2000);
-    fx.Flash(0xFF0000FF, 200); // raw RGBA: opaque red
+    fx.Flash(FX.Rgba(255, 0, 0, 255), 200); // opaque red overlay (0xRRGGBBAA)
     fx.Update(16);
 
-    SayBool(fx.IsTypeActive(1)); // shake
-    SayInt(fx.ShakeX);           // fixed-point: divide by 1000 for pixels
+    SayBool(fx.IsTypeActive(FX.TypeShake)); // named constant, not raw 1
+    SayInt(fx.ShakeX);                      // fixed-point: divide by 1000 for pixels
     SayInt(fx.OverlayAlpha);
 
-    fx.CancelType(1);
-    fx.Update(16);               // recompute cached shake values after CancelType
-    SayInt(fx.ShakeX);
+    fx.CancelType(FX.TypeShake); // CancelType recomputes cached shake/overlay immediately
+    SayInt(fx.ShakeX);           // already 0 — no stale offset survives cancellation
 
     fx.CancelAll();
 }
@@ -411,6 +425,7 @@ world-space dynamic glows, and one-frame screen-space tile glows.
 | `Darkness` | `Integer` | read/write | Full-screen overlay alpha, clamped to 0–255 |
 | `TintColor` | `Integer` | read/write | Overlay RGB; only the low 24 bits are retained |
 | `LightCount` | `Integer` | read | Active dynamic lights; excludes player and tile lights |
+| `PlayerRadius` | `Integer` | read | Player light base radius; `0` means the player light is disabled |
 
 ### Methods
 
@@ -451,8 +466,9 @@ so Lighting2D first darkens the scene and then blends colored discs on top. Thes
 glows, but they are not light holes.
 
 The player glow uses a 120-update triangle pulse that adds 0–10 pixels to its base radius. Setting
-the player radius to zero does not fully disable it: the renderer still draws a 40-pixel outer glow
-at alpha 30. There is currently no separate player-light enable switch.
+the player radius to zero disables the player light entirely — `Draw` skips every player-light pass,
+including the 40-pixel outer glow (VDOC-271). Read `PlayerRadius` to check the state; `0` means the
+player light is off while darkness and the other lights keep working.
 
 ### Zia example
 

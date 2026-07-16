@@ -103,9 +103,12 @@ temporary file in the destination directory, flushes that file, and then replace
 file. The file and parent directory are synced where the platform supports it. There is no
 incremental or append mode; each save rewrites the full state.
 
-Most write, flush, replacement, and allocation failures return `false`. Directory-creation failure
-and failure to obtain secure randomness for the temporary name currently trap before the Boolean
-result can be observed; do not treat `Save()` as a wholly non-trapping error boundary.
+Write, flush, replacement, and allocation failures return `false` — and so now do parent-directory
+creation failures (permission, a non-directory path component) and failure to obtain secure
+randomness for the temporary name: the directory trap is caught and converted to a Boolean failure,
+and the entropy path returns `false` rather than trapping (VDOC-246). `Save()` is therefore a
+consistent Boolean error boundary for ordinary operational failures; only invalid programming inputs
+(a null/invalid handle) still trap.
 
 ### Missing Save Files
 

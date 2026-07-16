@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_dateonly.h"
+#include "rt_daterange.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -183,28 +184,62 @@ static void test_dateonly_components() {
     printf("\n");
 }
 
+// VDOC-231: DateOnly enforces the four-digit ISO 8601 year domain [0,9999] at
+// every entry point, so every constructible value round-trips through
+// ToString/Parse and out-of-domain inputs are rejected up front instead of
+// producing un-serializable dates.
 static void test_dateonly_extreme_conversions() {
-    printf("Testing DateOnly Extreme Conversion Bounds:\n");
+    printf("Testing DateOnly Year-Domain Enforcement:\n");
 
+    // A day count inside the year domain converts and round-trips by days.
     {
-        void *d = rt_dateonly_from_days(INT64_MAX - 719468);
-        test_result("Largest safe FromDays input returns date", d != nullptr);
-        test_result("Largest safe FromDays round-trips",
-                    rt_dateonly_to_days(d) == INT64_MAX - 719468);
+        void *d = rt_dateonly_from_days(0); // 1970-01-01
+        test_result("FromDays(0) is the epoch date", d != nullptr);
+        test_result("FromDays(0) round-trips by days", rt_dateonly_to_days(d) == 0);
     }
 
+    // A day count whose calendar year exceeds 9999 is rejected rather than
+    // producing a date that ToString cannot serialize back.
+    {
+        void *out_of_domain = rt_dateonly_from_days(3000000); // ~year 10184
+        test_result("FromDays past year 9999 returns null", out_of_domain == nullptr);
+    }
+
+    // A genuinely overflowing day count still traps in the checked conversion.
     {
         EXPECT_TRAP(rt_dateonly_from_days(INT64_MAX));
         test_result("Overflowing FromDays traps", true);
     }
 
+    // Create enforces the same domain: extreme, five-digit, and negative years
+    // are rejected, while the inclusive ISO 8601 bounds 0 and 9999 are accepted.
     {
-        void *extreme = rt_dateonly_create(INT64_MAX, 1, 1);
-        test_result("Extreme component date can be created", extreme != nullptr);
-        EXPECT_TRAP(rt_dateonly_to_days(extreme));
-        EXPECT_TRAP(rt_dateonly_day_of_week(extreme));
-        EXPECT_TRAP(rt_dateonly_add_days(extreme, 1));
-        test_result("Extreme ToDays consumers trap", true);
+        test_result("Create rejects INT64_MAX year",
+                    rt_dateonly_create(INT64_MAX, 1, 1) == nullptr);
+        test_result("Create rejects year 10000", rt_dateonly_create(10000, 1, 1) == nullptr);
+        test_result("Create rejects negative year", rt_dateonly_create(-1, 1, 1) == nullptr);
+        test_result("Create accepts year 0", rt_dateonly_create(0, 1, 1) != nullptr);
+        test_result("Create accepts year 9999", rt_dateonly_create(9999, 12, 31) != nullptr);
+    }
+
+    // Round-trip: every constructible value serializes to a fixed ten-byte string
+    // that Parse reads back to the same date.
+    {
+        void *d = rt_dateonly_create(9999, 12, 31);
+        rt_string s = rt_dateonly_to_string(d);
+        test_result("Max-year ToString is fixed width",
+                    strcmp(rt_string_cstr(s), "9999-12-31") == 0);
+        void *reparsed = rt_dateonly_parse(s);
+        test_result("Max-year string round-trips through Parse", reparsed != nullptr);
+        rt_string_unref(s);
+
+        void *d0 = rt_dateonly_create(0, 1, 1);
+        rt_string s0 = rt_dateonly_to_string(d0);
+        test_result("Year-zero ToString is fixed width",
+                    strcmp(rt_string_cstr(s0), "0000-01-01") == 0);
+        test_result("Year-zero string round-trips through Parse",
+                    rt_dateonly_parse(s0) != nullptr);
+        rt_string_unref(s0);
     }
 
     printf("\n");
@@ -268,10 +303,12 @@ static void test_dateonly_arithmetic() {
         test_result("Diff days", rt_dateonly_diff_days(d2, d1) == 10);
     }
 
-    // Test 8: Large month offsets normalize without iterative loops
+    // Test 8: Large month offsets normalize arithmetically (no iterative loop); a
+    // result whose year leaves the [0,9999] domain returns null rather than an
+    // un-serializable date (VDOC-231).
     {
         void *d2 = rt_dateonly_add_months(d, INT64_MAX);
-        test_result("Huge AddMonths returns a date", d2 != nullptr);
+        test_result("Huge AddMonths past the year domain returns null", d2 == nullptr);
     }
 
     // Test 9: Overflowing arithmetic traps
@@ -393,6 +430,29 @@ static void test_dateonly_formatting() {
 // Entry Point
 //=============================================================================
 
+// VDOC-229: an explicit receiver of another runtime class must trap rather than
+// be reinterpreted as a DateOnly payload. A DateRange is a live heap object of a
+// different class, so the DateOnly component/arithmetic methods must reject it.
+static void test_dateonly_wrong_class_receiver_traps() {
+    printf("DateOnly wrong-class receiver traps:\n");
+
+    void *range = rt_daterange_new(0, 86400);
+    assert(range != nullptr);
+
+    EXPECT_TRAP(rt_dateonly_year(range));
+    EXPECT_TRAP(rt_dateonly_month(range));
+    EXPECT_TRAP(rt_dateonly_day(range));
+    EXPECT_TRAP(rt_dateonly_day_of_week(range));
+    EXPECT_TRAP(rt_dateonly_day_of_year(range));
+    EXPECT_TRAP(rt_dateonly_to_days(range));
+    EXPECT_TRAP(rt_dateonly_add_days(range, 1));
+    EXPECT_TRAP(rt_dateonly_is_leap_year(range));
+    EXPECT_TRAP(rt_dateonly_start_of_month(range));
+    EXPECT_TRAP(rt_dateonly_to_string(range));
+
+    printf("  PASS\n\n");
+}
+
 int main() {
     printf("=== RT DateOnly Tests ===\n\n");
 
@@ -404,6 +464,7 @@ int main() {
     test_dateonly_queries();
     test_dateonly_comparison();
     test_dateonly_formatting();
+    test_dateonly_wrong_class_receiver_traps();
 
     printf("All DateOnly tests passed!\n");
     return 0;

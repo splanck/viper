@@ -30,8 +30,9 @@ fully qualified constructor name.
 
 The update order is gravity, patrol, chase, sine velocity, movement/collision, wall reversal, edge
 reversal, shoot cooldown, then animation. Patrol and chase speeds should normally be non-negative.
-`Entity.OnGround` currently drops on a stationary frame (VDOC-241), so edge reversal inherits that
-limitation.
+`Entity.OnGround` persists across stationary frames — `MoveAndCollide` probes the tile beneath the
+entity even with zero vertical displacement — so edge reversal reads a stable grounded contact
+(VDOC-241).
 
 ## Example
 

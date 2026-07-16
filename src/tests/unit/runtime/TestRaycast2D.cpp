@@ -91,6 +91,34 @@ TEST(Raycast, TilemapDiagonalCornerChecksSideTouchedTile) {
     EXPECT_TRUE(hit_y >= 0 && hit_y <= 9);
 }
 
+// VDOC-242: the tile grid is half-open [0, map_w) x [0, map_h). A ray lying on
+// the excluded maximum boundary (x == map_w or y == map_h) must not collide with
+// the last in-bounds tile. With a fully solid 1x1 map (16x16 px), the interior
+// and the inclusive min edges block, while the excluded max edges are clear.
+TEST(Raycast, TilemapMaxBoundaryRayIsClear) {
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    rt_tilemap_set_tile(tm, 0, 0, 7);
+    rt_tilemap_set_collision(tm, 7, RT_TILE_COLLISION_SOLID);
+
+    int64_t hx = -1;
+    int64_t hy = -1;
+
+    // Interior vertical ray hits the solid tile.
+    EXPECT_TRUE(rt_raycast_tilemap(tm, 8, 0, 8, 16, &hx, &hy));
+
+    // Right boundary (x == map_w) is excluded: a vertical ray there is clear.
+    EXPECT_FALSE(rt_raycast_tilemap(tm, 16, 0, 16, 16, &hx, &hy));
+    // One pixel farther outside is likewise clear (no asymmetric collision).
+    EXPECT_FALSE(rt_raycast_tilemap(tm, 17, 0, 17, 16, &hx, &hy));
+
+    // Bottom boundary (y == map_h) is excluded: a horizontal ray there is clear.
+    EXPECT_FALSE(rt_raycast_tilemap(tm, 0, 16, 16, 16, &hx, &hy));
+
+    // Left/top min edges are inclusive, so a ray on them still hits.
+    EXPECT_TRUE(rt_raycast_tilemap(tm, 0, 0, 0, 16, &hx, &hy));
+    EXPECT_TRUE(rt_raycast_tilemap(tm, 0, 0, 16, 0, &hx, &hy));
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

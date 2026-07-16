@@ -143,7 +143,8 @@ interval has expired.
 - Elapsed time continues increasing after expiration while the countdown remains running. `Wait()`
   does not stop it when it returns; call `Stop()` if the final elapsed value must remain fixed.
 - Countdown instances are not thread-safe; synchronize externally if an instance is shared
-- Instance methods and properties require a valid Countdown object; a null receiver traps
+- Instance methods and properties require a valid Countdown object; a null receiver, or an
+  explicit receiver of another runtime class, traps rather than being reinterpreted (VDOC-229)
 - Countdown timing inherits `Clock`'s wall-clock fallback if the platform monotonic query fails;
   that fallback is ratcheted to stay non-decreasing so the deadline cannot recede (VDOC-223). On
   Windows, the performance-counter frequency is cached through an acquire/release atomic slot, so
@@ -267,17 +268,22 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 - `AddDays` adds exactly 86,400 seconds per day; it is elapsed-time arithmetic and does not preserve
   a local wall-clock hour across daylight-saving transitions.
 - `Now` and `NowMs` read the adjustable wall clock, not a monotonic timer. `NowMs` returns `0` when
-  its platform query fails. `Now` forwards `time(NULL)` directly, so its `-1` failure value is also
-  a valid pre-epoch timestamp (VDOC-230).
+  its platform query fails. `Now` reads the clock through a checked helper that distinguishes a
+  genuine `time(NULL)` failure (detected via `errno`) from the valid pre-epoch instant `-1`; on a
+  real clock failure it traps rather than returning an ambiguous `-1`, so a failure can never
+  masquerade as a 1969 timestamp (VDOC-230). `DateOnly.Today` returns `Nothing` and RelativeTime's
+  implicit current-time helpers trap on the same failure.
 - `FromParts` (the sentinel construction form) uses `-1` for rejected/unrepresentable input, but
   `-1` is also the valid Unix instant immediately before the epoch. Use `TryFromParts`, which
   returns `Some(Integer)` for any valid instant — including that pre-epoch `-1` — and `None` on
   failure, when construction failure must be distinguished from a genuine pre-epoch result
   (VDOC-225).
-- Local civil-time creation rejects a skipped daylight-saving hour. For a repeated hour it accepts
-  whichever occurrence the host `mktime` chooses for `tm_isdst = -1`, which can vary by platform
-  and timezone implementation (VDOC-226). Use an explicit numeric offset or a named-zone UTC
-  instant when the distinction matters.
+- Local civil-time creation (`FromParts`/`TryFromParts` and local ISO/date parsing) rejects a
+  skipped daylight-saving hour. A repeated ("fall back") hour resolves **deterministically to the
+  earlier occurrence** (the one still in daylight time) on every host, rather than whichever the
+  host `mktime` would pick — the converter evaluates both DST interpretations, keeps only those
+  whose fields round-trip, and selects the earliest instant (VDOC-226). Use an explicit numeric
+  offset or a named-zone UTC instant when you need the later (standard-time) occurrence instead.
 
 ### Parsing Methods
 
@@ -440,11 +446,11 @@ transition the table uses its configured base rule; after the last transition it
 so dates outside the window are deterministic but may not match historical or future IANA data.
 
 Empty, null, and embedded-NUL names also trap. TimeZone handles point at process-lifetime static
-data and must not be manually freed. The current registry declares `Find` as returning untyped
-`obj`, so Zia cannot chain `TimeZone.Find("UTC").OffsetAt(...)` or assign it to a typed TimeZone
-local. Pass the handle directly to `DateTime`, or use the explicit-receiver compatibility forms
-`TimeZone.get_Name(zone)`, `TimeZone.OffsetAt(zone, timestamp)`, and
-`TimeZone.IsDstAt(zone, timestamp)` (VDOC-228).
+data and must not be manually freed — the runtime reports them as `borrowed`, so tools never
+schedule a release. `Find` now returns a concrete `Viper.Time.TimeZone`, so Zia can chain
+`TimeZone.Find("UTC").OffsetAt(...)` and assign the result to a TimeZone-typed local directly
+(VDOC-228). The explicit-receiver forms `TimeZone.get_Name(zone)`, `TimeZone.OffsetAt(zone, ts)`,
+and `TimeZone.IsDstAt(zone, ts)` remain available as compatibility entry points.
 
 ### DST Policy
 
@@ -504,7 +510,8 @@ elapsed values down to nanosecond units.
 - Stopwatch timestamp conversions trap on signed 64-bit overflow instead of wrapping
 - `Start()` has no effect if already running (doesn't reset)
 - `Stop()` has no effect if already stopped
-- Instance methods and properties require a valid Stopwatch object; a null receiver traps
+- Instance methods and properties require a valid Stopwatch object; a null receiver, or an
+  explicit receiver of another runtime class, traps rather than being reinterpreted (VDOC-229)
 - Stopwatch instances are not thread-safe; synchronize externally if an instance is shared
 - `Restart()` is not a synchronization primitive or an atomic operation between threads. It is a
   single API call on an otherwise non-thread-safe object.
@@ -575,7 +582,7 @@ Date-only type for working with calendar dates without time components. Represen
 
 | Method                   | Signature                       | Description                                            |
 |--------------------------|---------------------------------|--------------------------------------------------------|
-| `Create(year, month, day)` | `DateOnly(Integer, Integer, Integer)` | Create a date, or `Nothing` for an invalid month/day |
+| `Create(year, month, day)` | `DateOnly(Integer, Integer, Integer)` | Create a date, or `Nothing` for a year outside `[0,9999]` or an invalid month/day |
 | `Today()`                | `DateOnly()`                    | Return today's local date, or `Nothing` if conversion fails |
 | `Parse(str)`             | `DateOnly(String)`              | Parse exact `YYYY-MM-DD`, or return `Nothing` on failure |
 | `FromDays(days)`         | `DateOnly(Integer)`             | Create a date from a day count (days since epoch)      |
@@ -620,16 +627,19 @@ Date-only type for working with calendar dates without time components. Represen
 - `Create` validates month and day but accepts any signed 64-bit year. `Parse` accepts only exactly
   four ASCII year digits and ten total bytes; non-padded fields, signs, embedded NULs, and trailing
   characters are rejected by returning `Nothing`.
-- `ToString` uses a minimum width of four year digits. Created years below `0` or above `9999`
-  therefore produce text that `Parse` rejects, so the advertised serialization round trip holds
-  only for years `0000` through `9999` (VDOC-231).
+- Construction, formatting, and parsing share one year domain: `Create` (and `Today`, `Parse`,
+  `FromDays`) accept only years `0` through `9999`, and `ToString` emits exactly four year digits.
+  Every constructible `DateOnly` therefore serializes to a fixed ten-byte string that `Parse` reads
+  back — there are no out-of-domain years that `ToString` could render un-parseably (VDOC-231).
+  `FromDays` and the `Add*` operations return `Nothing` when a result would leave that domain.
 - `Format` supports `%Y`, `%y`, `%m`, `%d`, `%B`, `%b`, `%A`, `%a`, `%j`, and `%%`. Month and
   weekday names are hard-coded English, unknown conversions are preserved literally, and the
   input/output are length-aware (embedded NUL bytes are retained).
 - `FromDays`, `ToDays`, `DayOfWeek`, `AddDays`, `AddMonths`, `AddYears`, and `DiffDays` trap on signed 64-bit overflow
 - The low-level helpers return neutral values for null receivers and compare two null dates as
-  equal. Ordinary source should null-check a failed `Create`, `Today`, or `Parse` before invoking
-  instance members.
+  equal. Ordinary source should null-check a failed `Create`, `Today`, `Parse`, `FromDays`, or an
+  `Add*` result (which returns `Nothing` when the new date leaves the `[0,9999]` domain) before
+  invoking instance members.
 
 ### Zia Example
 
@@ -935,9 +945,10 @@ Formats time durations and timestamps into human-readable relative descriptions.
 - Relative month and year buckets use fixed 30-day and 365-day lengths, and displayed units are truncated rather than rounded
 - Differences below ten seconds render as `"just now"` (`Format`/`FormatFrom`) or `"now"`
   (`FormatShort`).
-- `FormatDuration` discards the millisecond remainder and prefixes negative values with `-`.
-  Consequently, a negative duration between `-999` and `-1` ms currently renders as `"-0s"`
-  rather than `"0s"` (VDOC-227).
+- `FormatDuration` discards the millisecond remainder and prefixes negative values with `-` only
+  when the displayed whole-second magnitude is nonzero. A negative duration between `-999` and `-1`
+  ms truncates to zero whole seconds and therefore renders as `"0s"`, symmetric with the positive
+  sub-second case (VDOC-227).
 
 ### Zia Example
 

@@ -11,6 +11,7 @@
 //                 Start/Stop/Reset/Restart behave as documented.
 // Links: docs/viperlib.md
 
+#include "rt_countdown.h"
 #include "rt_object.h"
 #include "rt_stopwatch.h"
 
@@ -346,6 +347,28 @@ static void test_null_receiver_traps() {
     printf("\n");
 }
 
+// VDOC-229: an explicit receiver of another runtime class must trap rather than
+// be reinterpreted as a Stopwatch payload. A Countdown is a live heap object of a
+// different class, so every Stopwatch method must reject it.
+static void test_wrong_class_receiver_traps() {
+    printf("Testing wrong-class receiver traps:\n");
+
+    void *cd = rt_countdown_new(1000);
+    assert(cd != nullptr);
+
+    EXPECT_TRAP(rt_stopwatch_start(cd));
+    EXPECT_TRAP(rt_stopwatch_stop(cd));
+    EXPECT_TRAP(rt_stopwatch_reset(cd));
+    EXPECT_TRAP(rt_stopwatch_restart(cd));
+    EXPECT_TRAP(rt_stopwatch_elapsed_ns(cd));
+    EXPECT_TRAP(rt_stopwatch_elapsed_us(cd));
+    EXPECT_TRAP(rt_stopwatch_elapsed_ms(cd));
+    EXPECT_TRAP(rt_stopwatch_is_running(cd));
+
+    test_result("Wrong-class receiver methods trap", true);
+    printf("\n");
+}
+
 /// @brief Hammer the timestamp path from many threads on first use (VDOC-224).
 /// @details The QPC frequency cache is a process-global slot resolved lazily on
 ///          the first `get_timestamp_*` call. Spawning threads that all read
@@ -413,6 +436,7 @@ int main() {
     test_elapsed_while_running();
     test_time_units();
     test_null_receiver_traps();
+    test_wrong_class_receiver_traps();
 
     printf("All Stopwatch tests passed!\n");
     return 0;

@@ -31,6 +31,12 @@
 extern "C" {
 #endif
 
+/// @brief Runtime class ID for DateRange instances.
+/// @details Stamped by rt_obj_new_i64 at construction and verified by the shared
+///          receiver guard so an explicit receiver of another class traps instead
+///          of being reinterpreted as a DateRange payload (VDOC-229).
+#define RT_DATERANGE_CLASS_ID INT64_C(-0x430804)
+
 /// @brief Create a date range from start and end timestamps.
 /// @param start Start timestamp in seconds.
 /// @param end End timestamp in seconds.

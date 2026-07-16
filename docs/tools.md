@@ -313,7 +313,18 @@ handle return `nullable: true` because a failed spawn yields `NULL` rather than
 a live object, the unmanaged `Unsafe.Release` / `ReleaseStr` primitives report
 `fallibility: "traps"` (they trap on an invalid or already-freed handle), and
 `PtySession.Resize` reports `fallibility: "status"` because it returns a boolean
-success indicator instead of an infallible void.
+success indicator instead of an infallible void. The `Viper.Time.*` surface is
+likewise annotated: the sentinel parsers (`DateTime.ParseIso8601` / `ParseDate` /
+`ParseTime`, `DateOnly.Parse`) report `fallibility: "sentinel"` rather than the
+heuristic's default `traps`, every `Viper.Time.*` object return is `owned` (a
+freshly allocated value; the sole borrowed exception, `TimeZone.Find`'s static
+handle, is annotated separately), and the object operations that yield `NULL` on
+ordinary failure — `DateOnly.FromParts` / `Today` / `Parse` / `FromDays` /
+`AddDays` / `AddMonths` / `AddYears` and `DateRange.Intersection` / `Union` —
+report `nullable: true` so tools emit the null branch. Overflow-on-extreme-input
+and null/wrong-class-receiver traps are deliberately left `infallible`, matching
+the runtime-wide convention that `fallibility` describes normal-operation failure
+modes rather than arithmetic edges or programming errors.
 Together, the canonical name, compact signature, C symbol, and complete class
 member bindings form the live ABI manifest used by contract tests. The C
 symbols are available to Viper's embedding and VM layers, but they are not a

@@ -31,9 +31,10 @@ counts discrete frames (deterministic). Ms mode counts delta time (frame-rate in
 | `Duration`    | `Integer` (read/write) | Total timer units: frames after `Start`, ms after `StartMs` |
 | `Elapsed`     | `Integer` (read-only)  | Elapsed timer units from the shared counter      |
 | `Remaining`   | `Integer` (read-only)  | Remaining timer units from the shared counter    |
-| `ElapsedMs`   | `Integer` (read-only)  | Alias of the same elapsed counter; the runtime does not verify ms mode |
-| `RemainingMs` | `Integer` (read-only)  | Alias of the same remaining calculation; the runtime does not verify ms mode |
+| `ElapsedMs`   | `Integer` (read-only)  | Elapsed counter, meaningful in ms mode (see `IsMs`) |
+| `RemainingMs` | `Integer` (read-only)  | Remaining counter, meaningful in ms mode (see `IsMs`) |
 | `Progress`    | `Integer` (read-only)  | Completion percentage 0-100 (both modes)         |
+| `IsMs`        | `Boolean` (read-only)  | True if started in millisecond mode; false for frame mode (VDOC-264) |
 | `IsRunning`   | `Boolean` (read-only)  | True if the timer is currently running           |
 | `IsExpired`   | `Boolean` (read-only)  | True if the timer has finished                   |
 | `IsRepeating` | `Boolean` (read-only)  | True if the timer auto-restarts when expired     |
@@ -64,9 +65,10 @@ counts discrete frames (deterministic). Ms mode counts delta time (frame-rate in
 ### Notes
 
 - Frame mode: call `Update()` once per frame. Ms mode: call `UpdateMs(dt)` with delta time.
-- Keep mode use consistent. The runtime records a mode bit but currently does
-  not enforce it: `Update()` adds one to an ms timer and `UpdateMs(dt)` adds
-  `dt` to a frame timer, silently mixing units.
+- The runtime enforces the mode: `Update()` is a no-op on a millisecond timer and
+  `UpdateMs(dt)` is a no-op on a frame timer, so a mismatched call can no longer
+  mix units and misfire a cooldown (VDOC-264). Read the `IsMs` property to inspect
+  the active contract.
 - `Update()` and `UpdateMs()` return true on an update that reaches an expiry.
   One-shot timers then stop. Repeating frame timers reset to zero; repeating ms
   timers preserve `dt` overshoot with modulo. If one `dt` spans several

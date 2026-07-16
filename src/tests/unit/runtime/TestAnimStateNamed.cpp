@@ -128,6 +128,41 @@ TEST(AnimStateNamed, RejectsEventFramesOutsideClip) {
     EXPECT_FALSE(rt_animstate_add_event(sm, 1, 7, 70));
 }
 
+// VDOC-274: AddNamed must allocate a genuinely unused state ID and store the name
+// at the actual clip index. Here a numeric state already owns id == clip_count (1),
+// which the old code would have overwritten while stranding the name in an
+// out-of-range slot, leaving Play("walk") a no-op and corrupting the numeric clip.
+TEST(AnimStateNamed, AddNamedDoesNotClobberNumericState) {
+    void *sm = rt_animstate_new();
+    rt_animstate_add_state(sm, 1, 0, 5, 1, 1); // clip_count == 1; the only clip owns id 1
+    rt_animstate_add_named(sm, (void *)rt_const_cstr("walk"), 10, 12, 1, 0);
+
+    // The name is playable and lands on the named clip's start frame.
+    rt_animstate_play(sm, (void *)rt_const_cstr("walk"));
+    EXPECT_EQ(rt_animstate_current_frame(sm), 10);
+
+    // The numeric state's clip is intact (frames 0..5), not overwritten by 10..12.
+    EXPECT_TRUE(rt_animstate_set_initial(sm, 1));
+    EXPECT_EQ(rt_animstate_current_frame(sm), 0);
+}
+
+// VDOC-275: redefining the active state via AddState must restart its clip so the
+// machine tracks the new range instead of being stranded on a frame outside it.
+TEST(AnimStateNamed, RedefiningActiveStateRestartsClip) {
+    void *sm = rt_animstate_new();
+    rt_animstate_add_state(sm, 0, 0, 5, 1, 1);
+    EXPECT_TRUE(rt_animstate_set_initial(sm, 0));
+    rt_animstate_update(sm); // frame 0 → 1
+    EXPECT_EQ(rt_animstate_current_frame(sm), 1);
+
+    // Redefine the active state with a new, distant range (hot-reload).
+    rt_animstate_add_state(sm, 0, 100, 101, 1, 1);
+    EXPECT_EQ(rt_animstate_current_frame(sm), 100); // restarted at the new start
+
+    rt_animstate_update(sm); // advances inside the new range, not off into frame 2
+    EXPECT_EQ(rt_animstate_current_frame(sm), 101);
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

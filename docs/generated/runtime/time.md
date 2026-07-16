@@ -64,7 +64,7 @@ process-lifetime static data. Transition coverage is deliberately limited; `Offs
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-time-timezone-find"></a>`Find` | `obj(str)` | `Viper.Time.TimeZone.Find` |
+| <a id="viper-time-timezone-find"></a>`Find` | `obj<Viper.Time.TimeZone>(str)` | `Viper.Time.TimeZone.Find` |
 | <a id="viper-time-timezone-offsetat"></a>`OffsetAt` | `i64(i64)` | `Viper.Time.TimeZone.OffsetAt` |
 | <a id="viper-time-timezone-isdstat"></a>`IsDstAt` | `i1(i64)` | `Viper.Time.TimeZone.IsDstAt` |
 
@@ -313,7 +313,7 @@ new objects and clamps month/year shifts to a valid day. Day-count conversion is
 | `Viper.Time.DateTime.ParseTime` | `i64(str)` | `rt_datetime_parse_time` |
 | `Viper.Time.DateTime.TryParse` | `obj<Viper.Option>(str)` | `rt_datetime_try_parse_option` |
 | `Viper.Time.DateTime.TryFromParts` | `obj<Viper.Option>(i64,i64,i64,i64,i64,i64)` | `rt_datetime_create_option` |
-| `Viper.Time.TimeZone.Find` | `obj(str)` | `rt_tz_find` |
+| `Viper.Time.TimeZone.Find` | `obj<Viper.Time.TimeZone>(str)` | `rt_tz_find` |
 | <a id="viper-time-timezone-get-name"></a>`Viper.Time.TimeZone.get_Name` | `str(obj)` | `rt_tz_name` |
 | `Viper.Time.TimeZone.OffsetAt` | `i64(obj,i64)` | `rt_tz_offset_at` |
 | `Viper.Time.TimeZone.IsDstAt` | `i1(obj,i64)` | `rt_tz_is_dst_at` |

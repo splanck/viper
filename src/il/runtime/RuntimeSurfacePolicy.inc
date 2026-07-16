@@ -120,6 +120,21 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mat4_try_inverse")
 // POSIX CLOCK_REALTIME fallbacks to keep the exposed time sequence non-decreasing;
 // an internal helper, not a registered script-facing surface.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_time_monotonic_ratchet")
+// Checked wall-clock read (VDOC-230): shared by DateTime.Now / DateOnly.Today /
+// RelativeTime so a time(NULL) failure is detected via errno rather than aliased to
+// a valid 1969 timestamp; an internal helper, not a registered script-facing surface.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_datetime_wall_seconds")
+// Config JSON-root accessor (VDOC-236): exposes the borrowed parsed tree so tests can
+// verify Config queries do not retain resolved nodes; internal/testing only.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_config_json_root")
+// Success-reporting JsonPath conversions (VDOC-245): let Config getters return the
+// caller's default on a type/parse failure instead of a coerced 0/empty; internal.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_jsonpath_try_get_int")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_jsonpath_try_get_str")
+// ScreenFX circular-mask half-chord (VDOC-269): backs the genuinely circular
+// CircleIn/CircleOut opening and is exposed only so tests can prove the mask is a
+// circle rather than a square; not a script-facing API.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_screenfx_circle_half_chord")
 // Quickhull core (fps plan 04/E14): consumed by Collider3D.NewConvexHullReduced;
 // the hull builder itself is not a script-facing API.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_quickhull3d_build")
@@ -1023,6 +1038,11 @@ RUNTIME_SURFACE_EXPECT_METHOD("Viper.Time.Stopwatch", "StartNew", "obj()")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_animstate_event_fired")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_animstate_event_fired_id")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_animstate_events_fired_count")
+// SetEventFrame retired (VDOC-276): completes the legacy single-event deletion —
+// its observer rt_animstate_event_fired is already internal above, so the setter
+// was an unobservable orphan. C entry points remain for the internal machinery
+// and unit tests; the public event API is AddEvent/PollEvents.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_animstate_set_event_frame")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_animtimeline_event_fired_id")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_animtimeline_events_fired_count")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_assets3d_get_last_load_error")

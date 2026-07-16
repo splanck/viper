@@ -628,6 +628,10 @@ viper_add_test(test_rt_animstate_named
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAnimStateNamed.cpp
         LIBS viper_runtime viper_test_common)
 
+viper_add_test(test_rt_animtimeline
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestAnimTimeline.cpp
+        LIBS viper_runtime viper_test_common)
+
 viper_add_test(test_rt_game_result_objects
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGameResultObjects.cpp
         LIBS viper_runtime viper_test_common)

@@ -503,6 +503,19 @@ void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt) {
 
     entity_sweep_x(e, tilemap, dispX, tw, th);
     entity_sweep_y(e, tilemap, dispY, tw, th);
+
+    // Persistent ground contact: entity_sweep_y only sets on_ground on a nonzero
+    // downward landing, so a resting entity (zero vertical displacement) would lose
+    // the flag every frame. Probe the tile row immediately beneath the bottom edge
+    // so grounded state persists while flush against a solid tile (VDOC-241).
+    if (!e->on_ground) {
+        int64_t x_px = entity_cp_to_px(e->x);
+        int64_t left_px = x_px;
+        int64_t right_px = entity_saturating_add(x_px, e->width - 1);
+        int64_t below_px = entity_saturating_add(entity_cp_to_px(e->y), e->height);
+        if (entity_horizontal_edge_hits(tilemap, left_px, right_px, below_px, tw))
+            e->on_ground = 1;
+    }
 }
 
 //=============================================================================

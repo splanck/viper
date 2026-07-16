@@ -165,12 +165,16 @@ static int64_t stopwatch_timespec_to_ns(struct timespec ts) {
 }
 #endif
 
-/// @brief Validate that @p obj is a non-NULL Stopwatch receiver, trapping otherwise.
-/// @details Centralises the null-receiver guard so every public method reads
+/// @brief Validate that @p obj is a live Stopwatch receiver, trapping otherwise.
+/// @details Centralises the receiver guard so every public method reads
 ///          `ViperStopwatch *sw = require_stopwatch(obj); if (!sw) return ...;`.
+///          Verifies the heap kind, class ID, and payload size via
+///          rt_obj_is_instance so a null receiver *or* an unrelated object (e.g. a
+///          Seq passed to the static compatibility form) traps instead of being
+///          reinterpreted as a Stopwatch payload (VDOC-229).
 static ViperStopwatch *require_stopwatch(void *obj) {
-    if (!obj) {
-        rt_trap("Stopwatch: null receiver");
+    if (!rt_obj_is_instance(obj, RT_STOPWATCH_CLASS_ID, sizeof(ViperStopwatch))) {
+        rt_trap("Stopwatch: invalid receiver");
         return NULL;
     }
     return (ViperStopwatch *)obj;
@@ -269,7 +273,8 @@ static int64_t stopwatch_get_elapsed_ns(ViperStopwatch *sw) {
 /// @see rt_stopwatch_start_new For creating and immediately starting
 /// @see rt_stopwatch_start For starting the stopwatch
 void *rt_stopwatch_new(void) {
-    ViperStopwatch *sw = (ViperStopwatch *)rt_obj_new_i64(0, (int64_t)sizeof(ViperStopwatch));
+    ViperStopwatch *sw =
+        (ViperStopwatch *)rt_obj_new_i64(RT_STOPWATCH_CLASS_ID, (int64_t)sizeof(ViperStopwatch));
     if (!sw) {
         rt_trap("Stopwatch: memory allocation failed");
         return NULL; // Unreachable after trap

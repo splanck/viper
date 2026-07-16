@@ -282,6 +282,15 @@ void rt_animstate_add_state(void *asm_,
     c->event_fired_mask = 0;
     memset(c->event_frames, 0, sizeof(c->event_frames));
     memset(c->event_ids, 0, sizeof(c->event_ids));
+
+    // Redefining the currently active clip (e.g. a hot-reload) must restart
+    // playback so current_frame, timing, direction, and events track the new
+    // range. Otherwise the machine keeps running from a frame outside the new
+    // clip and reports incoherent progress until it happens to re-enter the
+    // range (VDOC-275). This is a redefinition, not a transition, so the
+    // state/edge flags are intentionally left unchanged.
+    if (idx == a->active_clip_idx)
+        apply_clip(a, idx);
 }
 
 /// @brief Set the starting state and reset all transition flags to initial values.
@@ -483,15 +492,28 @@ void rt_animstate_add_named(
         checked_animstate(asm_, "AnimStateMachine.AddNamed: expected Viper.Game.AnimStateMachine");
     if (!a || !name_str)
         return;
-    int64_t id = a->clip_count; // auto-assign sequential ID
+    // Allocate a genuinely unused state ID. The old code reused clip_count as the
+    // id, which collided when a numeric state already owned that id: add_state then
+    // overwrote that clip in place (no count bump) and the name was stranded in
+    // clips[clip_count], a slot outside the searched prefix (VDOC-274). With at most
+    // ANIMSTATE_MAX_CLIPS valid clips this scan always finds a free id within
+    // [0, ANIMSTATE_MAX_CLIPS].
+    int64_t id = 0;
+    while (find_clip(a, id) >= 0)
+        id++;
+
     rt_animstate_add_state(asm_, id, start, end, dur, loop);
-    // Store name in the clip (clip_count was incremented by add_state)
-    if (id < ANIMSTATE_MAX_CLIPS) {
-        const char *cname = rt_string_cstr((rt_string)name_str);
-        if (cname) {
-            strncpy(a->clips[id].name, cname, 31);
-            a->clips[id].name[31] = '\0';
-        }
+
+    // Capture the actual clip index add_state used (it appends, so the new clip is
+    // wherever find_clip locates it) and store the name there. A negative index
+    // means add_state hit the 32-clip limit and added nothing.
+    int idx = find_clip(a, id);
+    if (idx < 0)
+        return;
+    const char *cname = rt_string_cstr((rt_string)name_str);
+    if (cname) {
+        strncpy(a->clips[idx].name, cname, 31);
+        a->clips[idx].name[31] = '\0';
     }
 }
 

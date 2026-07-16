@@ -30,6 +30,12 @@
 extern "C" {
 #endif
 
+/// @brief Runtime class ID for DateOnly instances.
+/// @details Stamped by rt_obj_new_i64 at construction and verified by the shared
+///          receiver guard so an explicit receiver of another class traps instead
+///          of being reinterpreted as a DateOnly payload (VDOC-229).
+#define RT_DATEONLY_CLASS_ID INT64_C(-0x430803)
+
 //=========================================================================
 // DateOnly Creation
 //=========================================================================

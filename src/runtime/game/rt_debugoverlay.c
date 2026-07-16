@@ -144,6 +144,25 @@ void rt_debugoverlay_update(rt_debugoverlay dbg, int64_t dt_ms) {
         dbg->total_frames++;
 }
 
+/// @brief Return a watch name's C string only when it fits and has no NUL.
+/// @details Names that do not fit the fixed buffer are rejected rather than
+///          truncated, so `Watch` and `Unwatch` address entries by the same full
+///          name — a repeated long name updates the existing entry instead of
+///          consuming a new slot, and it can be removed with its source text
+///          (VDOC-259). An embedded NUL is also rejected.
+/// @return The C string when valid, or NULL for an empty/over-long/NUL name.
+static const char *watch_name_cstr(rt_string name) {
+    if (!name)
+        return NULL;
+    const char *cname = rt_string_cstr(name);
+    if (!cname)
+        return NULL;
+    int64_t len = rt_str_len(name);
+    if (len <= 0 || (size_t)len >= WATCH_NAME_MAX || strlen(cname) != (size_t)len)
+        return NULL;
+    return cname;
+}
+
 /// Find a watch entry by name.
 /// Returns index, or -1 if not found.
 static int64_t find_watch(rt_debugoverlay dbg, const char *name) {
@@ -160,7 +179,10 @@ void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value) {
     if (!dbg || !name)
         return;
 
-    const char *cname = rt_string_cstr(name);
+    // Reject a name that does not fit the fixed buffer (or contains an embedded
+    // NUL) instead of truncating it, so lookup and storage use the same full name
+    // (VDOC-259).
+    const char *cname = watch_name_cstr(name);
     if (!cname)
         return;
 
@@ -174,9 +196,7 @@ void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value) {
     // Find an empty slot
     for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
         if (!dbg->watches[i].active) {
-            size_t len = strlen(cname);
-            if (len >= WATCH_NAME_MAX)
-                len = WATCH_NAME_MAX - 1;
+            size_t len = strlen(cname); // guaranteed < WATCH_NAME_MAX by watch_name_cstr
             memcpy(dbg->watches[i].name, cname, len);
             dbg->watches[i].name[len] = '\0';
             dbg->watches[i].value = value;
@@ -194,7 +214,9 @@ int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name) {
     if (!dbg || !name)
         return 0;
 
-    const char *cname = rt_string_cstr(name);
+    // Use the same canonical representation as Watch so a long name removes the
+    // entry it created (VDOC-259).
+    const char *cname = watch_name_cstr(name);
     if (!cname)
         return 0;
 
@@ -371,10 +393,16 @@ void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr) {
 
             // Build "name: value" string
             char line[80];
-            size_t nlen = strlen(dbg->watches[i].name);
-            if (nlen > 28)
+            const char *wname = dbg->watches[i].name;
+            size_t nlen = strlen(wname);
+            if (nlen > 28) {
                 nlen = 28;
-            memcpy(line, dbg->watches[i].name, nlen);
+                // Back off to a UTF-8 character boundary so the displayed name is
+                // never a split multi-byte sequence (VDOC-259).
+                while (nlen > 0 && ((unsigned char)wname[nlen] & 0xC0) == 0x80)
+                    nlen--;
+            }
+            memcpy(line, wname, nlen);
             line[nlen] = ':';
             line[nlen + 1] = ' ';
 

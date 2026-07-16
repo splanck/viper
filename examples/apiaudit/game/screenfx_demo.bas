@@ -19,7 +19,7 @@ PRINT fx.OverlayAlpha      ' 0
 PRINT "--- Shake ---"
 fx.Shake(10, 500, 5)
 PRINT fx.IsActive          ' 1
-PRINT fx.IsTypeActive(0)   ' 1
+PRINT fx.IsTypeActive(Viper.Game.ScreenFX.TypeShake)   ' 1 (named constant, not raw 0)
 
 ' --- Update (deltaMs) ---
 PRINT "--- Update ---"
@@ -30,7 +30,7 @@ PRINT fx.ShakeY
 
 ' --- CancelType ---
 PRINT "--- CancelType ---"
-fx.CancelType(0)
+fx.CancelType(Viper.Game.ScreenFX.TypeShake)
 fx.Update(16)
 PRINT fx.ShakeX            ' 0
 PRINT fx.ShakeY            ' 0
@@ -82,9 +82,9 @@ fx.Update(16)
 ' --- IsTypeActive ---
 PRINT "--- IsTypeActive ---"
 fx.CancelAll()
-PRINT fx.IsTypeActive(0)   ' 0
+PRINT fx.IsTypeActive(Viper.Game.ScreenFX.TypeShake)   ' 0
 fx.Shake(10, 100, 5)
-PRINT fx.IsTypeActive(0)   ' 1
+PRINT fx.IsTypeActive(Viper.Game.ScreenFX.TypeShake)   ' 1
 
 ' --- Cleanup ---
 fx.CancelAll()

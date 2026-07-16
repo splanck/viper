@@ -29,7 +29,10 @@
 //   - Pause/Resume halt and resume update progression without resetting elapsed.
 //   - rt_tween_reset() rewinds to frame 0 and resumes from the original `from`.
 //   - rt_tween_value_i64() rounds halves away from zero and saturates at the
-//     int64 limits — suitable for pixel coordinates within double precision.
+//     int64 limits. For StartI64 tweens it is anchored on the exact int64
+//     endpoints, so the start value, the end value, and constant (from == to)
+//     tweens are preserved without the 2^53 double-precision loss; eased
+//     intermediate frames still interpolate in long double.
 //
 // Ownership/Lifetime:
 //   - Tween objects are GC-managed (rt_obj_new_i64). rt_tween_destroy() calls
@@ -58,12 +61,15 @@ struct rt_tween_impl {
     double from;       ///< Starting value.
     double to;         ///< Ending value.
     double current;    ///< Current interpolated value.
+    int64_t from_i64;  ///< Exact integer start (valid when is_i64); anchors ValueI64.
+    int64_t to_i64;    ///< Exact integer end (valid when is_i64); anchors ValueI64.
     int64_t duration;  ///< Total duration in frames.
     int64_t elapsed;   ///< Elapsed frames.
     int64_t ease_type; ///< Easing function type.
     int8_t running;    ///< 1 if tween is running.
     int8_t complete;   ///< 1 if tween has completed.
     int8_t paused;     ///< 1 if tween is paused.
+    int8_t is_i64;     ///< 1 if started via StartI64 (ValueI64 reads exact endpoints).
 };
 
 /// @brief Safe-cast a handle to the Tween impl, trapping @p api on a class-id
@@ -115,6 +121,29 @@ static int64_t tween_round_to_i64(double value) {
     return (int64_t)(value + (value >= 0 ? 0.5 : -0.5));
 }
 
+/// @brief Interpolate between exact integer endpoints at fraction @p frac, rounded
+///        half-away-from-zero and saturated. Anchored on the int64 endpoints so a
+///        fraction of 0 returns @p from exactly, 1 returns @p to exactly, and a
+///        constant (from == to) never drifts — unlike casting the endpoints to
+///        double first, which loses bits above 2^53 (VDOC-273). Intermediate
+///        fractions use long double to minimize precision loss on wide ranges.
+static int64_t tween_lerp_endpoints_i64(int64_t from, int64_t to, double frac) {
+    if (from == to || frac == 0.0)
+        return from;
+    if (frac == 1.0)
+        return to;
+    long double delta = (long double)to - (long double)from;
+    long double result = (long double)from + (long double)frac * delta;
+    if (!isfinite((double)result))
+        return frac < 0.5 ? from : to;
+    long double rounded = result >= 0.0L ? floorl(result + 0.5L) : ceill(result - 0.5L);
+    if (rounded >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (rounded <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)rounded;
+}
+
 /// @brief Integer percentage value*100/total, clamped to [0, 100]; 0 for
 ///        non-positive inputs.
 static int64_t tween_percent_i64(int64_t value, int64_t total) {
@@ -162,12 +191,15 @@ rt_tween rt_tween_new(void) {
     tween->from = 0.0;
     tween->to = 0.0;
     tween->current = 0.0;
+    tween->from_i64 = 0;
+    tween->to_i64 = 0;
     tween->duration = 0;
     tween->elapsed = 0;
     tween->ease_type = RT_EASE_LINEAR;
     tween->running = 0;
     tween->complete = 0;
     tween->paused = 0;
+    tween->is_i64 = 0;
 
     return tween;
 }
@@ -200,12 +232,23 @@ void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, in
     tween->running = 1;
     tween->complete = 0;
     tween->paused = 0;
+    tween->is_i64 = 0; // double-domain tween; ValueI64 falls back to rounding current
 }
 
-/// @brief Start an integer-valued tween (convenience wrapper, converts to double internally).
+/// @brief Start an integer-valued tween. The double machinery still drives eased
+/// intermediate frames, but the exact int64 endpoints are retained so ValueI64
+/// preserves them (and a constant tween) without the 2^53 precision loss that a
+/// bare double cast would introduce (VDOC-273).
 void rt_tween_start_i64(
     rt_tween tween, int64_t from, int64_t to, int64_t duration, int64_t ease_type) {
     rt_tween_start(tween, (double)from, (double)to, duration, ease_type);
+    // rt_tween_start clears is_i64; re-flag and record the exact endpoints after it.
+    tween = checked_tween(tween, "Tween.StartI64: expected Viper.Game.Tween");
+    if (!tween)
+        return;
+    tween->from_i64 = from;
+    tween->to_i64 = to;
+    tween->is_i64 = 1;
 }
 
 /// @brief Advance the tween by one tick. Returns 1 if the tween just completed.
@@ -250,11 +293,28 @@ double rt_tween_value(rt_tween tween) {
 }
 
 /// @brief Get the current interpolated value rounded to the nearest integer.
+/// @details For tweens started with StartI64 the result is anchored on the exact
+/// int64 endpoints: a not-yet-advanced tween returns `from`, a completed tween
+/// returns `to`, and a constant tween never drifts — none of which survive the
+/// double round-trip that the double-domain fallback uses (VDOC-273).
 int64_t rt_tween_value_i64(rt_tween tween) {
     tween = checked_tween(tween, "Tween.ValueI64: expected Viper.Game.Tween");
     if (!tween)
         return 0;
-    // Round to nearest integer
+
+    if (tween->is_i64) {
+        if (tween->complete)
+            return tween->to_i64;
+        if (tween->elapsed <= 0 || tween->duration <= 0)
+            return tween->from_i64;
+        double t = (double)tween->elapsed / (double)tween->duration;
+        if (t > 1.0)
+            t = 1.0;
+        double eased = rt_tween_ease(t, tween->ease_type);
+        return tween_lerp_endpoints_i64(tween->from_i64, tween->to_i64, eased);
+    }
+
+    // Double-domain tween: round the interpolated double.
     return tween_round_to_i64(tween->current);
 }
 
@@ -351,16 +411,16 @@ int8_t rt_tween_is_paused(rt_tween tween) {
 
 // Note: rt_lerp is provided by rt_math.c
 
-/// @brief Linearly interpolate between two integers at parameter t, rounded to nearest.
+/// @brief Linearly interpolate between two integers at parameter t, rounded to
+/// nearest. Anchored on the integer endpoints so t<=0 returns `from`, t>=1 returns
+/// `to`, and a constant is exact — the endpoints no longer round-trip through a
+/// double that would drop bits above 2^53 (VDOC-273).
 int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
-    if (!isfinite(t))
-        t = 0.0;
-    if (t < 0.0)
-        t = 0.0;
-    if (t > 1.0)
-        t = 1.0;
-    double result = tween_lerp_double((double)from, (double)to, t);
-    return tween_round_to_i64(result);
+    if (!isfinite(t) || t <= 0.0)
+        return from;
+    if (t >= 1.0)
+        return to;
+    return tween_lerp_endpoints_i64(from, to, t);
 }
 
 /// @brief Apply an easing curve to a linear progress value t in [0,1].

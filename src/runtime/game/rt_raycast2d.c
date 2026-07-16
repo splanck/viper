@@ -209,6 +209,17 @@ int8_t rt_raycast_tilemap(
     long double sy_ld = (long double)y1 + dy * t0;
     long double ex_ld = (long double)x1 + dx * t1;
     long double ey_ld = (long double)y1 + dy * t1;
+
+    // The tile grid occupies the half-open extent [0, map_w) x [0, map_h). The
+    // Liang-Barsky clip above admits the maximum boundary (x == map_w / y ==
+    // map_h); a clipped segment lying entirely on that excluded edge is tangent
+    // to the outside and crosses no in-bounds tile, so it is clear. Reject it
+    // before the clamp below folds the boundary onto the last in-bounds tile,
+    // which made a boundary ray spuriously collide (VDOC-242).
+    if ((sx_ld >= (long double)map_w && ex_ld >= (long double)map_w) ||
+        (sy_ld >= (long double)map_h && ey_ld >= (long double)map_h))
+        return 0;
+
     if (sx_ld >= (long double)map_w)
         sx_ld = (long double)map_w - 1.0L;
     if (sy_ld >= (long double)map_h)

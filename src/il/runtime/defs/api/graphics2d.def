@@ -227,12 +227,12 @@ RT_FUNC(PixelsBlendPixel,      rt_pixels_blend_pixel,         "Viper.Graphics.Pi
 RT_FUNC(SpriteSheetNew,          rt_spritesheet_new,          "Viper.Graphics.SpriteSheet.New",          "obj<Viper.Graphics.SpriteSheet>(obj)")
 RT_FUNC(SpriteSheetFromGrid,     rt_spritesheet_from_grid,    "Viper.Graphics.SpriteSheet.FromGrid",     "obj<Viper.Graphics.SpriteSheet>(obj,i64,i64)")
 RT_FUNC(SpriteSheetSetRegion,    rt_spritesheet_set_region,   "Viper.Graphics.SpriteSheet.SetRegion",    "void(obj,str,i64,i64,i64,i64)")
-RT_FUNC(SpriteSheetGetRegion,    rt_spritesheet_get_region,   "Viper.Graphics.SpriteSheet.GetRegion",    "obj(obj,str)")
+RT_FUNC(SpriteSheetGetRegion,    rt_spritesheet_get_region,   "Viper.Graphics.SpriteSheet.GetRegion",    "obj<Viper.Graphics.Pixels>(obj,str)")
 RT_FUNC(SpriteSheetHasRegion,    rt_spritesheet_has_region,   "Viper.Graphics.SpriteSheet.HasRegion",    "i1(obj,str)")
 RT_FUNC(SpriteSheetRegionCount,  rt_spritesheet_region_count, "Viper.Graphics.SpriteSheet.get_RegionCount", "i64(obj)")
 RT_FUNC(SpriteSheetWidth,        rt_spritesheet_width,        "Viper.Graphics.SpriteSheet.get_Width",    "i64(obj)")
 RT_FUNC(SpriteSheetHeight,       rt_spritesheet_height,       "Viper.Graphics.SpriteSheet.get_Height",   "i64(obj)")
-RT_FUNC(SpriteSheetRegionNames,  rt_spritesheet_region_names, "Viper.Graphics.SpriteSheet.RegionNames",  "obj(obj)")
+RT_FUNC(SpriteSheetRegionNames,  rt_spritesheet_region_names, "Viper.Graphics.SpriteSheet.RegionNames",  "obj<Viper.Collections.Seq>(obj)")
 RT_FUNC(SpriteSheetRemoveRegion, rt_spritesheet_remove_region,"Viper.Graphics.SpriteSheet.RemoveRegion", "i1(obj,str)")
 
 //=============================================================================

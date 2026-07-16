@@ -97,6 +97,32 @@ static void leveldata_finalizer(void *obj) {
     ld->tilemap = NULL;
 }
 
+/// @brief Copy @p src into a fixed-size field, truncating on a UTF-8 boundary.
+/// @details The level model stores object type/id and the theme in 32-byte fields.
+///          A plain byte truncation could split a multi-byte UTF-8 sequence and
+///          emit an invalid trailing fragment (VDOC-239); this backs the cut off to
+///          the start of any partially-copied character so the result is always
+///          valid UTF-8. @p dest_size includes the NUL terminator.
+static void level_copy_field_utf8(char *dest, size_t dest_size, const char *src) {
+    if (!dest || dest_size == 0)
+        return;
+    dest[0] = '\0';
+    if (!src)
+        return;
+    size_t limit = dest_size - 1;
+    size_t n = 0;
+    while (n < limit && src[n] != '\0')
+        n++;
+    // If truncation landed inside a multi-byte sequence, back off over any
+    // continuation bytes (10xxxxxx) so the incomplete character is dropped whole.
+    if (src[n] != '\0') {
+        while (n > 0 && ((unsigned char)src[n] & 0xC0) == 0x80)
+            n--;
+    }
+    memcpy(dest, src, n);
+    dest[n] = '\0';
+}
+
 /// @brief Load a level from a JSON file, creating a tilemap and extracting objects.
 /// @details Parses a JSON level file with "width", "height", "tileWidth", "tileHeight",
 ///          "layers" (tile data), "objects" (entity spawn points), and "properties"
@@ -109,6 +135,13 @@ void *rt_leveldata_load(void *path) {
 
     leveldata_impl *ld = NULL;
     void *root = NULL;
+
+    // Load is a nullable factory: a missing file must soft-fail to NULL so callers
+    // can implement the documented fallback, rather than trapping inside the
+    // hardened read path. Pre-check existence with the non-trapping helper, mirroring
+    // Viper.Game.Config.Load (VDOC-238).
+    if (!rt_io_file_exists((rt_string)path))
+        return NULL;
 
     rt_string text = rt_io_file_read_all_text((rt_string)path);
     if (!text)
@@ -148,10 +181,8 @@ void *rt_leveldata_load(void *path) {
         rt_string theme = rt_jsonpath_get_str(props, rt_const_cstr("theme"));
         if (theme) {
             const char *ct = rt_string_cstr(theme);
-            if (ct) {
-                strncpy(ld->theme, ct, 31);
-                ld->theme[31] = '\0';
-            }
+            if (ct)
+                level_copy_field_utf8(ld->theme, sizeof(ld->theme), ct);
         }
         ld->player_start_x = rt_jsonpath_get_int(props, rt_const_cstr("playerStartX"));
         ld->player_start_y = rt_jsonpath_get_int(props, rt_const_cstr("playerStartY"));
@@ -212,16 +243,13 @@ void *rt_leveldata_load(void *path) {
             rt_string oid = rt_jsonpath_get_str(obj, rt_const_cstr("id"));
             if (otype) {
                 const char *s = rt_string_cstr(otype);
-                if (s) {
-                    strncpy(lo->type, s, 31);
-                    lo->type[31] = '\0';
-                }
+                if (s)
+                    level_copy_field_utf8(lo->type, sizeof(lo->type), s);
             }
             if (oid) {
                 const char *s = rt_string_cstr(oid);
                 if (s) {
-                    strncpy(lo->id, s, 31);
-                    lo->id[31] = '\0';
+                    level_copy_field_utf8(lo->id, sizeof(lo->id), s);
                 }
             }
             lo->x = rt_jsonpath_get_int(obj, rt_const_cstr("x"));

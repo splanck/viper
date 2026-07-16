@@ -160,6 +160,12 @@ int8_t rt_timer_update(rt_timer timer) {
     if (!timer || !timer->running) {
         return 0;
     }
+    // Enforce the timer's mode: the frame-based Update() is a no-op on a timer
+    // started in millisecond mode, so a mismatched call cannot silently advance a
+    // millisecond timer by one "frame" and reinterpret its units (VDOC-264).
+    if (timer->ms_mode) {
+        return 0;
+    }
 
     timer->elapsed = timer_add_sat_i64(timer->elapsed, 1);
 
@@ -228,6 +234,16 @@ int8_t rt_timer_is_repeating(rt_timer timer) {
     return timer ? timer->repeating : 0;
 }
 
+/// @brief Report whether the timer is in millisecond mode (VDOC-264).
+/// @details Lets callers inspect the active update/query contract: a millisecond
+///          timer is advanced with `UpdateMs`/read with `ElapsedMs`, a frame timer
+///          with `Update`/`Elapsed`. The cross-mode update calls are no-ops.
+/// @return 1 when the timer was started in millisecond mode, 0 for frame mode.
+int8_t rt_timer_is_ms(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.IsMs: expected Viper.Game.Timer");
+    return timer ? timer->ms_mode : 0;
+}
+
 /// @brief Set the duration value.
 /// @param timer
 /// @param frames
@@ -276,6 +292,11 @@ void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
 int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
     timer = checked_timer(timer, "Timer.UpdateMs: expected Viper.Game.Timer");
     if (!timer || !timer->running || dt <= 0)
+        return 0;
+    // Enforce the timer's mode: the millisecond-based UpdateMs() is a no-op on a
+    // timer started in frame mode, so a mismatched call cannot advance a frame
+    // timer by `dt` "frames" and reinterpret its units (VDOC-264).
+    if (!timer->ms_mode)
         return 0;
 
     timer->elapsed = timer_add_sat_i64(timer->elapsed, dt);

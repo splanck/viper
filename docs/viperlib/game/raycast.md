@@ -13,8 +13,10 @@ and traverses every touched cell with grid DDA; it is not capped by a fixed numb
 
 - `Viper.Game.Raycast.HasLineOfSight(tilemap, x1, y1, x2, y2)` is false when any traversed tile is
   solid, including the starting/ending cell. A null map or a segment wholly outside the map is
-  treated as clear. A segment exactly on the excluded right/bottom extent currently aliases the
-  last tile and can report a false obstruction (VDOC-242).
+  treated as clear. The tile grid is half-open `[0, mapWidth) x [0, mapHeight)`: a segment lying
+  exactly on the excluded right (`x == mapWidth`) or bottom (`y == mapHeight`) extent is tangent to
+  the outside and reads as clear, matching a segment one pixel farther out — it no longer aliases
+  the last in-bounds tile (VDOC-242).
 - `Viper.Game.Collision.LineRect(x1, y1, x2, y2, rx, ry, width, height)` uses Liang-Barsky segment
   clipping. Negative dimensions or any non-finite input return false; zero dimensions are allowed.
 - `Viper.Game.Collision.LineCircle(x1, y1, x2, y2, cx, cy, radius)` uses segment/circle

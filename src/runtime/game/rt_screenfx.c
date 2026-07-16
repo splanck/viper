@@ -72,6 +72,10 @@ struct screenfx_effect {
     int64_t elapsed;         ///< Elapsed time (ms).
     int64_t decay;           ///< Decay rate (shake) / center_x (circle).
     int64_t extra;           ///< center_y (circle) / unused for others.
+    int8_t terminal;         ///< 1 once the effect has reached its final (progress=1000)
+                             ///< frame. The slot stays drawable for that one frame and is
+                             ///< reclaimed on the next update, so the fully-covered final
+                             ///< frame is observable to Draw/TransitionProgress (VDOC-265).
 };
 
 /// Internal manager structure.
@@ -181,6 +185,35 @@ static int64_t effect_progress_per_mille(const struct screenfx_effect *e) {
     return (int64_t)progress;
 }
 
+/// @brief Floor integer square root of a non-negative value. Seeds from the
+///        floating-point sqrt then corrects any rounding drift so the result is
+///        exact for all inputs.
+static int64_t screenfx_isqrt(int64_t n) {
+    if (n <= 0)
+        return 0;
+    int64_t x = (int64_t)sqrtl((long double)n);
+    while (x > 0 && x * x > n)
+        x--;
+    while ((x + 1) * (x + 1) <= n)
+        x++;
+    return x;
+}
+
+/// @brief Horizontal half-chord of a disc of the given @p radius at vertical
+///        offset @p dy from the center: the half-width of the circular opening
+///        on that scanline, or 0 when the row lies entirely outside the disc.
+/// Exposed (non-static) so tests can verify the mask is genuinely circular —
+/// a diagonal point outside the disc but inside its bounding square must fall
+/// beyond the half-chord (VDOC-269). Internal symbol; not a registered API.
+int64_t rt_screenfx_circle_half_chord(int64_t radius, int64_t dy) {
+    if (radius <= 0)
+        return 0;
+    int64_t inside = radius * radius - dy * dy;
+    if (inside <= 0)
+        return 0;
+    return screenfx_isqrt(inside);
+}
+
 static void screenfx_finalizer(void *obj) {
     rt_screenfx fx = (rt_screenfx)obj;
     if (!fx)
@@ -188,6 +221,42 @@ static void screenfx_finalizer(void *obj) {
     free(fx->effects);
     fx->effects = NULL;
     fx->effect_capacity = 0;
+}
+
+// Effect-type constants — return the private enum values as stable public
+// identifiers so callers of IsTypeActive/CancelType never copy raw integers.
+int64_t rt_screenfx_type_shake(void) { return RT_SCREENFX_SHAKE; }
+int64_t rt_screenfx_type_flash(void) { return RT_SCREENFX_FLASH; }
+int64_t rt_screenfx_type_fade_in(void) { return RT_SCREENFX_FADE_IN; }
+int64_t rt_screenfx_type_fade_out(void) { return RT_SCREENFX_FADE_OUT; }
+int64_t rt_screenfx_type_wipe(void) { return RT_SCREENFX_WIPE; }
+int64_t rt_screenfx_type_circle_in(void) { return RT_SCREENFX_CIRCLE_IN; }
+int64_t rt_screenfx_type_circle_out(void) { return RT_SCREENFX_CIRCLE_OUT; }
+int64_t rt_screenfx_type_dissolve(void) { return RT_SCREENFX_DISSOLVE; }
+int64_t rt_screenfx_type_pixelate(void) { return RT_SCREENFX_PIXELATE; }
+
+// Wipe-direction constants.
+int64_t rt_screenfx_dir_left(void) { return RT_DIR_LEFT; }
+int64_t rt_screenfx_dir_right(void) { return RT_DIR_RIGHT; }
+int64_t rt_screenfx_dir_up(void) { return RT_DIR_UP; }
+int64_t rt_screenfx_dir_down(void) { return RT_DIR_DOWN; }
+
+/// @brief Clamp @p v to a single 0-255 color channel.
+static uint32_t clamp_channel(int64_t v) {
+    return (uint32_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+}
+
+/// @brief Pack a Flash/FadeIn/FadeOut overlay color as 0xRRGGBBAA (alpha low byte).
+/// This is deliberately a different byte order from the canonical
+/// Viper.Graphics.Color (0xAARRGGBB) — see the header note.
+int64_t rt_screenfx_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
+    return (int64_t)((clamp_channel(r) << 24) | (clamp_channel(g) << 16) |
+                     (clamp_channel(b) << 8) | clamp_channel(a));
+}
+
+/// @brief Pack a transition color as 0x00RRGGBB (Canvas byte order, no alpha).
+int64_t rt_screenfx_rgb(int64_t r, int64_t g, int64_t b) {
+    return (int64_t)((clamp_channel(r) << 16) | (clamp_channel(g) << 8) | clamp_channel(b));
 }
 
 /// @brief Construct an empty ScreenFX manager.
@@ -248,21 +317,19 @@ static int64_t find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type) {
     return -1;
 }
 
-/// @brief Per-frame tick: advance every active effect by `dt` ms and recompute the composited
-/// shake offset + overlay color/alpha. Behavior per type:
+/// @brief Recompute the composited shake offset and overlay color/alpha from the CURRENT
+/// (already-advanced) state of every live slot, without advancing time. Behavior per type:
 ///   - **SHAKE:** decay-modulated random offset accumulated into shake_x/shake_y. Decay model:
 ///     `decay <= 0` constant amplitude; `decay >= 1500` quadratic (trauma); else linear.
 ///   - **FLASH / FADE_IN:** alpha fades from `base_alpha → 0` over the duration.
 ///   - **FADE_OUT:** alpha fades from `0 → base_alpha`.
-///   - **WIPE / CIRCLE_* / DISSOLVE / PIXELATE:** time-only advance; rendering happens in `draw()`.
+///   - **WIPE / CIRCLE_* / DISSOLVE / PIXELATE:** contribute nothing here; rendered in `draw()`.
 /// Multiple overlays use **max-alpha compositing** — the brightest active overlay wins.
-/// Effects whose elapsed time exceeds duration are reclaimed (slot type → NONE).
-void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
-    fx = checked_screenfx(fx, "ScreenFX.Update: expected Viper.Game.ScreenFX");
-    if (!fx || dt <= 0)
-        return;
-
-    // Reset accumulators
+///
+/// Splitting this out of the update tick lets cancellation paths rebuild the cached draw state
+/// from the surviving slots, so a canceled flash/fade/shake can never keep drawing stale output
+/// after its slot is gone (VDOC-266).
+static void screenfx_recompute(rt_screenfx fx) {
     fx->shake_x = 0;
     fx->shake_y = 0;
     fx->overlay_alpha = 0;
@@ -274,14 +341,6 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
         struct screenfx_effect *e = &fx->effects[i];
         if (e->type == RT_SCREENFX_NONE)
             continue;
-
-        e->elapsed = add_sat_nonnegative_i64(e->elapsed, dt);
-
-        // Check if effect has finished
-        if (e->elapsed >= e->duration) {
-            e->type = RT_SCREENFX_NONE;
-            continue;
-        }
 
         // Calculate progress (0-1000)
         int64_t progress = effect_progress_per_mille(e);
@@ -360,13 +419,49 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
             case RT_SCREENFX_CIRCLE_OUT:
             case RT_SCREENFX_DISSOLVE:
             case RT_SCREENFX_PIXELATE:
-                // Transitions are rendered via Draw(); update only advances time.
+                // Transitions are rendered via Draw(); they contribute no overlay here.
                 break;
 
             default:
                 break;
         }
     }
+}
+
+/// @brief Per-frame tick: advance every live effect by `dt` ms, then recompose the shake offset
+/// and overlay color/alpha. An effect that reaches its duration this tick is NOT reclaimed
+/// immediately; it is clamped to its exact end (progress = 1000) and marked @c terminal so its
+/// fully-covered final frame is composited and stays drawable for one more Draw. The slot is
+/// reclaimed on the following update. This separates "finished advancing" from "removed" so a
+/// covering fade/wipe cannot vanish before its last frame is observed (VDOC-265).
+void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
+    fx = checked_screenfx(fx, "ScreenFX.Update: expected Viper.Game.ScreenFX");
+    if (!fx || dt <= 0)
+        return;
+
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
+        struct screenfx_effect *e = &fx->effects[i];
+        if (e->type == RT_SCREENFX_NONE)
+            continue;
+
+        // A slot that already showed its terminal frame last tick is reclaimed now.
+        if (e->terminal) {
+            e->type = RT_SCREENFX_NONE;
+            e->terminal = 0;
+            continue;
+        }
+
+        e->elapsed = add_sat_nonnegative_i64(e->elapsed, dt);
+
+        // On reaching the end, clamp to the exact duration so progress reads 1000, and defer
+        // removal by one tick so the final fully-covered frame is drawn.
+        if (e->elapsed >= e->duration) {
+            e->elapsed = e->duration;
+            e->terminal = 1;
+        }
+    }
+
+    screenfx_recompute(fx);
 }
 
 /// @brief Trigger a camera shake: random per-frame offset of magnitude `intensity` (pixels),
@@ -393,6 +488,7 @@ void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int6
     e->elapsed = 0;
     e->decay = decay;
     e->color = 0;
+    e->terminal = 0; // reused shake slot may still carry last cycle's terminal flag
 }
 
 /// @brief Trigger a one-shot color flash. `color` is 0xRRGGBBAA (alpha encodes peak intensity);
@@ -471,8 +567,10 @@ void rt_screenfx_cancel_all(rt_screenfx fx) {
     if (!fx)
         return;
 
-    for (int64_t i = 0; i < fx->effect_capacity; i++)
+    for (int64_t i = 0; i < fx->effect_capacity; i++) {
         fx->effects[i].type = RT_SCREENFX_NONE;
+        fx->effects[i].terminal = 0;
+    }
 
     fx->shake_x = 0;
     fx->shake_y = 0;
@@ -481,17 +579,23 @@ void rt_screenfx_cancel_all(rt_screenfx fx) {
 }
 
 /// @brief Stop every effect of a single type (e.g. cancel all FADE_IN slots before issuing a new
-/// one). Composited state (shake/overlay) is NOT zeroed — they decay naturally on the next
-/// `update()`.
+/// one). The composited shake/overlay state is rebuilt from the surviving slots so a canceled
+/// flash/fade cannot keep drawing its cached overlay and a canceled shake cannot leave a stale
+/// camera offset (VDOC-266). When nothing of that type was active the recompute is a cheap no-op
+/// over the same slots the caller would have scanned anyway.
 void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
     fx = checked_screenfx(fx, "ScreenFX.CancelType: expected Viper.Game.ScreenFX");
     if (!fx)
         return;
 
     for (int64_t i = 0; i < fx->effect_capacity; i++) {
-        if (fx->effects[i].type == (rt_screenfx_type_t)type)
+        if (fx->effects[i].type == (rt_screenfx_type_t)type) {
             fx->effects[i].type = RT_SCREENFX_NONE;
+            fx->effects[i].terminal = 0;
+        }
     }
+
+    screenfx_recompute(fx);
 }
 
 /// @brief Returns 1 if any effect slot is currently in use.
@@ -712,6 +816,35 @@ int64_t rt_screenfx_get_transition_progress(rt_screenfx fx) {
 // These are declared in rt_graphics.h which collections can include.
 #include "rt_graphics.h"
 
+/// @brief Fill @p color over every pixel OUTSIDE a disc of @p radius centered at
+///        (@p cx, @p cy), scanline by scanline, leaving a genuinely circular
+///        opening. Rows fully outside the disc are filled edge-to-edge; rows that
+///        cross the disc are filled left of and right of the circular chord. This
+///        replaces the earlier four-rectangle approximation, whose opening was a
+///        square rather than a circle (VDOC-269).
+static void screenfx_draw_circle_mask(void *canvas,
+                                      int64_t cx,
+                                      int64_t cy,
+                                      int64_t radius,
+                                      int64_t screen_w,
+                                      int64_t screen_h,
+                                      int64_t color) {
+    for (int64_t y = 0; y < screen_h; y++) {
+        int64_t half = rt_screenfx_circle_half_chord(radius, y - cy);
+        if (half <= 0) {
+            // Entire row lies outside the disc → cover it edge to edge.
+            rt_canvas_box(canvas, 0, y, screen_w, 1, color);
+            continue;
+        }
+        int64_t clear_left = cx - half;   // first uncovered column
+        int64_t clear_right = cx + half;  // first covered column past the opening
+        if (clear_left > 0)
+            rt_canvas_box(canvas, 0, y, clear_left, 1, color);
+        if (clear_right < screen_w)
+            rt_canvas_box(canvas, clear_right, y, screen_w - clear_right, 1, color);
+    }
+}
+
 /// @brief 4×4 Bayer dithering matrix (values 0-15, scaled to 0-255 range).
 static const uint8_t bayer4x4[4][4] = {
     {0, 128, 32, 160},
@@ -723,8 +856,8 @@ static const uint8_t bayer4x4[4][4] = {
 /// @brief Render every active transition effect onto the canvas, plus the FLASH/FADE_*-driven
 /// alpha overlay accumulated by `update()`. Per-effect drawing strategies:
 ///   - **WIPE:** one growing rectangle from the chosen edge.
-///   - **CIRCLE_IN/OUT:** four edge rectangles around a shrinking/growing visible circle (uses
-///     Manhattan max-radius for cheap full-corner coverage; no isqrt required).
+///   - **CIRCLE_IN/OUT:** a genuinely circular opening, filled scanline by scanline outside the
+///     disc (Euclidean max-radius for full-corner coverage).
 ///   - **DISSOLVE:** per-pixel ordered Bayer dither vs a global 0→255 threshold.
 ///   - **PIXELATE:** semi-transparent grid overlay simulating block-pixelation without read-back.
 /// Caller provides the canvas dimensions explicitly so this function never queries the canvas.
@@ -779,68 +912,24 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                 break;
             }
 
-            case RT_SCREENFX_CIRCLE_IN: {
-                // Circle closes: starts at max radius, shrinks to 0.
-                // We draw the color everywhere EXCEPT inside the circle.
-                // Approximate with 4 rectangles forming a frame around the shrinking circle.
-                int64_t cx = e->decay;
-                int64_t cy = e->extra;
-                int64_t color = e->color;
-
-                // Max radius = distance from center to farthest corner
-                int64_t dx1 = cx > screen_w - cx ? cx : screen_w - cx;
-                int64_t dy1 = cy > screen_h - cy ? cy : screen_h - cy;
-                int64_t max_r = dx1 + dy1; // Manhattan approximation (good enough)
-
-                // Current radius shrinks from max_r to 0
-                int64_t radius = max_r * (1000 - progress) / 1000;
-
-                // Draw color boxes on all four sides of the circle region
-                // Top
-                if (cy - radius > 0)
-                    rt_canvas_box(canvas, 0, 0, screen_w, cy - radius, color);
-                // Bottom
-                if (cy + radius < screen_h)
-                    rt_canvas_box(
-                        canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
-                // Left
-                int64_t ytop = cy - radius > 0 ? cy - radius : 0;
-                int64_t ybot = cy + radius < screen_h ? cy + radius : screen_h;
-                if (cx - radius > 0)
-                    rt_canvas_box(canvas, 0, ytop, cx - radius, ybot - ytop, color);
-                // Right
-                if (cx + radius < screen_w)
-                    rt_canvas_box(
-                        canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
-                break;
-            }
-
+            case RT_SCREENFX_CIRCLE_IN:
             case RT_SCREENFX_CIRCLE_OUT: {
-                // Circle opens: starts at 0 radius, expands to reveal.
-                // We draw color everywhere EXCEPT inside the growing circle.
+                // A circular opening whose radius shrinks to 0 (CircleIn) or grows
+                // from 0 (CircleOut). max_r is the Euclidean distance to the farthest
+                // corner so the disc fully covers/reveals the screen at its extreme.
                 int64_t cx = e->decay;
                 int64_t cy = e->extra;
                 int64_t color = e->color;
 
                 int64_t dx1 = cx > screen_w - cx ? cx : screen_w - cx;
                 int64_t dy1 = cy > screen_h - cy ? cy : screen_h - cy;
-                int64_t max_r = dx1 + dy1;
+                int64_t max_r = screenfx_isqrt(dx1 * dx1 + dy1 * dy1) + 1;
 
-                int64_t radius = max_r * progress / 1000;
+                int64_t radius = (e->type == RT_SCREENFX_CIRCLE_IN)
+                                     ? max_r * (1000 - progress) / 1000
+                                     : max_r * progress / 1000;
 
-                // Draw surrounding boxes (same as circle_in but with growing radius)
-                if (cy - radius > 0)
-                    rt_canvas_box(canvas, 0, 0, screen_w, cy - radius, color);
-                if (cy + radius < screen_h)
-                    rt_canvas_box(
-                        canvas, 0, cy + radius, screen_w, screen_h - (cy + radius), color);
-                int64_t ytop = cy - radius > 0 ? cy - radius : 0;
-                int64_t ybot = cy + radius < screen_h ? cy + radius : screen_h;
-                if (cx - radius > 0)
-                    rt_canvas_box(canvas, 0, ytop, cx - radius, ybot - ytop, color);
-                if (cx + radius < screen_w)
-                    rt_canvas_box(
-                        canvas, cx + radius, ytop, screen_w - (cx + radius), ybot - ytop, color);
+                screenfx_draw_circle_mask(canvas, cx, cy, radius, screen_w, screen_h, color);
                 break;
             }
 

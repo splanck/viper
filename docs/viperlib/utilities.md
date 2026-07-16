@@ -316,8 +316,9 @@ graceful error handling.
 - The `Try*` parser forms return managed `Option`
   objects. Raw output-pointer helpers are runtime-internal and are not part of
   the Zia or BASIC source surface.
-- `TryNum` and `NumOr` remain available as compatibility aliases for
-  `TryDouble` and `DoubleOr`.
+- Use `TryDouble` and `DoubleOr` for double parsing; the former `TryNum` / `NumOr`
+  spellings were retired by the public-surface standardization and are no longer
+  available.
 - **Boolean parsing** accepts (case-insensitive):
     - True: `"true"`, `"yes"`, `"1"`, `"on"`
     - False: `"false"`, `"no"`, `"0"`, `"off"`

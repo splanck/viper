@@ -69,11 +69,13 @@ The FPS number is color-coded:
 | FPS history depth | 16 frames |
 
 `Watch` updates an existing exact stored name, fills the first free slot, and
-silently ignores a new name when all 16 slots are occupied. Names longer than
-31 bytes are silently truncated, potentially through a UTF-8 sequence. Because
-lookup currently compares the untruncated argument first, repeatedly watching
-the same long name can consume multiple slots and `Unwatch` with that long name
-cannot find the stored entry; keep names at or below 31 ASCII bytes.
+silently ignores a new name when all 16 slots are occupied. A name that does not
+fit the 31-byte buffer (32+ bytes) or contains an embedded NUL is rejected outright
+rather than truncated, so `Watch` and `Unwatch` address entries by the same full
+name — repeating a long name updates its single entry (or is rejected consistently)
+instead of consuming extra slots, and it can be removed with its source text
+(VDOC-259). When the drawn name exceeds the 28-byte display budget it is truncated
+on a UTF-8 character boundary so the overlay never shows a split multi-byte glyph.
 
 ---
 

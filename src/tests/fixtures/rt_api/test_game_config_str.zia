@@ -1,0 +1,26 @@
+// test_game_config_str.zia — Config.GetStr returns a typed String (VDOC-237)
+// Before the registry gave GetStr a concrete `str` return, its `obj`/Any type
+// could not be assigned to a String local or passed to a String parameter.
+module TestGameConfigStr;
+
+bind Viper.Terminal;
+bind Viper.Game.Config as Config;
+
+func decorate(s: String) -> String {
+    return s + "!";
+}
+
+func start() {
+    var cfg = Config.FromString("{\"title\":\"Hero\",\"missing\":0}");
+
+    // Typed-local assignment from a string-returning query.
+    var title: String = Config.GetStr(cfg, "title", "none");
+    Say(title); // Hero
+
+    // Pass the query result directly to a String parameter.
+    Say(decorate(Config.GetStr(cfg, "title", "none"))); // Hero!
+
+    // A missing key returns the supplied default, still typed String.
+    var fallback: String = Config.GetStr(cfg, "absent", "default");
+    Say(fallback); // default
+}

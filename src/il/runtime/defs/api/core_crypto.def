@@ -199,7 +199,7 @@ RT_FUNC(DateTimeParseDate,  rt_datetime_parse_date,  "Viper.Time.DateTime.ParseD
 RT_FUNC(DateTimeParseTime,  rt_datetime_parse_time,  "Viper.Time.DateTime.ParseTime",  "i64(str)")
 RT_FUNC(DateTimeTryParseOption, rt_datetime_try_parse_option, "Viper.Time.DateTime.TryParse", "obj<Viper.Option>(str)")
 RT_FUNC(DateTimeCreateOption, rt_datetime_create_option, "Viper.Time.DateTime.TryFromParts", "obj<Viper.Option>(i64,i64,i64,i64,i64,i64)")
-RT_FUNC(TimeZoneFind,       rt_tz_find,              "Viper.Time.TimeZone.Find",       "obj(str)")
+RT_FUNC(TimeZoneFind,       rt_tz_find,              "Viper.Time.TimeZone.Find",       "obj<Viper.Time.TimeZone>(str)")
 RT_FUNC(TimeZoneName,       rt_tz_name,              "Viper.Time.TimeZone.get_Name",   "str(obj)")
 RT_FUNC(TimeZoneOffsetAt,   rt_tz_offset_at,         "Viper.Time.TimeZone.OffsetAt",   "i64(obj,i64)")
 RT_FUNC(TimeZoneIsDstAt,    rt_tz_is_dst_at,         "Viper.Time.TimeZone.IsDstAt",    "i1(obj,i64)")

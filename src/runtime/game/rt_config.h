@@ -18,6 +18,9 @@
 // Ownership/Lifetime:
 //   - rt_config_load / rt_config_from_string return owned handles (GC-managed).
 //   - rt_config_get_str returns a runtime string owned by the caller.
+//   - The scalar getters and rt_config_has do NOT retain a reference into the
+//     parsed JSON tree: existence checks use the non-retaining rt_jsonpath_has,
+//     so repeated queries are allocation-free (VDOC-236).
 //
 // Links: src/runtime/game/rt_config.c (implementation)
 //
@@ -47,6 +50,13 @@ void *rt_config_get_str(void *cfg, void *path, void *default_val);
 int8_t rt_config_get_bool(void *cfg, void *path, int8_t default_val);
 /// @brief Test whether a value exists at dotted @p path.
 int8_t rt_config_has(void *cfg, void *path);
+
+/// @brief Return the borrowed parsed JSON root of a Config (internal/testing).
+/// @details Not a registered runtime surface symbol. Exposes the internal JSON
+/// tree so tests can verify that query methods do not retain resolved nodes
+/// (VDOC-236). The returned pointer is borrowed — the Config still owns it.
+/// @return The JSON root, or NULL for a NULL/invalid Config.
+void *rt_config_json_root(void *cfg);
 
 #ifdef __cplusplus
 }

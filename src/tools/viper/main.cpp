@@ -411,9 +411,28 @@ std::optional<bool> runtimeReturnNullable(std::string_view name, std::string_vie
         return true;
     // System APIs that return NULL to signal startup/absence rather than a valid
     // handle, so tools do not mistake absence for a live object (VDOC-222).
+    // Time object constructors/operations that return NULL on ordinary (non-trap)
+    // failure — invalid civil input, an out-of-domain result, a failed parse, or
+    // disjoint/gapped ranges — likewise need explicit nullability so tools emit the
+    // null branch (VDOC-232).
     static constexpr std::string_view kNullableReturns[] = {
         "Viper.System.Process.Start",
         "Viper.System.Process.StartWithEnv",
+        "Viper.Time.DateOnly.FromParts", // NULL for an invalid or out-of-domain date
+        "Viper.Time.DateOnly.Today",     // NULL when the wall clock is unavailable
+        "Viper.Time.DateOnly.Parse",     // NULL for a malformed date string
+        "Viper.Time.DateOnly.FromDays",  // NULL when the day count leaves the year domain
+        "Viper.Time.DateOnly.AddDays",   // NULL when the result leaves the year domain
+        "Viper.Time.DateOnly.AddMonths", // NULL when the result leaves the year domain
+        "Viper.Time.DateOnly.AddYears",  // NULL when the result leaves the year domain
+        "Viper.Time.DateRange.Intersection", // NULL when the ranges are disjoint
+        "Viper.Time.DateRange.Union",        // NULL when the ranges have a gap
+        // SpriteSheet constructors return NULL for a wrong-class/null atlas or an
+        // atlas that does not divide evenly; GetRegion returns NULL for a name that
+        // is not registered. Concrete typed-but-nullable results (VDOC-284).
+        "Viper.Graphics.SpriteSheet.New",
+        "Viper.Graphics.SpriteSheet.FromGrid",
+        "Viper.Graphics.SpriteSheet.GetRegion",
     };
     for (auto n : kNullableReturns)
         if (name == n)
@@ -588,6 +607,12 @@ std::optional<std::string_view> explicitRuntimeFallibility(std::string_view name
         {"Viper.Runtime.Unsafe.Release", "traps"},    // traps on an invalid/freed heap object
         {"Viper.Runtime.Unsafe.ReleaseStr", "traps"}, // traps on an invalid string handle
         {"Viper.System.Pty.PtySession.Resize", "status"}, // returns a boolean success indicator
+        // Time parsers the "Parse* traps" heuristic mislabeled (VDOC-232): these
+        // signal failure with a sentinel (0 / -1 / NULL), not a trap.
+        {"Viper.Time.DateTime.ParseIso8601", "sentinel"}, // returns 0 on failure
+        {"Viper.Time.DateTime.ParseDate", "sentinel"},    // returns 0 on failure
+        {"Viper.Time.DateTime.ParseTime", "sentinel"},    // returns -1 on failure
+        {"Viper.Time.DateOnly.Parse", "sentinel"},        // returns NULL on failure
     };
     for (const auto &[key, value] : kOverrides)
         if (name == key)
@@ -666,6 +691,17 @@ std::string inferRuntimeOwnership(std::string_view name, std::string_view signat
     }
     if (sig.returnType == "str" || sig.returnType == "string")
         return "owned";
+    // A few concretely typed object returns hand back a borrowed handle into
+    // process-lifetime static data rather than a freshly allocated value the
+    // caller owns. They must be classified "borrowed" before the generic
+    // `obj<...>` = owned rule below, or tools would schedule an erroneous release
+    // of static data (VDOC-228).
+    static constexpr std::string_view kBorrowedTypedObj[] = {
+        "Viper.Time.TimeZone.Find", // returns a static, must-not-free TimeZone handle
+    };
+    for (auto entry : kBorrowedTypedObj)
+        if (name == entry)
+            return "borrowed";
     if (startsWith(sig.returnType, "obj<Viper.Option") ||
         startsWith(sig.returnType, "obj<Viper.Result") ||
         startsWith(sig.returnType, "obj<Viper.Threads.Future"))
@@ -695,6 +731,15 @@ std::string inferRuntimeOwnership(std::string_view name, std::string_view signat
     // previous "unknown" understated this for the exact APIs the inventory is
     // meant to describe (VDOC-209).
     if (startsWith(name, "Viper.Math.") &&
+        (sig.returnType == "obj" || startsWith(sig.returnType, "seq")))
+        return "owned";
+    // Time object results (DateOnly/DateRange/Stopwatch arithmetic, queries, and
+    // parses such as AddDays, StartOfMonth, Intersection, Today, Parse, StartNew)
+    // are freshly allocated GC values the caller owns, even when the registry types
+    // them as bare `obj`. TimeZone.Find is the one Time object that is borrowed and
+    // is handled by the borrowed override above, so a blanket owned rule for the
+    // remaining `Viper.Time.*` object returns is correct (VDOC-232).
+    if (startsWith(name, "Viper.Time.") &&
         (sig.returnType == "obj" || startsWith(sig.returnType, "seq")))
         return "owned";
     return "unknown";

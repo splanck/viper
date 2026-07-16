@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted
+Superseded — the public-surface standardization retired the `PathResult.Length`
+compatibility alias from the registry; `PathResult.StepCount` is now the sole
+public property for the cell-to-cell step count. The backing C symbol
+`rt_path_result_length` is retained as an internal (non-registered) ABI alias of
+`rt_path_result_step_count`, so native/embedding callers keep working, but the
+scripting surface no longer exposes `Length`. New code must use `StepCount`
+(VDOC-260).
 
 ## Context
 

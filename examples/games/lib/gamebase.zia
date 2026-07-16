@@ -89,7 +89,11 @@ class GameBase {
         while running {
             canvas.Poll();
             if canvas.ShouldClose {
+                // Stop immediately: do not run scene callbacks, draw, or present
+                // another frame after a close was observed, which could mutate state
+                // or touch a backend already tearing down (VDOC-258).
                 running = false;
+                break;
             }
 
             // DeltaTime clamping
@@ -179,10 +183,15 @@ class GameBase {
         return canvas.Height;
     }
 
-    // Set maximum delta time clamp (default 50ms). Keep max positive: the
-    // current two-step clamp otherwise permits zero or negative dt values.
+    // Set maximum delta time clamp (default 50ms). A nonpositive maximum is
+    // rejected and floored to 1: dt is lower-clamped to 1 each frame, so a dtMax
+    // below 1 would drive the upper clamp to zero or negative dt (VDOC-257).
     expose func setDTMax(max: Integer) {
-        dtMax = max;
+        if max < 1 {
+            dtMax = 1;
+        } else {
+            dtMax = max;
+        }
     }
 
     // Set target frames per second.

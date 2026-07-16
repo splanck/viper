@@ -12,8 +12,12 @@
 //   - Timelines are heap-allocated opaque `void *` handles.
 //   - All time is measured in integer frames; track indices are 0-based and
 //     returned by the add_* functions in insertion order.
-//   - advance() drives only the playhead and marker reporting. It does not
-//     update an AnimStateMachine or calculate tween payload C.
+//   - advance() drives only the playhead and marker reporting. It does not push
+//     values to concrete targets: this is a passive scheduler. Tween tracks
+//     report their current interpolated value through payload C (computed on
+//     read from payloads A/B and the track's progress); anim tracks report the
+//     target state ID through payload A. The caller applies these to its own
+//     AnimStateMachine / tween target.
 //
 // Ownership/Lifetime:
 //   - rt_animtimeline_new returns an owned handle reclaimed by the GC.
@@ -41,9 +45,10 @@ void *rt_animtimeline_new(int64_t total_duration_frames);
 /// @return The new track's 0-based index.
 int64_t rt_animtimeline_add_anim_track(
     void *tl, rt_string name, int64_t start_frame, int64_t duration_frames, int64_t anim_state_id);
-/// @brief Add a passive track carrying integer endpoints @p from and @p to.
-/// @details The current implementation does not calculate an interpolated
-///          payload; callers combine payload A/B with track_progress().
+/// @brief Add a tween track carrying integer endpoints @p from and @p to.
+/// @details payload C reports the current interpolated value between the
+///          endpoints at the timeline's current frame; payloads A/B carry the
+///          raw from/to. The caller applies the value to its own target.
 /// @return The new track's 0-based index.
 int64_t rt_animtimeline_add_tween_track(void *tl,
                                         rt_string name,
@@ -90,7 +95,10 @@ double rt_animtimeline_track_progress(void *tl, int64_t track_index);
 int64_t rt_animtimeline_track_payload_a(void *tl, int64_t track_index);
 /// @brief Track payload slot B (tween track: to value).
 int64_t rt_animtimeline_track_payload_b(void *tl, int64_t track_index);
-/// @brief Track payload slot C. Currently initialized to and always returns 0.
+/// @brief Track payload slot C. For a tween track this is the current
+///        interpolated value between payloads A and B at the timeline's current
+///        frame (0 before the track starts, the `to` value at/after its end);
+///        for other track kinds it is 0.
 int64_t rt_animtimeline_track_payload_c(void *tl, int64_t track_index);
 
 #ifdef __cplusplus

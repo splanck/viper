@@ -58,13 +58,25 @@ void *rt_animation_event_batch_from_ids(const int64_t *ids, int64_t count) {
     rt_obj_set_finalizer(batch, event_batch_finalizer);
 
     if (!ids || count <= 0)
-        return batch;
-    if ((uint64_t)count > SIZE_MAX / sizeof(int64_t))
-        return batch;
+        return batch; // a legitimately empty snapshot (zero events fired)
+
+    // A memory failure while copying the fired IDs must NOT masquerade as an empty
+    // batch — that is indistinguishable from a genuine zero-event frame and would
+    // silently drop gameplay events under memory pressure. Fail the whole snapshot
+    // transactionally by returning NULL, matching the documented "NULL on
+    // allocation failure" contract, so callers can tell the two apart (VDOC-279).
+    if ((uint64_t)count > SIZE_MAX / sizeof(int64_t)) {
+        if (rt_obj_release_check0(batch))
+            rt_obj_free(batch);
+        return NULL;
+    }
 
     batch->ids = (int64_t *)malloc((size_t)count * sizeof(int64_t));
-    if (!batch->ids)
-        return batch;
+    if (!batch->ids) {
+        if (rt_obj_release_check0(batch))
+            rt_obj_free(batch);
+        return NULL;
+    }
     memcpy(batch->ids, ids, (size_t)count * sizeof(int64_t));
     batch->count = count;
     return batch;

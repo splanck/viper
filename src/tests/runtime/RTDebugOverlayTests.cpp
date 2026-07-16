@@ -25,6 +25,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 extern "C" void vm_trap(const char *msg) {
     (void)msg;
@@ -290,6 +291,44 @@ static void test_draw_disabled_noop() {
 // Main
 // ============================================================================
 
+// VDOC-259: a name that does not fit the fixed buffer is rejected, not truncated,
+// so repeating it cannot exhaust the watch slots and its truncated prefix is never
+// stored or addressable.
+static void test_watch_long_name_rejected() {
+    rt_debugoverlay dbg = rt_debugoverlay_new();
+    const std::string longName(40, 'a');
+    for (int i = 0; i < 20; ++i)
+        rt_debugoverlay_watch(dbg, S(longName.c_str()), i);
+    // Nothing was stored: neither the full nor the 31-byte truncated name exists.
+    assert(rt_debugoverlay_unwatch(dbg, S(longName.c_str())) == 0);
+    assert(rt_debugoverlay_unwatch(dbg, S(std::string(31, 'a').c_str())) == 0);
+
+    // All 16 slots remain free for distinct valid names.
+    for (int i = 0; i < 16; ++i) {
+        const std::string n = "watch" + std::to_string(i);
+        rt_debugoverlay_watch(dbg, S(n.c_str()), i);
+    }
+    for (int i = 0; i < 16; ++i) {
+        const std::string n = "watch" + std::to_string(i);
+        assert(rt_debugoverlay_unwatch(dbg, S(n.c_str())) == 1);
+    }
+    rt_debugoverlay_destroy(dbg);
+    printf("test_watch_long_name_rejected: PASSED\n");
+}
+
+// VDOC-259: a name at the maximum fitting length round-trips — repeated Watch
+// updates one slot, and Unwatch with the source name removes it.
+static void test_watch_max_length_name_round_trips() {
+    rt_debugoverlay dbg = rt_debugoverlay_new();
+    const std::string name31(31, 'b');
+    rt_debugoverlay_watch(dbg, S(name31.c_str()), 1);
+    rt_debugoverlay_watch(dbg, S(name31.c_str()), 2); // updates existing, not a new slot
+    assert(rt_debugoverlay_unwatch(dbg, S(name31.c_str())) == 1);
+    assert(rt_debugoverlay_unwatch(dbg, S(name31.c_str())) == 0); // only one slot existed
+    rt_debugoverlay_destroy(dbg);
+    printf("test_watch_max_length_name_round_trips: PASSED\n");
+}
+
 int main() {
     printf("=== RTDebugOverlayTests ===\n\n");
 
@@ -316,6 +355,8 @@ int main() {
     test_watch_max_capacity();
     test_watch_null_name();
     test_watch_reuse_slot();
+    test_watch_long_name_rejected();
+    test_watch_max_length_name_round_trips();
 
     printf("\n--- Draw ---\n");
     test_draw_null_canvas();

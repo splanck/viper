@@ -167,6 +167,36 @@ TEST(large_opposite_signed_endpoints_stay_finite) {
     rt_tween_destroy(tw);
 }
 
+// VDOC-273: StartI64 / ValueI64 / LerpI64 must preserve integer endpoints exactly,
+// including values above 2^53 that binary64 cannot represent. Before the fix the
+// endpoints were cast to double on entry and 2^53+1 collapsed to 2^53.
+TEST(i64_preserves_values_above_2_53) {
+    const int64_t big = 9007199254740993LL; // 2^53 + 1, not representable in double
+
+    // Constant tween: the value must never drift, at any frame.
+    rt_tween tw = rt_tween_new();
+    rt_tween_start_i64(tw, big, big, 1, RT_EASE_LINEAR);
+    ASSERT(rt_tween_value_i64(tw) == big); // before any update
+    rt_tween_update(tw);
+    ASSERT(rt_tween_value_i64(tw) == big); // after completion
+    rt_tween_destroy(tw);
+
+    // A moving tween exposes its exact endpoints at the start and end.
+    rt_tween tw2 = rt_tween_new();
+    rt_tween_start_i64(tw2, 0, big, 4, RT_EASE_LINEAR);
+    ASSERT(rt_tween_value_i64(tw2) == 0); // start exact
+    for (int i = 0; i < 4; i++)
+        rt_tween_update(tw2);
+    ASSERT(rt_tween_is_complete(tw2) == 1);
+    ASSERT(rt_tween_value_i64(tw2) == big); // end exact
+    rt_tween_destroy(tw2);
+
+    // The static integer lerp preserves endpoints and constants too.
+    ASSERT(rt_tween_lerp_i64(big, big, 0.5) == big);
+    ASSERT(rt_tween_lerp_i64(0, big, 0.0) == 0);
+    ASSERT(rt_tween_lerp_i64(0, big, 1.0) == big);
+}
+
 /// @brief Main.
 int main() {
     printf("RTTweenTests:\n");
@@ -178,6 +208,7 @@ int main() {
     RUN_TEST(stop_reset);
     RUN_TEST(ease_functions);
     RUN_TEST(lerp_i64);
+    RUN_TEST(i64_preserves_values_above_2_53);
     RUN_TEST(nonfinite_inputs_are_sanitized);
     RUN_TEST(large_opposite_signed_endpoints_stay_finite);
 

@@ -34,8 +34,19 @@
 extern "C" {
 #endif
 
+/// @brief Read the wall clock in whole seconds, distinguishing genuine failure.
+/// @details Internal helper shared by DateTime.Now, DateOnly.Today, and the
+/// RelativeTime current-time path so a `time(NULL)` failure (which returns
+/// `(time_t)-1`, aliasing the valid pre-epoch instant) is detected via `errno`
+/// rather than surfaced as a plausible 1969 timestamp (VDOC-230). Not a registered
+/// runtime surface symbol.
+/// @param out Receives current epoch seconds on success; untouched on failure.
+/// @return 1 on success, 0 when the wall clock is unavailable.
+int rt_datetime_wall_seconds(int64_t *out);
+
 /// @brief Get current Unix timestamp in seconds.
-/// @return Seconds since Unix epoch (1970-01-01 00:00:00 UTC).
+/// @return Seconds since Unix epoch (1970-01-01 00:00:00 UTC). Traps if the system
+/// clock is unavailable rather than returning the ambiguous `-1` sentinel.
 int64_t rt_datetime_now(void);
 
 /// @brief Get current time in milliseconds.

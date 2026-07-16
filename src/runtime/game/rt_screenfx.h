@@ -61,6 +61,47 @@ typedef enum {
 /// Opaque handle to a ScreenFX manager.
 typedef struct rt_screenfx_impl *rt_screenfx;
 
+/// @name Effect-type constants
+/// Stable numeric identifiers for `IsTypeActive`/`CancelType`, mirroring the
+/// private @c rt_screenfx_type_t enum so callers never copy raw integers.
+/// @{
+int64_t rt_screenfx_type_shake(void);      ///< 1
+int64_t rt_screenfx_type_flash(void);      ///< 2
+int64_t rt_screenfx_type_fade_in(void);    ///< 3
+int64_t rt_screenfx_type_fade_out(void);   ///< 4
+int64_t rt_screenfx_type_wipe(void);       ///< 5
+int64_t rt_screenfx_type_circle_in(void);  ///< 6
+int64_t rt_screenfx_type_circle_out(void); ///< 7
+int64_t rt_screenfx_type_dissolve(void);   ///< 8
+int64_t rt_screenfx_type_pixelate(void);   ///< 9
+/// @}
+
+/// @name Wipe-direction constants
+/// Stable values for the @c direction argument of `Wipe`.
+/// @{
+int64_t rt_screenfx_dir_left(void);  ///< 0
+int64_t rt_screenfx_dir_right(void); ///< 1
+int64_t rt_screenfx_dir_up(void);    ///< 2
+int64_t rt_screenfx_dir_down(void);  ///< 3
+/// @}
+
+/// @brief Pack an overlay color for Flash/FadeIn/FadeOut in the ScreenFX
+///   @c 0xRRGGBBAA byte order (alpha in the least-significant byte).
+///
+/// ScreenFX overlay colors do NOT use the canonical @c Viper.Graphics.Color
+/// byte order (@c 0xAARRGGBB) — passing a @c Color.Rgba() value directly to
+/// Flash/FadeIn/FadeOut reads the wrong alpha channel. Use this constructor so
+/// the encoding is explicit and correct at the call site.
+/// @param r,g,b,a Channel values, each clamped to [0, 255].
+/// @return The color packed as 0xRRGGBBAA.
+int64_t rt_screenfx_rgba(int64_t r, int64_t g, int64_t b, int64_t a);
+
+/// @brief Pack a transition color for Wipe/CircleIn/CircleOut/Dissolve/Pixelate
+///   in the Canvas @c 0x00RRGGBB byte order (no alpha).
+/// @param r,g,b Channel values, each clamped to [0, 255].
+/// @return The color packed as 0x00RRGGBB.
+int64_t rt_screenfx_rgb(int64_t r, int64_t g, int64_t b);
+
 /// @brief Allocates and initializes a new ScreenFX effects manager.
 /// @return A new ScreenFX handle with no active effects. The caller must
 ///   free it with rt_screenfx_destroy().
@@ -219,9 +260,11 @@ void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t durati
 /// @brief Check if all effects have finished (none active).
 int8_t rt_screenfx_is_finished(rt_screenfx fx);
 
-/// @brief Get the progress of the first active transition (0-999 in normal
-/// operation). Completion removes the slot during Update, after which this
-/// query returns 0; the terminal value 1000 is not observable currently.
+/// @brief Get the progress of the first active transition (0-1000 per mille).
+/// The frame a transition reaches its duration it is held one extra update at
+/// its terminal state, so the value 1000 (fully covered) is observable before
+/// the slot is reclaimed on the following update. Returns 0 when no transition
+/// is active.
 int64_t rt_screenfx_get_transition_progress(rt_screenfx fx);
 
 /// @brief Render all active transition overlays to a Canvas.
@@ -229,6 +272,12 @@ int64_t rt_screenfx_get_transition_progress(rt_screenfx fx);
 /// @param screen_w Screen width in pixels.
 /// @param screen_h Screen height in pixels.
 void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h);
+
+/// @brief Horizontal half-chord of a disc of @p radius at vertical offset @p dy
+///   from the center — the half-width of the circular opening on that scanline,
+///   or 0 when the row is entirely outside the disc. Internal helper backing the
+///   CircleIn/CircleOut mask; exposed for tests, not a registered runtime API.
+int64_t rt_screenfx_circle_half_chord(int64_t radius, int64_t dy);
 
 #ifdef __cplusplus
 }

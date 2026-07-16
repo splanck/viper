@@ -11,6 +11,8 @@
 #include "rt_object.h"
 #include "rt_trap.h"
 
+#include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 #define RT_ANIMTIMELINE_MAX_TRACKS 16
@@ -51,6 +53,7 @@ typedef struct {
     int8_t playing;
     int8_t looping;
     int8_t finished;
+    int8_t entry_pending; // fire markers on the entry frame at the first advance (VDOC-278)
 } rt_animtimeline_impl;
 
 /// @brief Safe-cast a handle to the AnimTimeline impl, trapping @p api on a
@@ -183,6 +186,12 @@ int64_t rt_animtimeline_add_marker(void *ptr, int64_t frame, int64_t marker_id) 
         return -1;
     if (tl->event_count >= RT_ANIMTIMELINE_MAX_EVENTS)
         return -1;
+    // Reject markers beyond the playable range: a non-looping playhead stops at
+    // total_duration and a looping one wraps before it, so a marker past the end
+    // could never be crossed and would look registered but stay silent forever
+    // (VDOC-278). Negative frames clamp to the start (frame 0), which is in range.
+    if (frame > tl->total_duration_frames)
+        return -1;
     int64_t idx = tl->event_count++;
     tl->events[idx].frame = clamp_frame(frame);
     tl->events[idx].event_id = marker_id;
@@ -196,6 +205,9 @@ void rt_animtimeline_play(void *ptr) {
         return;
     tl->playing = 1;
     tl->finished = 0;
+    // Arm entry-frame marker firing only when starting from the very beginning,
+    // so resuming mid-timeline does not re-fire already-crossed markers.
+    tl->entry_pending = (tl->current_frame == 0) ? 1 : 0;
 }
 
 void rt_animtimeline_pause(void *ptr) {
@@ -211,6 +223,7 @@ void rt_animtimeline_stop(void *ptr) {
     tl->playing = 0;
     tl->finished = 0;
     tl->current_frame = 0;
+    tl->entry_pending = 0;
     tl->events_fired_count = 0;
     for (int64_t i = 0; i < tl->event_count; i++)
         tl->events[i].fired = 0;
@@ -280,6 +293,11 @@ void rt_animtimeline_advance(void *ptr, int64_t delta_frames) {
         int8_t fire = 0;
         if (!tl->events[i].fired && timeline_crossed(before, after, tl->events[i].frame))
             fire = 1;
+        // Entry markers: a marker exactly on the start frame is missed by the
+        // half-open (before, after] crossing on the first advance, so fire it
+        // once on entry (typically frame 0) (VDOC-278).
+        if (tl->entry_pending && !tl->events[i].fired && tl->events[i].frame == before)
+            fire = 1;
         if (wrapped &&
             (spanned_full_cycle || tl->events[i].frame > before || tl->events[i].frame <= after))
             fire = 1;
@@ -288,6 +306,7 @@ void rt_animtimeline_advance(void *ptr, int64_t delta_frames) {
         tl->events[i].fired = 1;
         tl->events_fired_ids[tl->events_fired_count++] = tl->events[i].event_id;
     }
+    tl->entry_pending = 0;
     tl->current_frame = after;
 }
 
@@ -320,6 +339,36 @@ static rt_animtimeline_track_t *timeline_track(rt_animtimeline_impl *tl, int64_t
     return &tl->tracks[index];
 }
 
+/// @brief Fraction (0..1) of @p track completed at the timeline's current frame:
+///        0 before/at the start, 1 at/after the end, linear in between.
+static double timeline_track_frac(const rt_animtimeline_impl *tl,
+                                  const rt_animtimeline_track_t *track) {
+    if (tl->current_frame <= track->start_frame)
+        return 0.0;
+    if (tl->current_frame >= timeline_track_end_frame(track))
+        return 1.0;
+    return (double)(tl->current_frame - track->start_frame) / (double)track->duration_frames;
+}
+
+/// @brief Interpolate an integer from @p a to @p b by fraction @p frac, anchored
+///        on the exact endpoints (frac 0 -> a, frac 1 -> b) and rounded
+///        half-away-from-zero with saturation. Wide ranges use long double.
+static int64_t timeline_lerp_i64(int64_t a, int64_t b, double frac) {
+    if (a == b || frac <= 0.0)
+        return a;
+    if (frac >= 1.0)
+        return b;
+    long double result = (long double)a + (long double)frac * ((long double)b - (long double)a);
+    if (!isfinite((double)result))
+        return frac < 0.5 ? a : b;
+    long double rounded = result >= 0.0L ? floorl(result + 0.5L) : ceill(result - 0.5L);
+    if (rounded >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (rounded <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)rounded;
+}
+
 int8_t rt_animtimeline_track_is_active(void *ptr, int64_t track_index) {
     rt_animtimeline_impl *tl =
         checked_timeline(ptr, "AnimTimeline.TrackIsActive: expected AnimTimeline");
@@ -336,12 +385,7 @@ double rt_animtimeline_track_progress(void *ptr, int64_t track_index) {
     rt_animtimeline_track_t *track = timeline_track(tl, track_index);
     if (!track)
         return 0.0;
-    if (tl->current_frame <= track->start_frame)
-        return 0.0;
-    int64_t end = timeline_track_end_frame(track);
-    if (tl->current_frame >= end)
-        return 1.0;
-    return (double)(tl->current_frame - track->start_frame) / (double)track->duration_frames;
+    return timeline_track_frac(tl, track);
 }
 
 int64_t rt_animtimeline_track_payload_a(void *ptr, int64_t track_index) {
@@ -362,5 +406,15 @@ int64_t rt_animtimeline_track_payload_c(void *ptr, int64_t track_index) {
     rt_animtimeline_impl *tl =
         checked_timeline(ptr, "AnimTimeline.TrackPayloadC: expected AnimTimeline");
     rt_animtimeline_track_t *track = timeline_track(tl, track_index);
-    return track ? track->payload_c : 0;
+    if (!track)
+        return 0;
+    // For a tween track, payload C is the CURRENT interpolated value between the
+    // from (A) and to (B) endpoints at the timeline's current frame — computed on
+    // read, not a stored constant. Previously it was always 0, so "tween track"
+    // and "current interpolated value" described work that never happened
+    // (VDOC-277). The timeline stays a passive scheduler: it reports the value and
+    // the caller applies it to its own target.
+    if (track->kind == TIMELINE_TRACK_TWEEN)
+        return timeline_lerp_i64(track->payload_a, track->payload_b, timeline_track_frac(tl, track));
+    return track->payload_c;
 }

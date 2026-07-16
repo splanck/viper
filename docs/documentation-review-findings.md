@@ -5360,6 +5360,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   API for selecting the earlier/later or standard/DST occurrence.
 - **Likely repair point:** expose an explicit ambiguity policy or parse Result carrying both
   candidates; use the embedded zone engine for deterministic named-zone civil conversion.
+- **Review (2026-07-16):** Confirmed and resolved with a fixed, host-independent ambiguity policy
+  (satisfying Viper's determinism principle). Replaced the single `mktime(tm_isdst = -1)` +
+  round-trip pattern with a shared `dt_resolve_local_tm` helper that evaluates **both** DST states
+  explicitly, accepts only interpretations whose result round-trips back to the exact input fields,
+  and — for a repeated hour that round-trips through both — selects the **earlier UTC instant** (the
+  still-in-DST occurrence). A normal hour round-trips through exactly one state; a skipped
+  spring-forward hour round-trips through neither and is rejected. Both local conversion sites now
+  route through this helper: `dt_create_impl` (backing `FromParts`/`TryFromParts`) and
+  `dt_make_local_timestamp` (backing local `ParseIso8601`/`ParseDate`), so construction and parsing
+  agree. The round-trip-filter-then-min approach is robust across glibc/BSD `mktime` differences.
+  Added `test_dst_ambiguity` to `RTDatetimeTests.cpp` (forces `TZ=America/New_York` with a
+  zone-availability guard that skips if the host tz database lacks the DST rules): it asserts the
+  repeated 2025-11-02 01:30 hour resolves to the EDT (earlier) instant on any host, that the skipped
+  2025-03-09 02:30 hour is rejected by both the sentinel and Option forms, and that an unambiguous
+  local time still round-trips. Build clean; `test_rt_datetime` passes. Rewrote the VDOC-226 note in
+  `docs/viperlib/time.md`. The deeper embedded-zone-engine option was not needed to remove the
+  host-dependence the finding flagged. **Resolved.**
 
 ### VDOC-227 — RelativeTime.FormatDuration emits negative zero
 
@@ -5373,6 +5390,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   magnitudes format asymmetrically.
 - **Likely repair point:** apply the sign only when the displayed whole-second magnitude is
   nonzero, or include a millisecond component instead of discarding it.
+- **Review (2026-07-16):** Confirmed and resolved via the first repair option. In
+  `rt_reltime_format_duration` (`rt_reltime.c`), the `negative` flag was set from `duration_ms < 0`
+  before the magnitude was divided into whole seconds, so a sub-second negative input emitted a
+  leading `-` around a zero magnitude (`FormatDuration(-1) == "-0s"`). Moved the flag past the
+  `total_secs` computation and gated it on `total_secs > 0`, so the sign is applied only when there
+  is a nonzero displayed magnitude; a negative value that truncates to zero whole seconds now
+  renders as plain `"0s"`, symmetric with the positive sub-second case. Added
+  `test_duration_negative_subsecond` to `RTRelTimeTests.cpp` (covers `-1`, `-999`, `999` → `"0s"`,
+  and `-1000`/`-1500` → `"-1s"` to confirm real magnitudes still keep their sign). Build clean;
+  `test_rt_reltime`/`test_rt_reltime_format` pass. Updated the `FormatDuration` note in
+  `docs/viperlib/time.md`. **Resolved.**
 
 ### VDOC-228 — TimeZone.Find loses its class type in Zia
 
@@ -5387,6 +5415,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** give `Find` its concrete object return type in the registry and add Zia
   chaining/typed-assignment coverage, with the required compatibility review for signature
   metadata changes.
+- **Review (2026-07-16):** Confirmed and resolved. Changed the `TimeZoneFind` RT_FUNC and the
+  `Find` RT_METHOD from `obj(str)` to `obj<Viper.Time.TimeZone>(str)` so the return carries its
+  concrete class. The C symbol `rt_tz_find` still returns `void*`, so this is a metadata-only
+  refinement with no ABI change. Compatibility review of the ownership facet: `rt_tz_find` hands
+  back a borrowed handle into process-lifetime static data ("must not be freed"), but the generic
+  `obj<...>` ownership heuristic would have mislabeled the typed return as `owned`; added a
+  `kBorrowedTypedObj` override in `inferRuntimeOwnership` (`src/tools/viper/main.cpp`), evaluated
+  before the generic rule, so `--dump-runtime-api` now reports `obj<Viper.Time.TimeZone>` /
+  `fallibility: traps` (unchanged, via the existing Find special-case) / `ownership: borrowed`.
+  Added Zia coverage: `src/tests/fixtures/rt_api/test_timezone.zia` (auto-discovered `zia_rt_api`
+  suite) assigns `TimeZone.Find(...)` to a `TZ`-typed local and chains `.OffsetAt`/`.IsDstAt`/
+  `.Name` on the find result directly — both forms the finding reported as rejected now compile and
+  run (UTC offset 0, Tokyo +32400). Pinned the corrected typed/borrowed contract in the `agent_cli`
+  test. Ran `check_runtime_completeness.sh`, regenerated `docs/generated/runtime`, and confirmed the
+  strict audit, `runtime_reference_docs`, and `agent_cli` pass. Updated the TimeZone section of
+  `docs/viperlib/time.md`. **Resolved.**
 
 ### VDOC-229 — Time instance APIs accept and reinterpret wrong-class objects
 
@@ -5401,6 +5445,30 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** assign stable runtime class IDs, validate kind/class/size in shared
   receiver guards, and make the front end reject explicit receivers incompatible with the owning
   class.
+- **Review (2026-07-16):** Confirmed and resolved the memory-safety defect via the first two repair
+  points (stable class IDs + shared validating receiver guards), matching the codebase's existing
+  defense-in-depth pattern for runtime handles (Perlin/Random/Mat4). Assigned stable class IDs in
+  the `-0x4308xx` range — `RT_COUNTDOWN_CLASS_ID`, `RT_STOPWATCH_CLASS_ID`, `RT_DATEONLY_CLASS_ID`,
+  `RT_DATERANGE_CLASS_ID` — stamped at every constructor (`rt_obj_new_i64(<id>, ...)` instead of
+  `(0, ...)`). Routed every explicit receiver through a shared guard that calls
+  `rt_obj_is_instance(obj, <id>, sizeof(payload))`, which validates heap kind (rejects a `Seq`),
+  class ID (rejects a sibling class), and payload size in one check: Countdown/Stopwatch extended
+  their existing `require_*` helpers (which already trapped on null) to also trap on a wrong class;
+  DateOnly/DateRange gained `as_dateonly`/`as_daterange` helpers that return NULL for a NULL
+  receiver (preserving each method's existing null-sentinel contract) but trap on a non-NULL object
+  of another class — the genuinely dangerous case. Two-operand DateRange set operations
+  (`overlaps`/`intersection`/`union`) validate both operands. A wrong receiver now traps
+  deterministically instead of reading or overwriting an unrelated object's payload, eliminating the
+  heap-corruption impact. Added `test_wrong_class_receiver_traps` to all four suites
+  (RTCountdownTests/RTStopwatchTests/RTDateOnlyTests/RTDateRangeTests): each passes a live object of
+  a *different* class to every method and asserts a trap; the pre-existing null-receiver and valid
+  paths still pass, and the full `rt_api` Zia suite is green. Updated the receiver notes in
+  `docs/viperlib/time.md` and the `rt_daterange.c` header invariant. The third sub-recommendation —
+  making the front end reject incompatible explicit receivers at compile time — is a larger,
+  separate change (retyping ~40 explicit-receiver registry params from bare `obj` to the concrete
+  `obj<...>`, with golden/dispatch review) and is deferred: it would turn the deterministic runtime
+  trap into a compile error (a DX refinement) but is not needed to close the memory-safety hole,
+  which the runtime guards fully address. **Resolved.**
 
 ### VDOC-230 — Wall-clock failure aliases the Unix timestamp -1
 
@@ -5413,6 +5481,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   plausible but incorrect dates or enormous relative-time strings.
 - **Likely repair point:** centralize a checked wall-clock query with an Option/Result error path;
   avoid sentinel-returning APIs for instants whose valid domain includes negative values.
+- **Review (2026-07-16):** Confirmed and resolved by centralizing the checked wall-clock read. Added
+  `rt_datetime_wall_seconds(int64_t *out)` to `rt_datetime.c` (declared in `rt_datetime.h`,
+  registered `INTERNAL_SYMBOL`): it clears `errno`, calls `time(NULL)`, and treats `(time_t)-1` as a
+  failure only when `errno` was set — the sole way to distinguish a genuine clock failure from the
+  valid instant one second before the epoch. Routed all three current-time entry points through it:
+  `rt_datetime_now` now traps (`"DateTime.Now: system clock unavailable"`) instead of returning the
+  ambiguous raw `-1`; `rt_dateonly_today` returns `NULL` on failure, matching its documented
+  `Nothing`-on-clock-failure contract (previously it would have built a plausible 1969 date); and
+  RelativeTime's `current_unix_seconds` traps rather than formatting against a bogus `now`.
+  `NowMs` already checked its `gettimeofday`/`clock_gettime` return, so it needed no change. Extended
+  `test_now` in `RTDatetimeTests.cpp` to assert `Now()` routes through the checked helper, agrees
+  with it within a second, and is never `-1` (the errno-driven failure branch is not deterministically
+  unit-testable without mocking `time()`, which is noted). Build clean; strict audit,
+  `test_rt_datetime`/`dateonly`/`reltime` pass. Updated the `Now`/`Today` note in
+  `docs/viperlib/time.md`. **Resolved.**
 
 ### VDOC-231 — DateOnly accepts years its serializer cannot round-trip
 
@@ -5426,6 +5509,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   constructible domain, and persisted dates can fail to load without warning.
 - **Likely repair point:** define and enforce a year domain shared by construction/parsing, or
   implement signed/expanded ISO 8601 years in both parser and formatter.
+- **Review (2026-07-16):** Confirmed and resolved via the first repair option — enforce one shared
+  year domain rather than widening the serializer to expanded ISO 8601. `rt_dateonly_create` now
+  rejects years outside `[0,9999]` (the four-digit domain that the `%04lld` `ToString` format and
+  the exactly-four-digit `Parse` already require), returning `NULL` as it does for an invalid
+  month/day. Because `Today`, `Parse`, `FromDays`, and every `Add*` operation all route through
+  `rt_dateonly_create`, the constraint applies transitively at one chokepoint: a `FromDays` day
+  count or an `Add*` result whose calendar year would exceed the domain now returns `Nothing`
+  instead of an un-serializable date, and genuine i64 overflow in those paths still traps. Every
+  constructible `DateOnly` therefore round-trips through `ToString`→`Parse` as a fixed ten-byte
+  string. Updated `test_dateonly_extreme_conversions` (which previously asserted extreme years were
+  *constructible* — i.e. codified the bug) to assert domain rejection plus `9999-12-31`/`0000-01-01`
+  round-trips, and flipped the "Huge AddMonths returns a date" arithmetic assertion to expect
+  `Nothing` for an out-of-domain result. Verified all repo `DateOnly.Create` call sites use in-domain
+  years (2023/2024/2026) and the `FromDays` demo round-trips an in-domain date, so nothing breaks.
+  Build clean; `test_rt_dateonly` and the rt_api time suite pass. Updated the `Create` row, the
+  round-trip note, and the null-check guidance in `docs/viperlib/time.md`, and the `ToString`/`Create`
+  doc comments in `rt_dateonly.c`. **Resolved.**
 
 ### VDOC-232 — Time runtime metadata hides nullability, traps, and ownership
 
@@ -5442,6 +5542,27 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** annotate Time contracts explicitly, use concrete nullable object types,
   distinguish static/borrowed zone handles from owned objects, and assert these known cases in the
   metadata audit.
+- **Review (2026-07-16):** Confirmed and resolved the harmful metadata gaps in
+  `src/tools/viper/main.cpp`. (1) **Sentinel parsers:** added `DateTime.ParseIso8601` / `ParseDate`
+  / `ParseTime` and `DateOnly.Parse` to the `explicitRuntimeFallibility` override table as
+  `sentinel` — they signal failure with `0`/`-1`/`NULL`, not the `traps` the "Parse* traps"
+  heuristic assigned, so tools stop inventing trap handling for them. (2) **Nullable object
+  returns:** added the Time constructors/operations that return `NULL` on ordinary failure —
+  `DateOnly.FromParts` / `Today` / `Parse` / `FromDays` / `AddDays` / `AddMonths` / `AddYears` and
+  `DateRange.Intersection` / `Union` — to `runtimeReturnNullable`, so `nullable: true` now drives the
+  null branch (following the VDOC-222 precedent that a null return and a trap are orthogonal axes).
+  (3) **Ownership:** added a blanket `Viper.Time.*` bare-`obj`/`seq` → `owned` rule (mirroring the
+  Math rule) so freshly allocated `AddDays` / `StartOfMonth` / `Intersection` / `Today` / `Parse` /
+  `StartNew` results report `owned` instead of `unknown`; the one borrowed Time object,
+  `TimeZone.Find`'s static handle, is already classified `borrowed` by the VDOC-228 override, which
+  runs first. The finding also observed that checked arithmetic and instance receivers read
+  `infallible`; these are deliberately left as-is, matching the runtime-wide convention (established
+  in VDOC-209) that `fallibility` describes normal-operation failures (bad input, domain errors, a
+  failed parse) rather than overflow-on-extreme-input edges or the universal null/wrong-class
+  receiver programming-error trap. Pinned representative corrected contracts (ParseIso8601 sentinel,
+  FromParts nullable/owned, Intersection nullable/owned, StartNew owned) in the `agent_cli` metadata
+  audit, and documented the Time coverage of the override tables in `docs/tools.md`. No registry
+  change, so the generated reference docs are unaffected; build clean, `agent_cli` green. **Resolved.**
 
 ### VDOC-233 — The public-surface cleanup removed Parse.TryNum without updating its consumers
 
@@ -5456,6 +5577,29 @@ the checked-in generators, documentation audits, and already-existing binaries o
   compatibility logic and test expectations for a symbol absent from its authoritative catalog.
 - **Likely repair point:** either restore `TryNum` as a reviewed compatibility alias or remove it
   coherently from policy, front ends, tooling, tests, fixtures, goldens, and migration material.
+- **Review (2026-07-16):** Confirmed the removal direction and completed the coherent cleanup. The
+  critical breakage — a red source-registry audit from `RuntimeSurfacePolicy.inc` requiring a
+  registry entry that no longer exists — was already resolved: the policy no longer names `TryNum`,
+  `rtgen --audit --strict-unclassified` passes, and `TestMethodIndex`/`TestConvertBinding` now
+  positively *assert* `Viper.Core.Parse.TryNum` is absent from the method index. ADR 0031 (which
+  added `TryDouble`/`DoubleOr` and explicitly anticipated "a future breaking cleanup [to] decide
+  whether compatibility aliases should be hidden or retired") is the governing record; the
+  public-surface standardization executed that retirement, so I cleaned up the material that still
+  advertised the removed spellings rather than restoring them (which would undo the deliberate
+  standardization the tests now enforce). Fixes: removed the `TryNum`/`NumOr` rows from the
+  `Viper.Core.Parse` table in `docs/viperlib/core.md`; rewrote the false "remain available as
+  compatibility aliases" prose in `docs/viperlib/utilities.md`, `docs/basic-reference.md`, and
+  `docs/basic-namespaces.md` to state the spellings were retired; marked ADR 0031 **Superseded**
+  with a note that the retirement occurred; corrected the stale `rt_parse_double →
+  Viper.Core.Parse.TryNum` normalization label in `check_il_bounds.cmake` to `TryDouble` (matching
+  the already-correct `BasicToIlBatchRunner.cpp`, which the cmake copy had drifted from — no golden
+  `.il` actually contains the symbol, so no golden regen); and fixed the stale `Parse.TryNum`
+  mention in an `rt_numeric_conv.c` doc comment. The internal C primitive `rt_parse_try_num` (which
+  backs `TryDouble`) and its `RTParseTests` coverage legitimately remain — they are an implementation
+  detail, not the removed public name. `misc/reports/*` are dated point-in-time snapshots and are
+  left as historical record. No new test needed: the removal-assertion tests already exist and pass.
+  Build clean; audit, method-index, convert-binding, parse, and basic-to-il golden tests all pass.
+  **Resolved.**
 
 ### VDOC-234 — Removed public runtime helpers remain unclassified at the C boundary
 
@@ -5470,6 +5614,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** classify every retained C helper explicitly as internal/compatibility,
   or remove its declaration and implementation when ABI retention is not intended; keep the audit
   warning baseline at zero.
+- **Review (2026-07-16):** Verified already resolved — the retained C helpers were classified as
+  internal/compatibility as part of the public-surface standardization, and the audit baseline is at
+  zero. `rtgen --audit --strict-unclassified src/il/runtime/runtime.def` passes with no unclassified
+  findings (against 8,223 header declarations / 7,007 registry functions), and every helper the
+  finding named is now an explicit `RUNTIME_SURFACE_INTERNAL_SYMBOL` in `RuntimeSurfacePolicy.inc`:
+  `rt_datetime_try_parse` (VDOC-233's internal double-parse primitive), the Exec compatibility
+  accessors `rt_exec_last_exit_code` / `rt_exec_shell_full`, and the PTY error accessor
+  `rt_pty_last_error` — 855 internal-symbol classifications in total. The baseline is enforced
+  locally, not just checked once: the `test_runtime_surface_cli` ctest runs `rtgen --audit
+  --strict-header-sync --strict-unclassified` and fails if a single retained declaration goes
+  unclassified, and `scripts/audit_runtime_surface.sh --strict-unclassified` is the by-hand
+  equivalent. No code change required; confirmed `test_runtime_surface_cli` passes. **Resolved.**
 
 ### VDOC-235 — Generated runtime documentation is stale after the public-surface cleanup
 
@@ -5483,6 +5639,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   exposes; previously reviewed pages can become stale again while the cleanup is in flight.
 - **Likely repair point:** finish the coordinated registry cleanup, regenerate the complete runtime
   reference in one reviewed change, and keep `rtgen --docs --check` as a required zero-drift gate.
+- **Review (2026-07-16):** Verified already resolved — the coordinated cleanup finished and the
+  complete runtime reference was regenerated, so the drift is gone. `rtgen --docs --check
+  src/il/runtime/runtime.def docs/generated/runtime` reports "Runtime documentation is current"
+  (exit 0); none of the previously-stale 25 component pages or the README remain out of date. The
+  recommended zero-drift gate already exists and is enforced locally: the `runtime_reference_docs`
+  ctest (`src/tests/tools/CMakeLists.txt`) runs `rtgen --docs --check` and fails on any regenerated
+  page that would differ from the committed output, so a registry change that skips the `rtgen
+  --docs` regen is caught (as it was for this session's own registry edits — e.g. VDOC-221/225,
+  which required a regen to keep this gate green). No code change required; confirmed
+  `runtime_reference_docs` passes. **Resolved.**
 
 ### VDOC-236 — Config queries leak retained JSON values
 
@@ -5496,6 +5662,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the lifetime of the process even after the Config itself becomes unreachable.
 - **Likely repair point:** use one owned lookup and release it after conversion, or use the existing
   non-leaking `rt_jsonpath_has`/typed helper paths with an explicit ownership contract and tests.
+- **Review (2026-07-16):** Confirmed and resolved via the non-leaking `rt_jsonpath_has` path. All
+  four `rt_config_*` methods used `rt_jsonpath_get` — which returns a *retained* value the caller
+  must release — purely as an existence probe (`rt_config_has` even did `rt_jsonpath_get(...) !=
+  NULL`), discarding the owned reference and leaking one retain per successful query into the parsed
+  JSON tree. Replaced every existence probe with `rt_jsonpath_has` (same resolution, boolean result,
+  no ownership transfer); the value conversions (`rt_jsonpath_get_int` returns a scalar,
+  `rt_jsonpath_get_str` returns a fresh caller-owned string) were already correct. Added a regression
+  test `GameConfig.QueriesDoNotRetainResolvedNodes` (`TestConfig.cpp`): it holds one owned reference
+  to a heap-backed object node and asserts that 100 rounds of `Has`/`GetInt`/`GetBool`/`GetStr`
+  leave the node's refcount unchanged, with a guard clause proving a real `rt_jsonpath_get` retain
+  *does* move the refcount (so the assertion isn't a no-op). The test observes an object node
+  specifically because `rt_obj_retain_maybe` no-ops on immediate scalars, so the leak only manifests
+  on heap-backed values. To enable a precise, regression-catching test I added a borrowed internal
+  accessor `rt_config_json_root` (classified `RUNTIME_SURFACE_INTERNAL_SYMBOL`, not a script-facing
+  surface). Documented the fixed ownership contract in `rt_config.h` and rewrote the "currently leak"
+  note in `docs/viperlib/game/config.md`. Build clean; `test_rt_config`, the strict runtime-surface
+  audit, completeness, and `runtime_reference_docs` all pass. **Resolved.**
 
 ### VDOC-237 — Legacy Game registry signatures erase concrete return types
 
@@ -5512,6 +5695,26 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** add reviewed class definitions and concrete return descriptors
   (`str`, nullable `obj<Viper.Game...>`, and typed Tilemap results), then cover direct assignment,
   chaining, and completion in both front ends.
+- **Review (2026-07-16):** Fixed the concrete return-descriptor defects that the finding's own probe
+  exercised — the string-returning helpers that were mistyped as `obj`. Retyped
+  `Viper.Game.Config.GetStr` (`obj(obj,str,str)` → `str(obj,str,str)`) and
+  `Viper.Game.SceneManager.get_Current` / `get_Previous` (`obj(obj)` → `str(obj)`) in
+  `physics2d.def`; all three C functions already return runtime strings (`rt_config_get_str` returns
+  a caller-owned string, the scene helpers return `rt_const_cstr` names), so this is a metadata-only
+  refinement with no ABI change. `--dump-runtime-api` now reports `string` / `owned` for the three,
+  and a new auto-discovered Zia fixture `test_game_config_str.zia` proves the previously-rejected
+  usage compiles and runs: assigning `Config.GetStr(...)` to a `String` local and passing it to a
+  `String` parameter. Updated the "erroneous `Any`" notes in `docs/viperlib/game/config.md` and
+  `scenemanager.md`, ran `check_runtime_completeness.sh`, and regenerated `docs/generated/runtime`.
+  Scope note: the finding's remaining recommendation — introducing reviewed `RT_CLASS` definitions
+  for the function-only `Entity` / `Behavior` / `Config` / `SceneManager` / `Raycast` /
+  `LevelDocument` namespaces and retyping their constructors to nullable `obj<Viper.Game...>` — is a
+  larger structural registry change: a typed constructor return adds no method-chaining value
+  without the accompanying class definition, and adding six class definitions restructures method
+  dispatch across both front ends with golden and completion impact, which warrants its own ADR and
+  reviewed change rather than being folded into this typing fix. The concrete string-typing defect
+  that broke typed Zia consumption is resolved and regression-tested. **Resolved (string typing);
+  class-modeling deferred to a reviewed structural change.**
 
 ### VDOC-238 — LevelDocument's nullable loader traps on ordinary file errors
 
@@ -5525,6 +5728,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   failure, and closely related game JSON loaders have incompatible error behavior.
 - **Likely repair point:** provide a Result-based load API and make the nullable compatibility path
   consistently soft-fail, or document/register it as trapping and expose the I/O error.
+- **Review (2026-07-16):** Confirmed and resolved by making the nullable path soft-fail on the
+  common case, consistent with `Viper.Game.Config.Load`. `rt_leveldata_load` called
+  `rt_io_file_read_all_text` (which traps inside the hardened I/O path) with no preflight, so a
+  missing file trapped before `Load` could return null. Added an `rt_io_file_exists` existence
+  pre-check (the same non-trapping helper `Config.Load` uses) so a missing path now returns NULL,
+  letting callers implement the documented fallback. Added `LevelData.MissingFileReturnsNull` to
+  `TestLevelData.cpp` (a trap would abort the test, so passing proves the soft-fail). Matching the
+  scope of `Config.Load`, other I/O faults (permission, non-regular file, short/close errors) still
+  trap from the hardened read — I documented that explicitly in `docs/viperlib/game/leveldata.md`
+  rather than swallowing every error, since a Result-based API surfacing the specific I/O error is a
+  larger additive change and the finding's stated impact is the "most common load failure" (a
+  missing file). Build clean; `test_rt_leveldata` passes. **Resolved.**
 
 ### VDOC-239 — LevelDocument silently collapses layers and truncates metadata
 
@@ -5538,6 +5753,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
   alias or become invalid UTF-8, and large levels are accepted with silent object loss.
 - **Likely repair point:** either preserve named layers in the returned model or explicitly accept
   one layer; reject/report overlong metadata and object overflow rather than silently truncating.
+- **Review (2026-07-16):** Triaged and resolved the concrete correctness defect; documented the
+  data-model decisions. (1) **Invalid-UTF-8 truncation** — the real bug — is fixed: the 32-byte
+  theme/type/id fields were filled with `strncpy(dest, src, 31)`, which can split a multi-byte UTF-8
+  sequence and leave an invalid trailing fragment. Added `level_copy_field_utf8`, which truncates
+  and then backs the cut off over any UTF-8 continuation bytes so a partially-copied character is
+  dropped whole, and routed all three fields through it. Added
+  `LevelData.MetadataTruncatesOnUtf8Boundary` (a euro sign straddling the 31-byte cutoff) with a
+  `is_valid_utf8` checker proving the stored value is well-formed. (2) **Layer collapse** — the
+  single-base-`Tilemap` flatten (later tiles layers overwrite earlier, names not preserved) is a
+  deliberate model choice, not a bug; preserving named layers would restructure the returned model
+  and its accessors, so I documented it explicitly in `docs/viperlib/game/leveldata.md` (author one
+  tiles layer, or treat the last as authoritative) rather than silently. (3) **Object cap** — 512 is
+  a documented bound; reporting overflow would need a diagnostic channel the flat model lacks, and
+  trapping would reject valid large levels, so it stays a documented limit. (4) The "still says 256"
+  comment was already corrected to 512. Build clean; `test_rt_leveldata` (5 cases) passes.
+  **Resolved (UTF-8 truncation fixed; layer/cap behavior documented as intended).**
 
 ### VDOC-240 — Behavior.AddSineFloat documents units the implementation does not use
 
@@ -5552,6 +5783,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** define physical units and either integrate a positional sine offset or
   rename the parameters as velocity/centidegree increments; align headers, registry docs, and
   regression tests.
+- **Review (2026-07-16):** Verified resolved via the "align the documentation to the implementation"
+  option (chosen over changing behavior, which demos depend on). The contract is now described
+  accurately everywhere and cites this finding: `rt_behavior.h`'s doc comment states "amplitude is a
+  centipixel/base-frame velocity and speed advances centidegrees by (speed * dt) / 16 (VDOC-240)",
+  and `docs/viperlib/game/behavior.md` says "Despite the historical names, `amplitude` is a velocity
+  magnitude and `speed` advances centidegrees by `speed * dt / 16`." The implementation confirms
+  this: `sin(phase) * amplitude` is written straight to the entity's vertical velocity via
+  `rt_entity_set_vy` (not a positional offset), and the phase advances by `behavior_phase_delta =
+  speed*dt/16` centidegrees. The registry signature is the correct `void(obj,i64,i64)`. Regression
+  coverage exists and pins the semantics: `Behavior.HugeSineDeltaKeepsVelocityBounded`
+  (`TestBehavior.cpp`) asserts the resulting `vy` stays within `[-amplitude, +amplitude]`, proving
+  `amplitude` bounds the velocity rather than a pixel position. No stale "pixels" / "degrees per
+  second" claim remains anywhere in `src/` or `docs/`. No code change required. **Resolved.**
 
 ### VDOC-241 — Entity.OnGround is cleared on the first stationary frame after landing
 
@@ -5565,6 +5809,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   gravity is zero/small or displacement truncates to zero.
 - **Likely repair point:** perform a stable contact probe after movement (including zero
   displacement), or distinguish one-frame collision events from persistent contact properties.
+- **Review (2026-07-16):** Confirmed and resolved with a stable contact probe. `entity_sweep_y`
+  sets `on_ground` only on a nonzero downward landing and returns early when the vertical
+  displacement is zero, so `rt_entity_move_and_collide` — which clears all collision flags at the
+  top of every call — left a resting (zero-`vy`) entity ungrounded from the first stationary frame.
+  Added a persistent ground probe after the X/Y sweeps: when `on_ground` was not already set by the
+  sweep, it checks the tile row immediately beneath the entity's bottom edge
+  (`entity_horizontal_edge_hits` across the entity's horizontal span at `cp_to_px(y) + height`) and
+  sets `on_ground` when a solid tile is flush beneath. Because the probe reads actual contact, it
+  keeps the entity grounded while resting or moving horizontally along the floor, yet correctly
+  clears once the entity steps off or jumps (its bottom is no longer flush). Added
+  `Entity.OnGroundPersistsWhileRestingOnSolidTile` (`TestEntity.cpp`): it lands an entity, asserts
+  `OnGround` stays true across three zero-`vy` frames, and that moving up clears it. Updated the
+  `OnGround` notes in `docs/viperlib/game/entity.md` and `behavior.md`. Build clean; entity,
+  behavior, and platformer tests pass. **Resolved.**
 
 ### VDOC-242 — A ray on the maximum map boundary samples the last in-bounds tile
 
@@ -5578,6 +5836,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   break visibility or projectile logic asymmetrically; left/top use different half-open behavior.
 - **Likely repair point:** clip against the map's half-open extent and reject segments that only
   touch the excluded maximum boundary; add tests for all four edges and corner tangencies.
+- **Review (2026-07-16):** Confirmed and resolved. In `rt_raycast_tilemap` (`rt_raycast2d.c`) the
+  Liang-Barsky clip admits the maximum boundary (`x == map_w` / `y == map_h`), and the subsequent
+  `>= map_w → map_w - 1` clamp then folded a boundary-tangent segment onto the last in-bounds tile,
+  so a ray exactly on the right/bottom edge reported a false obstruction while the same ray one
+  pixel farther out was clear. Added a half-open rejection *before* the clamp: if the clipped
+  segment lies entirely on the excluded max boundary in x or y, the function returns 0 (clear),
+  since a tangent segment crosses no in-bounds tile. A ray that genuinely traverses the interior and
+  exits at the edge still has an interior endpoint `< map_w`, so the clamp continues to sample the
+  last column correctly. Added `Raycast.TilemapMaxBoundaryRayIsClear` (`TestRaycast2D.cpp`) covering
+  a fully-solid 1×1 map: interior ray blocks, the right and bottom max-boundary rays (and one pixel
+  beyond) are clear, and the inclusive left/top min edges still block — documenting the intended
+  half-open asymmetry. Updated `docs/viperlib/game/raycast.md`. Build clean; `test_rt_raycast_2d`
+  passes. **Resolved.**
 
 ### VDOC-243 — SceneManager silently aliases long names and drops excess scenes
 
@@ -5590,6 +5861,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   with no diagnostic available to the caller.
 - **Likely repair point:** return a Result/boolean status, reject overlong names, and expose or
   remove the fixed cap; keep names as owned runtime strings if practical.
+- **Review (2026-07-16):** Fixed the concrete aliasing correctness bug. `scene_name_from_handle`
+  used `strncpy(out, cname, 127)` and NUL-terminated at 127, silently truncating; two distinct names
+  sharing a 127-byte prefix then compared equal under the `strcmp` lookup, so the second was deduped
+  and switching aliased. Changed it to reject a name that does not fit the fixed buffer (byte length
+  `>= 128`) or contains an embedded NUL (`strlen(cname) != rt_str_len`), copying exactly otherwise —
+  so `Add`, `Switch`, `SwitchTransition`, and `IsScene` all treat an over-long name as invalid
+  rather than a truncated alias. Added `SceneManager.OverlongSceneNamesAreRejectedNotAliased`
+  (`TestSceneManager.cpp`): a 127-byte name is accepted, two 128-byte names sharing a 127-prefix are
+  both rejected (not aliased), and switching to an over-long name is a no-op. Updated
+  `docs/viperlib/game/scenemanager.md`. Scope: converting `Add` from `void` to a boolean/Result
+  status — the finding's other recommendation — is a runtime **C ABI surface change** (return type),
+  which requires an ADR per the project's spec-first rule, so it is deferred; callers can still
+  detect a rejected name or the 64-scene cap by checking `IsScene` afterward, which the docs now
+  note. Build clean; `test_rt_scene_manager` passes. **Resolved (aliasing fixed; status-return
+  deferred to ADR).**
 
 ### VDOC-244 — BASIC can assert while recovering from NEXT used as an identifier
 
@@ -5605,6 +5891,24 @@ the checked-in generators, documentation audits, and already-existing binaries o
   structured diagnostics; editor/server callers can be taken down by one document buffer.
 - **Likely repair point:** reject keywords as identifiers at declaration, make control-stack
   recovery exception-safe, and add the reduced/nested cases as non-crashing parser tests.
+- **Review (2026-07-16):** Confirmed and resolved the compiler crash by making control-stack
+  recovery exception-safe. `ControlCheckContext`'s destructor (`sem/Check_Common.hpp`) *asserted*
+  that the loop and FOR stacks were balanced on scope exit; malformed nesting — a stray/mismatched
+  NEXT, an unterminated FOR, or a reserved keyword used as an identifier that tokenizes as NEXT —
+  left the stacks deeper than on entry, so the assertion aborted the whole process (and in an
+  `NDEBUG` build would instead have leaked stack state into the next check). Replaced the asserts
+  with a restore-to-snapshot: the destructor truncates each stack back to the depth captured at
+  construction, so the checker emits structured diagnostics for the invalid source and the analyzer
+  returns normally. Added `test_basic_control_recovery.cpp` (new `fe_basic` ctest) with both the
+  reduced one-loop and the nested Game-of-Life-shaped forms of `NEXT` used as an identifier,
+  asserting each reports diagnostics and — crucially — that analysis *returns* rather than aborting.
+  Verified end-to-end via `viper front basic`: the nested reproducer now exits with structured
+  errors (B0001/B1002), not SIGABRT. The finding's additional "reject keywords as identifiers at
+  declaration" suggestion would improve the specific diagnostic wording, but the malformed source
+  already produces errors and the process-termination impact — an editor/server taken down by one
+  buffer — is fully eliminated by the exception-safe recovery, which protects against every
+  unbalanced-control-flow input, not just this one. Build clean; all 109 `basic`-label tests pass.
+  **Resolved.**
 
 ### VDOC-245 — Config defaults are ignored when an existing value has the wrong type
 
@@ -5618,6 +5922,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
   safe defaults callers requested.
 - **Likely repair point:** make typed conversion report success and return the supplied default on
   both absence and type/parse failure, or rename/document the current coercing semantics.
+- **Review (2026-07-16):** Confirmed and resolved via the "report success and default on failure"
+  option. The Config getters delegated to `rt_jsonpath_get_int` / `_get_str`, whose 0/empty return
+  cannot distinguish a genuine `0`/`""` from an unconvertible value, so a present object/array/null
+  or non-numeric string replaced the caller's default with `0`/`false`/`""`. Extracted
+  success-reporting `rt_jsonpath_try_get_int` / `rt_jsonpath_try_get_str` in `rt_jsonpath.c` (no
+  logic duplication — the existing `get_int`/`get_str` now delegate to them and keep their legacy
+  sentinel contract for other callers), each returning 0 for an absent path or an inconvertible type
+  and writing `out` only on success; both classified `RUNTIME_SURFACE_INTERNAL_SYMBOL`. Rewrote all
+  three `rt_config_get_*` to return the supplied default unless the try-variant reports a convertible
+  value (`GetBool` shares the int-convertibility check). The try-variants resolve and release the
+  node internally, so the VDOC-236 non-retention property is preserved (its leak test still passes).
+  Added `GameConfig.WrongTypeValueReturnsSuppliedDefault` (`TestConfig.cpp`): object/array/text
+  values return the default from `GetInt`/`GetBool`/`GetStr`, while genuine numbers, numeric strings,
+  and scalar-to-text coercions still convert. Updated the `GetInt`/`GetBool`/`GetStr` rows in
+  `docs/viperlib/game/config.md`. Ran `check_runtime_completeness.sh` and the strict audit (both
+  green); `test_rt_config` and the json/rt_api suites pass. **Resolved.**
 
 ### VDOC-246 — `SaveData.Save` traps on some failures despite its Boolean contract
 
@@ -5632,6 +5952,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** use non-trapping directory/entropy helpers internally and return false
   with an inspectable error, or change the surface to a Result and reserve traps for invalid
   programming inputs.
+- **Review (2026-07-16):** Confirmed and resolved so operational failures reach the advertised
+  Boolean boundary. Two trap sites in `rt_savedata_save`'s path violated the "false on failure"
+  contract: `ensure_parent_dir` delegated to the trapping `rt_dir_make_all` (void), and
+  `savedata_write_atomic` called `rt_trap("...secure randomness")` on entropy failure. Fixed both:
+  `ensure_parent_dir` now returns `int`, wrapping `rt_dir_make_all` in the file's existing
+  `rt_trap_set_recovery`/`setjmp` hook so a permission/path trap is caught and reported as failure
+  (with `ok` marked `volatile` for setjmp safety), and `rt_savedata_save` returns `0` when it fails;
+  the entropy branch drops the `rt_trap` and simply returns `0` (the enclosing function already
+  signalled failure that way). Invalid programming inputs (null/invalid handle) still trap, as
+  intended. Added `test_save_soft_fails_when_parent_dir_uncreatable` to `RTSaveDataTests.cpp`: it
+  points `HOME` at a regular file so directory creation must fail and asserts `Save` returns `0` —
+  since the test's non-expecting `vm_trap` aborts, reaching the assertion at all proves the
+  soft-fail. Chose the "catch/return false" repair over a Result surface (which would be an ABI
+  change needing an ADR); a richer inspectable error can follow separately. Updated
+  `docs/viperlib/game/persistence.md`. Build clean; `test_rt_savedata` passes. **Resolved.**
 
 ### VDOC-247 — Quest IDs accept and alias embedded-NUL suffixes
 
@@ -5645,6 +5980,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and persistence cannot round-trip the registered identity.
 - **Likely repair point:** validate the runtime string's explicit byte length, reject every NUL,
   and compare/serialize length-aware IDs.
+- **Review (2026-07-16):** Confirmed and resolved. `quests_valid_id` took a `const char *` and
+  measured it with `strlen`, so validation only ever saw an id's pre-NUL prefix; a NUL-bearing id
+  passed on its prefix and then aliased other ids under the `strcmp` lookups and `%s` save
+  serialization. Changed `quests_valid_id` to take the `rt_string` and validate its explicit
+  `rt_str_len`, rejecting any id whose `rt_str_len` differs from `strlen(cstr)` (i.e. contains a NUL)
+  as well as empty/over-long/out-of-charset ids — so no NUL-bearing id is ever registered, and the
+  save format (which only serializes registered ids) round-trips. Added a `quests_lookup_cstr`
+  helper that returns an id's C string only when it has no embedded NUL, and routed every
+  lookup-key computation (`AddQuest`/`AddStage`/`AddObjective` plus `Activate`, `Fail`, `SetFlag`,
+  `Progress`, and all the query accessors) through it, so a NUL-bearing lookup key is treated as
+  not-found instead of matching a registered id by prefix. Added `TestQuests.cpp` (new
+  `test_rt_quests` ctest): a NUL-bearing id traps at registration, and a NUL-bearing lookup key does
+  not activate the prefix-matching quest (the clean key still does, proving no aliasing occurred).
+  Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` passes. **Resolved.**
 
 ### VDOC-248 — Quest mutation methods do not enforce objective kind
 
@@ -5657,6 +6006,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   making content wiring errors hard to diagnose and potentially skipping gameplay requirements.
 - **Likely repair point:** reject the wrong mutation for each objective kind and add flag/counter
   cross-call tests.
+- **Review (2026-07-16):** Confirmed and resolved. `rt_quests_set_flag` and `rt_quests_progress`
+  found the objective but never consulted its stored `is_counter`, so `SetFlag` would jump a counter
+  straight to its target and `Progress` would advance a flag, both emitting normal completion events
+  and silently corrupting canonical quest state. Added a kind guard to each: `SetFlag` now returns
+  `false` (a no-op) when `objective->is_counter` is set, and `Progress` returns `false` when it is
+  clear — matching the existing no-op-false contract for unknown/inactive/completed objectives.
+  Extended `TestQuests.cpp` with a flag+counter stage: `SetFlag` on the counter and `Progress` on
+  the flag are rejected (return 0, objective stays incomplete), while the matching calls succeed
+  (partial counter progress is used so the stage does not auto-advance and invalidate the
+  index-based completion queries). Updated `docs/viperlib/game/quests.md`. Build clean;
+  `test_rt_quests` passes. **Resolved.**
 
 ### VDOC-249 — Quest progress can overflow before it is clamped
 
@@ -5669,6 +6029,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   be miscompiled under optimization.
 - **Likely repair point:** saturate by comparing `amount` with `target - progress` before addition,
   without evaluating an overflowing sum.
+- **Review (2026-07-16):** Confirmed and resolved exactly as recommended. `rt_quests_progress`
+  computed `objective->progress += amount` on signed `int64_t` and only clamped afterward, so a large
+  `amount` overflowed (UB, possibly wrapping negative and suppressing completion). Replaced it with a
+  saturating form that never evaluates the overflowing sum: since the objective is a counter that is
+  not yet done, `objective->target - objective->progress` is a non-negative headroom, so the code
+  clamps straight to the target when `amount >= headroom` and only performs `progress += amount`
+  otherwise. Extended `TestQuests.cpp` to progress a target-5 counter by `INT64_MAX` and assert the
+  stored progress saturates to `5` (not a wrapped/negative value) and the objective completes.
+  Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` passes. **Resolved.**
 
 ### VDOC-250 — Legal maximum-size quests cannot always be serialized
 
@@ -5682,6 +6051,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   progress, risking lost campaigns with no diagnostic explaining the limit.
 - **Likely repair point:** append directly to the dynamically grown output, check arithmetic, and
   test the full documented budget with maximum-length IDs and progress values.
+- **Review (2026-07-16):** Confirmed and resolved. `rt_quests_save` assembled each quest record in a
+  fixed `char[512]` before appending it to the already-growable output, so a legal maximum quest (16
+  stages x 8 objectives with 64-byte IDs) overflowed the stack chunk and `Save` returned false once
+  enough objectives had progress. Removed the fixed chunk entirely: added a `quests_save_appendf`
+  helper (measure with `vsnprintf(NULL,0,...)`, grow via `realloc` with an overflow guard on the
+  doubling, then write) annotated `RT_PRINTF_FORMAT(4,5)`, and rewrote `Save` to append every field —
+  the `q=...;s=...;g=...` header and each `;o=<stage>.<obj>:<progress>` record — straight to the
+  dynamic buffer. There is no longer any per-quest size bound. Extended `TestQuests.cpp` with a
+  full-budget quest (8 objectives, ~60-byte stage/objective IDs, progress on each, serialized record
+  ~1 KB) and asserts `Save` returns `1`. Updated `docs/viperlib/game/quests.md`. Build clean;
+  `test_rt_quests` passes. (The related temp-string leak is VDOC-251, next.) **Resolved.**
 
 ### VDOC-251 — Quest persistence leaks temporary runtime strings
 
@@ -5695,6 +6075,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   profile loading amplifies the leak over a long game session.
 - **Likely repair point:** bind every temporary handle to a local with balanced cleanup on all
   exits, or add scoped ownership helpers for runtime C code.
+- **Review (2026-07-16):** Confirmed and resolved. `rt_const_cstr` allocates a fresh owned string
+  (it calls `rt_string_from_bytes`), so `Save`'s inline `rt_savedata_set_string(sd,
+  rt_const_cstr(KEY), rt_const_cstr(out))` leaked one key and one value per call (SetString retains
+  its own reference), and `Load`'s `rt_const_cstr(KEY)` key plus the freshly-retained
+  `GetString` result were never released on any exit. Bound each temporary to a local and released
+  it with balanced cleanup: `Save` unrefs `key` and `value` after `SetString`; `Load` unrefs the
+  `key` immediately after `GetString` and unrefs the `blob` on every exit path (the empty-blob early
+  return, the malloc-failure return, and the success return) — `rt_str_empty()` is the immortal
+  canonical empty string and needs none. Added a 200-iteration Save/Load round-trip to
+  `TestQuests.cpp` that re-registers the tracker and asserts progress round-trips each cycle; besides
+  exercising the balanced ownership it would crash on any double-free/use-after-free introduced by
+  the change. Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` passes.
+  **Resolved.**
 
 ### VDOC-252 — Quest loading weakly parses and partially applies malformed state
 
@@ -5708,6 +6101,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
   of old, default, and partially decoded state.
 - **Likely repair point:** use a versioned grammar with strict integer parsing, validate into a
   temporary state, and commit only after the complete blob succeeds.
+- **Review (2026-07-16):** Confirmed and resolved with strict parsing plus a validate-then-commit
+  transaction. Added `quests_parse_i64` (strtoll with `errno`/end-pointer checks so the whole token
+  must be a valid non-overflowing integer, replacing the silent `atoll`) and a
+  `quests_load_process(tracker, text, apply)` helper that enforces a strict grammar: every record
+  must lead with `q=`, each field must use a recognized `q=`/`s=`/`g=`/`o=` prefix (an unrecognized
+  field, a mid-record second `q=`, an empty record, or an `o=` field missing its `.`/`:` all mark
+  the blob malformed), and every integer must parse strictly. `rt_quests_load` now runs it twice on
+  two independent copies of the blob (the tokenizer is destructive): a validation pass with
+  `apply=0` that returns `false` and mutates nothing if the blob is malformed, then a commit pass
+  with `apply=1` only on a fully well-formed payload — so a corrupt save no longer leaves a hybrid of
+  decoded and stale state. Unknown quest/stage/objective IDs remain tolerated (skipped) so
+  forward-compatible data patches stay safe. Extended `TestQuests.cpp`: a blob with valid leading
+  fields plus a trailing unrecognized field is rejected and leaves the quest unmodified (still
+  hidden), non-strict integers (garbage, 23-digit overflow) are rejected, and a well-formed blob
+  still loads. Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests` (including the
+  200-cycle round-trip) passes. **Resolved.**
 
 ### VDOC-253 — Quest hot re-registration can leave a completed stage stuck active
 
@@ -5720,6 +6129,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   whose every objective is already complete.
 - **Likely repair point:** define an explicit migration policy, normalize retained progress, and
   recompute stage/quest state after registration changes (or prohibit structural re-registration).
+- **Review (2026-07-16):** Confirmed and resolved with an explicit migration step. `quests_add_objective`
+  updated an existing objective's kind/target but kept its progress and never re-ran advancement, so
+  re-registering with a target at or below the retained progress left the objective already-complete
+  while the stage/quest stayed active — and later `SetFlag`/`Progress` returned false (objective
+  done) without ever advancing. Added, right after the kind/target update, a clamp of retained
+  progress to the new target followed by `quests_check_advance(tracker, quest)` (forward-declared
+  since it is defined later), which recomputes stage completion and quest completion. Because
+  `check_advance` is a no-op unless the quest is active, ordinary hidden-quest setup is unchanged;
+  only a genuine hot re-registration of an active quest triggers migration. Extended
+  `TestQuests.cpp`: a counter is progressed to 8/10 on an active quest, then re-registered with
+  target 5, and the quest is asserted to reach `COMPLETE` (the single-objective stage advances)
+  rather than staying stranded. Updated `docs/viperlib/game/quests.md`. Build clean; `test_rt_quests`
+  passes. **Resolved.**
 
 ### VDOC-254 — Clearing scene diagnostics also erases schema invalidity
 
@@ -5733,6 +6155,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   a successfully validated source document.
 - **Likely repair point:** separate immutable/current validation state from the diagnostic queue,
   or revalidate before validity can become true.
+- **Review (2026-07-16):** Confirmed and resolved by separating validity state from the diagnostic
+  queue. `rt_game_scene_clear_diagnostics` cleared the messages and then unconditionally set
+  `s.valid = true`, but `hasErrors` returns true when `!s.valid` *or* any error-severity diagnostic
+  is present, and an error diagnostic sets `s.valid = false` at load — so acknowledging messages on a
+  normalized/invalid scene flipped `HasErrors()` to false without repairing the data. Removed the
+  `s.valid = true` reset; `ClearDiagnostics` now clears only `s.diagnostics` and `s.lastError`,
+  leaving the structural validity flag intact (it is `true` for a valid scene and stays `false` for
+  one that loaded with errors). Extended `RTSceneEditorTests.cpp`: after loading a malformed scene
+  (`HasErrors()==1`), `ClearDiagnostics` leaves `HasErrors()` true, while the existing
+  clear-on-a-valid-scene-with-a-warning case still reports no errors. Updated
+  `docs/viperlib/game/scene.md`. Build clean; `test_rt_scene_editor` passes. **Resolved.**
 
 ### VDOC-255 — Scene Result loaders can return warning text as the error
 
@@ -5747,6 +6180,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   document.
 - **Likely repair point:** select the first or most relevant error-severity record, or return the
   full diagnostic collection in a typed error payload.
+- **Review (2026-07-16):** Confirmed and resolved. `scene_load_to_result` (backing `LoadJsonResult`
+  and `LoadResult`) took its `Err` message from `rt_game_scene_last_error`, i.e. `s.lastError` — the
+  newest diagnostic of *any* severity — so a non-fatal `unknown_field_dropped` warning emitted after
+  a schema error replaced the reported message with a description of a dropped field while the real
+  fatal error (bad version/dimensions/tile count) was hidden with the discarded document. Added a
+  `firstErrorMessage(SceneState)` helper that returns the first `severity == "error"` diagnostic's
+  message, and changed `scene_load_to_result` to build the `Err` from it (falling back to the
+  provided default only when, unexpectedly, no error diagnostic is present). Added a test to
+  `RTSceneEditorTests.cpp`: a scene with an invalid dimension (error) followed by an unknown field
+  (warning) is confirmed to have `lastError` == the trailing warning (≠ the first error), and its
+  `LoadJsonResult` `Err` message is asserted to equal the first error message, proving the trailing
+  warning no longer masks it. Updated `docs/viperlib/game/scene.md`. Build clean;
+  `test_rt_scene_editor` passes. **Resolved.**
 
 ### VDOC-256 — SceneDocument construction dereferences a failed handle allocation
 
@@ -5760,6 +6206,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   an incomplete GC object.
 - **Likely repair point:** check the handle, allocate state under RAII before publishing ownership,
   and release the handle on every exception path.
+- **Review (2026-07-16):** Confirmed and resolved. `handleFromState` allocated the GC handle with
+  `rt_obj_new_i64` and immediately wrote `h->state` with no null check, and it allocated the C++
+  `new SceneState` *after* the handle — so a null return from the allocation trap hook was a native
+  null dereference, and a throwing `new SceneState` left the already-created GC handle unfinalized
+  and leaked past the exception barrier. Reordered and guarded: the `SceneState` is now `new`-ed
+  first (if it throws, no handle exists yet, so the barrier strands nothing), then the handle is
+  allocated and null-checked — on a null handle the freshly built state is `delete`d and the
+  function returns null instead of dereferencing. Only after both succeed is `h->state` published
+  and the finalizer set. The failure paths require injecting an allocation trap-hook null return or
+  a throwing `operator new`, which is not deterministically reproducible in a unit test, so the fix
+  is verified by inspection plus the existing scene-editor suite (9 tests) confirming the normal
+  construction/load path is unaffected. Internal robustness fix; no user-facing behavior or doc
+  change. Build clean. **Resolved.**
 
 ### VDOC-257 — GameBase permits zero and negative delta times through `setDTMax`
 
@@ -5772,6 +6231,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   framework advertises clamped positive millisecond deltas.
 - **Likely repair point:** clamp/reject nonpositive maxima in the setter and order the bounds as
   one validated interval.
+- **Review (2026-07-16):** Confirmed and resolved. In `examples/games/lib/gamebase.zia` the loop
+  raises `dt` to at least 1 and then applies `if dt > dtMax { dt = dtMax }`, but `setDTMax` assigned
+  any integer unchecked, so a zero or negative `dtMax` overrode the lower clamp every frame and could
+  freeze or reverse time. Made `setDTMax` reject a nonpositive maximum and floor it to `1` (the same
+  lower bound `dt` uses), turning the two clamps into one valid positive interval. The 3D sibling
+  `examples/games/lib/gamebase3d.zia` had the identical bug (`setDTMax(max: Number) { dtMax = max }`
+  with a `dt` floored to a positive value), so per the check-all-files rule I fixed it the same way,
+  flooring a nonpositive maximum to one frame (`0.016s`). Both example libraries compile cleanly via
+  `zia --emit-il`. Example-framework code with no unit-test harness; verified by compilation and
+  inspection, and the inline comments were updated to describe the enforced interval. **Resolved.**
 
 ### VDOC-258 — GameBase renders one more frame after a window-close request
 
@@ -5784,6 +6253,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   trigger unwanted state mutation or touch a window/backend already entering teardown.
 - **Likely repair point:** break immediately after close detection, or explicitly define and test
   a close-request finalization callback that does not present another frame.
+- **Review (2026-07-16):** Confirmed and resolved by breaking immediately on close detection. In
+  `examples/games/lib/gamebase.zia` a true `ShouldClose` only set `running = false` and then fell
+  through the entire frame — delta/effect updates, scene lifecycle callbacks, draw, `onFrame`, and
+  `Canvas.Flip` — before the `while running` condition was re-checked. Added a `break` right after
+  `running = false` so no further callbacks run and no extra frame is presented once close is
+  observed. The 3D sibling `examples/games/lib/gamebase3d.zia` had the same shape (`if world.Update()
+  == false { running = false }` followed by the rest of the frame), so I added the matching `break`
+  there. Both example libraries compile cleanly via `zia --emit-il`. Example-framework code with no
+  unit-test harness; verified by compilation and inspection. **Resolved.**
 
 ### VDOC-259 — Long DebugOverlay watch names duplicate and cannot be removed normally
 
@@ -5798,6 +6276,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   silently ignored, while the original entry cannot be addressed with its source name.
 - **Likely repair point:** reject or UTF-8-safely normalize names before both lookup and storage,
   use the same canonical representation for `Watch`/`Unwatch`, and return insertion status.
+- **Review (2026-07-16):** Confirmed and resolved with a shared canonical representation. `Watch`
+  copied a name into the 32-byte buffer truncated to 31 bytes, but `find_watch` compared the caller's
+  full text, so a name of 32+ bytes was stored truncated while every lookup with the full name
+  missed — repeating one long metric consumed a fresh slot each frame until all 16 were exhausted,
+  and `Unwatch` with the source name could never find it. Added a `watch_name_cstr` helper that
+  returns the name's C string only when its `rt_str_len` fits the buffer (`< 32`) and equals
+  `strlen` (no embedded NUL), returning NULL otherwise; both `Watch` and `Unwatch` now go through it,
+  so an over-long/NUL name is rejected outright (never stored or partially addressable) and every
+  fitting name stores its full text, making lookup and removal symmetric. Also made the 28-byte
+  display truncation in the draw path back off to a UTF-8 character boundary so the overlay never
+  renders a split multi-byte sequence. Added two tests to `RTDebugOverlayTests.cpp`: watching a
+  40-byte name 20 times stores nothing (neither the full nor the truncated prefix is found) and
+  leaves all 16 slots free for distinct valid names, and a 31-byte name round-trips (repeat updates
+  one slot, `Unwatch` removes it). Updated `docs/viperlib/game/debug.md`. Build clean;
+  `test_rt_debugoverlay` passes. **Resolved.**
 
 ### VDOC-260 — Pathfinder's registry cleanup contradicts its ADRs and remaining consumers
 
@@ -5813,6 +6306,25 @@ the checked-in generators, documentation audits, and already-existing binaries o
   incompatible APIs; a rebuild would break callers and redline contract tests.
 - **Likely repair point:** pause the deletion, decide the canonical migration through a superseding
   ADR, retain reviewed aliases for compatibility, and update all layers atomically.
+- **Review (2026-07-16):** Confirmed and reconciled to the code's committed direction (the same
+  public-surface standardization that drove VDOC-233/234). The registry has settled on the canonical
+  names — `Pathfinder.FindPath`/`FindNearest` returning `obj<Viper.Game.PathResult>`, and
+  `PathResult.StepCount` — and the removal is intentional: the backing C symbols
+  `rt_path_result_length` and `rt_pathfinder_find_path_length` are retained but classified
+  `RUNTIME_SURFACE_INTERNAL_SYMBOL`, so the native ABI is preserved while the scripting surface drops
+  the aliases. Verified the rest of the stack is already consistent: `rtgen --audit
+  --strict-unclassified` passes, the generated `game.md` contains none of the removed public names,
+  and `test_rt_pathfinder` (which calls the internal `rt_pathfinder_find_path_length` C symbol
+  directly, not a public API), `test_runtime_class_qualified_surface`, `runtime_reference_docs`, and
+  `runtime_surface_cli` all pass. The genuine gap the finding named was governance drift — the ADRs
+  still mandated the retired aliases with no superseding record. Reconciled it: marked ADR 0062
+  **Superseded** (its "keep `PathResult.Length` as a compatibility alias" decision was reversed;
+  `StepCount` is now sole), annotated ADR 0050's status to record that its `*Result` names were
+  shortened and `Length` retired while its result-object decision stands, and rewrote the "Current
+  Surface Migration" section of `docs/viperlib/game/pathfinding.md` from "uncoordinated drift in
+  progress" to the reconciled end state. No registry/code change was needed (the surface was already
+  cleaned); this closes the cross-layer inconsistency by aligning the decision records and docs with
+  the shipped surface. **Resolved.**
 
 ### VDOC-261 — `Pathfinder.FromTilemap` ignores the designated collision layer
 
@@ -5827,6 +6339,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   tiles.
 - **Likely repair point:** snapshot the designated collision layer, while separately defining which
   layer supplies nearest-search values, and add a multilayer import test.
+- **Review (2026-07-16):** Confirmed and resolved. `rt_pathfinder_from_tilemap` called the base-only
+  `rt_tilemap_get_tile(x, y)` for every cell, so a map that placed collision geometry on a separate
+  layer built its navigation grid from the visual base layer — letting paths run through walls or
+  blocking on decorative tiles. Changed the importer to read the tilemap's designated collision
+  layer via `rt_tilemap_get_collision_layer` + `rt_tilemap_get_tile_layer(collisionLayer, x, y)`.
+  Because the collision layer defaults to 0 (the base layer) and `get_tile_layer(0, …)` equals
+  `get_tile(…)`, single-layer maps are byte-for-byte unaffected; only maps with an explicitly set
+  collision layer change behavior — now correctly. The collision-layer tile also supplies the cell
+  `value` used by `FindNearest`, keeping the pathfinder a coherent snapshot of one layer. Added
+  `test_from_tilemap_uses_collision_layer` to `test_rt_pathfinder.cpp`: a decorative wall on the base
+  layer and the real wall on the collision layer, with the collision layer designated — the base
+  wall is walkable and the collision wall blocks, the opposite of the old base-only behavior.
+  Updated `docs/viperlib/game/pathfinding.md`. Build clean; `test_rt_pathfinder` (23 tests) passes.
+  **Resolved.**
 
 ### VDOC-262 — Pathfinder factories and path payloads erase their concrete collection types
 
@@ -5844,6 +6370,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** register `obj<Viper.Game.Pathfinder>` and
   `obj<Viper.Collections.List>` returns (and, when supported, a typed point representation rather
   than nested untyped objects).
+- **Review (2026-07-16):** Confirmed and resolved with concrete return types. Retyped
+  `Viper.Game.Pathfinder.FromTilemap` and `FromGrid2D` from `obj(obj)` to
+  `obj<Viper.Game.Pathfinder>(obj)`, and `Viper.Game.PathResult.get_Path` from `obj(obj)` to
+  `obj<Viper.Collections.List>(obj)` in `physics2d.def` — plus the matching `Path` `RT_PROP` in
+  `game_ui.def`. Both `Viper.Game.Pathfinder` and `Viper.Collections.List` are registered classes, so
+  these are metadata-only refinements (the C symbols still return `void*`, no ABI change), and
+  `--dump-runtime-api` now reports the concrete types with `ownership: owned` (the factories and the
+  path list are freshly allocated). Added an auto-discovered Zia fixture
+  `test_pathfinder_typed.zia` proving the previously-rejected usage: `var pf: Viper.Game.Pathfinder =
+  Pathfinder.FromGrid2D(g)` with instance-method chaining, and `var path: Viper.Collections.List =
+  result.Path` with `path.Count`/`path.Get(i)`. Ran `check_runtime_completeness.sh`, regenerated
+  `docs/generated/runtime`, and rewrote the Zia example in `docs/viperlib/game/pathfinding.md` to use
+  the typed forms. The finding's "typed point representation" idea (a struct instead of a two-element
+  Seq) is a deeper data-model change left for a separate reviewed effort; the erased factory/list
+  types the finding centered on are resolved. Build clean; `agent_cli`, `runtime_reference_docs`,
+  `test_rt_pathfinder`, and the new fixture pass. **Resolved.**
 
 ### VDOC-263 — Pathfinder allocation failures masquerade as valid misses or partial successes
 
@@ -5858,6 +6400,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   path omits required waypoints and no longer matches its cost.
 - **Likely repair point:** build the complete path transactionally, return a typed allocation error
   on failure, and set `Found` only after payload construction succeeds.
+- **Review (2026-07-16):** Confirmed and resolved the serious false-success case, and made allocation
+  failure a consistent miss. `pf_build_path` returned `rt_list_new()` on a coordinate-buffer overflow
+  or malloc failure and, worse, used `if (!pair) continue;` so a `rt_seq_new` failure silently
+  dropped a waypoint and returned a *shortened* list — while the A* loop had already set
+  `pf->last_found = 1`, so `PathResult.Found` stayed true and `StepCount` was derived from the
+  truncated path. Rewrote `pf_build_path` to be transactional: any failure (length overflow, `coords`
+  malloc, `rt_list_new`, a waypoint `rt_seq_new`, or a coordinate box) frees all partial work and
+  returns `NULL` instead of an empty/shortened list. Moved the success flag so `pf->last_found` is set
+  to `1` only when the build returns non-NULL (the cost-only path, which builds no payload, still
+  succeeds on reaching the goal). The result chain is now consistent: a failed build yields an empty
+  list with `last_found = 0`, so `find_path_result` builds a `PathResult` with `Found == false`,
+  `StepCount == -1` — no truncated success. The allocation-failure path needs an injected
+  `malloc`/`operator new` failure to trigger and is not deterministically unit-testable, so it is
+  verified by inspection; the existing `test_rt_pathfinder` (23 tests) confirms normal path building
+  is unaffected. Updated `docs/viperlib/game/pathfinding.md`. Making allocation failure *distinguishable*
+  from a real miss (a typed error result) remains a larger API change and is noted, not implemented;
+  the harmful false-success is resolved. Build clean. **Resolved.**
 
 ### VDOC-264 — Timer mode is recorded but never enforced
 
@@ -5871,6 +6430,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   too early or late; callers cannot inspect which update contract is active.
 - **Likely repair point:** reject mismatched update/query calls or replace the dual surface with an
   explicit unit/mode property and one validated update path.
+- **Review (2026-07-16):** Confirmed and resolved by enforcing the recorded mode and exposing it.
+  `rt_timer_update` added `1` and `rt_timer_update_ms` added `dt` with neither reading the `ms_mode`
+  bit that `Start`/`StartMs` set, so calling the wrong update reinterpreted units (a millisecond
+  cooldown advanced one "ms" per `Update()` call; a frame timer jumped `dt` "frames" per
+  `UpdateMs`). Made each update reject the mismatched mode as a no-op: `Update()` returns 0 without
+  advancing on an `ms_mode` timer, and `UpdateMs()` returns 0 on a frame timer — so a wrong call
+  simply does nothing (the developer sees a stuck timer) instead of silently misfiring. To close the
+  "callers cannot inspect the active contract" gap, added `rt_timer_is_ms` and registered it as the
+  `Viper.Game.Timer.IsMs` boolean property (RT_FUNC in `vectors.def` + RT_PROP in `input_game.def`),
+  ran `check_runtime_completeness.sh`, and regenerated the runtime docs. Added `test_mode_is_enforced`
+  to `RTTimerTests.cpp`: `UpdateMs` on a frame timer and `Update` on an ms timer are both ignored (no
+  advance), the correct-mode calls advance, and `IsMs` reports the mode. Updated the `Timer` property
+  table and usage notes in `docs/viperlib/game/core.md`. Build clean; `test_rt_frame_timer`,
+  `agent_cli`, and `runtime_reference_docs` pass. **Resolved.**
 
 ### VDOC-265 — ScreenFX removes effects before their terminal frame is observable
 
@@ -5885,6 +6458,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   already disappeared, exposing the old or new scene for a frame.
 - **Likely repair point:** retain a terminal/done state through one draw (or until explicitly
   consumed), make progress 1000 observable, and separate “finished advancing” from “removed.”
+- **Review (2026-07-16):** Confirmed and resolved. `rt_screenfx_update` set a slot to `NONE` the
+  instant `elapsed >= duration`, so in the canonical `Update(dt)→Draw()` loop the fully-covered
+  final frame was reclaimed before `Draw` could render it and `TransitionProgress` skipped 1000.
+  Added a per-effect `terminal` flag that decouples "finished advancing" from "removed": the tick
+  that reaches the duration clamps `elapsed` to the exact end (so progress reads 1000), composites
+  and holds the effect one extra frame in its terminal state, and reclaims the slot on the following
+  update. This makes the covered frame drawable, makes `TransitionProgress == 1000` observable, and
+  keeps `IsFinished` false until after the covered frame is drawn (so a scene swap gated on it no
+  longer exposes the underlying scene). Factored the compositing out of the tick into
+  `screenfx_recompute`. Updated `RTScreenFXTests` (`fadeout_terminal_frame_is_observable`,
+  `transition_terminal_progress_is_1000`, plus the `flash`/`huge_shake` lifecycle tests that
+  encoded the old instant-removal timing) and `test_rt_screenfx_transitions` (wipe/circle/dissolve/
+  pixelate/multiple lifecycle tests now advance past the terminal frame). Rewrote the terminal-frame
+  and header docs (`rt_screenfx.h`, `docs/viperlib/game/effects.md`). Both suites pass. **Resolved.**
 
 ### VDOC-266 — ScreenFX `CancelType` leaves canceled output cached and drawable
 
@@ -5899,6 +6486,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   stale camera offset, while activity queries already say the effect is gone.
 - **Likely repair point:** recompute or invalidate affected caches inside `CancelType`, including
   the no-effects fast path.
+- **Review (2026-07-16):** Confirmed and resolved as part of the same `rt_screenfx.c` refactor.
+  `rt_screenfx_cancel_type` cleared only matching slot types and left `shake_x/shake_y/overlay_color/
+  overlay_alpha` at their last composited values, so `Draw` kept rendering a canceled flash's overlay
+  and a canceled shake left one stale camera offset until the next positive `Update`. `CancelType`
+  now recomputes the composited shake and overlay from the surviving slots via `screenfx_recompute`
+  after removing the matching effects — when no matching effect existed the recompute simply rebuilds
+  the same state over the slots the caller already scanned. Added `cancel_type_clears_cached_overlay`
+  and `cancel_type_clears_stale_shake_offset` to `RTScreenFXTests` (both fail without the recompute)
+  and rewrote the `CancelType` prose and Zia example in `docs/viperlib/game/effects.md`. **Resolved.**
 
 ### VDOC-267 — ScreenFX colors are incompatible with Viper's normal Color representation
 
@@ -5914,6 +6510,25 @@ the checked-in generators, documentation audits, and already-existing binaries o
   which raw packing each method expects.
 - **Likely repair point:** accept tagged Color values throughout and normalize internally, or add
   typed color constructors/converters that make the split impossible to miss.
+- **Review (2026-07-16):** Confirmed; resolved via the second repair option (typed constructors).
+  The first option — silently normalizing every ScreenFX color to the canonical `0xAARRGGBB` — is a
+  breaking change to the public runtime surface that the entire game ecosystem depends on: crackman,
+  centipede, xenoscape, `lib/gamebase.zia`, and `fade-test` all pass `0xRRGGBBAA` overlays and
+  `0x00RRGGBB` transitions (often hand-packed as `color * 256 + alpha`). Changing the accepted
+  encoding would break determinism for those programs and belongs behind an ADR, not a doc-review
+  fix. Instead added discoverable, in-namespace constructors that make the split impossible to miss
+  and give callers a correct alternative to the incompatible canonical `Color.Rgba`:
+  `ScreenFX.Rgba(r,g,b,a)` packs the `0xRRGGBBAA` overlay format (Flash/FadeIn/FadeOut) and
+  `ScreenFX.Rgb(r,g,b)` packs the `0x00RRGGBB` transition format (Wipe/Circle*/Dissolve/Pixelate),
+  both clamping channels to [0,255]. Registered as static (no-receiver) methods on the existing
+  ScreenFX class — the same pattern `Viper.Graphics.Color` uses — so no new class or ADR is needed.
+  Backed by `rt_screenfx_rgba`/`rt_screenfx_rgb` (RT_FUNC in physics2d.def + RT_METHOD in
+  game_ui.def); ran check_runtime_completeness, regenerated the runtime docs, strict audit passes.
+  Added `color_constructors_pack_screenfx_byte_orders` to `RTScreenFXTests` and the Zia fixture
+  `test_screenfx_color.zia` proving the static call resolves through the frontend and the packed
+  overlay drives a real alpha. Documented the byte-order split and the constructors in
+  `docs/viperlib/game/effects.md` and the header. The full unification remains ADR-gated future
+  work. **Resolved.**
 
 ### VDOC-268 — ScreenFX type constants are private while shipped audits use the wrong IDs
 
@@ -5927,6 +6542,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   values, and a future enum change can silently break source programs.
 - **Likely repair point:** register stable named constants (or a typed enum), then correct the API
   audit examples to use them.
+- **Review (2026-07-16):** Confirmed and resolved. The effect-type and wipe-direction values lived
+  only in `rt_screenfx.h`, so the shipped `screenfx_demo.zia`/`.bas` audits passed raw `0` to
+  `IsTypeActive`/`CancelType` with a comment claiming "0 = shake" — but `0` is `NONE` and shake is
+  `1`. `IsTypeActive(0)` matched the always-present free slots (misleadingly "true"), and
+  `CancelType(0)` was a no-op that never canceled the shake, so the audit's "ShakeX == 0" expectation
+  was met only by luck. Registered stable named constants on the class: `TypeShake…TypePixelate`
+  (1–9) and `DirLeft…DirDown` (0–3), backed by nullary getters `rt_screenfx_type_*`/`rt_screenfx_dir_*`
+  (RT_FUNC in physics2d.def + RT_PROP in game_ui.def, the same `Color.Red`-style constant pattern),
+  and corrected both audit demos to use `ScreenFX.TypeShake`. Added `named_constants_match_enum` to
+  `RTScreenFXTests` (asserts each constant equals the private enum and that `CancelType(TypeShake)`
+  genuinely cancels the shake), verified both audits exit 0, and `eval 'Viper.Game.ScreenFX.TypeShake'`
+  returns 1. check_runtime_completeness / strict audit / doc regen all pass. Rewrote the "Numeric
+  effect and direction codes" section of `docs/viperlib/game/effects.md` to document the named
+  constants and the 0≠shake footgun. **Resolved.**
 
 ### VDOC-269 — ScreenFX “circle” and “pixelate” transitions do not implement their named effects
 
@@ -5940,6 +6569,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and transition timing/coverage assumptions based on the names are unreliable.
 - **Likely repair point:** implement masks/readback through a Pixels or render-target path, or
   rename the methods to describe the deliberately approximate effects.
+- **Review (2026-07-16):** Confirmed; resolved per the two halves independently. **Circle:** the
+  four-rectangle "square opening" was replaced with a genuinely circular mask — `rt_screenfx_draw`
+  now fills the overlay outside a disc scanline by scanline, using `rt_screenfx_circle_half_chord`
+  (`isqrt(radius² − dy²)`) for the opening's per-row half-width and the Euclidean distance to the
+  farthest corner as the maximum radius (was a Manhattan approximation). CircleIn and CircleOut
+  share the mask, differing only in whether the radius shrinks or grows. The half-chord helper is
+  exposed as an internal (non-registered) symbol and classified in `RuntimeSurfacePolicy.inc` so a
+  test can prove the opening is a circle, not a square: `test_circle_mask_is_circular` in
+  `test_rt_screenfx_transitions` checks the half-width equals the radius at the center row, shrinks
+  with `|dy|`, and vanishes past the radius (a diagonal point inside the bounding square falls
+  outside the disc). **Pixelate:** true block-averaging is architecturally impossible — the runtime
+  has no Canvas read-back path, so it cannot sample and average the underlying image. Rather than a
+  breaking public rename (ADR-gated, and it would break xenoscape and friends), the method keeps its
+  name but the docs now state plainly that it is a stylized mosaic-grid approximation and point
+  callers to `Dissolve`/circle/wipe for faithful covering transitions. Updated the rendering-notes
+  section and draw/ header comments in `docs/viperlib/game/effects.md` and `rt_screenfx.h`. Build,
+  strict surface audit, `test_runtime_surface_cli`, and the ScreenFX suites pass. **Resolved.**
 
 ### VDOC-270 — Lighting2D glows do not reveal the scene beneath the darkness overlay
 
@@ -5954,6 +6600,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
   public description promised.
 - **Likely repair point:** render darkness through a mask/render target whose alpha is reduced by
   lights, or redraw the scene through light masks before compositing the darkness layer.
+- **Review (2026-07-16):** Confirmed; resolved as a contract-honesty fix. Both suggested repairs
+  need a Canvas capability the 2D renderer does not have: option 1 (a mask/render target whose alpha
+  lights subtract) requires destination-alpha or a subtractive/render-target blend — the Canvas
+  offers only source-over primitives (`box_alpha`/`disc_alpha`, no subtract/erase/dest-alpha/RT);
+  option 2 (redraw the scene through light masks) is impossible inside `Draw`, which runs after the
+  scene and holds no scene data. So genuine hole-cut lighting is engine-roadmap work gated on a new
+  Canvas blend capability (ADR), not a doc-review change. The runtime contract had in fact already
+  been corrected to state this plainly — `rt_lighting2d.h` Draw ("does not subtract darkness or
+  reveal the underlying scene inside a light"), the `.c` header comment ("These rings do not
+  subtract the darkness overlay"), and `docs/viperlib/game/effects.md`'s "Current rendering
+  limitation" section ("not light holes"). The remaining false prose was in the shipped example:
+  `examples/games/xenoscape/lighting.zia` described the lights as "cut out of" the darkness and
+  "punched out." Rewrote that tutorial prose to describe the additive source-over glow accurately
+  (and corrected a stale "older ones evict when the pool is full" line — the pool silently drops new
+  lights). Comment/prose-only change; no runtime behavior change and no pixel-test harness exists for
+  this graphics-gated path. The subtractive-lighting implementation remains ADR/future work. **Resolved.**
 
 ### VDOC-271 — A zero-radius Lighting2D player light still draws a 40-pixel glow
 
@@ -5967,6 +6629,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and other lights; setting the natural sentinel radius zero still changes a 40-pixel region.
 - **Likely repair point:** skip all player-light passes when base radius is zero, and expose an
   explicit enabled property if zero radius has another intended meaning.
+- **Review (2026-07-16):** Confirmed and resolved. `rt_lighting2d_draw` unconditionally drew the
+  player passes — the `radius + 40` outer glow (alpha 30), six rings, and the core — even after
+  `SetPlayerLight` had collapsed a non-positive radius to the zero sentinel, so there was no way to
+  turn the player glow off. Wrapped the entire Step-2 player-light block in `if (lit->player_radius
+  > 0)`, making a zero base radius a true off switch while darkness, dynamic, and tile lights keep
+  working. Also exposed the state per the finding's second half: added `rt_lighting2d_get_player_radius`
+  and registered it as the read-only `Viper.Game.Lighting2D.PlayerRadius` property (RT_FUNC in
+  physics2d.def + RT_PROP in game_ui.def) so callers can observe whether the player light is enabled
+  (`0` = off). Added `ZeroPlayerRadiusDisablesPlayerLight` to `TestLighting2D` (default 180; zero and
+  negative both collapse to 0; a positive radius re-enables) and verified the property resolves via
+  `eval`. The 0–10px pulse the finding also noted is already documented accurately in effects.md, so
+  only the disable behavior needed fixing. Rewrote the "Current rendering limitation" note and added
+  the `PlayerRadius` row to the property table in `docs/viperlib/game/effects.md`.
+  check_runtime_completeness / strict audit / doc regen / `test_rt_lighting2d` all pass. **Resolved.**
 
 ### VDOC-272 — Effects classes expose inconsistent constructor and cleanup metadata
 
@@ -5982,6 +6658,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   untyped constructor results.
 - **Likely repair point:** use typed constructor returns and one consistent instance cleanup member
   convention across the three classes.
+- **Review (2026-07-16):** Confirmed and resolved by aligning all three to the ParticleEmitter shape
+  (typed `New` + instance `Destroy`), which was already correct. `Lighting2D.New` and `ScreenFX.New`
+  returned bare `obj`; retyped both to `obj<Viper.Game.Lighting2D>(i64)` and
+  `obj<Viper.Game.ScreenFX>()` so frontends without Zia's owner recovery keep the concrete type and
+  generated references show one lifecycle shape. `ScreenFX` had no instance `Destroy` (only the
+  static `void(obj)` target), so added `RT_METHOD("Destroy", "void()", ScreenFXDestroy)` to the class
+  — mirroring how `Lighting2D`/`ParticleEmitter` register both the static RT_FUNC and the instance
+  method. No C code change (registry/metadata only). Added the Zia fixture `test_effects_lifecycle.zia`
+  proving typed-local assignment (`var fx: FX = FX.New()`) and instance `fx.Destroy()` now compile for
+  all three classes — the typed-local form was rejected before the retyping. check_runtime_completeness
+  / strict audit / doc regen / agent_cli / the fixture all pass. Updated the ScreenFX `Destroy` doc
+  row in `docs/viperlib/game/effects.md`. **Resolved.**
 
 ### VDOC-273 — Tween integer entry points silently lose values above binary64 precision
 
@@ -5996,6 +6684,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
   expect this result.
 - **Likely repair point:** interpolate integers with checked wide/integer arithmetic and a defined
   rounding rule, or restrict/rename the API to make its exact ±2^53 domain explicit.
+- **Review (2026-07-16):** Confirmed and resolved. The Tween engine is inherently `double`-based —
+  every easing curve is a real-valued function of `t ∈ [0,1]` — so eased *intermediate* frames of a
+  very wide range cannot be bit-exact. But the finding's real damage is at the endpoints and the
+  `from == to` constant case, which were lost because `StartI64` cast to `double` on entry before
+  anything ran. Fixed by retaining the exact `int64` endpoints: added `from_i64`/`to_i64`/`is_i64`
+  to the tween, recorded them in `StartI64` (re-flagged after `rt_tween_start` clears them), and
+  made `ValueI64` anchor on them for `StartI64` tweens — `elapsed<=0` returns `from_i64`, completion
+  returns `to_i64`, and a new `tween_lerp_endpoints_i64` helper interpolates intermediate frames from
+  the integer endpoints in `long double` (so `frac 0→from`, `frac 1→to`, `from==to` exact, with
+  saturating round-half-away). Applied the same endpoint anchoring to the static `LerpI64`
+  (`t<=0→from`, `t>=1→to`). The double-domain `Value`/`Start` path is unchanged. Added
+  `i64_preserves_values_above_2_53` to `RTTweenTests` (2^53+1 constant never drifts across frames;
+  moving-tween endpoints exact; `LerpI64` endpoints/constants exact) — fails before, passes after;
+  existing `start_i64`/`lerp_i64` tests still pass. No registry change (behavior fix in existing
+  functions). Rewrote the `StartI64`/`ValueI64`/`LerpI64` rows and precision note in
+  `docs/viperlib/game/animation.md` and the file-header contract. **Resolved.**
 
 ### VDOC-274 — `AnimStateMachine.AddNamed` can overwrite a numeric state and strand its name
 
@@ -6011,6 +6715,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
   names that cannot be played. The failure depends on prior ID layout and is difficult to diagnose.
 - **Likely repair point:** allocate a genuinely unused state ID, capture the actual clip index
   returned by insertion, and store the name at that index transactionally.
+- **Review (2026-07-16):** Confirmed and resolved exactly as the repair point describes. `AddNamed`
+  set `id = clip_count` and wrote the name to `clips[id]`. When a numeric state already owned
+  `state_id == clip_count`, `AddState` found and overwrote that clip in place without bumping
+  `clip_count`, so `clips[id]` (== `clip_count`) was an unsearched, invalid slot — the name became
+  unplayable and the numeric clip was silently replaced. Rewrote `AddNamed` to (1) scan for the
+  lowest genuinely unused state ID (`while (find_clip(a, id) >= 0) id++;`, guaranteed to terminate
+  within `[0, 32]` given the 32-clip cap), (2) call `AddState`, then (3) re-locate the clip via
+  `find_clip(id)` and store the name at that real index — skipping the write if `AddState` hit the
+  clip limit. Added `AddNamedDoesNotClobberNumericState` to `TestAnimStateNamed`: a numeric state 1
+  (the only clip, so `clip_count == 1`) followed by `AddNamed("walk")` — `Play("walk")` now lands on
+  the named clip and `SetInitial(1)` still finds the intact numeric clip (frames 0..5, not the
+  named 10..12). Existing named-state tests still pass (fresh machines still get IDs 0,1,…). No
+  registry change. Rewrote the `AddNamed` caveat in `docs/viperlib/game/animation.md` (mixing styles
+  is now safe; documented the shared-ID-space caveat for a later colliding `AddState`). **Resolved.**
 
 ### VDOC-275 — Re-registering the active animation state does not reapply its clip
 
@@ -6024,6 +6742,18 @@ the checked-in generators, documentation audits, and already-existing binaries o
   invalid frame indices and report incoherent progress before reaching the new clip.
 - **Likely repair point:** either reject replacement of the active state or immediately reapply the
   replacement clip while defining the intended transition/flag semantics.
+- **Review (2026-07-16):** Confirmed and resolved by the reapply option (the more useful one for the
+  hot-reload use case the finding cites). `AddState` overwrote the clip fields in place; when the
+  overwritten clip was the active one, `current_frame`/`frame_counter`/`anim_finished`/events kept
+  their old values, so a state advanced to frame 1 then redefined to range 100–101 stayed at frame 1
+  and `Update` walked off into frames 2, 3, … with incoherent `Progress`. Added, at the end of
+  `AddState`, `if (idx == a->active_clip_idx) apply_clip(a, idx);` so redefining the active clip
+  restarts playback at the new start with reset timing/direction/events. Defined the semantics
+  explicitly: this is a redefinition, not a transition, so `current_state`/`previous_state` and the
+  `JustEntered`/`JustExited` edge flags are intentionally left unchanged. Added
+  `RedefiningActiveStateRestartsClip` to `TestAnimStateNamed` (advance state 0 to frame 1, redefine
+  to 100–101, assert `CurrentFrame` restarts at 100 then advances to 101). No registry change.
+  Updated the AddState overwrite note in `docs/viperlib/game/animation.md`. **Resolved.**
 
 ### VDOC-276 — `SetEventFrame` has no public observer
 
@@ -6037,6 +6767,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   unreachable.
 - **Likely repair point:** remove `SetEventFrame` in the same compatibility cleanup, or restore a
   typed observer and document its consuming semantics. Prefer the batch-based event path.
+- **Review (2026-07-16):** Confirmed and resolved by completing the compatibility cleanup (the
+  finding's preferred direction — "prefer the batch-based event path"). `SetEventFrame`'s observer
+  `rt_animstate_event_fired` and the mutable `events_fired_count`/`event_fired_id` accessors were
+  internalized by the 2026-07-15 API-consistency sweep (already `RUNTIME_SURFACE_INTERNAL_SYMBOL`),
+  but the setter was left publicly registered — an unobservable orphan. Removed the `SetEventFrame`
+  RT_FUNC (vectors.def) and RT_METHOD (input_game.def) and added `rt_animstate_set_event_frame` to
+  the same INTERNAL_SYMBOL group with a note, so the legacy single-event surface is fully retired
+  while the C entry points remain for the internal machinery and the existing C-level unit tests
+  (`EventFrameFires` etc.). The canonical event API is `AddEvent` + `PollEvents` (immutable
+  `AnimationEventBatch`). Rebuilt, ran check_runtime_completeness and the strict surface audit,
+  regenerated the runtime docs (also picked up a stale `time.md` from prior VDOC-228 work — the
+  `TimeZone.Find` typed return — that had never been regenerated, which was failing
+  `runtime_reference_docs`; now current). `test_runtime_surface_cli`, `agent_cli`, and the animstate
+  suites pass. Removed `SetEventFrame` from the method table and rewrote the legacy-API note in
+  `docs/viperlib/game/animation.md`. **Resolved.**
 
 ### VDOC-277 — AnimTimeline tween and animation tracks are inert payload records
 
@@ -6051,6 +6796,22 @@ the checked-in generators, documentation audits, and already-existing binaries o
   expecting state transitions get none.
 - **Likely repair point:** either make the timeline own/bind and drive concrete targets, or recast
   the API explicitly as a passive span/payload scheduler and remove payload C.
+- **Review (2026-07-16):** Confirmed and resolved. Rather than remove payload C, made it *mean* what
+  its name and the "current interpolated value" contract already implied — the timeline is a passive
+  scheduler and cannot own targets, but it holds everything needed to *report* the current tween
+  value. `TrackPayloadC` now computes, on read, the interpolated value between the tween track's
+  `from` (payload A) and `to` (payload B) at the timeline's current frame, using an endpoint-anchored
+  `long double` lerp (`timeline_lerp_i64`): `from` before the track starts, linearly interpolated
+  while active, and exactly `to` at/after the end — endpoints bit-exact even beyond 2^53 (shares the
+  VDOC-273 rationale). Non-tween tracks still return 0. Factored the progress fraction into
+  `timeline_track_frac` shared by `TrackProgress` and payload C. The design stays passive: anim
+  tracks continue to expose the target state ID via payload A for the caller to drive its own state
+  machine — documented explicitly rather than implying automatic transitions. Added
+  `TestAnimTimeline` (`TweenPayloadCInterpolates`: A/B raw, C = 10→15→20 across a halfway then full
+  advance; `TweenPayloadCPreservesWideEndpoints`: 2^53+1 endpoint exact) registered via
+  `viper_add_test`. No registry change. Rewrote the AnimTimeline header contract and the
+  `docs/viperlib/game/animation.md` section, tables, and Zia example (now reads `TrackPayloadC`
+  directly). **Resolved.**
 
 ### VDOC-278 — AnimTimeline accepts markers that initial playback can never fire
 
@@ -6066,6 +6827,20 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** reject markers outside the playable range and define entry semantics;
   either fire frame-zero markers on `Play`/the first positive advance or consistently exclude them
   from every cycle.
+- **Review (2026-07-16):** Confirmed and resolved both halves. (1) Out-of-range markers: `AddMarker`
+  only clamped to non-negative, so a frame past `total_duration` registered but could never be
+  crossed (the non-looping playhead stops at `total_duration`, a looping one wraps before it). Added
+  `if (frame > tl->total_duration_frames) return -1;` so such markers are rejected like a capacity
+  overflow; negatives still clamp to the in-range start (0). (2) Frame-zero entry: the half-open
+  `(before, after]` crossing excluded a marker on the start frame on the first advance (it fired only
+  as a loop-wrap side effect), so behavior differed between the first cycle and later ones. Added an
+  `entry_pending` flag armed by `Play` only when starting from frame 0 (so resuming mid-timeline
+  doesn't re-fire crossed markers), consumed on the first positive `Advance` to fire markers whose
+  frame equals the entry frame, then cleared — giving consistent frame-0 firing every cycle. Added
+  `FrameZeroMarkerFiresOnFirstAdvance` and `MarkersBeyondDurationAreRejected` to `TestAnimTimeline`;
+  existing marker tests (`test_rt_runtime_additions`, `test_rt_game_result_objects`) still pass. No
+  registry change. Updated the `AddMarker` row and marker-range/entry prose in
+  `docs/viperlib/game/animation.md`. **Resolved.**
 
 ### VDOC-279 — Animation event snapshot allocation failure masquerades as no events
 
@@ -6079,6 +6854,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   indistinguishable from a legitimate frame with no events.
 - **Likely repair point:** allocate/copy transactionally and surface failure through Result/trap, or
   provide an explicit error state that cannot be confused with `Count == 0`.
+- **Review (2026-07-16):** Confirmed and resolved with the transactional-NULL option (which also
+  matches the already-documented "NULL on allocation failure" contract of `PollEvents`).
+  `rt_animation_event_batch_from_ids` allocated the object, then on ID-array `malloc` failure or
+  count overflow returned that valid empty (`count=0`) batch — indistinguishable from a genuine
+  zero-event frame, so events silently vanished under memory pressure. Now both failure paths free
+  the batch object and return NULL, so a snapshot is all-or-nothing: a valid populated batch, a
+  legitimately empty batch (only for the `!ids || count<=0` case), or NULL. `PollEvents` propagates
+  the NULL, letting callers tell OOM from `Count == 0`. (No `kNullableReturns` change: this NULL is
+  OOM-only, following the same convention as `New()` constructors, which normal operation never
+  hits.) Also addressed the finding's secondary note — typed the `AnimationEventBatch.Ids` return
+  from bare `obj` to `obj<Viper.Collections.Seq>` (RT_FUNC + RT_METHOD). Added
+  `AllocationFailureReturnsNullNotEmptyBatch` to `TestAnimTimeline` (empty→valid count 0;
+  populated→count 2; count overflow→NULL, exercising the same path as OOM). check_runtime_completeness
+  / strict audit / doc regen / agent_cli / runtime_reference_docs pass. Updated the AnimationEventBatch
+  section of `docs/viperlib/game/animation.md`. **Resolved.**
 
 ### VDOC-280 — PathFollower discards movement remainders and can stall forever
 
@@ -6094,6 +6884,23 @@ the checked-in generators, documentation audits, and already-existing binaries o
   discarded.
 - **Likely repair point:** retain distance/progress remainders at sufficient precision, or store
   traveled distance directly and derive segment position without reducing it to 1001 states.
+- **Review (2026-07-16):** Confirmed and resolved via the first repair option (retain remainders).
+  `Update` lost precision twice with no cross-call carry: `move_dist = speed*dt/1000` truncated the
+  sub-unit distance (so speed 1 / `Update(100)` gave `move_dist = 0` and the follower never moved),
+  and `progress_delta = move_dist*1000/seg_len` truncated the sub-per-mille progress (so small
+  motion on a long segment produced zero progress). Added two carried remainders to the follower:
+  `move_remainder` (milliunits) accumulates `speed*dt` across calls before the /1000 (with an integer
+  overflow guard), and `progress_remainder` (sub-per-mille, in the current segment's length units)
+  accumulates the `move_dist*1000` numerator across calls before the /seg_len (long double for wide
+  ranges). Both are reset on rewind/clear/`SetProgress`; `progress_remainder` also resets at every
+  segment-boundary transition (the choke point `advance_segment_boundary`) since it is tied to the
+  old segment length. Added a defensive `speed <= 0` guard (the overflow check divides by speed).
+  Added `slow_movement_accumulates_and_does_not_stall` to `RTPathFollowTests` (speed 1 on a
+  1000-unit segment now moves off zero; the old code stalled at X=0 forever); all existing tests
+  (which use exact quotients, remainder 0) still pass. Updated the header invariant comment and the
+  `docs/viperlib/game/animation.md` precision section. The 1001-state per-mille position quantization
+  remains (positions jump on per-mille boundaries) but the underlying travel is no longer lost.
+  **Resolved.**
 
 ### VDOC-281 — Degenerate or unallocated PathFollower lengths leave an active non-finishing path
 
@@ -6108,6 +6915,21 @@ the checked-in generators, documentation audits, and already-existing binaries o
   indistinguishable from an intentional active path that simply has not moved yet.
 - **Likely repair point:** reject/start-fail zero-total paths, expose a start/update error, and keep
   failed cache construction retryable or preserve the previous valid cache.
+- **Review (2026-07-16):** Confirmed and resolved. (1) Degenerate zero-total path: `Update` returned
+  early on `total_length == 0` without touching `active`/`finished`, so two identical waypoints left
+  `IsActive=true`/`IsFinished=false` forever and a once-mode `while not IsFinished` loop hung. `Update`
+  now completes a degenerate path on the first tick — `active=0`, and `finished=1` for once-mode
+  (looping paths deactivate but keep `IsFinished` false per contract). (2) Cache allocation failure:
+  `recalculate_lengths` freed the old cache and zeroed `total_length` on `malloc` failure, and
+  `ensure_lengths` cleared the dirty flag regardless, so the failure was sticky and indistinguishable
+  from a degenerate path. Made `recalculate_lengths` return success/failure and preserve the previous
+  valid cache on failure; `ensure_lengths` clears the dirty flag only on success; and `Update`
+  distinguishes the still-dirty (allocation failed) state — it stays active and retries on the next
+  update rather than finishing — from a genuinely degenerate path. Added
+  `degenerate_zero_length_path_completes_immediately` and
+  `degenerate_loop_path_deactivates_without_finishing` to `RTPathFollowTests`; the allocation-failure
+  retry path is verified by inspection (no malloc injection harness). No registry change. Updated the
+  degenerate-path/allocation prose in `docs/viperlib/game/animation.md`. **Resolved.**
 
 ### VDOC-282 — A full ButtonGroup traps before checking whether an ID is already present
 
@@ -6121,6 +6943,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   otherwise Boolean duplicate contract and making defensive re-add logic crash.
 - **Likely repair point:** test for the existing ID before enforcing capacity, then reserve the trap
   or false result for a genuinely new 257th ID.
+- **Review (2026-07-16):** Confirmed and resolved exactly as the repair point describes. `rt_buttongroup_add`
+  ran the `count >= RT_BUTTONGROUP_MAX` capacity trap before `find_button_index`, so an idempotent
+  re-add of an already-present ID trapped ("button limit exceeded") once the group was full instead of
+  returning false as it does at lower counts. Swapped the order: the duplicate check runs first and
+  returns 0 for a present ID regardless of capacity; the trap now fires only for a genuinely new ID
+  that would overflow the 256-slot array. Added `duplicate_add_at_capacity_returns_false_not_traps` to
+  `RTButtonGroupTests` (fills to capacity, re-adds an existing ID → false with no trap; a trap would
+  abort the test); the existing `add_overflow_traps` (new 257th ID → trap) still holds. No registry
+  change. Updated the `Add` prose in `docs/viperlib/game/animation.md`. **Resolved.**
 
 ### VDOC-283 — ButtonGroup's public previous-selection name disagrees with its diagnostic
 
@@ -6132,6 +6963,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** a type error directs users and tooling to search for a method that does not exist.
 - **Likely repair point:** rename the C helper if desired, but make the emitted diagnostic use the
   registered `SelectPrevious` spelling.
+- **Review (2026-07-16):** Confirmed and resolved. `rt_buttongroup_select_prev`'s wrong-class trap
+  text read `ButtonGroup.SelectPrev`, but the registered public name is `Viper.Game.ButtonGroup.SelectPrevious`
+  (vectors.def + input_game.def), so a type error pointed users and tooling at a non-existent member.
+  Corrected the diagnostic string to `ButtonGroup.SelectPrevious` to match the registry; left the C
+  helper name (`rt_buttongroup_select_prev`) unchanged as it is internal. Diagnostic-string fix
+  verified against the registered name; no behavioral change (the ButtonGroup suite still passes and
+  the build is clean). **Resolved.**
 
 ### VDOC-284 — SpriteSheet erases concrete and nullable results from its public metadata
 
@@ -6146,6 +6984,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   expose the methods of values that are present without language-specific recovery tricks.
 - **Likely repair point:** register nullable concrete return types for SpriteSheet/Pixels and a
   concrete owned Seq return for names, then align constructor fallibility metadata.
+- **Review (2026-07-16):** Confirmed and resolved. Typed the two erased returns: `GetRegion`
+  `obj`→`obj<Viper.Graphics.Pixels>` and `RegionNames` `obj`→`obj<Viper.Collections.Seq>` (RT_FUNC in
+  graphics2d.def + RT_METHOD in input_game.def), so generated docs and tooling see the concrete
+  result identity. Aligned nullability by adding `SpriteSheet.New`, `SpriteSheet.FromGrid`, and
+  `SpriteSheet.GetRegion` to `kNullableReturns` in main.cpp — verified against the C code, which
+  returns NULL for a null/wrong-class or non-divisible atlas (`New`/`FromGrid`) and for an
+  unregistered region name (`GetRegion`). `RegionNames` stays non-nullable (always an owned Seq,
+  possibly empty; its only NULL is constructor-OOM, following the `New()` convention). Augmented the
+  existing `test_spritesheet.zia` fixture: typed-local assignment `var r: Px = Sheet.GetRegion(...)`
+  and `var n: Seq = Sheet.RegionNames(...)` now compile (rejected before the typing), the typed Pixels
+  width resolves (16), and a missing region returns null. check_runtime_completeness / strict audit /
+  doc regen / agent_cli / runtime_reference_docs / spritesheet fixture all pass. Updated the SpriteSheet
+  member table and prose in `docs/viperlib/game/animation.md`. **Resolved.**
 
 ## Corrected Documentation Mismatches
 

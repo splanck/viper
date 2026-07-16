@@ -133,7 +133,7 @@ RT_FUNC(ObjPoolSetData, rt_objpool_set_data, "Viper.Game.ObjectPool.SetData", "i
 RT_FUNC(ObjPoolGetData, rt_objpool_get_data, "Viper.Game.ObjectPool.GetData", "i64(obj,i64)")
 
 // Viper.ScreenFX - Screen effects manager
-RT_FUNC(ScreenFXNew, rt_screenfx_new, "Viper.Game.ScreenFX.New", "obj()")
+RT_FUNC(ScreenFXNew, rt_screenfx_new, "Viper.Game.ScreenFX.New", "obj<Viper.Game.ScreenFX>()")
 RT_FUNC(ScreenFXDestroy, rt_screenfx_destroy, "Viper.Game.ScreenFX.Destroy", "void(obj)")
 RT_FUNC(ScreenFXUpdate, rt_screenfx_update, "Viper.Game.ScreenFX.Update", "void(obj,i64)")
 RT_FUNC(ScreenFXShake, rt_screenfx_shake, "Viper.Game.ScreenFX.Shake", "void(obj,i64,i64,i64)")
@@ -148,6 +148,24 @@ RT_FUNC(ScreenFXGetShakeX, rt_screenfx_get_shake_x, "Viper.Game.ScreenFX.get_Sha
 RT_FUNC(ScreenFXGetShakeY, rt_screenfx_get_shake_y, "Viper.Game.ScreenFX.get_ShakeY", "i64(obj)")
 RT_FUNC(ScreenFXGetOverlayColor, rt_screenfx_get_overlay_color, "Viper.Game.ScreenFX.get_OverlayColor", "i64(obj)")
 RT_FUNC(ScreenFXGetOverlayAlpha, rt_screenfx_get_overlay_alpha, "Viper.Game.ScreenFX.get_OverlayAlpha", "i64(obj)")
+// Color constructors — ScreenFX uses its own byte orders, distinct from Viper.Graphics.Color.
+RT_FUNC(ScreenFXRgba, rt_screenfx_rgba, "Viper.Game.ScreenFX.Rgba", "i64(i64,i64,i64,i64)")
+RT_FUNC(ScreenFXRgb, rt_screenfx_rgb, "Viper.Game.ScreenFX.Rgb", "i64(i64,i64,i64)")
+// Effect-type constants for IsTypeActive/CancelType (mirror rt_screenfx_type_t).
+RT_FUNC(ScreenFXTypeShake, rt_screenfx_type_shake, "Viper.Game.ScreenFX.get_TypeShake", "i64()")
+RT_FUNC(ScreenFXTypeFlash, rt_screenfx_type_flash, "Viper.Game.ScreenFX.get_TypeFlash", "i64()")
+RT_FUNC(ScreenFXTypeFadeIn, rt_screenfx_type_fade_in, "Viper.Game.ScreenFX.get_TypeFadeIn", "i64()")
+RT_FUNC(ScreenFXTypeFadeOut, rt_screenfx_type_fade_out, "Viper.Game.ScreenFX.get_TypeFadeOut", "i64()")
+RT_FUNC(ScreenFXTypeWipe, rt_screenfx_type_wipe, "Viper.Game.ScreenFX.get_TypeWipe", "i64()")
+RT_FUNC(ScreenFXTypeCircleIn, rt_screenfx_type_circle_in, "Viper.Game.ScreenFX.get_TypeCircleIn", "i64()")
+RT_FUNC(ScreenFXTypeCircleOut, rt_screenfx_type_circle_out, "Viper.Game.ScreenFX.get_TypeCircleOut", "i64()")
+RT_FUNC(ScreenFXTypeDissolve, rt_screenfx_type_dissolve, "Viper.Game.ScreenFX.get_TypeDissolve", "i64()")
+RT_FUNC(ScreenFXTypePixelate, rt_screenfx_type_pixelate, "Viper.Game.ScreenFX.get_TypePixelate", "i64()")
+// Wipe-direction constants for the Wipe direction argument.
+RT_FUNC(ScreenFXDirLeft, rt_screenfx_dir_left, "Viper.Game.ScreenFX.get_DirLeft", "i64()")
+RT_FUNC(ScreenFXDirRight, rt_screenfx_dir_right, "Viper.Game.ScreenFX.get_DirRight", "i64()")
+RT_FUNC(ScreenFXDirUp, rt_screenfx_dir_up, "Viper.Game.ScreenFX.get_DirUp", "i64()")
+RT_FUNC(ScreenFXDirDown, rt_screenfx_dir_down, "Viper.Game.ScreenFX.get_DirDown", "i64()")
 
 // ScreenFX — Transition effects (Wipe, Circle, Dissolve, Pixelate)
 RT_FUNC(ScreenFXWipe,          rt_screenfx_wipe,                 "Viper.Game.ScreenFX.Wipe",                 "void(obj,i64,i64,i64)")
@@ -343,7 +361,7 @@ RT_FUNC(DialogueGetSpeaker,     rt_dialogue_get_speaker,     "Viper.Game.Dialogu
 RT_FUNC(DialogueDraw,           rt_dialogue_draw,            "Viper.Game.Dialogue.Draw",           "void(obj,obj)")
 
 // Viper.Game.Lighting2D — 2D darkness overlay with dynamic point lights
-RT_FUNC(Lighting2DNew,          rt_lighting2d_new,            "Viper.Game.Lighting2D.New",           "obj(i64)")
+RT_FUNC(Lighting2DNew,          rt_lighting2d_new,            "Viper.Game.Lighting2D.New",           "obj<Viper.Game.Lighting2D>(i64)")
 RT_FUNC(Lighting2DDestroy,      rt_lighting2d_destroy,        "Viper.Game.Lighting2D.Destroy",       "void(obj)")
 RT_FUNC(Lighting2DSetDarkness,  rt_lighting2d_set_darkness,   "Viper.Game.Lighting2D.set_Darkness",  "void(obj,i64)")
 RT_FUNC(Lighting2DGetDarkness,  rt_lighting2d_get_darkness,   "Viper.Game.Lighting2D.get_Darkness",  "i64(obj)")
@@ -356,6 +374,7 @@ RT_FUNC(Lighting2DClearLights,  rt_lighting2d_clear_lights,   "Viper.Game.Lighti
 RT_FUNC(Lighting2DUpdate,       rt_lighting2d_update,         "Viper.Game.Lighting2D.Update",        "void(obj)")
 RT_FUNC(Lighting2DDraw,         rt_lighting2d_draw,           "Viper.Game.Lighting2D.Draw",          "void(obj,obj,i64,i64,i64,i64)")
 RT_FUNC(Lighting2DLightCount,   rt_lighting2d_get_light_count,"Viper.Game.Lighting2D.get_LightCount","i64(obj)")
+RT_FUNC(Lighting2DPlayerRadius, rt_lighting2d_get_player_radius,"Viper.Game.Lighting2D.get_PlayerRadius","i64(obj)")
 
 // Viper.Game.PlatformerController — jump buffer, coyote time, acceleration curves
 RT_FUNC(PlatCtrlNew,            rt_platformer_ctrl_new,             "Viper.Game.PlatformerController.New",             "obj()")
@@ -541,8 +560,8 @@ RT_FUNC(SceneMgrAdd,           rt_scenemanager_add,                 "Viper.Game.
 RT_FUNC(SceneMgrSwitch,        rt_scenemanager_switch,              "Viper.Game.SceneManager.Switch",              "void(obj,str)")
 RT_FUNC(SceneMgrSwitchTrans,   rt_scenemanager_switch_transition,   "Viper.Game.SceneManager.SwitchTransition",    "void(obj,str,i64)")
 RT_FUNC(SceneMgrUpdate,        rt_scenemanager_update,              "Viper.Game.SceneManager.Update",              "void(obj,i64)")
-RT_FUNC(SceneMgrCurrent,       rt_scenemanager_current,             "Viper.Game.SceneManager.get_Current",         "obj(obj)")
-RT_FUNC(SceneMgrPrevious,      rt_scenemanager_previous,            "Viper.Game.SceneManager.get_Previous",        "obj(obj)")
+RT_FUNC(SceneMgrCurrent,       rt_scenemanager_current,             "Viper.Game.SceneManager.get_Current",         "str(obj)")
+RT_FUNC(SceneMgrPrevious,      rt_scenemanager_previous,            "Viper.Game.SceneManager.get_Previous",        "str(obj)")
 RT_FUNC(SceneMgrIsScene,       rt_scenemanager_is_scene,            "Viper.Game.SceneManager.IsScene",             "i1(obj,str)")
 RT_FUNC(SceneMgrJustEntered,   rt_scenemanager_just_entered,        "Viper.Game.SceneManager.get_JustEntered",     "i1(obj)")
 RT_FUNC(SceneMgrJustExited,    rt_scenemanager_just_exited,         "Viper.Game.SceneManager.get_JustExited",      "i1(obj)")
@@ -553,7 +572,7 @@ RT_FUNC(SceneMgrTransProgress, rt_scenemanager_transition_progress, "Viper.Game.
 RT_FUNC(GameConfigLoad,       rt_config_load,        "Viper.Game.Config.Load",       "obj(str)")
 RT_FUNC(GameConfigFromString, rt_config_from_string, "Viper.Game.Config.FromString", "obj(str)")
 RT_FUNC(GameConfigGetInt,     rt_config_get_int,     "Viper.Game.Config.GetInt",     "i64(obj,str,i64)")
-RT_FUNC(GameConfigGetStr,     rt_config_get_str,     "Viper.Game.Config.GetStr",     "obj(obj,str,str)")
+RT_FUNC(GameConfigGetStr,     rt_config_get_str,     "Viper.Game.Config.GetStr",     "str(obj,str,str)")
 RT_FUNC(GameConfigGetBool,    rt_config_get_bool,    "Viper.Game.Config.GetBool",    "i1(obj,str,i1)")
 RT_FUNC(GameConfigHas,        rt_config_has,         "Viper.Game.Config.Has",        "i1(obj,str)")
 
@@ -592,8 +611,8 @@ RT_FUNC(TypewriterTotalChars,   rt_typewriter_total_chars,       "Viper.Game.Typ
 
 // Viper.Game.Pathfinder — A* grid pathfinding
 RT_FUNC(PathfinderNew,          rt_pathfinder_new,            "Viper.Game.Pathfinder.New",            "obj(i64,i64)")
-RT_FUNC(PathfinderFromTilemap,  rt_pathfinder_from_tilemap,   "Viper.Game.Pathfinder.FromTilemap",    "obj(obj)")
-RT_FUNC(PathfinderFromGrid2D,   rt_pathfinder_from_grid2d,    "Viper.Game.Pathfinder.FromGrid2D",     "obj(obj)")
+RT_FUNC(PathfinderFromTilemap,  rt_pathfinder_from_tilemap,   "Viper.Game.Pathfinder.FromTilemap",    "obj<Viper.Game.Pathfinder>(obj)")
+RT_FUNC(PathfinderFromGrid2D,   rt_pathfinder_from_grid2d,    "Viper.Game.Pathfinder.FromGrid2D",     "obj<Viper.Game.Pathfinder>(obj)")
 RT_FUNC(PathfinderDestroy,      rt_pathfinder_destroy,        "Viper.Game.Pathfinder.Destroy",        "void(obj)")
 RT_FUNC(PathfinderSetWalkable,  rt_pathfinder_set_walkable,   "Viper.Game.Pathfinder.SetWalkable",    "void(obj,i64,i64,i1)")
 RT_FUNC(PathfinderIsWalkable,   rt_pathfinder_is_walkable,    "Viper.Game.Pathfinder.IsWalkable",     "i1(obj,i64,i64)")
@@ -609,7 +628,7 @@ RT_FUNC(PathResultFound,        rt_path_result_found,         "Viper.Game.PathRe
 RT_FUNC(PathResultSteps,        rt_path_result_steps,         "Viper.Game.PathResult.get_Steps",      "i64(obj)")
 RT_FUNC(PathResultCost,         rt_path_result_cost,          "Viper.Game.PathResult.get_Cost",       "i64(obj)")
 RT_FUNC(PathResultStepCount,    rt_path_result_step_count,    "Viper.Game.PathResult.get_StepCount",  "i64(obj)")
-RT_FUNC(PathResultPath,         rt_path_result_path,          "Viper.Game.PathResult.get_Path",       "obj(obj)")
+RT_FUNC(PathResultPath,         rt_path_result_path,          "Viper.Game.PathResult.get_Path",       "obj<Viper.Collections.List>(obj)")
 
 // Viper.PathFollower - Path following along waypoints
 RT_FUNC(PathFollowNew, rt_pathfollow_new, "Viper.Game.PathFollower.New", "obj()")

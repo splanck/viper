@@ -476,6 +476,7 @@ RT_FUNC(TimerRemaining, rt_timer_remaining, "Viper.Game.Timer.get_Remaining", "i
 RT_FUNC(TimerProgress, rt_timer_progress, "Viper.Game.Timer.get_Progress", "i64(obj)")
 RT_FUNC(TimerDuration, rt_timer_duration, "Viper.Game.Timer.get_Duration", "i64(obj)")
 RT_FUNC(TimerIsRepeating, rt_timer_is_repeating, "Viper.Game.Timer.get_IsRepeating", "i1(obj)")
+RT_FUNC(TimerIsMs, rt_timer_is_ms, "Viper.Game.Timer.get_IsMs", "i1(obj)")
 RT_FUNC(TimerSetDuration, rt_timer_set_duration, "Viper.Game.Timer.set_Duration", "void(obj,i64)")
 RT_FUNC(TimerStartMs, rt_timer_start_ms, "Viper.Game.Timer.StartMs", "void(obj,i64)")
 RT_FUNC(TimerStartRepeatingMs, rt_timer_start_repeating_ms, "Viper.Game.Timer.StartRepeatingMs", "void(obj,i64)")
@@ -524,7 +525,9 @@ RT_FUNC(AnimStateProgress,      rt_animstate_progress,         "Viper.Game.AnimS
 RT_FUNC(AnimStateAddNamed,      rt_animstate_add_named,        "Viper.Game.AnimStateMachine.AddNamed",         "void(obj,str,i64,i64,i64,i1)")
 RT_FUNC(AnimStatePlay,          rt_animstate_play,             "Viper.Game.AnimStateMachine.Play",             "void(obj,str)")
 RT_FUNC(AnimStateCurrentName,   rt_animstate_current_name,     "Viper.Game.AnimStateMachine.get_StateName",   "obj(obj)")
-RT_FUNC(AnimStateSetEventFrame, rt_animstate_set_event_frame,  "Viper.Game.AnimStateMachine.SetEventFrame",   "void(obj,i64)")
+// SetEventFrame retired (VDOC-276): the legacy single-event mechanism's observer
+// (rt_animstate_event_fired) was internalized in the 2026-07-15 sweep, leaving this
+// setter an unobservable orphan. The AddEvent/PollEvents batch API supersedes it.
 RT_FUNC(AnimStateAddEvent,      rt_animstate_add_event,        "Viper.Game.AnimStateMachine.AddEvent",        "i1(obj,i64,i64,i64)")
 RT_FUNC(AnimStateClearEvents,   rt_animstate_clear_events,     "Viper.Game.AnimStateMachine.ClearEvents",     "void(obj,i64)")
 RT_FUNC(AnimStatePollEvents,    rt_animstate_poll_events,      "Viper.Game.AnimStateMachine.PollEvents",      "obj<Viper.Game.AnimationEventBatch>(obj)")
@@ -532,7 +535,7 @@ RT_FUNC(AnimStatePollEvents,    rt_animstate_poll_events,      "Viper.Game.AnimS
 RT_FUNC(AnimationEventBatchCount,    rt_animation_event_batch_count,    "Viper.Game.AnimationEventBatch.get_Count", "i64(obj)")
 RT_FUNC(AnimationEventBatchGetId,    rt_animation_event_batch_get_id,   "Viper.Game.AnimationEventBatch.GetId",     "i64(obj,i64)")
 RT_FUNC(AnimationEventBatchContains, rt_animation_event_batch_contains, "Viper.Game.AnimationEventBatch.Contains",  "i1(obj,i64)")
-RT_FUNC(AnimationEventBatchIds,      rt_animation_event_batch_ids,      "Viper.Game.AnimationEventBatch.Ids",       "obj(obj)")
+RT_FUNC(AnimationEventBatchIds,      rt_animation_event_batch_ids,      "Viper.Game.AnimationEventBatch.Ids",       "obj<Viper.Collections.Seq>(obj)")
 
 RT_FUNC(AnimTimelineNew,        rt_animtimeline_new,             "Viper.Game.AnimTimeline.New",              "obj(i64)")
 RT_FUNC(AnimTimelineAddAnim,    rt_animtimeline_add_anim_track,  "Viper.Game.AnimTimeline.AddAnimTrack",     "i64(obj,str,i64,i64,i64)")

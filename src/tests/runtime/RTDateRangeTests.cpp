@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_dateonly.h"
 #include "rt_daterange.h"
 #include "rt_internal.h"
 #include "rt_string.h"
@@ -218,6 +219,31 @@ static void test_null_safety() {
 }
 
 /// @brief Main.
+// VDOC-229: an explicit receiver of another runtime class must trap rather than
+// be reinterpreted as a DateRange payload. A DateOnly is a live heap object of a
+// different class, so the DateRange accessors/queries must reject it. The two-arg
+// set operations must also reject a wrong-class second operand.
+static void test_wrong_class_receiver_traps() {
+    void *d = rt_dateonly_create(2024, 6, 15);
+    assert(d != nullptr);
+    void *good = rt_daterange_new(0, 86400);
+    assert(good != nullptr);
+
+    EXPECT_TRAP(rt_daterange_start(d));
+    EXPECT_TRAP(rt_daterange_end(d));
+    EXPECT_TRAP(rt_daterange_contains(d, 0));
+    EXPECT_TRAP(rt_daterange_overlaps(d, good));
+    EXPECT_TRAP(rt_daterange_overlaps(good, d)); // wrong-class second operand
+    EXPECT_TRAP(rt_daterange_intersection(d, good));
+    EXPECT_TRAP(rt_daterange_union_range(good, d)); // wrong-class second operand
+    EXPECT_TRAP(rt_daterange_days(d));
+    EXPECT_TRAP(rt_daterange_hours(d));
+    EXPECT_TRAP(rt_daterange_duration(d));
+    EXPECT_TRAP(rt_daterange_to_string(d));
+
+    printf("test_wrong_class_receiver_traps: PASSED\n");
+}
+
 int main() {
     test_new();
     test_new_swapped();
@@ -235,6 +261,7 @@ int main() {
     test_to_string();
     test_to_string_extreme_timestamp();
     test_null_safety();
+    test_wrong_class_receiver_traps();
 
     return 0;
 }

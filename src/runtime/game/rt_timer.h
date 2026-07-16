@@ -124,6 +124,11 @@ int64_t rt_timer_duration(rt_timer timer);
 ///   0 if it is a one-shot timer.
 int8_t rt_timer_is_repeating(rt_timer timer);
 
+/// @brief Report whether the timer is in millisecond mode (1) or frame mode (0).
+/// @param timer The timer to query.
+/// @return 1 when started with rt_timer_start_ms/_repeating_ms, 0 for frame mode.
+int8_t rt_timer_is_ms(rt_timer timer);
+
 /// @brief Changes the timer's duration without restarting or stopping it.
 ///
 /// The new duration takes effect on the current or next countdown cycle.

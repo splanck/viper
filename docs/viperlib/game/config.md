@@ -20,13 +20,14 @@ instance-style calls.
 
 | Member | Return | Current behavior |
 |---|---|---|
-| `GetInt(path, default)` | `Integer` | Uses `default` only when the path is absent; numbers, booleans, and numeric strings are coerced. A present conversion failure returns `0` (VDOC-245). |
-| `GetStr(path, default)` | Registry type `Any` | Converts strings, numbers, and booleans to text. Missing paths return the supplied value; unsupported present values return an empty string. The erroneous `Any` signature prevents normal typed String use in Zia (VDOC-237). |
-| `GetBool(path, default)` | `Boolean` | Uses integer coercion and returns whether it is nonzero. A present conversion failure returns false rather than `default`. |
+| `GetInt(path, default)` | `Integer` | Coerces numbers, booleans, and numeric strings. Returns `default` when the path is absent **or** the present value is not int-convertible (object, array, null, or non-numeric string) rather than a coerced `0` (VDOC-245). |
+| `GetStr(path, default)` | `String` | Converts strings, numbers, and booleans to text. Returns the supplied `default` when the path is absent or the value is not string-convertible (object/array/null), rather than an empty string (VDOC-245). The registry types the return as `str`, so the result assigns to a `String` local and passes to `String` parameters directly (VDOC-237). |
+| `GetBool(path, default)` | `Boolean` | Uses integer coercion and returns whether it is nonzero. Returns `default` when the path is absent or the value is not int-convertible, rather than `false` (VDOC-245). |
 | `Has(path)` | `Boolean` | True when the path resolves to a non-null runtime value. |
 
-Successful queries currently leak a retained JSON value (VDOC-236); avoid treating repeated lookup
-as allocation-free until that runtime defect is repaired.
+Queries are allocation-free apart from the caller-owned string that `GetStr` returns: existence
+checks route through the non-retaining `rt_jsonpath_has`, so repeated lookups no longer retain a
+reference into the parsed JSON tree (VDOC-236).
 
 ## Example
 

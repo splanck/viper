@@ -428,9 +428,19 @@ Layer makeLayer(SceneState &s, const std::string &name) {
 }
 
 void *handleFromState(SceneState state) {
+    // Allocate the C++ state first: if this throws (e.g. bad_alloc) no GC handle
+    // has been created yet, so the exception barrier cannot strand an unfinalized
+    // runtime object (VDOC-256).
+    auto *newState = new SceneState(std::move(state));
     auto *h =
         static_cast<SceneHandle *>(rt_obj_new_i64(RT_GAME_SCENE_CLASS_ID, sizeof(SceneHandle)));
-    h->state = new SceneState(std::move(state));
+    if (!h) {
+        // The runtime allocation trap hook returned null instead of aborting; do not
+        // dereference it, and release the state we already built.
+        delete newState;
+        return nullptr;
+    }
+    h->state = newState;
     rt_obj_set_finalizer(h, sceneFinalizer);
     return h;
 }
@@ -1599,26 +1609,44 @@ void *rt_game_scene_load_json(rt_string text) {
     SCENE_CATCH(nullptr)
 }
 
+/// @brief Return the first error-severity diagnostic message, or empty.
+/// @details The `Err` message must describe the actual fatal problem. `lastError`
+///          holds the newest diagnostic of *any* severity, so a non-fatal warning
+///          emitted after a schema error would otherwise be chosen; selecting the
+///          first error record surfaces the root cause instead (VDOC-255).
+static std::string firstErrorMessage(const SceneState &s) {
+    for (const auto &diag : s.diagnostics) {
+        if (diag.severity == "error")
+            return diag.message;
+    }
+    return {};
+}
+
 /// @brief Convert a loaded SceneDocument into Result.Ok or Result.ErrStr.
 /// @details SceneDocument legacy load APIs return diagnostic documents on
 ///          malformed user input. Result APIs treat retained error diagnostics
 ///          as `Err(message)` while preserving warning-only documents as Ok.
 /// @param scene SceneDocument handle returned by a load API.
-/// @param fallback Fallback error message when the document has no LastError text.
+/// @param fallback Fallback error message when the document has no error diagnostic.
 /// @return Owned `Viper.Result` carrying a SceneDocument or an error string.
 static void *scene_load_to_result(void *scene, const char *fallback) {
     if (!scene)
         return rt_result_err_str(rt_const_cstr(fallback ? fallback : "SceneDocument load failed"));
 
     if (rt_game_scene_has_errors(scene)) {
-        rt_string err = rt_game_scene_last_error(scene);
+        // Choose the first error-severity diagnostic rather than lastError (the
+        // newest of any severity), so a trailing warning cannot mask the real
+        // fatal error (VDOC-255).
+        std::string errMsg = firstErrorMessage(*requireScene(scene)->state);
         void *result = NULL;
-        if (err && rt_str_len(err) > 0)
+        if (!errMsg.empty()) {
+            rt_string err = makeString(errMsg);
             result = rt_result_err_str(err);
-        else
+            rt_str_release_maybe(err);
+        } else {
             result =
                 rt_result_err_str(rt_const_cstr(fallback ? fallback : "SceneDocument load failed"));
-        rt_str_release_maybe(err);
+        }
         releaseObject(scene);
         return result;
     }
@@ -1765,9 +1793,12 @@ int8_t rt_game_scene_has_errors(void *scene) {
 
 void rt_game_scene_clear_diagnostics(void *scene) {
     SceneState &s = *requireScene(scene)->state;
+    // Clear only the diagnostic queue and last-error text. The `valid` flag records
+    // the document's structural validity (set during load); acknowledging messages
+    // must not flip an invalid/normalized scene to valid, which would make
+    // HasErrors() falsely report success without repairing the data (VDOC-254).
     s.diagnostics.clear();
     s.lastError.clear();
-    s.valid = true;
 }
 
 int64_t rt_game_scene_get_width(void *scene) {

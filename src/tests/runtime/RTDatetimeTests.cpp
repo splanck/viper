@@ -141,6 +141,17 @@ static void test_now(void) {
     int64_t ms = rt_datetime_now_ms();
     check("now_ms > 0", ms > 0);
     check("now_ms >= now * 1000", ms >= ts * 1000LL);
+
+    // VDOC-230: Now() must route through the checked wall-clock read (never the
+    // ambiguous raw time(NULL) -1). On a working clock the helper succeeds and
+    // agrees with Now(); crucially, a genuine failure would be reported as 0 here
+    // and trapped by Now() rather than surfaced as the valid pre-epoch -1.
+    int64_t checked = 0;
+    check("wall-clock read succeeds", rt_datetime_wall_seconds(&checked) == 1);
+    check("checked read is a current timestamp", checked > 1577836800LL);
+    check("Now agrees with the checked read within a second",
+          ts >= checked - 1 && ts <= checked + 1);
+    check("Now is never the ambiguous -1 sentinel", ts != -1);
 }
 
 static void test_parsing(void) {

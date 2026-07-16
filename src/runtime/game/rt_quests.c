@@ -21,9 +21,12 @@
 
 #include "rt_quests.h"
 
+#include "rt_platform.h"
 #include "rt_savedata.h"
 #include "rt_trap.h"
 
+#include <errno.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -119,20 +122,43 @@ static rt_quests_impl *quests_checked(void *obj, const char *api) {
 }
 
 /// @brief Validate a registration id: 1..64 chars of [A-Za-z0-9._-].
-static int quests_valid_id(const char *id) {
-    if (!id || !*id)
+/// @details Validates the runtime string's explicit byte length and rejects any
+///          embedded NUL. `strlen` stops at the first NUL, so a NUL-bearing id
+///          would otherwise pass the content/length checks on only its prefix and
+///          then alias other ids under `strcmp`/`%s` serialization (VDOC-247).
+static int quests_valid_id(rt_string id) {
+    if (!id)
         return 0;
-    size_t len = strlen(id);
-    if (len > QUESTS_MAX_ID)
+    const char *cstr = rt_string_cstr(id);
+    if (!cstr)
         return 0;
-    for (const char *p = id; *p; ++p) {
-        char c = *p;
+    int64_t len = rt_str_len(id);
+    if (len <= 0 || len > QUESTS_MAX_ID || (size_t)len != strlen(cstr))
+        return 0;
+    for (int64_t i = 0; i < len; ++i) {
+        char c = cstr[i];
         int ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
                  c == '-' || c == '_' || c == '.';
         if (!ok)
             return 0;
     }
     return 1;
+}
+
+/// @brief Return an id's C string only when it has no embedded NUL.
+/// @details Used for lookups so a NUL-bearing runtime string cannot address a
+///          registered id by its pre-NUL prefix; returns NULL (treated as
+///          not-found) for a NUL-bearing or empty id (VDOC-247).
+static const char *quests_lookup_cstr(rt_string id) {
+    if (!id)
+        return NULL;
+    const char *cstr = rt_string_cstr(id);
+    if (!cstr)
+        return NULL;
+    int64_t len = rt_str_len(id);
+    if (len < 0 || (size_t)len != strlen(cstr))
+        return NULL;
+    return cstr;
 }
 
 static quest_entry *quests_find(rt_quests_impl *tracker, const char *quest_id) {
@@ -191,10 +217,10 @@ void *rt_quests_new(void) {
 /// @brief Fluent: register (or re-register) a quest. Idempotent on id.
 void *rt_quests_add_quest(void *obj, rt_string quest_id, rt_string title) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.AddQuest: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     if (!tracker)
         return obj;
-    if (!quests_valid_id(cid)) {
+    if (!quests_valid_id(quest_id)) {
         rt_trap("Game.Quests.AddQuest: id must be 1..64 chars of [A-Za-z0-9._-]");
         return obj;
     }
@@ -217,8 +243,8 @@ void *rt_quests_add_quest(void *obj, rt_string quest_id, rt_string title) {
 /// @brief Fluent: register (or re-register) a stage on a quest.
 void *rt_quests_add_stage(void *obj, rt_string quest_id, rt_string stage_id, rt_string text) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.AddStage: invalid tracker");
-    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
-    const char *cs = stage_id ? rt_string_cstr(stage_id) : NULL;
+    const char *cq = quests_lookup_cstr(quest_id);
+    const char *cs = quests_lookup_cstr(stage_id);
     if (!tracker)
         return obj;
     quest_entry *quest = cq ? quests_find(tracker, cq) : NULL;
@@ -226,7 +252,7 @@ void *rt_quests_add_stage(void *obj, rt_string quest_id, rt_string stage_id, rt_
         rt_trap("Game.Quests.AddStage: unknown quest id (AddQuest first)");
         return obj;
     }
-    if (!quests_valid_id(cs)) {
+    if (!quests_valid_id(stage_id)) {
         rt_trap("Game.Quests.AddStage: id must be 1..64 chars of [A-Za-z0-9._-]");
         return obj;
     }
@@ -245,6 +271,8 @@ void *rt_quests_add_stage(void *obj, rt_string quest_id, rt_string stage_id, rt_
     return obj;
 }
 
+static void quests_check_advance(rt_quests_impl *tracker, quest_entry *quest);
+
 static void *quests_add_objective(void *obj,
                                   rt_string quest_id,
                                   rt_string stage_id,
@@ -256,9 +284,9 @@ static void *quests_add_objective(void *obj,
                                   const char *api_id,
                                   const char *api_budget) {
     rt_quests_impl *tracker = quests_checked(obj, api_unknown);
-    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
-    const char *cs = stage_id ? rt_string_cstr(stage_id) : NULL;
-    const char *co = obj_id ? rt_string_cstr(obj_id) : NULL;
+    const char *cq = quests_lookup_cstr(quest_id);
+    const char *cs = quests_lookup_cstr(stage_id);
+    const char *co = quests_lookup_cstr(obj_id);
     if (!tracker)
         return obj;
     quest_entry *quest = cq ? quests_find(tracker, cq) : NULL;
@@ -267,7 +295,7 @@ static void *quests_add_objective(void *obj,
         rt_trap(api_unknown);
         return obj;
     }
-    if (!quests_valid_id(co)) {
+    if (!quests_valid_id(obj_id)) {
         rt_trap(api_id);
         return obj;
     }
@@ -285,6 +313,14 @@ static void *quests_add_objective(void *obj,
     objective->text = text ? rt_string_ref(text) : NULL;
     objective->is_counter = is_counter;
     objective->target = is_counter ? (target > 0 ? target : 1) : 1;
+    // Re-registration migration: retained progress may now meet or exceed a lower
+    // target, so clamp it and re-evaluate advancement. The mutation path would
+    // otherwise skip this and could strand an active quest on a stage whose every
+    // objective is already complete (VDOC-253). check_advance is a no-op while the
+    // quest is not active, so ordinary hidden-quest setup is unaffected.
+    if (objective->progress > objective->target)
+        objective->progress = objective->target;
+    quests_check_advance(tracker, quest);
     return obj;
 }
 
@@ -350,7 +386,7 @@ static void quests_check_advance(rt_quests_impl *tracker, quest_entry *quest) {
 /// @brief Activate a hidden quest. Returns false for unknown/non-hidden.
 int8_t rt_quests_activate(void *obj, rt_string quest_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Activate: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
     if (!quest || quest->state != RT_QUEST_STATE_HIDDEN)
         return 0;
@@ -365,7 +401,7 @@ int8_t rt_quests_activate(void *obj, rt_string quest_id) {
 /// @brief Fail an active quest. Returns false for unknown/non-active.
 int8_t rt_quests_fail(void *obj, rt_string quest_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Fail: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
     if (!quest || quest->state != RT_QUEST_STATE_ACTIVE)
         return 0;
@@ -383,11 +419,13 @@ static quest_objective *quests_active_objective(quest_entry *quest, const char *
 /// @brief Complete a flag objective in the active stage. Safe no-op false.
 int8_t rt_quests_set_flag(void *obj, rt_string quest_id, rt_string obj_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.SetFlag: invalid tracker");
-    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
-    const char *co = obj_id ? rt_string_cstr(obj_id) : NULL;
+    const char *cq = quests_lookup_cstr(quest_id);
+    const char *co = quests_lookup_cstr(obj_id);
     quest_entry *quest = tracker && cq ? quests_find(tracker, cq) : NULL;
     quest_objective *objective = quest && co ? quests_active_objective(quest, co) : NULL;
-    if (!objective || quests_objective_done(objective))
+    // SetFlag only applies to flag objectives; applying it to a counter would
+    // silently jump it to its target. Reject the wrong kind as a no-op (VDOC-248).
+    if (!objective || objective->is_counter || quests_objective_done(objective))
         return 0;
     objective->progress = objective->target;
     quests_emit(tracker, quest, RT_QUEST_EVENT_OBJECTIVE_COMPLETE);
@@ -398,15 +436,21 @@ int8_t rt_quests_set_flag(void *obj, rt_string quest_id, rt_string obj_id) {
 /// @brief Add progress to a counter objective in the active stage.
 int8_t rt_quests_progress(void *obj, rt_string quest_id, rt_string obj_id, int64_t amount) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Progress: invalid tracker");
-    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
-    const char *co = obj_id ? rt_string_cstr(obj_id) : NULL;
+    const char *cq = quests_lookup_cstr(quest_id);
+    const char *co = quests_lookup_cstr(obj_id);
     quest_entry *quest = tracker && cq ? quests_find(tracker, cq) : NULL;
     quest_objective *objective = quest && co ? quests_active_objective(quest, co) : NULL;
-    if (!objective || amount <= 0 || quests_objective_done(objective))
+    // Progress only applies to counter objectives; incrementing a flag would let
+    // it complete outside its intended SetFlag path. Reject the wrong kind (VDOC-248).
+    if (!objective || !objective->is_counter || amount <= 0 || quests_objective_done(objective))
         return 0;
-    objective->progress += amount;
-    if (objective->progress > objective->target)
+    // Saturate without evaluating an overflowing sum: progress is in [0, target]
+    // and not yet done, so `target - progress` is a non-negative headroom. Only add
+    // when it fits; otherwise clamp straight to the target (VDOC-249).
+    if (amount >= objective->target - objective->progress)
         objective->progress = objective->target;
+    else
+        objective->progress += amount;
     quests_emit(tracker,
                 quest,
                 quests_objective_done(objective) ? RT_QUEST_EVENT_OBJECTIVE_COMPLETE
@@ -445,7 +489,7 @@ rt_string rt_quests_active_quest(void *obj, int64_t index) {
 /// @brief Quest title ("" when unknown).
 rt_string rt_quests_quest_title(void *obj, rt_string quest_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.QuestTitle: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
     return quest && quest->title ? rt_string_ref(quest->title) : rt_str_empty();
 }
@@ -453,7 +497,7 @@ rt_string rt_quests_quest_title(void *obj, rt_string quest_id) {
 /// @brief Quest state constant (Hidden when unknown — safe HUD polling).
 int64_t rt_quests_quest_state(void *obj, rt_string quest_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.QuestState: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
     return quest ? quest->state : RT_QUEST_STATE_HIDDEN;
 }
@@ -461,7 +505,7 @@ int64_t rt_quests_quest_state(void *obj, rt_string quest_id) {
 /// @brief Text of the quest's current stage ("" when not active).
 rt_string rt_quests_current_stage_text(void *obj, rt_string quest_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.CurrentStageText: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
     if (!quest || quest->state != RT_QUEST_STATE_ACTIVE ||
         quest->current_stage >= quest->stage_count)
@@ -480,7 +524,7 @@ static quest_stage *quests_current_stage(quest_entry *quest) {
 /// @brief Objective count of the quest's current stage (0 when not active).
 int64_t rt_quests_objective_count(void *obj, rt_string quest_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveCount: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
     return stage ? stage->objective_count : 0;
 }
@@ -488,7 +532,7 @@ int64_t rt_quests_objective_count(void *obj, rt_string quest_id) {
 /// @brief Objective text by index in the current stage ("" out of range).
 rt_string rt_quests_objective_text(void *obj, rt_string quest_id, int64_t index) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveText: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
     if (!stage || index < 0 || index >= stage->objective_count)
         return rt_str_empty();
@@ -499,7 +543,7 @@ rt_string rt_quests_objective_text(void *obj, rt_string quest_id, int64_t index)
 /// @brief Objective progress by index in the current stage.
 int64_t rt_quests_objective_progress(void *obj, rt_string quest_id, int64_t index) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveProgress: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
     if (!stage || index < 0 || index >= stage->objective_count)
         return 0;
@@ -509,7 +553,7 @@ int64_t rt_quests_objective_progress(void *obj, rt_string quest_id, int64_t inde
 /// @brief Objective target by index in the current stage.
 int64_t rt_quests_objective_target(void *obj, rt_string quest_id, int64_t index) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveTarget: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
     if (!stage || index < 0 || index >= stage->objective_count)
         return 0;
@@ -519,7 +563,7 @@ int64_t rt_quests_objective_target(void *obj, rt_string quest_id, int64_t index)
 /// @brief Objective completion by index in the current stage.
 int8_t rt_quests_objective_complete(void *obj, rt_string quest_id, int64_t index) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveComplete: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
     if (!stage || index < 0 || index >= stage->objective_count)
         return 0;
@@ -558,7 +602,7 @@ void rt_quests_clear_events(void *obj) {
 /// @brief One-shot: true once after the quest completes, then resets.
 int8_t rt_quests_just_completed(void *obj, rt_string quest_id) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.JustCompleted: invalid tracker");
-    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cid = quests_lookup_cstr(quest_id);
     quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
     if (!quest || !quest->just_completed)
         return 0;
@@ -574,27 +618,72 @@ int8_t rt_quests_just_completed(void *obj, rt_string quest_id) {
  *   q=<id>;s=<state>;g=<stage>{;o=<objId>:<progress>}*  records joined by '|'
  *=========================================================================*/
 
+/// @brief Append printf-formatted text to a growable heap buffer.
+/// @details Grows @p buf as needed so a serialized record is never bounded by a
+///          fixed stack chunk — a legal maximum quest (16 stages x 8 objectives x
+///          64-byte ids) far exceeds any single fixed buffer (VDOC-250). Keeps the
+///          buffer NUL-terminated. @return 1 on success, 0 on format/alloc failure.
+static int quests_save_appendf(char **buf, size_t *used, size_t *cap, const char *fmt, ...)
+    RT_PRINTF_FORMAT(4, 5);
+static int quests_save_appendf(char **buf, size_t *used, size_t *cap, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    va_list ap_measure;
+    va_copy(ap_measure, ap);
+    int need = vsnprintf(NULL, 0, fmt, ap_measure);
+    va_end(ap_measure);
+    if (need < 0) {
+        va_end(ap);
+        return 0;
+    }
+    if (*used + (size_t)need + 1 > *cap) {
+        size_t newcap = *cap ? *cap : 256;
+        while (*used + (size_t)need + 1 > newcap) {
+            if (newcap > SIZE_MAX / 2) {
+                va_end(ap);
+                return 0;
+            }
+            newcap *= 2;
+        }
+        char *grown = (char *)realloc(*buf, newcap);
+        if (!grown) {
+            va_end(ap);
+            return 0;
+        }
+        *buf = grown;
+        *cap = newcap;
+    }
+    int wrote = vsnprintf(*buf + *used, *cap - *used, fmt, ap);
+    va_end(ap);
+    if (wrote < 0)
+        return 0;
+    *used += (size_t)wrote;
+    return 1;
+}
+
 /// @brief Serialize state (not registration data) into @p savedata.
 int8_t rt_quests_save(void *obj, void *savedata) {
     rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Save: invalid tracker");
     if (!tracker || !savedata)
         return 0;
     size_t capacity = 256;
+    size_t used = 0;
     char *out = (char *)malloc(capacity);
     if (!out)
         return 0;
-    size_t used = 0;
+    out[0] = '\0';
     for (int32_t q = 0; q < tracker->quest_count; ++q) {
         quest_entry *quest = &tracker->quests[q];
-        char chunk[512];
-        int written = snprintf(chunk,
-                               sizeof(chunk),
-                               "%sq=%s;s=%lld;g=%d",
-                               q > 0 ? "|" : "",
-                               rt_string_cstr(quest->id),
-                               (long long)quest->state,
-                               quest->current_stage);
-        if (written < 0 || (size_t)written >= sizeof(chunk)) {
+        // Append each field directly to the growable buffer; no fixed per-quest
+        // chunk, so a full-budget quest with max-length ids always serializes.
+        if (!quests_save_appendf(&out,
+                                 &used,
+                                 &capacity,
+                                 "%sq=%s;s=%lld;g=%d",
+                                 q > 0 ? "|" : "",
+                                 rt_string_cstr(quest->id),
+                                 (long long)quest->state,
+                                 quest->current_stage)) {
             free(out);
             return 0;
         }
@@ -603,101 +692,168 @@ int8_t rt_quests_save(void *obj, void *savedata) {
                 quest_objective *objective = &quest->stages[s].objectives[o];
                 if (objective->progress <= 0)
                     continue;
-                int more = snprintf(chunk + written,
-                                    sizeof(chunk) - (size_t)written,
-                                    ";o=%s.%s:%lld",
-                                    rt_string_cstr(quest->stages[s].id),
-                                    rt_string_cstr(objective->id),
-                                    (long long)objective->progress);
-                if (more < 0 || (size_t)(written + more) >= sizeof(chunk)) {
+                if (!quests_save_appendf(&out,
+                                         &used,
+                                         &capacity,
+                                         ";o=%s.%s:%lld",
+                                         rt_string_cstr(quest->stages[s].id),
+                                         rt_string_cstr(objective->id),
+                                         (long long)objective->progress)) {
                     free(out);
                     return 0;
                 }
-                written += more;
             }
         }
-        if (used + (size_t)written + 1 > capacity) {
-            while (used + (size_t)written + 1 > capacity)
-                capacity *= 2;
-            char *grown = (char *)realloc(out, capacity);
-            if (!grown) {
-                free(out);
-                return 0;
-            }
-            out = grown;
-        }
-        memcpy(out + used, chunk, (size_t)written);
-        used += (size_t)written;
     }
     out[used] = '\0';
-    rt_savedata_set_string(savedata, rt_const_cstr(QUESTS_SAVE_KEY), rt_const_cstr(out));
+    // rt_const_cstr allocates a fresh owned string, and SetString retains its own
+    // reference, so release both temporaries after the call to avoid leaking one
+    // key and one value per save (VDOC-251).
+    rt_string key = rt_const_cstr(QUESTS_SAVE_KEY);
+    rt_string value = rt_const_cstr(out);
+    rt_savedata_set_string(savedata, key, value);
+    rt_string_unref(key);
+    rt_string_unref(value);
     free(out);
     return 1;
 }
 
-/// @brief Apply saved state onto already-registered quests. Unknown saved
-///   ids are tolerated (data patches stay safe); returns false when the
-///   tracker has no registrations or the key is absent.
-int8_t rt_quests_load(void *obj, void *savedata) {
-    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Load: invalid tracker");
-    if (!tracker || !savedata || tracker->quest_count == 0)
+/// @brief Strict signed 64-bit parse of a whole token (VDOC-252).
+/// @details The entire non-empty token must be a valid base-10 integer with no
+///          trailing characters and no overflow — unlike `atoll`, which silently
+///          returns 0 or a truncated value for malformed input.
+/// @return 1 with @p out set on success, 0 on empty/garbage/overflow input.
+static int quests_parse_i64(const char *s, int64_t *out) {
+    if (!s || !*s)
         return 0;
-    rt_string blob =
-        rt_savedata_get_string(savedata, rt_const_cstr(QUESTS_SAVE_KEY), rt_str_empty());
-    const char *text = blob ? rt_string_cstr(blob) : NULL;
-    if (!text || !*text)
+    errno = 0;
+    char *end = NULL;
+    long long value = strtoll(s, &end, 10);
+    if (errno != 0 || end == s || *end != '\0')
         return 0;
-    char *copy = (char *)malloc(strlen(text) + 1);
-    if (!copy)
-        return 0;
-    strcpy(copy, text);
-    char *cursor = copy;
+    *out = (int64_t)value;
+    return 1;
+}
+
+/// @brief One structural pass over a mutable blob copy (VDOC-252).
+/// @details Parses `q=<id>;s=<int>;g=<int>{;o=<sid>.<oid>:<int>}*` records joined by
+///          `|`. Returns 1 only when every record is well-formed: it must lead with
+///          `q=`, every field must use a recognized prefix, and every integer must
+///          parse strictly. Unknown quest/stage/objective ids remain tolerated (they
+///          are skipped, keeping forward-compatible data patches safe). When @p apply
+///          is nonzero the tracker is mutated; the caller validates first (apply=0)
+///          and commits only on a fully well-formed blob, so a corrupt save never
+///          leaves a hybrid of decoded and stale state.
+/// @return 1 if the blob is well-formed, 0 if malformed.
+static int quests_load_process(rt_quests_impl *tracker, char *text, int apply) {
+    char *cursor = text;
     while (cursor && *cursor) {
         char *next = strchr(cursor, '|');
         if (next)
             *next++ = '\0';
-        /* Parse one record: q=<id>;s=<state>;g=<stage>{;o=<sid>.<oid>:<n>}* */
         quest_entry *quest = NULL;
+        int first_field = 1;
         char *field = cursor;
         while (field && *field) {
             char *field_next = strchr(field, ';');
             if (field_next)
                 *field_next++ = '\0';
             if (strncmp(field, "q=", 2) == 0) {
+                if (!first_field)
+                    return 0; // a second q= mid-record is malformed
                 quest = quests_find(tracker, field + 2);
-            } else if (quest && strncmp(field, "s=", 2) == 0) {
-                long long state = atoll(field + 2);
-                if (state >= RT_QUEST_STATE_HIDDEN && state <= RT_QUEST_STATE_FAILED)
-                    quest->state = (int64_t)state;
-            } else if (quest && strncmp(field, "g=", 2) == 0) {
-                long long stage = atoll(field + 2);
-                if (stage >= 0 && stage <= quest->stage_count)
+            } else if (first_field) {
+                return 0; // records must lead with q=
+            } else if (strncmp(field, "s=", 2) == 0) {
+                int64_t state;
+                if (!quests_parse_i64(field + 2, &state))
+                    return 0;
+                if (apply && quest && state >= RT_QUEST_STATE_HIDDEN &&
+                    state <= RT_QUEST_STATE_FAILED)
+                    quest->state = state;
+            } else if (strncmp(field, "g=", 2) == 0) {
+                int64_t stage;
+                if (!quests_parse_i64(field + 2, &stage))
+                    return 0;
+                if (apply && quest && stage >= 0 && stage <= quest->stage_count)
                     quest->current_stage = (int32_t)stage;
-            } else if (quest && strncmp(field, "o=", 2) == 0) {
+            } else if (strncmp(field, "o=", 2) == 0) {
                 char *sep = strrchr(field + 2, ':');
                 char *dot = strchr(field + 2, '.');
-                if (sep && dot && dot < sep) {
-                    *sep = '\0';
-                    *dot = '\0';
+                if (!sep || !dot || dot >= sep)
+                    return 0;
+                *sep = '\0';
+                *dot = '\0';
+                int64_t progress;
+                if (!quests_parse_i64(sep + 1, &progress))
+                    return 0;
+                if (apply && quest) {
                     quest_stage *stage = quests_find_stage(quest, field + 2);
                     quest_objective *objective =
                         stage ? quests_find_objective(stage, dot + 1) : NULL;
                     if (objective) {
-                        long long progress = atoll(sep + 1);
                         if (progress < 0)
                             progress = 0;
                         if (progress > objective->target)
                             progress = objective->target;
-                        objective->progress = (int64_t)progress;
+                        objective->progress = progress;
                     }
                 }
+            } else {
+                return 0; // unrecognized field prefix
             }
+            first_field = 0;
             field = field_next;
         }
+        if (first_field)
+            return 0; // empty record between separators
         cursor = next;
     }
-    free(copy);
     return 1;
+}
+
+/// @brief Apply saved state onto already-registered quests. Unknown saved
+///   ids are tolerated (data patches stay safe); returns false when the
+///   tracker has no registrations, the key is absent, or the blob is malformed.
+int8_t rt_quests_load(void *obj, void *savedata) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Load: invalid tracker");
+    if (!tracker || !savedata || tracker->quest_count == 0)
+        return 0;
+    // rt_const_cstr allocates a fresh owned key, and GetString returns a freshly
+    // retained handle; release both on every exit to avoid a per-load leak
+    // (VDOC-251). rt_str_empty() is the immortal canonical empty string.
+    rt_string key = rt_const_cstr(QUESTS_SAVE_KEY);
+    rt_string blob = rt_savedata_get_string(savedata, key, rt_str_empty());
+    rt_string_unref(key);
+    const char *text = blob ? rt_string_cstr(blob) : NULL;
+    if (!text || !*text) {
+        if (blob)
+            rt_string_unref(blob);
+        return 0;
+    }
+    // Two-phase load: validate a throwaway copy first and reject a malformed blob
+    // without touching the tracker, then commit on a second clean copy. The
+    // tokenizer is destructive, so each phase needs its own copy (VDOC-252).
+    size_t len = strlen(text);
+    char *validate_copy = (char *)malloc(len + 1);
+    char *apply_copy = (char *)malloc(len + 1);
+    if (!validate_copy || !apply_copy) {
+        free(validate_copy);
+        free(apply_copy);
+        rt_string_unref(blob);
+        return 0;
+    }
+    memcpy(validate_copy, text, len + 1);
+    memcpy(apply_copy, text, len + 1);
+    int8_t result = 0;
+    if (quests_load_process(tracker, validate_copy, 0)) {
+        quests_load_process(tracker, apply_copy, 1);
+        result = 1;
+    }
+    free(validate_copy);
+    free(apply_copy);
+    rt_string_unref(blob);
+    return result;
 }
 
 /*==========================================================================

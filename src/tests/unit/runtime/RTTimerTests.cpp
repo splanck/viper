@@ -329,6 +329,33 @@ static void test_repeating_ms_preserves_large_overshoot() {
     rt_timer_destroy(timer);
 }
 
+// VDOC-264: the timer enforces its mode. Update() is a no-op on a millisecond
+// timer and UpdateMs() is a no-op on a frame timer, so a mismatched call cannot
+// silently reinterpret units. IsMs exposes the active contract.
+static void test_mode_is_enforced() {
+    printf("  test_mode_is_enforced...\n");
+
+    // Frame timer: UpdateMs is a no-op, Update advances by one frame.
+    rt_timer frame = rt_timer_new();
+    rt_timer_start(frame, 3);
+    assert(rt_timer_is_ms(frame) == 0);
+    assert(rt_timer_update_ms(frame, 1000) == 0); // ignored: wrong mode
+    assert(rt_timer_elapsed(frame) == 0);         // did not advance
+    assert(rt_timer_update(frame) == 0);          // correct mode: elapsed = 1
+    assert(rt_timer_elapsed(frame) == 1);
+    rt_timer_destroy(frame);
+
+    // Millisecond timer: Update is a no-op, UpdateMs advances by dt.
+    rt_timer ms = rt_timer_new();
+    rt_timer_start_ms(ms, 500);
+    assert(rt_timer_is_ms(ms) == 1);
+    assert(rt_timer_update(ms) == 0);          // ignored: wrong mode
+    assert(rt_timer_elapsed_ms(ms) == 0);      // did not advance
+    assert(rt_timer_update_ms(ms, 200) == 0);  // correct mode: elapsed = 200
+    assert(rt_timer_elapsed_ms(ms) == 200);
+    rt_timer_destroy(ms);
+}
+
 int main() {
     printf("RTTimerTests:\n");
 
@@ -345,6 +372,7 @@ int main() {
     test_animation_use_case();
     test_ghost_mode_timer_use_case();
     test_repeating_ms_preserves_large_overshoot();
+    test_mode_is_enforced();
 
     printf("All Timer tests passed!\n");
     return 0;

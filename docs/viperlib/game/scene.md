@@ -56,7 +56,7 @@ func start() {
 | `HasErrors()` | True when retained diagnostics include an error. |
 | `Diagnostics()` | Compatibility `Seq<str>` of diagnostic messages. |
 | `DiagnosticRecords()` | `Seq<Map>` with `code`, `severity`, `message`, `path`, `line`, `column`, and `source`. |
-| `ClearDiagnostics()` | Clear retained diagnostics. It also currently marks an invalid document valid. |
+| `ClearDiagnostics()` | Clear retained diagnostic messages. Does not change the document's validity, so an invalid document stays invalid (VDOC-254). |
 
 Prefer `LoadJsonResult` and `LoadResult` for production code that wants loading
 to be an explicit `Ok`/`Err` value. Their `Err` contains one diagnostic message,
@@ -65,13 +65,13 @@ not the invalid document or its full diagnostic records. The compatibility
 instead of trapping for bad JSON, missing files, unknown versions, invalid
 dimensions, v1 tile count mismatches, and resource-limit violations.
 
-`ClearDiagnostics()` currently resets the document's internal validity flag as
-well as clearing messages. Calling it on a failed load therefore makes
-`HasErrors()` false even though normalized or incomplete data remains. Also, a
-Result load currently chooses the newest diagnostic message; if a warning was
-added after an error, that warning text can become the `Err` message. Both are
-known defects, so retain `DiagnosticRecords()` before clearing a compatibility
-load.
+`ClearDiagnostics()` clears only the retained messages and last-error text; it no
+longer touches the document's internal validity flag, so calling it on a failed
+load still reports `HasErrors()` true — acknowledging messages cannot mask
+normalized or incomplete data as a valid document (VDOC-254). A Result load selects
+the first error-severity diagnostic for its `Err` message, so a warning added after
+an error no longer replaces the reported error text (VDOC-255). Retain
+`DiagnosticRecords()` when you need the full message set from a compatibility load.
 
 Edit-time rejections, such as an over-long layer name or property key, are
 reported as warning diagnostics. They do not make `HasErrors()` true unless a

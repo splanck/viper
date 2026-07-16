@@ -36,9 +36,12 @@ func start() {
 }
 ```
 
-Quest, stage, and objective IDs are documented as 1–64 ASCII characters from
-`[A-Za-z0-9._-]`. Registration traps when an ID is invalid, when a stage is added before its quest,
-when an objective is added before its stage, or when a fixed budget is exceeded:
+Quest, stage, and objective IDs are 1–64 ASCII characters from `[A-Za-z0-9._-]`. Validation checks
+the runtime string's full byte length and rejects any embedded NUL, so a NUL-bearing ID cannot pass
+on only its pre-NUL prefix and then alias another ID under `strcmp`/serialization; lookups likewise
+treat a NUL-bearing key as not-found rather than matching by prefix (VDOC-247). Registration traps
+when an ID is invalid, when a stage is added before its quest, when an objective is added before its
+stage, or when a fixed budget is exceeded:
 
 | Budget | Limit |
 |---|---:|
@@ -47,10 +50,12 @@ when an objective is added before its stage, or when a fixed budget is exceeded:
 | Objectives per stage | 8 |
 
 `AddQuest`, `AddStage`, `AddFlag`, and `AddCounter` return the tracker for fluent calls. Registering
-an existing ID updates its title/text and, for objectives, its kind and target without resetting
-state or progress. A counter target at or below zero is normalized to `1`. Because progress is
-retained, changing an objective's kind or target after play has begun can leave state inconsistent;
-use re-registration for text-only refreshes unless game code also resets or migrates state.
+an existing ID updates its title/text and, for objectives, its kind and target while retaining
+progress. A counter target at or below zero is normalized to `1`. Re-registering an objective clamps
+retained progress to the (possibly lower) new target and re-runs stage/quest advancement, so a hot
+re-registration whose new target is already met completes the stage and quest rather than stranding
+an active quest on an all-complete stage (VDOC-253). Advancement is only recomputed for an active
+quest, so registering objectives during hidden-quest setup behaves as before.
 
 ## Lifecycle
 
@@ -63,9 +68,11 @@ They return `false` for unknown IDs, inactive quests, completed objectives, and 
 amounts. After an objective completes, the tracker advances across completed stages and marks the
 quest complete after its final stage.
 
-The current implementation does not enforce objective kind: `SetFlag` can complete a counter and
-`Progress` can advance a flag. Treat that as a known defect and call the matching method. Also avoid
-progress increments that could overflow a signed 64-bit integer before the target clamp.
+Each method enforces the objective kind: `SetFlag` returns `false` (a no-op) on a counter objective
+and `Progress` returns `false` on a flag objective, so a mis-wired call cannot silently change quest
+state (VDOC-248). A large `Progress` increment saturates to the objective's target rather than
+overflowing signed 64-bit arithmetic — the addition is only performed when it fits the remaining
+headroom, otherwise the progress clamps straight to the target (VDOC-249).
 
 Quest states are the integer constants `Viper.Game.QuestState.Hidden`, `Active`, `Complete`, and
 `Failed`. `QuestState(id)` reports `Hidden` for an unknown quest.
@@ -122,10 +129,16 @@ registrations or the key is absent/empty. Saved quest, stage, and objective IDs 
 current registration are ignored.
 
 Use one tracker per SaveData file: the key is fixed and two trackers overwrite one another. The
-current serializer also has a 512-byte per-quest record limit even though a legal maximum-size
-quest can exceed it. The loader is not transactional and weakly parses numeric fields, so validate
-or version externally supplied save data; malformed nonempty records can return `true` after
-partially mutating registered quests. Save/load also currently leak temporary runtime strings.
+serializer appends directly to a dynamically grown buffer, so any legal quest — including a
+full-budget one with maximum-length IDs and progress on every objective — serializes without a
+fixed per-quest limit (VDOC-250). The loader validates the entire blob before committing: it parses
+records strictly (each must lead with `q=`, every field must use a recognized prefix, and every
+integer is parsed with full-token/overflow checks), returns `false` for any malformed blob, and
+applies nothing until validation of the whole payload succeeds — so a corrupt or externally edited
+save cannot leave a hybrid of decoded and stale state. Unknown quest/stage/objective IDs are still
+tolerated so forward-compatible data patches stay safe (VDOC-252). Save and load balance their
+temporary runtime-string
+references, so repeated save/load cycles do not leak (VDOC-251).
 
 ## See Also
 

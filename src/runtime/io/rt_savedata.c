@@ -806,14 +806,29 @@ static char *compute_save_path(const char *game_name) {
 }
 
 /// @brief Create all parent directories of `file_path` if they don't exist yet.
-static void ensure_parent_dir(const char *file_path) {
+/// @details `rt_dir_make_all` traps on permission/path failures, but SaveData.Save
+///          promises a Boolean failure result. Catch the trap via the recovery hook
+///          and report it as failure so operational errors reach the advertised
+///          Boolean boundary rather than terminating the program (VDOC-246).
+/// @return 1 when the parent directory exists (or was created), 0 on failure.
+static int ensure_parent_dir(const char *file_path) {
     char *dir = savedata_parent_dir_dup(file_path);
     if (!dir)
-        return;
+        return 0;
     rt_string dir_str = rt_string_from_bytes(dir, strlen(dir));
-    rt_dir_make_all(dir_str);
+    volatile int ok = 1;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        ok = 0;
+    } else {
+        rt_dir_make_all(dir_str);
+        rt_trap_clear_recovery();
+    }
     rt_string_unref(dir_str);
     free(dir);
+    return ok;
 }
 
 /// @brief Insert or update an int entry at the head of the list.
@@ -1024,7 +1039,9 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
         char nonce[17];
         uint64_t random_value = 0;
         if (!savedata_random_u64(&random_value)) {
-            rt_trap("SaveData: failed to obtain secure randomness");
+            // Entropy failure is an operational failure, not a programming error:
+            // return the Boolean failure Save promises instead of trapping so
+            // callers branching on `if save.Save()` can recover (VDOC-246).
             return 0;
         }
         snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)random_value);
@@ -1227,8 +1244,10 @@ int8_t rt_savedata_save(void *obj) {
     if (!sd->file_path)
         return 0;
 
-    /* Ensure parent directory exists */
-    ensure_parent_dir(sd->file_path);
+    /* Ensure parent directory exists; a permission/path failure is reported as a
+       Boolean failure rather than trapping (VDOC-246). */
+    if (!ensure_parent_dir(sd->file_path))
+        return 0;
 
     /* Build JSON using string builder */
     rt_string_builder sb;

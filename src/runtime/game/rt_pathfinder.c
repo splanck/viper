@@ -277,10 +277,14 @@ void *rt_pathfinder_from_tilemap(void *tilemap) {
     if (!pf)
         return NULL;
 
-    // Read tile collision: collision type != 0 → non-walkable
+    // Read tiles from the tilemap's designated collision layer, not the base/visual
+    // layer, so a map that places collision geometry on a separate layer produces a
+    // navigation grid that matches its actual walls (VDOC-261). The collision layer
+    // defaults to 0 (the base layer), so single-layer maps are unaffected.
+    int64_t collisionLayer = rt_tilemap_get_collision_layer(tilemap);
     for (int32_t y = 0; y < h; y++) {
         for (int32_t x = 0; x < w; x++) {
-            int64_t tile = rt_tilemap_get_tile(tilemap, x, y);
+            int64_t tile = rt_tilemap_get_tile_layer(tilemap, collisionLayer, x, y);
             int64_t collision = rt_tilemap_get_collision(tilemap, tile);
             pf_cell *cell = &pf->cells[pf_idx(pf, x, y)];
             cell->value = tile;
@@ -606,6 +610,11 @@ static const int32_t dir8_dx[8] = {0, 1, 0, -1, 1, 1, -1, -1};
 static const int32_t dir8_dy[8] = {-1, 0, 1, 0, -1, 1, 1, -1};
 
 /// @brief Build a List[Seq[Integer]] of x,y pairs from the parent chain.
+/// @brief Reconstruct the path as List[Seq[Integer]], or NULL on any failure.
+/// @details Transactional: an allocation failure for the coordinate buffer, a
+///          waypoint Seq, or a coordinate box drops all partial work and returns
+///          NULL instead of a silently empty or shortened list, so the caller
+///          never reports a truncated path as a found success (VDOC-263).
 static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width) {
     // Count path length
     int32_t len = 0;
@@ -617,11 +626,11 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width) {
 
     // Build reversed array
     if (len < 0 || len > INT32_MAX / 2 || (size_t)len > SIZE_MAX / (2u * sizeof(int32_t)))
-        return rt_list_new();
+        return NULL;
     size_t coord_values = (size_t)len * 2u;
     int32_t *coords = (int32_t *)malloc(coord_values * sizeof(int32_t));
     if (!coords)
-        return rt_list_new();
+        return NULL;
 
     idx = goal_idx;
     for (int32_t i = len - 1; i >= 0; i--) {
@@ -632,30 +641,54 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width) {
         idx = nodes[idx].parent;
     }
 
-    // Build List[Seq[Integer]], where each entry is [x, y].
+    // Build List[Seq[Integer]], where each entry is [x, y]. Any allocation failure
+    // aborts the whole build so a partial path is never returned.
     void *list = rt_list_new();
+    if (!list) {
+        free(coords);
+        return NULL;
+    }
+    int ok = 1;
     for (int32_t i = 0; i < len; i++) {
         void *pair = rt_seq_new();
-        if (!pair)
-            continue;
+        if (!pair) {
+            ok = 0;
+            break;
+        }
         rt_seq_set_owns_elements(pair, 1);
 
         void *bx = rt_box_i64(coords[i * 2]);
-        rt_seq_push(pair, bx);
-        if (bx && rt_obj_release_check0(bx))
-            rt_obj_free(bx);
-
         void *by = rt_box_i64(coords[i * 2 + 1]);
+        if (!bx || !by) {
+            if (bx && rt_obj_release_check0(bx))
+                rt_obj_free(bx);
+            if (by && rt_obj_release_check0(by))
+                rt_obj_free(by);
+            if (rt_obj_release_check0(pair))
+                rt_obj_free(pair);
+            ok = 0;
+            break;
+        }
+
+        rt_seq_push(pair, bx);
+        if (rt_obj_release_check0(bx))
+            rt_obj_free(bx);
         rt_seq_push(pair, by);
-        if (by && rt_obj_release_check0(by))
+        if (rt_obj_release_check0(by))
             rt_obj_free(by);
 
         rt_list_push(list, pair);
-        if (pair && rt_obj_release_check0(pair))
+        if (rt_obj_release_check0(pair))
             rt_obj_free(pair);
     }
 
     free(coords);
+    if (!ok) {
+        // Drop the partially built list so a shortened path is never observed.
+        if (rt_obj_release_check0(list))
+            rt_obj_free(list);
+        return NULL;
+    }
     return list;
 }
 
@@ -780,12 +813,19 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
         // Goal reached
         if (cur == gi) {
-            pf->last_found = 1;
             pf->last_steps = steps;
             if (out_cost)
                 *out_cost = nodes[cur].g;
-            if (!cost_only)
+            if (cost_only) {
+                // No payload to build, so reaching the goal is a definitive success.
+                pf->last_found = 1;
+            } else {
                 result = pf_build_path(nodes, gi, pf->width);
+                // Report success only once the payload is fully built: a failed
+                // (NULL) build is an allocation failure, not a found path, so it
+                // must not masquerade as a truncated success (VDOC-263).
+                pf->last_found = result ? 1 : 0;
+            }
             free(heap.position);
             free(heap.data);
             free(nodes);

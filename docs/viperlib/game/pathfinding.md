@@ -20,7 +20,7 @@ reachable cell with a stored value. Both return an immutable
 | Factory | Current behavior |
 |---|---|
 | `Pathfinder.New(width, height)` | Creates an all-walkable grid with cost `100`; returns null for nonpositive dimensions, either dimension above 4096, or allocation failure. |
-| `Pathfinder.FromTilemap(tilemap)` | Copies base-layer tile IDs and treats every tile whose registered collision type is nonzero as blocked. |
+| `Pathfinder.FromTilemap(tilemap)` | Copies tile IDs from the tilemap's designated collision layer (default: the base layer) and treats every tile whose registered collision type is nonzero as blocked. |
 | `Pathfinder.FromGrid2D(grid)` | Copies cell values and initially treats every nonzero value as blocked. |
 
 Factories make one-time snapshots; later Tilemap/Grid2D changes do not update
@@ -29,9 +29,10 @@ rather than `obj<Viper.Game.Pathfinder>`. Current Zia recovers Pathfinder
 identity from the fully qualified owner call, but the raw API inventory and
 consumers without that provenance do not receive the concrete return type.
 
-`FromTilemap` currently samples Tilemap layer zero even when another layer is
-designated as the collision layer. Until that defect is fixed, copy or mirror
-collision tiles into the base layer before importing.
+`FromTilemap` samples the tilemap's designated collision layer (set via
+`Tilemap.CollisionLayer`), so a map that keeps its walls on a separate layer
+imports the correct navigation grid. When no collision layer is set it defaults to
+the base layer (0), so single-layer maps behave as before (VDOC-261).
 
 ## Properties And Configuration
 
@@ -107,16 +108,18 @@ collision type zero can be found directly.
 | `Cost` | Weighted A* cost; `-1` for misses and all `FindNearest` results. |
 | `Path` | Retained runtime `Viper.Collections.List` of two-element `Viper.Collections.Seq` points. |
 
-The public `Path` property is currently registered only as `obj`, not as a
-typed List. Zia treats it as `Any` and currently rejects both assignment and an
-`as` cast to `Viper.Collections.List`. The low-level static collection calls
-are the available workaround:
+The `Path` property is registered as `obj<Viper.Collections.List>` and the
+`FromTilemap` / `FromGrid2D` factories return `obj<Viper.Game.Pathfinder>`, so the
+results assign to typed locals directly and support instance-method chaining
+(VDOC-262):
 
 ```zia
-var points = result.Path;
+var pf: Viper.Game.Pathfinder = Pathfinder.FromGrid2D(grid);
+var result = pf.FindPath(0, 0, 3, 3);
+var points: Viper.Collections.List = result.Path;
 var i = 0;
-while i < Viper.Collections.List.get_Count(points) {
-    var point = Viper.Collections.List.Get(points, i);
+while i < points.Count {
+    var point = points.Get(i);
     var x = Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(point, 0));
     var y = Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(point, 1));
     // Convert cell coordinates to world coordinates here.
@@ -124,21 +127,26 @@ while i < Viper.Collections.List.get_Count(points) {
 }
 ```
 
-Allocation failure during a search is not distinguished from an unreachable
-path. A later allocation failure while assembling point objects can also
-produce a shortened/empty `Path` even though `Found` was already set true;
-callers processing untrusted grid sizes should sanity-check
-`Path.Count == StepCount + 1` on successful results.
+Path reconstruction is transactional: if any coordinate buffer, waypoint `Seq`,
+or coordinate box allocation fails, the whole build is discarded and the search
+reports a miss (`Found == false`, empty `Path`, `StepCount == -1`) rather than a
+found result with a shortened or empty path (VDOC-263). Allocation failure during
+a search is therefore never reported as a truncated success — though it is still
+reported the same way as an unreachable goal, so treat a persistent miss under
+memory pressure accordingly.
 
 ## Current Surface Migration
 
-The authoritative registry now exposes `FindPath(...) -> PathResult` and
-`FindNearest(...) -> PathResult`. It no longer exposes the earlier list-returning
-`FindPath`, `FindPathLength`, `FindPathResult`, `FindNearestResult`,
-`LastFound`, `LastSteps`, or `PathResult.Length` names. Existing generated docs,
-tests, ADRs, and built binaries may still show that older surface while the
-repository-wide compatibility cleanup is in progress; this uncoordinated drift
-is recorded in the documentation findings log.
+The authoritative registry exposes `FindPath(...) -> PathResult` and
+`FindNearest(...) -> PathResult`, and `PathResult.StepCount` for the cell-to-cell
+step count. The earlier list-returning `FindPathLength`, the `*Result`-suffixed
+`FindPathResult` / `FindNearestResult`, the mutable `LastFound` / `LastSteps`
+last-search properties, and the `PathResult.Length` alias are no longer part of the
+scripting surface. That retirement is now reconciled across layers: generated docs
+are regenerated, the runtime-surface audit is clean, and ADR 0050/0062 are marked
+superseded to record the standardized names (VDOC-260). The underlying C symbols
+(`rt_path_result_length`, `rt_pathfinder_find_path_length`) are retained internally
+for the native ABI, so only the scripting names changed.
 
 ## Limits
 

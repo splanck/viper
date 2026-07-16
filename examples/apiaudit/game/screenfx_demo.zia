@@ -24,8 +24,8 @@ func start() {
     // --- Shake (intensity, duration, decay) ---
     Say("--- Shake ---");
     fx.Shake(10, 500, 5);
-    SayBool(fx.IsActive);          // 1
-    SayBool(fx.IsTypeActive(0));   // 1 (type 0 = shake, assuming)
+    SayBool(fx.IsActive);                     // 1
+    SayBool(fx.IsTypeActive(ScreenFX.TypeShake)); // 1 (named constant, not raw 0)
 
     // --- Update (deltaMs) ---
     Say("--- Update ---");
@@ -37,7 +37,7 @@ func start() {
 
     // --- CancelType ---
     Say("--- CancelType ---");
-    fx.CancelType(0);              // cancel shake type
+    fx.CancelType(ScreenFX.TypeShake); // cancel shake type by name
     fx.Update(16);
     SayInt(fx.ShakeX);             // 0 (shake cancelled)
     SayInt(fx.ShakeY);             // 0
@@ -89,9 +89,9 @@ func start() {
     // --- IsTypeActive ---
     Say("--- IsTypeActive ---");
     fx.CancelAll();
-    SayBool(fx.IsTypeActive(0));   // 0 (no shake active)
+    SayBool(fx.IsTypeActive(ScreenFX.TypeShake)); // 0 (no shake active)
     fx.Shake(10, 100, 5);
-    SayBool(fx.IsTypeActive(0));   // 1
+    SayBool(fx.IsTypeActive(ScreenFX.TypeShake)); // 1
 
     // --- Cleanup ---
     fx.CancelAll();

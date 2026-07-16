@@ -17,7 +17,7 @@ This exhaustive reference is generated from the modular runtime definition regis
 | [Error](error.md) | 0 | 3 |
 | [Functional](functional.md) | 2 | 33 |
 | [GUI](gui.md) | 59 | 703 |
-| [Game](game.md) | 52 | 765 |
+| [Game](game.md) | 52 | 781 |
 | [Game2D](game2d.md) | 1 | 80 |
 | [Game3D](game3d.md) | 61 | 803 |
 | [Graphics](graphics.md) | 47 | 569 |

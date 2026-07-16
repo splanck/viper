@@ -474,10 +474,10 @@ void *rt_jsonpath_query(void *root, rt_string path) {
 }
 
 /// @brief Get a string value at a JSON path (returns empty string if missing or wrong type).
-rt_string rt_jsonpath_get_str(void *root, rt_string path) {
+int8_t rt_jsonpath_try_get_str(void *root, rt_string path, rt_string *out) {
     void *val = rt_jsonpath_get(root, path);
     if (!val)
-        return rt_string_from_bytes("", 0);
+        return 0;
     rt_string result = NULL;
     // If it's already a string, return it directly
     if (rt_string_is_handle(val))
@@ -501,38 +501,59 @@ rt_string rt_jsonpath_get_str(void *root, rt_string path) {
         int64_t b = rt_unbox_i1(val);
         result = b ? rt_string_from_bytes("true", 4) : rt_string_from_bytes("false", 5);
     }
+    // Otherwise (object/array/null) the value is not string-convertible.
     release_local_obj(val);
-    return result ? result : rt_string_from_bytes("", 0);
+    if (result && out) {
+        *out = result;
+        return 1;
+    }
+    if (result)
+        rt_string_unref(result);
+    return 0;
+}
+
+rt_string rt_jsonpath_get_str(void *root, rt_string path) {
+    rt_string result = NULL;
+    if (rt_jsonpath_try_get_str(root, path, &result))
+        return result;
+    return rt_string_from_bytes("", 0); // empty on absence or non-convertible value
 }
 
 /// @brief Get an integer value at a JSON path (returns 0 if missing or wrong type).
-int64_t rt_jsonpath_get_int(void *root, rt_string path) {
+int8_t rt_jsonpath_try_get_int(void *root, rt_string path, int64_t *out) {
     void *val = rt_jsonpath_get(root, path);
     if (!val)
         return 0;
+    int8_t ok = 0;
     int64_t result = 0;
-    // If it's a boxed number, unbox it
     int64_t tag = rt_box_type(val);
-    if (tag == RT_BOX_I64)
+    if (tag == RT_BOX_I64) {
         result = rt_unbox_i64(val);
-    if (tag == RT_BOX_F64)
+        ok = 1;
+    } else if (tag == RT_BOX_F64) {
         // Defined saturating conversion; raw casts are UB out of range (VDOC-037).
         result = (int64_t)rt_f64_to_i64(rt_unbox_f64(val));
-    if (tag == RT_BOX_I1)
+        ok = 1;
+    } else if (tag == RT_BOX_I1) {
         result = rt_unbox_i1(val);
-    if (tag == RT_BOX_STR) {
+        ok = 1;
+    } else if (tag == RT_BOX_STR) {
         rt_string s = rt_unbox_str(val);
-        if (rt_parse_int64_str(s, &result) != (int32_t)Err_None)
-            result = 0;
+        ok = (rt_parse_int64_str(s, &result) == (int32_t)Err_None) ? 1 : 0;
         rt_string_unref(s);
-        release_local_obj(val);
-        return result;
+    } else if (rt_string_is_handle(val)) {
+        // Raw string handle: parseable numeric text converts, other text does not.
+        ok = (rt_parse_int64_str((rt_string)val, &result) == (int32_t)Err_None) ? 1 : 0;
     }
-    // If it's a raw string, parse it
-    if (rt_string_is_handle(val)) {
-        if (rt_parse_int64_str((rt_string)val, &result) != (int32_t)Err_None)
-            result = 0;
-    }
+    // Otherwise (object/array/null) the value is not int-convertible: ok stays 0.
     release_local_obj(val);
-    return result;
+    if (ok && out)
+        *out = result;
+    return ok;
+}
+
+int64_t rt_jsonpath_get_int(void *root, rt_string path) {
+    int64_t result = 0;
+    rt_jsonpath_try_get_int(root, path, &result);
+    return result; // 0 on absence or non-convertible value (legacy sentinel)
 }

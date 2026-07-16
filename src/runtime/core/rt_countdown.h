@@ -30,6 +30,12 @@
 extern "C" {
 #endif
 
+/// @brief Runtime class ID for Countdown instances.
+/// @details Stamped by rt_obj_new_i64 at construction and verified by the shared
+///          receiver guard so an explicit receiver of another class traps instead
+///          of being reinterpreted as a Countdown payload (VDOC-229).
+#define RT_COUNTDOWN_CLASS_ID INT64_C(-0x430801)
+
 /// @brief Create a new countdown timer with specified interval.
 /// @param interval_ms Interval duration in milliseconds.
 /// @return Pointer to new countdown object (stopped, elapsed = 0).

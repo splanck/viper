@@ -149,12 +149,16 @@ static int64_t countdown_tick_count_ms(void) {
 }
 #endif
 
-/// @brief Validate that @p obj is a non-NULL Countdown receiver, trapping otherwise.
-/// @details Centralises the null-receiver guard so every public Countdown method reads
+/// @brief Validate that @p obj is a live Countdown receiver, trapping otherwise.
+/// @details Centralises the receiver guard so every public Countdown method reads
 ///          like `ViperCountdown *cd = require_countdown(obj); if (!cd) return ...;`.
+///          Verifies the heap kind, class ID, and payload size via
+///          rt_obj_is_instance so a null receiver *or* an unrelated object (e.g. a
+///          Seq passed to the static compatibility form) traps instead of being
+///          reinterpreted as a Countdown payload (VDOC-229).
 static ViperCountdown *require_countdown(void *obj) {
-    if (!obj) {
-        rt_trap("Countdown: null receiver");
+    if (!rt_obj_is_instance(obj, RT_COUNTDOWN_CLASS_ID, sizeof(ViperCountdown))) {
+        rt_trap("Countdown: invalid receiver");
         return NULL;
     }
     return (ViperCountdown *)obj;
@@ -291,7 +295,8 @@ static void sleep_ms(int64_t ms) {
 /// @see rt_countdown_remaining For checking time left
 /// @see rt_countdown_expired For checking if expired
 void *rt_countdown_new(int64_t interval_ms) {
-    ViperCountdown *cd = (ViperCountdown *)rt_obj_new_i64(0, (int64_t)sizeof(ViperCountdown));
+    ViperCountdown *cd =
+        (ViperCountdown *)rt_obj_new_i64(RT_COUNTDOWN_CLASS_ID, (int64_t)sizeof(ViperCountdown));
     if (!cd) {
         rt_trap("Countdown: memory allocation failed");
         return NULL; // Unreachable after trap

@@ -970,7 +970,7 @@ RT_CLASS_END()
 /// process-lifetime static data. Transition coverage is deliberately limited; `OffsetAt` and
 /// `IsDstAt` keep the first/last configured rules outside each zone's embedded window.
 RT_CLASS_BEGIN("Viper.Time.TimeZone", TimeZone, "obj", none)
-    RT_METHOD("Find", "obj(str)", TimeZoneFind)
+    RT_METHOD("Find", "obj<Viper.Time.TimeZone>(str)", TimeZoneFind)
     RT_PROP("Name", "str", TimeZoneName, none)
     RT_METHOD("OffsetAt", "i64(i64)", TimeZoneOffsetAt)
     RT_METHOD("IsDstAt", "i1(i64)", TimeZoneIsDstAt)

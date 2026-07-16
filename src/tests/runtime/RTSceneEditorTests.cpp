@@ -13,6 +13,7 @@
 
 #include "rt_internal.h"
 #include "rt_map.h"
+#include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -194,6 +195,47 @@ int main() {
     assert(diagnostic_severity(scene, 0) == "warning");
     rt_game_scene_clear_diagnostics(scene);
     assert(rt_game_scene_has_errors(scene) == 0);
+
+    // VDOC-254: clearing diagnostics on a structurally invalid (error-severity)
+    // scene must NOT flip it to valid — validity state is separate from the
+    // diagnostic queue, so HasErrors stays true after the messages are cleared.
+    rt_string invalid_json = rt_const_cstr("{\"version\":1,");
+    void *invalid_scene = rt_game_scene_load_json(invalid_json);
+    rt_string_unref(invalid_json);
+    assert(rt_game_scene_has_errors(invalid_scene) == 1);
+    rt_game_scene_clear_diagnostics(invalid_scene);
+    assert(rt_game_scene_has_errors(invalid_scene) == 1);
+
+    // VDOC-255: the Result Err message is the first error diagnostic, not lastError
+    // (the newest of any severity), so a trailing warning cannot mask the real error.
+    {
+        const char *mixedText =
+            "{\"version\":1,\"width\":-5,\"height\":2,\"tileWidth\":16,\"tileHeight\":16,"
+            "\"layers\":[],\"bogusUnknownField\":123}";
+        void *doc = rt_game_scene_load_json(rt_const_cstr(mixedText));
+        void *records = rt_game_scene_diagnostic_records(doc);
+        const int64_t n = rt_seq_len(records);
+        std::string firstError;
+        std::string lastMsg;
+        for (int64_t i = 0; i < n; ++i) {
+            void *rec = rt_seq_get(records, i);
+            std::string sev = map_str(rec, "severity");
+            std::string msg = map_str(rec, "message");
+            if (firstError.empty() && sev == "error")
+                firstError = msg;
+            lastMsg = msg;
+        }
+        assert(!firstError.empty());
+        // lastError holds the newest diagnostic (the trailing warning), which differs
+        // from the first error — that is exactly the masking hazard.
+        assert(last_error(doc) == lastMsg);
+        assert(lastMsg != firstError);
+
+        // The Result Err carries the first error message, not the trailing warning.
+        void *res = rt_game_scene_load_json_result(rt_const_cstr(mixedText));
+        assert(rt_result_is_err(res) == 1);
+        assert(to_std(rt_result_unwrap_err_str(res)) == firstError);
+    }
 
     rt_string legacy_short =
         rt_const_cstr("{\"width\":2,\"height\":2,\"tileWidth\":16,\"tileHeight\":16,"

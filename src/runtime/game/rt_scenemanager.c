@@ -60,16 +60,24 @@ static scenemanager_impl *checked_scenemanager(void *mgr, const char *api) {
     return (scenemanager_impl *)mgr;
 }
 
-/// @brief Copy a runtime-string scene name into a fixed @p out buffer,
-///        NUL-terminated and truncated. @return 1 on success, 0 on bad input.
+/// @brief Copy a runtime-string scene name into a fixed @p out buffer.
+/// @details Rejects a name that does not fit the fixed buffer instead of
+///          truncating it, so two distinct long names sharing a 127-byte prefix
+///          cannot alias under the strcmp-based lookup (VDOC-243). Also rejects an
+///          embedded NUL, which would corrupt the comparison. @return 1 on
+///          success, 0 on bad or over-long input.
 static int scene_name_from_handle(void *name, char out[SM_SCENE_NAME_MAX]) {
     if (!name || !out)
         return 0;
-    const char *cname = rt_string_cstr((rt_string)name);
+    rt_string s = (rt_string)name;
+    const char *cname = rt_string_cstr(s);
     if (!cname)
         return 0;
-    strncpy(out, cname, SM_SCENE_NAME_MAX - 1);
-    out[SM_SCENE_NAME_MAX - 1] = '\0';
+    int64_t len = rt_str_len(s);
+    if (len < 0 || (size_t)len >= SM_SCENE_NAME_MAX || strlen(cname) != (size_t)len)
+        return 0;
+    memcpy(out, cname, (size_t)len);
+    out[len] = '\0';
     return 1;
 }
 

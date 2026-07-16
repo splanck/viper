@@ -19,7 +19,9 @@
 //   - Contains(t) is inclusive on both endpoints: t >= start && t <= end.
 //   - Overlaps(a, b) is true when a.start <= b.end && b.start <= a.end.
 //   - NULL pointers to range objects cause the corresponding query to return 0
-//     or false rather than trapping.
+//     or false rather than trapping; a non-NULL receiver of another runtime class
+//     traps via the shared as_daterange guard instead of being reinterpreted
+//     (VDOC-229).
 //
 // Ownership/Lifetime:
 //   - DateRange instances are heap-allocated via rt_obj_new_i64 and managed
@@ -103,7 +105,8 @@ void *rt_daterange_new(int64_t start, int64_t end) {
     int64_t s = start <= end ? start : end;
     int64_t e = start <= end ? end : start;
 
-    rt_daterange_impl *r = (rt_daterange_impl *)rt_obj_new_i64(0, sizeof(rt_daterange_impl));
+    rt_daterange_impl *r =
+        (rt_daterange_impl *)rt_obj_new_i64(RT_DATERANGE_CLASS_ID, sizeof(rt_daterange_impl));
     if (!r) {
         rt_trap("DateRange.New: memory allocation failed");
         return NULL;
@@ -111,6 +114,24 @@ void *rt_daterange_new(int64_t start, int64_t end) {
     r->start = s;
     r->end = e;
     return r;
+}
+
+/// @brief Validate an explicit DateRange receiver, trapping on a wrong class.
+/// @details Returns NULL for a NULL receiver so callers keep their existing
+///          null-sentinel contract, but a non-NULL object of another class (e.g.
+///          a Seq handed to the static compatibility form) traps rather than
+///          being reinterpreted as a DateRange payload (VDOC-229). The heap kind,
+///          class ID, and payload size are all checked by rt_obj_is_instance.
+/// @param obj Candidate receiver pointer.
+/// @return The validated DateRange, or NULL when @p obj is NULL.
+static rt_daterange_impl *as_daterange(void *obj) {
+    if (!obj)
+        return NULL;
+    if (!rt_obj_is_instance(obj, RT_DATERANGE_CLASS_ID, sizeof(rt_daterange_impl))) {
+        rt_trap("DateRange: invalid receiver");
+        return NULL;
+    }
+    return (rt_daterange_impl *)obj;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +144,7 @@ void *rt_daterange_new(int64_t start, int64_t end) {
 int64_t rt_daterange_start(void *range) {
     if (!range)
         return 0;
-    return ((rt_daterange_impl *)range)->start;
+    return (as_daterange(range))->start;
 }
 
 /// @brief Return the end timestamp of the range (seconds since epoch).
@@ -132,7 +153,7 @@ int64_t rt_daterange_start(void *range) {
 int64_t rt_daterange_end(void *range) {
     if (!range)
         return 0;
-    return ((rt_daterange_impl *)range)->end;
+    return (as_daterange(range))->end;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +169,7 @@ int64_t rt_daterange_end(void *range) {
 int8_t rt_daterange_contains(void *range, int64_t timestamp) {
     if (!range)
         return false;
-    rt_daterange_impl *r = (rt_daterange_impl *)range;
+    rt_daterange_impl *r = as_daterange(range);
     return (timestamp >= r->start && timestamp <= r->end);
 }
 
@@ -162,8 +183,8 @@ int8_t rt_daterange_contains(void *range, int64_t timestamp) {
 int8_t rt_daterange_overlaps(void *range, void *other) {
     if (!range || !other)
         return false;
-    rt_daterange_impl *a = (rt_daterange_impl *)range;
-    rt_daterange_impl *b = (rt_daterange_impl *)other;
+    rt_daterange_impl *a = as_daterange(range);
+    rt_daterange_impl *b = as_daterange(other);
     return (a->start <= b->end && b->start <= a->end);
 }
 
@@ -181,8 +202,8 @@ int8_t rt_daterange_overlaps(void *range, void *other) {
 void *rt_daterange_intersection(void *range, void *other) {
     if (!range || !other)
         return NULL;
-    rt_daterange_impl *a = (rt_daterange_impl *)range;
-    rt_daterange_impl *b = (rt_daterange_impl *)other;
+    rt_daterange_impl *a = as_daterange(range);
+    rt_daterange_impl *b = as_daterange(other);
 
     int64_t s = a->start > b->start ? a->start : b->start;
     int64_t e = a->end < b->end ? a->end : b->end;
@@ -203,8 +224,8 @@ void *rt_daterange_intersection(void *range, void *other) {
 void *rt_daterange_union_range(void *range, void *other) {
     if (!range || !other)
         return NULL;
-    rt_daterange_impl *a = (rt_daterange_impl *)range;
-    rt_daterange_impl *b = (rt_daterange_impl *)other;
+    rt_daterange_impl *a = as_daterange(range);
+    rt_daterange_impl *b = as_daterange(other);
 
     if (daterange_has_gap(a->end, b->start) || daterange_has_gap(b->end, a->start))
         return NULL; // gap between ranges
@@ -226,7 +247,7 @@ void *rt_daterange_union_range(void *range, void *other) {
 int64_t rt_daterange_days(void *range) {
     if (!range)
         return 0;
-    rt_daterange_impl *r = (rt_daterange_impl *)range;
+    rt_daterange_impl *r = as_daterange(range);
     int64_t seconds;
     if (daterange_checked_sub_i64(r->end, r->start, &seconds)) {
         rt_trap_ovf();
@@ -242,7 +263,7 @@ int64_t rt_daterange_days(void *range) {
 int64_t rt_daterange_hours(void *range) {
     if (!range)
         return 0;
-    rt_daterange_impl *r = (rt_daterange_impl *)range;
+    rt_daterange_impl *r = as_daterange(range);
     int64_t seconds;
     if (daterange_checked_sub_i64(r->end, r->start, &seconds)) {
         rt_trap_ovf();
@@ -260,7 +281,7 @@ int64_t rt_daterange_hours(void *range) {
 int64_t rt_daterange_duration(void *range) {
     if (!range)
         return 0;
-    rt_daterange_impl *r = (rt_daterange_impl *)range;
+    rt_daterange_impl *r = as_daterange(range);
     int64_t seconds;
     if (daterange_checked_sub_i64(r->end, r->start, &seconds)) {
         rt_trap_ovf();
@@ -282,7 +303,7 @@ int64_t rt_daterange_duration(void *range) {
 rt_string rt_daterange_to_string(void *range) {
     if (!range)
         return rt_string_from_bytes("", 0);
-    rt_daterange_impl *r = (rt_daterange_impl *)range;
+    rt_daterange_impl *r = as_daterange(range);
 
     char buf[128];
     time_t st;

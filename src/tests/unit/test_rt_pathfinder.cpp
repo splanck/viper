@@ -381,6 +381,32 @@ static void test_find_nearest_tile_value_returns_path(void) {
     PASS();
 }
 
+// VDOC-261: FromTilemap must snapshot the tilemap's designated collision layer,
+// not the base/visual layer, so a map that keeps walls on a separate layer builds
+// a navigation grid matching its real geometry.
+static void test_from_tilemap_uses_collision_layer(void) {
+    TEST("FromTilemap reads the designated collision layer");
+    void *tm = rt_tilemap_new(3, 3, 16, 16);
+    assert(tm != NULL);
+    int64_t collisionLayer = rt_tilemap_add_layer(tm, rt_const_cstr("collision"));
+    assert(collisionLayer >= 1);
+
+    const int64_t WALL = 5;
+    rt_tilemap_set_collision(tm, WALL, RT_TILE_COLLISION_SOLID);
+
+    // A decorative wall on the base layer, and the real collision wall elsewhere.
+    rt_tilemap_set_tile(tm, 1, 0, WALL);                    // base layer (0)
+    rt_tilemap_set_tile_layer(tm, collisionLayer, 0, 2, WALL); // collision layer
+    rt_tilemap_set_collision_layer(tm, collisionLayer);
+
+    void *pf = rt_pathfinder_from_tilemap(tm);
+    assert(pf != NULL);
+    // The collision-layer wall blocks; the base-layer decoration does not.
+    assert(rt_pathfinder_is_walkable(pf, 0, 2) == 0);
+    assert(rt_pathfinder_is_walkable(pf, 1, 0) == 1);
+    PASS();
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -410,6 +436,7 @@ int main() {
     test_invalid_dimensions_rejected();
     test_oob_search_clears_last_found();
     test_find_nearest_tile_value_returns_path();
+    test_from_tilemap_uses_collision_layer();
 
     printf("\n  %d/%d tests passed\n", tests_passed, tests_total);
     assert(tests_passed == tests_total);

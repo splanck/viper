@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+Superseded — the anticipated breaking cleanup (public-surface standardization)
+retired the `TryNum` / `NumOr` compatibility spellings from the registry. Only the
+canonical `TryDouble` / `DoubleOr` names remain; source or IL that names `TryNum` /
+`NumOr` no longer resolves. See the "Consequences" note that contemplated this
+retirement (VDOC-233).
 
 ## Context
 

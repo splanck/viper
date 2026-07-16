@@ -47,11 +47,21 @@ class ControlCheckContext {
     ControlCheckContext &operator=(const ControlCheckContext &) = delete;
 
     ~ControlCheckContext() {
-        assert(analyzer_ != nullptr && "context detached from analyzer");
-        assert(analyzer_->loopStack_.size() == loopDepth_ &&
-               "loop stack unbalanced by control-flow check");
-        assert(analyzer_->forStack_.size() == forDepth_ &&
-               "FOR stack unbalanced by control-flow check");
+        // Malformed control flow — a stray NEXT, an unterminated FOR, or a reserved
+        // keyword used as an identifier that parses as NEXT/LOOP — can leave the
+        // loop/FOR stacks deeper than they were on entry. Recovery must be
+        // exception-safe: restore the stacks to the snapshot depth so the checker
+        // returns structured diagnostics for the invalid source instead of aborting
+        // on a balance assert (VDOC-244). The checker only ever grows these stacks
+        // within a context and guards its pops against underflow, so restoring is a
+        // truncation back to the entry depth; a shallower stack (which should not
+        // occur) is left untouched rather than grown.
+        if (analyzer_ != nullptr) {
+            if (analyzer_->loopStack_.size() > loopDepth_)
+                analyzer_->loopStack_.resize(loopDepth_);
+            if (analyzer_->forStack_.size() > forDepth_)
+                analyzer_->forStack_.resize(forDepth_);
+        }
     }
 
     /// @brief Access the wrapped semantic analyzer (mutable).

@@ -31,6 +31,12 @@
 extern "C" {
 #endif
 
+/// @brief Runtime class ID for Stopwatch instances.
+/// @details Stamped by rt_obj_new_i64 at construction and verified by the shared
+///          receiver guard so an explicit receiver of another class traps instead
+///          of being reinterpreted as a Stopwatch payload (VDOC-229).
+#define RT_STOPWATCH_CLASS_ID INT64_C(-0x430802)
+
 /// @brief Create a new stopped stopwatch.
 /// @return Pointer to new stopwatch object.
 void *rt_stopwatch_new(void);
