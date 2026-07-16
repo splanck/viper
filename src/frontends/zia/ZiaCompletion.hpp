@@ -41,6 +41,10 @@
 ///
 ///   label TAB insertText TAB kindInt TAB detail NEWLINE
 ///
+/// Field content is escaped so multiline snippet text stays on one row:
+/// backslash, tab, newline, and CR appear as \\, \t, \n, \r. Consumers
+/// must unescape after splitting on the literal TAB/NEWLINE delimiters.
+///
 /// `kind` integers: Keyword=0 Snippet=1 Variable=2 Parameter=3 Field=4
 /// Method=5 Function=6 Entity=7 Value=8 Interface=9 Module=10
 /// RuntimeClass=11 Property=12

@@ -67,7 +67,7 @@ module Test;
 bind Viper.Terminal;
 bind Viper.Text;
 /// @brief Start.
-func start() {    Say(Uuid.New());
+func start() {    Say(Uuid.Generate());
 }
 )"));
 }
@@ -148,13 +148,13 @@ module Test;
 func start() {    var seq = Viper.Collections.Seq.New();
     var list = Viper.Collections.Seq.ToList(seq);
     var set = Viper.Collections.Seq.ToSet(seq);
-    var bag = Viper.Collections.Seq.ToBag(seq);
+    var bag = Viper.Collections.Seq.ToStringSet(seq);
     var queue = Viper.Collections.Seq.ToQueue(seq);
     var stack = Viper.Collections.Seq.ToStack(seq);
     var deque = Viper.Collections.Seq.ToDeque(seq);
     var seqFromList = Viper.Collections.List.ToSeq(list);
     var seqFromSet = Viper.Collections.Set.ToSeq(set);
-    var seqFromBag = Viper.Collections.Bag.ToSeq(bag);
+    var seqFromBag = Viper.Collections.StringSet.ToSeq(bag);
     var listFromSet = Viper.Collections.Set.ToList(set);
     var listFromDeque = Viper.Collections.Deque.ToList(deque);
 }
@@ -238,7 +238,8 @@ module Test;
 func start() {
     var x = Viper.Input.Mouse.X;
     var y = Viper.Input.Mouse.Y;
-    var left = Viper.Input.Mouse.Left;
+    var dx = Viper.Input.Mouse.DeltaX;
+    var left = Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonLeft);
     Viper.Input.Mouse.Hide();
     Viper.Input.Mouse.Show();
 }

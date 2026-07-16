@@ -50,8 +50,8 @@ func testRadix() {
 
 func testSize() {
     // Size formatting
-    assertEqStr(Viper.Text.Fmt.Size(0), "0 B", "size zero");
-    assertEqStr(Viper.Text.Fmt.Size(512), "512 B", "size bytes");
-    assertEqStr(Viper.Text.Fmt.Size(1024), "1.0 KB", "size kb");
-    assertEqStr(Viper.Text.Fmt.Size(1048576), "1.0 MB", "size mb");
+    assertEqStr(Viper.Text.Fmt.SizeBytes(0), "0 B", "size zero");
+    assertEqStr(Viper.Text.Fmt.SizeBytes(512), "512 B", "size bytes");
+    assertEqStr(Viper.Text.Fmt.SizeBytes(1024), "1.0 KB", "size kb");
+    assertEqStr(Viper.Text.Fmt.SizeBytes(1048576), "1.0 MB", "size mb");
 }

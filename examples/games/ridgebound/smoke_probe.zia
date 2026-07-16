@@ -483,14 +483,14 @@ func main() {
         Terminal.Say("FAIL: Ridgebound cinematic quality preset was not active"); game.destroy(); return;
     }
 
-    var renderStart = Clock.TicksUs();
+    var renderStart = Clock.NowMicros();
     var perfFrames = 3;
     var perfIndex = 0;
     while (perfIndex < perfFrames) {
         game.renderFrame();
         perfIndex = perfIndex + 1;
     }
-    var renderMs = ms(Clock.TicksUs() - renderStart) / (perfFrames + 0.0);
+    var renderMs = ms(Clock.NowMicros() - renderStart) / (perfFrames + 0.0);
     var budgetMs = performanceBudget(
         "VIPER_RIDGEBOUND_PERF_BUDGET_GPU_MS", config.PERF_BUDGET_GPU_MS);
     if (game.getCanvas().Backend == "software") {

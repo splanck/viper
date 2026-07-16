@@ -13,10 +13,11 @@
 //   SQL LIKE pattern matching.
 //
 // Key invariants:
-//   - Case conversions use a shared split_words() helper that handles camelCase
-//     word boundaries, separators, and digit transitions.
-//   - Distance metrics return int64_t values (edit distance or similarity scaled
-//     to 0-10000 for Jaro/Jaro-Winkler).
+//   - Identifier-style case conversions use a shared split_words() helper that
+//     handles explicit separators, lower-to-upper boundaries, and acronym
+//     boundaries. They are byte/C-locale operations, not Unicode casing.
+//   - Levenshtein and Hamming return byte distances; Jaro and Jaro-Winkler
+//     return double similarity scores in the range 0.0-1.0.
 //   - LIKE matching supports % (any sequence) and _ (single char) wildcards.
 //
 // Ownership/Lifetime:
@@ -32,6 +33,7 @@
 #include "rt_internal.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_ascii.h"
 #include "rt_string_internal.h"
 
 #include <ctype.h>
@@ -58,7 +60,7 @@ rt_string rt_str_capitalize(rt_string str) {
         return NULL;
     memcpy(result->data, str->data, len);
     result->data[len] = '\0';
-    result->data[0] = (char)toupper((unsigned char)result->data[0]);
+    result->data[0] = (char)rt_ascii_toupper((unsigned char)result->data[0]);
     return result;
 }
 
@@ -79,10 +81,10 @@ rt_string rt_str_title(rt_string str) {
     int capitalize_next = 1;
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)result->data[i];
-        if (isspace(c)) {
+        if (rt_ascii_isspace(c)) {
             capitalize_next = 1;
         } else if (capitalize_next) {
-            result->data[i] = (char)toupper(c);
+            result->data[i] = (char)rt_ascii_toupper(c);
             capitalize_next = 0;
         }
     }
@@ -193,8 +195,8 @@ rt_string rt_str_slug(rt_string str) {
     int last_was_sep = 1;
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)str->data[i];
-        if (isalnum(c)) {
-            buf[out++] = (char)tolower(c);
+        if (rt_ascii_isalnum(c)) {
+            buf[out++] = (char)rt_ascii_tolower(c);
             last_was_sep = 0;
         } else if (!last_was_sep) {
             buf[out++] = '-';
@@ -443,16 +445,16 @@ static int split_words(
         // Collect word characters
         while (i < len && !is_separator(src[i])) {
             // Detect camelCase boundary: lowercase followed by uppercase
-            if (i + 1 < len && islower((unsigned char)src[i]) &&
-                isupper((unsigned char)src[i + 1])) {
+            if (i + 1 < len && rt_ascii_islower((unsigned char)src[i]) &&
+                rt_ascii_isupper((unsigned char)src[i + 1])) {
                 if (bpos < buf_cap)
                     buf[bpos++] = src[i];
                 ++i;
                 break; // End this word, next word starts with uppercase
             }
             // Detect ACRONYM boundary: multiple uppercase followed by lowercase
-            if (i + 2 < len && isupper((unsigned char)src[i]) &&
-                isupper((unsigned char)src[i + 1]) && islower((unsigned char)src[i + 2])) {
+            if (i + 2 < len && rt_ascii_isupper((unsigned char)src[i]) &&
+                rt_ascii_isupper((unsigned char)src[i + 1]) && rt_ascii_islower((unsigned char)src[i + 2])) {
                 if (bpos < buf_cap)
                     buf[bpos++] = src[i];
                 ++i;
@@ -508,19 +510,44 @@ static int append_case_char(rt_string_builder *sb, char ch, const char *context)
 static size_t like_utf8_step(const char *data, size_t remaining) {
     if (!data || remaining == 0)
         return 0;
-    unsigned char c = (unsigned char)data[0];
-    if ((c & 0x80) == 0)
+    unsigned char lead = (unsigned char)data[0];
+    if (lead < 0x80)
         return 1;
-    if ((c & 0xE0) == 0xC0 && remaining >= 2 && ((unsigned char)data[1] & 0xC0) == 0x80)
-        return 2;
-    if ((c & 0xF0) == 0xE0 && remaining >= 3 && ((unsigned char)data[1] & 0xC0) == 0x80 &&
-        ((unsigned char)data[2] & 0xC0) == 0x80)
-        return 3;
-    if ((c & 0xF8) == 0xF0 && remaining >= 4 && ((unsigned char)data[1] & 0xC0) == 0x80 &&
-        ((unsigned char)data[2] & 0xC0) == 0x80 && ((unsigned char)data[3] & 0xC0) == 0x80)
-        return 4;
-    rt_trap("String.Like: invalid UTF-8 sequence");
-    return 0;
+    // Strict decode (VDOC-060): reject overlong encodings, UTF-16 surrogates,
+    // and code points above U+10FFFF so `_` always means one valid code point.
+    size_t extra;
+    uint32_t cp;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        extra = 1;
+        cp = lead & 0x1Fu;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+        extra = 2;
+        cp = lead & 0x0Fu;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+        extra = 3;
+        cp = lead & 0x07u;
+    } else {
+        rt_trap("String.Like: invalid UTF-8 sequence");
+        return 0;
+    }
+    if (remaining - 1 < extra) {
+        rt_trap("String.Like: invalid UTF-8 sequence");
+        return 0;
+    }
+    for (size_t k = 1; k <= extra; k++) {
+        unsigned char ch = (unsigned char)data[k];
+        if ((ch & 0xC0u) != 0x80u) {
+            rt_trap("String.Like: invalid UTF-8 sequence");
+            return 0;
+        }
+        cp = (cp << 6) | (uint32_t)(ch & 0x3Fu);
+    }
+    if ((extra == 2 && cp < 0x800u) || (extra == 3 && cp < 0x10000u) ||
+        (cp >= 0xD800u && cp <= 0xDFFFu) || cp > 0x10FFFFu) {
+        rt_trap("String.Like: invalid UTF-8 sequence");
+        return 0;
+    }
+    return extra + 1;
 }
 
 static int split_words_dynamic(const char *src,
@@ -588,12 +615,12 @@ rt_string rt_str_camel_case(rt_string str) {
         if (wlen == 0)
             continue;
 
-        char first = (w == 0) ? (char)tolower((unsigned char)word[0])
-                              : (char)toupper((unsigned char)word[0]);
+        char first = (w == 0) ? (char)rt_ascii_tolower((unsigned char)word[0])
+                              : (char)rt_ascii_toupper((unsigned char)word[0]);
         if (!append_case_char(&sb, first, "String.CamelCase: append failed"))
             goto camel_fail;
         for (size_t j = 1; j < wlen; ++j) {
-            char c = (char)tolower((unsigned char)word[j]);
+            char c = (char)rt_ascii_tolower((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.CamelCase: append failed"))
                 goto camel_fail;
         }
@@ -636,11 +663,11 @@ rt_string rt_str_pascal_case(rt_string str) {
         if (wlen == 0)
             continue;
 
-        char first = (char)toupper((unsigned char)word[0]);
+        char first = (char)rt_ascii_toupper((unsigned char)word[0]);
         if (!append_case_char(&sb, first, "String.PascalCase: append failed"))
             goto pascal_fail;
         for (size_t j = 1; j < wlen; ++j) {
-            char c = (char)tolower((unsigned char)word[j]);
+            char c = (char)rt_ascii_tolower((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.PascalCase: append failed"))
                 goto pascal_fail;
         }
@@ -684,7 +711,7 @@ rt_string rt_str_snake_case(rt_string str) {
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j) {
-            char c = (char)tolower((unsigned char)word[j]);
+            char c = (char)rt_ascii_tolower((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.SnakeCase: append failed"))
                 goto snake_fail;
         }
@@ -727,7 +754,7 @@ rt_string rt_str_kebab_case(rt_string str) {
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j) {
-            char c = (char)tolower((unsigned char)word[j]);
+            char c = (char)rt_ascii_tolower((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.KebabCase: append failed"))
                 goto kebab_fail;
         }
@@ -770,7 +797,7 @@ rt_string rt_str_screaming_snake(rt_string str) {
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j) {
-            char c = (char)toupper((unsigned char)word[j]);
+            char c = (char)rt_ascii_toupper((unsigned char)word[j]);
             if (!append_case_char(&sb, c, "String.ScreamingSnake: append failed"))
                 goto screaming_fail;
         }
@@ -819,8 +846,8 @@ static int8_t like_match(
             char tc = text[ti];
             char pc = pat[pi];
             if (case_insensitive) {
-                tc = (char)tolower((unsigned char)tc);
-                pc = (char)tolower((unsigned char)pc);
+                tc = (char)rt_ascii_tolower((unsigned char)tc);
+                pc = (char)rt_ascii_tolower((unsigned char)pc);
             }
             if (tc == pc) {
                 ti++;
@@ -839,8 +866,8 @@ static int8_t like_match(
             char tc = text[ti];
             char pc = pat[pi];
             if (case_insensitive) {
-                tc = (char)tolower((unsigned char)tc);
-                pc = (char)tolower((unsigned char)pc);
+                tc = (char)rt_ascii_tolower((unsigned char)tc);
+                pc = (char)rt_ascii_tolower((unsigned char)pc);
             }
             if (tc == pc) {
                 ti++;
@@ -870,8 +897,8 @@ static int8_t like_match(
     return pi == plen ? 1 : 0;
 }
 
-/// @brief SQL LIKE-style pattern match (case-sensitive). `%` matches any byte sequence,
-/// `_` matches a single byte. Returns 1 on match, 0 otherwise.
+/// @brief SQL LIKE-style pattern match (case-sensitive). `%` matches any sequence of
+/// UTF-8-shaped units and `_` matches one such unit. Returns 1 on match, 0 otherwise.
 int8_t rt_str_like(rt_string text, rt_string pattern) {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);

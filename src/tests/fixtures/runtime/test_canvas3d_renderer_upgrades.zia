@@ -23,7 +23,7 @@ func green(c: Integer) -> Integer {
 }
 
 func renderIntoTarget(canvas: Canvas3D, rt: RenderTarget3D, cam: Camera3D, mat: Material3D) {
-    var box = Mesh3D.NewBox(2.0, 2.0, 2.0);
+    var box = Mesh3D.Box(2.0, 2.0, 2.0);
     Canvas3D.SetRenderTarget(canvas, rt);
     Canvas3D.Clear(canvas, 0.0, 0.0, 1.0);
     Canvas3D.Begin(canvas, cam);
@@ -61,7 +61,7 @@ func start() {
     var halvesMat = Material3D.New();
     Material3D.SetUnlit(halvesMat, true);
     Material3D.SetTexture(halvesMat, halves);
-    var plane = Mesh3D.NewPlane(4.0, 4.0);
+    var plane = Mesh3D.Plane(4.0, 4.0);
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, cam);
     Canvas3D.DrawMesh(canvas, plane, Mat4.RotateX(90.0), halvesMat);
@@ -83,9 +83,9 @@ func start() {
     var rt = RenderTarget3D.New(64, 64);
     var rtCam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
     Camera3D.LookAt(rtCam, eye, target, up);
-    var greenMat = Material3D.NewColor(0.0, 1.0, 0.0);
+    var greenMat = Material3D.FromColor(0.0, 1.0, 0.0);
     Material3D.SetUnlit(greenMat, true);
-    var redMat = Material3D.NewColor(1.0, 0.0, 0.0);
+    var redMat = Material3D.FromColor(1.0, 0.0, 0.0);
     Material3D.SetUnlit(redMat, true);
     renderIntoTarget(canvas, rt, rtCam, greenMat);
 
@@ -125,8 +125,8 @@ func start() {
     Canvas3D.Flip(canvas);
 
     // --- E22: instancing above the old 65536 fallback cap ----------------------
-    var pebble = Mesh3D.NewBox(0.2, 0.2, 0.2);
-    var pebbleMat = Material3D.NewColor(0.9, 0.9, 0.2);
+    var pebble = Mesh3D.Box(0.2, 0.2, 0.2);
+    var pebbleMat = Material3D.FromColor(0.9, 0.9, 0.2);
     Material3D.SetUnlit(pebbleMat, true);
     var batch = InstanceBatch3D.New(pebble, pebbleMat);
     var i = 0;
@@ -154,7 +154,7 @@ func start() {
     // and with it zone 1's node — a pure PVS cull with no frustum confound.
     var scene = SceneGraph.New();
     var front_node = SceneNode.New();
-    SceneNode.set_Mesh(front_node, Mesh3D.NewBox(2.0, 2.0, 2.0));
+    SceneNode.set_Mesh(front_node, Mesh3D.Box(2.0, 2.0, 2.0));
     SceneNode.SetPosition(front_node, 10.5, 0.0, 0.0);
     SceneGraph.Add(scene, front_node);
 
@@ -199,7 +199,7 @@ func start() {
     // A straight corridor stays fully visible when looked down (no over-cull).
     var hall = SceneGraph.New();
     var hall_node = SceneNode.New();
-    SceneNode.set_Mesh(hall_node, Mesh3D.NewBox(2.0, 2.0, 2.0));
+    SceneNode.set_Mesh(hall_node, Mesh3D.Box(2.0, 2.0, 2.0));
     SceneNode.SetPosition(hall_node, 35.0, 0.0, 0.0);
     SceneGraph.Add(hall, hall_node);
     var z = 0;

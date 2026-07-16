@@ -203,7 +203,11 @@ int8_t rt_reflectionprobe3d_capture(void *obj, void *canvas, void *scene) {
     static const double face_up[6][3] = {
         {0, 1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}, {0, 1, 0}, {0, 1, 0}};
     void *faces[6] = {NULL, NULL, NULL, NULL, NULL, NULL};
-    void *target = rt_rendertarget3d_new(probe->resolution, probe->resolution);
+    /* HDR capture: the reflection chain is SSR -> local probe -> skybox IBL,
+     * and the sky/IBL terms carry HDR range. An LDR (UNORM8) face target
+     * clamped bright reflections to [0,1], making probe reflections dimmer
+     * than the sky fallback they blend with. */
+    void *target = rt_rendertarget3d_new_hdr(probe->resolution, probe->resolution);
     void *camera = rt_camera3d_new(90.0, 1.0, 0.05, 10000.0);
     int ok = target && camera;
     for (int f = 0; f < 6 && ok; ++f) {

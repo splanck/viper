@@ -498,7 +498,9 @@ void *rt_template_keys(rt_string tmpl) {
     return bag;
 }
 
-/// @brief Escape HTML entities in text (&, <, >, ", ') for safe embedding in HTML.
+/// @brief Escape template delimiters by doubling them ({{ -> {{{{, }} -> }}}})
+///        so literal braces survive a subsequent Render pass. This is NOT an
+///        HTML-entity escaper.
 rt_string rt_template_escape(rt_string text) {
     if (!text)
         return rt_const_cstr("");

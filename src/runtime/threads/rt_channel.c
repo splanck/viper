@@ -21,8 +21,8 @@
 // Ownership/Lifetime:
 //   - The channel retains references to all objects stored in the ring buffer.
 //   - The finalizer releases retained items and frees the buffer on GC collection.
-//   - Callers transfer ownership of sent objects to the channel; receivers own
-//     the returned objects.
+//   - Sending retains a separate reference without consuming the caller's
+//     reference; receiving transfers the channel's retained reference.
 //
 // Links: src/runtime/threads/rt_channel.h (public API),
 //        src/runtime/threads/rt_monitor.h (monitor used for synchronization),

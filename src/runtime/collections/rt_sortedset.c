@@ -13,7 +13,8 @@
 //
 // Key invariants:
 //   - Backed by a heap-allocated array of rt_string references, sorted in
-//     ascending lexicographic order (strcmp order).
+//     ascending byte-lexicographic order over the full length-aware buffers
+//     (embedded NUL bytes participate; shorter strings order first on ties).
 //   - Binary search provides O(log n) lookup (Contains, Floor, Ceiling).
 //   - Insertion is O(n) due to memmove of the suffix after the insert point.
 //   - Removal is O(n) due to memmove of the suffix before the remove point.

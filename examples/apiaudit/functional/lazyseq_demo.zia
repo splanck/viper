@@ -59,7 +59,7 @@ func start() {
     // --- ToSeqN ---
     Say("--- ToSeqN ---");
     var s5 = LS.Range(10, 20, 2);
-    var partial = s5.ToSeqN(3);
+    var partial = s5.ToSeq(3);
     // ToSeqN returns a managed Seq; just check that it is non-null here.
     Say("ToSeqN returned obj");
     SayBool(partial != null);

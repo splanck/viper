@@ -11,7 +11,7 @@ seq = Viper.Collections.Seq.New()
 
 ' Operations on empty seq
 PRINT "Empty seq Len: "; seq.Count
-PRINT "Empty seq Find('x'): "; seq.Find("x")
+PRINT "Empty seq Find('x') IsSome: "; Viper.Option.get_IsSome(seq.FindOption("x"))
 PRINT "Empty seq Has('x'): "; seq.Has("x")
 
 ' Pop from empty - should this crash?
@@ -147,8 +147,8 @@ PRINT ""
 ' === Bytes edge cases ===
 PRINT "=== Bytes Edge Cases ==="
 
-DIM bytes AS Viper.Collections.Bytes
-bytes = Viper.Collections.Bytes.New(0)
+DIM bytes AS Viper.IO.BinaryBuffer
+bytes = Viper.IO.BinaryBuffer.NewCapacity(0)
 PRINT "Bytes.New(0) Len: "; bytes.Length
 
 ' Get from empty
@@ -161,12 +161,12 @@ PRINT "Calling Set(0, 65) on empty bytes..."
 
 ' Create with negative size
 PRINT "Calling Bytes.New(-1)..."
-' bytes = Viper.Collections.Bytes.New(-1)  ' May crash
+' bytes = Viper.IO.BinaryBuffer.NewCapacity(-1)  ' May crash
 
 ' Create with very large size
 PRINT "Calling Bytes.New(1000000)..."
-DIM bigBytes AS Viper.Collections.Bytes
-bigBytes = Viper.Collections.Bytes.New(1000000)
+DIM bigBytes AS Viper.IO.BinaryBuffer
+bigBytes = Viper.IO.BinaryBuffer.NewCapacity(1000000)
 PRINT "Created 1MB bytes, Len: "; bigBytes.Length
 
 PRINT ""
@@ -176,7 +176,7 @@ PRINT "=== Ring Edge Cases ==="
 
 DIM ring AS Viper.Collections.Ring
 ring = Viper.Collections.Ring.New(0)
-PRINT "Ring.New(0) Cap: "; ring.Cap
+PRINT "Ring.New(0) Cap: "; ring.Capacity
 PRINT "Ring.New(0) Len: "; ring.Count
 
 ' Push to zero-capacity ring
@@ -193,8 +193,8 @@ PRINT ""
 ' === Bag edge cases ===
 PRINT "=== Bag Edge Cases ==="
 
-DIM bag AS Viper.Collections.Bag
-bag = Viper.Collections.Bag.New()
+DIM bag AS Viper.Collections.StringSet
+bag = Viper.Collections.StringSet.New()
 
 PRINT "Empty bag Len: "; bag.Count
 PRINT "Empty bag Has('x'): "; bag.Has("x")

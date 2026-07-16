@@ -96,7 +96,7 @@ surfaces widen such values to one of the active types above.
 
 | Class                         | Description                                                 |
 |-------------------------------|-------------------------------------------------------------|
-| `Viper.Collections.Bag`       | String set with union, intersection, difference             |
+| `Viper.Collections.StringSet`       | String set with union, intersection, difference             |
 | `Viper.Collections.Bytes`     | Efficient byte array                                        |
 | `Viper.Collections.List`      | Dynamic list of objects                                     |
 | `Viper.Collections.Map`       | String-keyed dictionary                                     |

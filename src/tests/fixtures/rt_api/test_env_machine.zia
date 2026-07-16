@@ -6,7 +6,7 @@ bind Viper.Terminal;
 
 func start() {
     Say(Viper.System.Machine.get_Os());
-    Say(Viper.System.Machine.get_OsVer());
+    Say(Viper.System.Machine.get_OsVersion());
     Say(Viper.System.Machine.get_User());
     Say(Viper.System.Machine.get_Home());
     SayInt(Viper.System.Machine.get_Cores());

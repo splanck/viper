@@ -675,7 +675,7 @@ class EnemyManager {
         var sy = py / TILE_SIZE;
         var tx = targetPx / TILE_SIZE;
         var ty = targetPy / TILE_SIZE;
-        var len = nav.FindPathLength(sx, sy, tx, ty);
+        var len = nav.FindPath(sx, sy, tx, ty).StepCount;
         if len < 0 { return false; }
         return len <= 40;
     }
@@ -2487,7 +2487,7 @@ class EnemyManager {
     // Uses Quadtree.QueryRectResult for O(log n) spatial lookup.
     // Quadtree uses center-based coordinates: QueryRectResult(cx, cy, w, h).
     expose func checkPlayerHit(px: Integer, py: Integer) -> Integer {
-        var found = qtree.QueryRectResult(px + PLAYER_W / 2, py + PLAYER_H / 2, PLAYER_W, PLAYER_H);
+        var found = qtree.QueryRect(px + PLAYER_W / 2, py + PLAYER_H / 2, PLAYER_W, PLAYER_H);
         var qi = 0;
         while qi < found.Count {
             var handle = found.GetId(qi);
@@ -2519,7 +2519,7 @@ class EnemyManager {
     // Uses Quadtree.QueryRectResult for O(log n) spatial lookup.
     // Quadtree uses center-based coordinates: QueryRectResult(cx, cy, w, h).
     expose func checkBulletHit(bx2: Integer, by2: Integer, bw: Integer, bh: Integer) -> Integer {
-        var found = qtree.QueryRectResult(bx2 + bw / 2, by2 + bh / 2, bw, bh);
+        var found = qtree.QueryRect(bx2 + bw / 2, by2 + bh / 2, bw, bh);
         var qi = 0;
         while qi < found.Count {
             var handle = found.GetId(qi);

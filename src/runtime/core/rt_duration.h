@@ -61,10 +61,10 @@ int64_t rt_duration_from_days(int64_t days);
 
 /// @brief Create a Duration from components.
 /// @param days Days component.
-/// @param hours Hours component (0-23).
-/// @param minutes Minutes component (0-59).
-/// @param seconds Seconds component (0-59).
-/// @param millis Milliseconds component (0-999).
+/// @param hours Hours contribution; values are not restricted to 0-23.
+/// @param minutes Minutes contribution; values are not restricted to 0-59.
+/// @param seconds Seconds contribution; values are not restricted to 0-59.
+/// @param millis Milliseconds contribution; values are not restricted to 0-999.
 /// @return Duration value (milliseconds).
 int64_t rt_duration_create(
     int64_t days, int64_t hours, int64_t minutes, int64_t seconds, int64_t millis);

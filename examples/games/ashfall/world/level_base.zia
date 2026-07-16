@@ -63,7 +63,7 @@ class LevelBuilder {
     hide List[Float] gtX; hide List[Float] gtY; hide List[Float] gtZ;
     hide List[Float] gtHX; hide List[Float] gtHY; hide List[Float] gtHZ;
     hide List[Integer] gtUnlockObj; hide List[Integer] gtOpen;
-    hide List[Game3D.Entity3D] gtNode; hide List[G3D.Physics3DBody] gtBody;
+    hide List[Game3D.Entity3D] gtNode; hide List[G3D.PhysicsBody3D] gtBody;
     // Pickups.
     hide List[Integer] pkKind; hide List[Float] pkX; hide List[Float] pkY; hide List[Float] pkZ; hide List[Float] pkAmt;
     // Player start.
@@ -72,7 +72,7 @@ class LevelBuilder {
     hide Integer waveCount;
     // Owned instances (for unload).
     hide List[Game3D.Entity3D] ownedNodes;
-    hide List[G3D.Physics3DBody] ownedBodies;
+    hide List[G3D.PhysicsBody3D] ownedBodies;
     hide Boolean built;
 
     expose func init() { reset(); }
@@ -320,7 +320,7 @@ class LevelBuilder {
         if gtOpen[i] == 1 { return; }
         gtOpen[i] = 1;
         if gtNode[i] != null { gtNode[i].SetPosition(gtX[i], -100.0, gtZ[i]); }
-        if gtBody[i] != null { G3D.Physics3DBody.SetPosition(gtBody[i], gtX[i], -100.0, gtZ[i]); }
+        if gtBody[i] != null { G3D.PhysicsBody3D.SetPosition(gtBody[i], gtX[i], -100.0, gtZ[i]); }
     }
 
     expose func addPickup(kind: Integer, x: Float, y: Float, z: Float, amt: Float) {
@@ -360,7 +360,7 @@ class LevelBuilder {
     expose func lightRangeAt(i: Integer) -> Float { return lrange[i]; }
 
     // --- Build / unload ------------------------------------------------------
-    expose func build(world: Game3D.World3D, phys: G3D.Physics3DWorld, canvas: G3D.Canvas3D,
+    expose func build(world: Game3D.World3D, phys: G3D.PhysicsWorld3D, canvas: G3D.Canvas3D,
                       texLib: textures.TextureLib) {
         // The environment rig (fx/lighting) owns ambient + key/fill at slots 0-7;
         // builder lights are practicals and live at slots 8+.
@@ -369,7 +369,7 @@ class LevelBuilder {
         var i = 0;
         while i < bx.Count {
             var mesh = G3D.Mesh3D.Box(bhx[i] * 2.0, bhy[i] * 2.0, bhz[i] * 2.0);
-            var mat = G3D.Material3D.NewPBR(br[i], bg[i], bb[i]);
+            var mat = G3D.Material3D.PBR(br[i], bg[i], bb[i]);
             if texLib != null {
                 mat = texLib.mat(bsurf[i], br[i], bg[i], bb[i]);
             }
@@ -380,10 +380,10 @@ class LevelBuilder {
             world.Spawn(e);
             ownedNodes.Add(e);
             if bcollide[i] == 1 {
-                var body = G3D.Physics3DBody.NewAABB(bhx[i], bhy[i], bhz[i], 0.0);
-                G3D.Physics3DBody.SetPosition(body, bx[i], by[i], bz[i]);
-                G3D.Physics3DBody.set_CollisionLayer(body, config.LAYER_WORLD);
-                G3D.Physics3DWorld.Add(phys, body);
+                var body = G3D.PhysicsBody3D.NewAABB(bhx[i], bhy[i], bhz[i], 0.0);
+                G3D.PhysicsBody3D.SetPosition(body, bx[i], by[i], bz[i]);
+                G3D.PhysicsBody3D.set_CollisionLayer(body, config.LAYER_WORLD);
+                G3D.PhysicsWorld3D.Add(phys, body);
                 ownedBodies.Add(body);
             }
             i = i + 1;
@@ -394,11 +394,11 @@ class LevelBuilder {
         while i < lkind.Count {
             if lkind[i] == 0 {
                 var d = Math.Vec3.New(lx[i], ly[i], lz[i]);
-                var lt = G3D.Light3D.NewDirectional(d, lr[i], lg[i], lb[i]);
+                var lt = G3D.Light3D.Directional(d, lr[i], lg[i], lb[i]);
                 G3D.Canvas3D.SetLight(canvas, slot, lt);
             } else {
                 var p = Math.Vec3.New(lx[i], ly[i], lz[i]);
-                var lt = G3D.Light3D.NewPoint(p, lr[i], lg[i], lb[i], lrange[i]);
+                var lt = G3D.Light3D.Point(p, lr[i], lg[i], lb[i], lrange[i]);
                 G3D.Canvas3D.SetLight(canvas, slot, lt);
             }
             slot = slot + 1;
@@ -409,7 +409,7 @@ class LevelBuilder {
         i = 0;
         while i < gtX.Count {
             var meshG = G3D.Mesh3D.Box(gtHX[i] * 2.0, gtHY[i] * 2.0, gtHZ[i] * 2.0);
-            var matG = G3D.Material3D.NewPBR(0.95, 0.58, 0.18);
+            var matG = G3D.Material3D.PBR(0.95, 0.58, 0.18);
             if texLib != null {
                 matG = texLib.mat(textures.SURF_HAZARD, 0.95, 0.58, 0.18);
             }
@@ -420,10 +420,10 @@ class LevelBuilder {
             world.Spawn(eg);
             ownedNodes.Add(eg);
             gtNode[i] = eg;
-            var bgate = G3D.Physics3DBody.NewAABB(gtHX[i], gtHY[i], gtHZ[i], 0.0);
-            G3D.Physics3DBody.SetPosition(bgate, gtX[i], gtY[i], gtZ[i]);
-            G3D.Physics3DBody.set_CollisionLayer(bgate, config.LAYER_WORLD);
-            G3D.Physics3DWorld.Add(phys, bgate);
+            var bgate = G3D.PhysicsBody3D.NewAABB(gtHX[i], gtHY[i], gtHZ[i], 0.0);
+            G3D.PhysicsBody3D.SetPosition(bgate, gtX[i], gtY[i], gtZ[i]);
+            G3D.PhysicsBody3D.set_CollisionLayer(bgate, config.LAYER_WORLD);
+            G3D.PhysicsWorld3D.Add(phys, bgate);
             ownedBodies.Add(bgate);
             gtBody[i] = bgate;
             i = i + 1;
@@ -502,7 +502,7 @@ class LevelBuilder {
         G3D.Terrain3D.SetLayerScale(terra, 2, 40.0);
         G3D.Terrain3D.SetLayerScale(terra, 3, 48.0);
         G3D.Terrain3D.SetSplatMap(terra, sp);
-        G3D.Terrain3D.SetLODDistances(terra, 45.0, 110.0);
+        G3D.Terrain3D.SetLodDistances(terra, 45.0, 110.0);
         G3D.Terrain3D.SetSkirtDepth(terra, 3.0);
         terraOffX = 0.0 - 64.0 * sx;
         terraOffZ = 0.0 - 64.0 * sx;
@@ -544,7 +544,7 @@ class LevelBuilder {
         return M.roundi(t * 255.0);
     }
 
-    expose func unload(world: Game3D.World3D, phys: G3D.Physics3DWorld) {
+    expose func unload(world: Game3D.World3D, phys: G3D.PhysicsWorld3D) {
         if built == false { return; }
         hasTerra = false;
         hasWat = false;
@@ -555,7 +555,7 @@ class LevelBuilder {
         }
         i = 0;
         while i < ownedBodies.Count {
-            G3D.Physics3DWorld.Remove(phys, ownedBodies[i]);
+            G3D.PhysicsWorld3D.Remove(phys, ownedBodies[i]);
             i = i + 1;
         }
         ownedNodes = [];

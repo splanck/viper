@@ -102,7 +102,7 @@ static int rt_format_vsnprintf_c_locale(char *buffer,
 }
 
 /// @brief Variadic wrapper around `rt_format_vsnprintf_c_locale`.
-static int rt_format_snprintf_c_locale(char *buffer, size_t capacity, const char *fmt, ...) {
+int rt_format_snprintf_c_locale(char *buffer, size_t capacity, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     int written = rt_format_vsnprintf_c_locale(buffer, capacity, fmt, args);

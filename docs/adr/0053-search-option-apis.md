@@ -38,7 +38,7 @@ Keep every existing search API and add sentinel-free Option companions:
 - `Viper.Game2D.SceneDocument.FindObjectOption`
 - `Viper.Graphics2D.SceneNode.FindOption`
 - `Viper.Graphics2D.SceneGraph.FindOption`
-- `Viper.Sound.Audio.FindGroupOption`
+- `Viper.Audio.Mixer.FindGroupOption`
 
 Index-returning APIs return `SomeI64(index)` or `None`. Object/string-returning
 APIs return `Some(value)` / `SomeStr(value)` or `None`.

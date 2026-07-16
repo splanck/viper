@@ -29,7 +29,7 @@ module game_state;
 
 bind Viper.Graphics3D;
 bind Viper.Input;
-bind Viper.Sound;
+bind Viper.Audio;
 bind "../config";
 bind "../menu";
 bind "./renderer";
@@ -73,7 +73,7 @@ class BowlingGameState {
     hide ReplayRecorder replayRecorder;
     hide BowlerAvatar bowlerAvatar;
 
-    hide Physics3DWorld physWorld;
+    hide PhysicsWorld3D physWorld;
 
     hide List[ScoreKeeper] scoreKeepers;
     hide List[String] playerNames;

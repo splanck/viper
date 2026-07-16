@@ -10,7 +10,8 @@
 //          elements, attributes, text nodes, comments, and CDATA sections
 //          with a reference-counted node tree and compact/pretty serialisation.
 // Key invariants:
-//   - Parses well-formed XML; returns NULL on malformed input.
+//   - Parses a practical XML subset (no DTD entity expansion, namespace, or
+//     UTF-8 validation); returns NULL on input the subset rejects.
 //   - Tree nodes are reference-counted; children are retained by their parent.
 //   - rt_xml_format produces compact output; rt_xml_format_pretty adds indentation.
 //   - All node handles carry RT_XML_NODE_CLASS_ID; wrong-type handles return safe defaults.

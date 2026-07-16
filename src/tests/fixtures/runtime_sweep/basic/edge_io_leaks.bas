@@ -43,7 +43,9 @@ CONST SB_ITERS AS INTEGER = 100
 FOR i = 1 TO SB_ITERS
     DIM sb AS Viper.Text.StringBuilder
     sb = Viper.Text.StringBuilder.New()
-    sb.Append(Viper.String.Repeat("x", 10000))
+    DIM big AS STRING
+    big = Viper.String.Repeat("x", 10000)
+    sb.Append(big)
     sb.Clear()
     sb.Append("short")
     DIM s AS STRING
@@ -114,8 +116,8 @@ CONST LINE_ITERS AS INTEGER = 200
 FOR i = 1 TO LINE_ITERS
     DIM lw AS Viper.IO.LineWriter
     lw = Viper.IO.LineWriter.Open(lineFile)
-    lw.WriteLn("Line 1")
-    lw.WriteLn("Line 2")
+    lw.WriteLine("Line 1")
+    lw.WriteLine("Line 2")
     lw.Close()
 
     DIM lr AS Viper.IO.LineReader

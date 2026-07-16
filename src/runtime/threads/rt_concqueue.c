@@ -21,8 +21,8 @@
 //   - Win32 uses CRITICAL_SECTION + CONDITION_VARIABLE; POSIX uses pthreads.
 //
 // Ownership/Lifetime:
-//   - Enqueued void* values are retained on enqueue and released on
-//     dequeue, clear, or finalize.
+//   - Enqueued void* values are retained on enqueue. Dequeue transfers that
+//     retained reference to the caller; clear and finalize release it.
 //   - Node allocations are freed on Dequeue or during Clear/finalize.
 //   - The queue object is heap-allocated and managed by the runtime GC.
 //

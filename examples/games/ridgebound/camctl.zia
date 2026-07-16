@@ -14,7 +14,7 @@ bind "./terrain";
 
 class RidgeboundCamera {
     hide Camera3D cam;
-    hide Physics3DWorld physics;
+    hide PhysicsWorld3D physics;
     hide Vec3 eye;
     hide Vec3 target;
     hide Vec3 up;
@@ -28,7 +28,7 @@ class RidgeboundCamera {
     hide Boolean followInitialized;
     hide Integer worldMask;
 
-    expose func setup(camera: Camera3D, physicsWorld: Physics3DWorld) {
+    expose func setup(camera: Camera3D, physicsWorld: PhysicsWorld3D) {
         cam = camera;
         physics = physicsWorld;
         eye = new Vec3(0.0, 0.0, 0.0);

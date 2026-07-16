@@ -165,18 +165,20 @@
 //   /// Long-form Markdown description.
 //   RT_CLASS_BEGIN(...)
 //
-// Type abbreviations:
+// Type abbreviations (the only tokens accepted by every signature parser —
+// RuntimeSignatureParser.cpp, RuntimeClasses.cpp, and the frontend adapters):
 //   void - no return value
 //   i1   - boolean (1-bit integer)
-//   i8   - 8-bit signed integer
 //   i16  - 16-bit signed integer
 //   i32  - 32-bit signed integer
 //   i64  - 64-bit signed integer
-//   f32  - 32-bit float (single)
 //   f64  - 64-bit float (double)
 //   str  - string
-//   obj  - object reference
+//   obj  - object reference (optionally qualified: obj<Viper.Class>)
+//   seq  - runtime sequence (optionally typed: seq<str>)
+//   list - runtime list (optionally typed: list<i64>)
 //   ptr  - raw pointer (runtime-internal only; do not expose in RT_FUNC/RT_METHOD signatures)
+// There are no i8 or f32 IL types; use i64/f64 and widen at the C boundary.
 //
 // Notes:
 //   - id must be unique C++ identifier

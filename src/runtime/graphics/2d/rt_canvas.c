@@ -62,6 +62,14 @@ static void rt_canvas_detach_input(vgfx_window_t gfx_win) {
 static void rt_canvas_destroy_window(rt_canvas *canvas) {
     if (!canvas || !canvas->gfx_win)
         return;
+    /* Restore normal cursor behavior before the window goes away — relative
+     * mouse mode is a per-process setting on some platforms (macOS cursor
+     * dissociation) and must not outlive the window. */
+    if (canvas->relative_mouse_applied) {
+        (void)vgfx_set_relative_mouse(canvas->gfx_win, 0);
+        rt_mouse_set_relative_native(0);
+        canvas->relative_mouse_applied = 0;
+    }
     rt_canvas_detach_input(canvas->gfx_win);
     vgfx_destroy_window(canvas->gfx_win);
     canvas->gfx_win = NULL;
@@ -144,6 +152,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     canvas->clip_y = 0;
     canvas->clip_w = 0;
     canvas->clip_h = 0;
+    canvas->relative_mouse_applied = 0;
     rt_obj_set_finalizer(canvas, rt_canvas_finalize);
 
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -407,6 +416,27 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
         return VGFX_EVENT_NONE;
     }
 
+    /* Reconcile relative (raw) mouse mode with the platform window, mirroring
+     * the Canvas3D poll: the input layer records the request, this poll owns
+     * the window handle, so it applies the change and reports back whether
+     * native raw deltas are available (else the warp-to-center path serves). */
+    int8_t captured = rt_mouse_is_captured();
+    int8_t relative_requested = (int8_t)(captured && rt_mouse_get_relative_mode());
+    if (relative_requested != canvas->relative_mouse_applied) {
+        int32_t native = vgfx_set_relative_mouse(canvas->gfx_win, relative_requested);
+        rt_mouse_set_relative_native(relative_requested ? (int8_t)native : 0);
+        canvas->relative_mouse_applied = relative_requested;
+    }
+    int8_t relative_native = (int8_t)(captured && rt_mouse_get_relative_native());
+
+    if (captured && relative_native) {
+        /* Native raw deltas: unbounded, unaccelerated, sub-pixel. */
+        double rdx = 0.0;
+        double rdy = 0.0;
+        vgfx_get_relative_deltas(canvas->gfx_win, &rdx, &rdy);
+        rt_mouse_force_delta_f(rdx, rdy);
+    }
+
     int close_seen = 0;
     while (canvas->gfx_win && vgfx_poll_event(canvas->gfx_win, &canvas->last_event)) {
         if (canvas->last_event.type == VGFX_EVENT_CLOSE)
@@ -420,8 +450,10 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
         else if (canvas->last_event.type == VGFX_EVENT_TEXT_INPUT)
             rt_keyboard_text_input((int32_t)canvas->last_event.data.text.codepoint);
 
-        // Forward mouse events to mouse module (convert physical -> logical)
-        if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE) {
+        // Forward mouse events to mouse module (convert physical -> logical).
+        // While captured, absolute move events are skipped — the delta comes
+        // from native raw deltas or the warp-to-center fallback instead.
+        if (!captured && canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE) {
             rt_canvas_update_mouse_from_physical(
                 canvas, canvas->last_event.data.mouse_move.x, canvas->last_event.data.mouse_move.y);
         } else if (canvas->last_event.type == VGFX_EVENT_MOUSE_DOWN) {
@@ -461,11 +493,32 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
     // cannot leave the frame using stale coordinates.
     int32_t mx = 0, my = 0;
     vgfx_mouse_pos(canvas->gfx_win, &mx, &my);
-    rt_mouse_update_pos((int64_t)mx, (int64_t)my);
+    if (captured && !relative_native) {
+        /* Warp-to-center fallback: the frame's delta is the offset from the
+         * window center the cursor was warped to at the end of the last poll. */
+        int32_t cw = 0, ch = 0;
+        vgfx_get_size(canvas->gfx_win, &cw, &ch);
+        int32_t cx = cw / 2, cy = ch / 2;
+        rt_mouse_force_delta((int64_t)(mx - cx), (int64_t)(my - cy));
+    } else if (!captured) {
+        rt_mouse_update_pos((int64_t)mx, (int64_t)my);
+
+        // Recompute the absolute delta now that this frame's motion has been
+        // applied, so Mouse.DeltaX/Y describe the same frame as Mouse.X/Y.
+        rt_mouse_finalize_frame();
+    }
 
     // Update action mapping state AFTER events are processed so that
     // Action.Pressed/Held/Released reflect this frame's input.
     rt_action_update();
+
+    /* Warp cursor to center for next frame (only for the captured fallback
+     * path — native relative mode never needs warping). */
+    if (captured && !relative_native && canvas->gfx_win) {
+        int32_t cw = 0, ch = 0;
+        vgfx_get_size(canvas->gfx_win, &cw, &ch);
+        vgfx_warp_cursor(canvas->gfx_win, cw / 2, ch / 2);
+    }
 
     /* Returns the type of the LAST event processed this frame (not a boolean).
      * Close detection is via Canvas.ShouldClose, not via this return value. */

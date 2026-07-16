@@ -21,7 +21,7 @@ func start() {
     // --- Pos / Len / Capacity (empty) ---
     Say("--- Initial state ---");
     Say("Pos:");
-    SayInt(MS.get_Pos(ms));
+    SayInt(MS.get_Position(ms));
     Say("Len:");
     SayInt(MS.get_Length(ms));
     Say("Capacity:");
@@ -33,7 +33,7 @@ func start() {
     MS.WriteI8(ms, -7);
     Say("Wrote 2 I8 values");
     Say("Pos after writes:");
-    SayInt(MS.get_Pos(ms));
+    SayInt(MS.get_Position(ms));
     MS.Seek(ms, 0);
     Say("ReadI8:");
     SayInt(MS.ReadI8(ms));
@@ -123,7 +123,7 @@ func start() {
     Say("Len after clear:");
     SayInt(MS.get_Length(ms));
     Say("Pos after clear:");
-    SayInt(MS.get_Pos(ms));
+    SayInt(MS.get_Position(ms));
 
     Say("=== MemStream Demo Complete ===");
 }

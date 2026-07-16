@@ -70,31 +70,31 @@ PRINT ""
 ' === Size formatting ===
 PRINT "=== Size Formatting ==="
 
-result = Viper.Text.Fmt.Size(0)
+result = Viper.Text.Fmt.SizeBytes(0)
 PRINT "Size(0): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(1)
+result = Viper.Text.Fmt.SizeBytes(1)
 PRINT "Size(1): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(1023)
+result = Viper.Text.Fmt.SizeBytes(1023)
 PRINT "Size(1023): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(1024)
+result = Viper.Text.Fmt.SizeBytes(1024)
 PRINT "Size(1024): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(1025)
+result = Viper.Text.Fmt.SizeBytes(1025)
 PRINT "Size(1025): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(1048576)
+result = Viper.Text.Fmt.SizeBytes(1048576)
 PRINT "Size(1048576 = 1MB): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(1073741824)
+result = Viper.Text.Fmt.SizeBytes(1073741824)
 PRINT "Size(1073741824 = 1GB): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(1099511627776)
+result = Viper.Text.Fmt.SizeBytes(1099511627776)
 PRINT "Size(1TB): '"; result; "'"
 
-result = Viper.Text.Fmt.Size(-1)
+result = Viper.Text.Fmt.SizeBytes(-1)
 PRINT "Size(-1): '"; result; "'"
 PRINT ""
 
@@ -172,19 +172,19 @@ PRINT ""
 ' === NumPct (percentage) formatting ===
 PRINT "=== NumPct Formatting ==="
 
-result = Viper.Text.Fmt.NumPct(0.0, 1)
+result = Viper.Text.Fmt.Percent(0.0, 1)
 PRINT "NumPct(0.0, 1): '"; result; "'"
 
-result = Viper.Text.Fmt.NumPct(0.5, 1)
+result = Viper.Text.Fmt.Percent(0.5, 1)
 PRINT "NumPct(0.5, 1): '"; result; "'"
 
-result = Viper.Text.Fmt.NumPct(1.0, 1)
+result = Viper.Text.Fmt.Percent(1.0, 1)
 PRINT "NumPct(1.0, 1): '"; result; "'"
 
-result = Viper.Text.Fmt.NumPct(0.123456, 2)
+result = Viper.Text.Fmt.Percent(0.123456, 2)
 PRINT "NumPct(0.123456, 2): '"; result; "'"
 
-result = Viper.Text.Fmt.NumPct(-0.5, 1)
+result = Viper.Text.Fmt.Percent(-0.5, 1)
 PRINT "NumPct(-0.5, 1): '"; result; "'"
 PRINT ""
 

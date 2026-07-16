@@ -12,12 +12,12 @@ func start() {
 
     // --- Ticks ---
     Say("--- Ticks ---");
-    var t1 = Clk.Ticks();
+    var t1 = Clk.NowMs();
     Say("Ticks (monotonic ms):");
     SayInt(t1);
 
     // Second call to show it advances
-    var t2 = Clk.Ticks();
+    var t2 = Clk.NowMs();
     Say("Ticks again:");
     SayInt(t2);
     Say("Ticks advancing (t2 >= t1):");
@@ -25,11 +25,11 @@ func start() {
 
     // --- TicksUs ---
     Say("--- TicksUs ---");
-    var u1 = Clk.TicksUs();
+    var u1 = Clk.NowMicros();
     Say("TicksUs (monotonic us):");
     SayInt(u1);
 
-    var u2 = Clk.TicksUs();
+    var u2 = Clk.NowMicros();
     Say("TicksUs again:");
     SayInt(u2);
     Say("TicksUs advancing (u2 >= u1):");
@@ -38,9 +38,9 @@ func start() {
     // --- Sleep ---
     Say("--- Sleep ---");
     Say("Sleeping 10ms...");
-    var before = Clk.Ticks();
+    var before = Clk.NowMs();
     Clk.Sleep(10);
-    var after = Clk.Ticks();
+    var after = Clk.NowMs();
     Say("Ticks before:");
     SayInt(before);
     Say("Ticks after:");
@@ -50,8 +50,8 @@ func start() {
 
     // --- Relationship ---
     Say("--- Relationship ---");
-    var tickMs = Clk.Ticks();
-    var tickUs = Clk.TicksUs();
+    var tickMs = Clk.NowMs();
+    var tickUs = Clk.NowMicros();
     Say("Ticks (ms):");
     SayInt(tickMs);
     Say("TicksUs (us):");

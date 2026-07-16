@@ -16,6 +16,10 @@
 //   - Windows: uses GetModuleFileNameA + strip filename.
 //   - Linux: uses readlink("/proc/self/exe") + dirname.
 //   - ViperDOS: returns "." (no meaningful exe path).
+//   - Platform probes use fixed MAX_PATH/PATH_MAX buffers. Overlong paths fail;
+//     the runtime wrapper falls back to "." (macOS also does so for probe errors).
+//   - Windows uses the process ANSI code page through GetModuleFileNameA, so a
+//     path not representable there is not guaranteed to round-trip as UTF-8.
 //   - Returned C strings are malloc'd; caller must free.
 //   - Returned runtime strings are GC-managed.
 //
@@ -72,7 +76,8 @@ static void strip_filename(char *path) {
 // ─── rt_path_exe_dir_cstr ───────────────────────────────────────────────────
 
 /// @brief Get the directory of the running executable as a C string.
-/// @return malloc'd string (caller must free), or NULL on failure.
+/// @return malloc'd string (caller must free), NULL for Windows/Linux probe failure,
+///         or "." for macOS/ViperDOS/unknown-platform fallback.
 char *rt_path_exe_dir_cstr(void) {
 #if defined(_WIN32)
     // Windows: GetModuleFileNameA

@@ -12,7 +12,7 @@
 Provides Assets constants and static operations for filesystem and stream workflows.
 
 `Viper.IO.Assets` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Load`, `LoadBytes`, `Exists`, `Size`.
+Its public surface exposes operations including `Load`, `LoadBytes`, `Exists`, `SizeBytes`.
 
 #### Methods
 
@@ -21,7 +21,7 @@ surface exposes operations including `Load`, `LoadBytes`, `Exists`, `Size`.
 | <a id="viper-io-assets-load"></a>`Load` | `obj(str)` | `Viper.IO.Assets.Load` |
 | <a id="viper-io-assets-loadbytes"></a>`LoadBytes` | `obj(str)` | `Viper.IO.Assets.LoadBytes` |
 | <a id="viper-io-assets-exists"></a>`Exists` | `i1(str)` | `Viper.IO.Assets.Exists` |
-| <a id="viper-io-assets-size"></a>`Size` | `i64(str)` | `Viper.IO.Assets.Size` |
+| <a id="viper-io-assets-sizebytes"></a>`SizeBytes` | `i64(str)` | `Viper.IO.Assets.SizeBytes` |
 | <a id="viper-io-assets-list"></a>`List` | `obj()` | `Viper.IO.Assets.List` |
 | <a id="viper-io-assets-mount"></a>`Mount` | `i64(str)` | `Viper.IO.Assets.Mount` |
 | <a id="viper-io-assets-unmount"></a>`Unmount` | `i64(str)` | `Viper.IO.Assets.Unmount` |
@@ -33,7 +33,7 @@ Provides directory enumeration, creation, movement, and removal operations.
 
 `Viper.IO.Dir` exposes a registry-backed runtime surface without requiring callers to construct
 the class directly. Its public surface exposes operations including `Current`, `Dirs`,
-`DirsSeq`, `Exists`.
+`Exists`, `Entries`.
 
 #### Methods
 
@@ -41,13 +41,10 @@ the class directly. Its public surface exposes operations including `Current`, `
 |---|---|---|
 | <a id="viper-io-dir-current"></a>`Current` | `str()` | `Viper.IO.Dir.Current` |
 | <a id="viper-io-dir-dirs"></a>`Dirs` | `seq<str>(str)` | `Viper.IO.Dir.Dirs` |
-| <a id="viper-io-dir-dirsseq"></a>`DirsSeq` | `seq<str>(str)` | `Viper.IO.Dir.DirsSeq` |
 | <a id="viper-io-dir-exists"></a>`Exists` | `i1(str)` | `Viper.IO.Dir.Exists` |
 | <a id="viper-io-dir-entries"></a>`Entries` | `seq<str>(str)` | `Viper.IO.Dir.Entries` |
 | <a id="viper-io-dir-files"></a>`Files` | `seq<str>(str)` | `Viper.IO.Dir.Files` |
-| <a id="viper-io-dir-filesseq"></a>`FilesSeq` | `seq<str>(str)` | `Viper.IO.Dir.FilesSeq` |
 | <a id="viper-io-dir-list"></a>`List` | `seq<str>(str)` | `Viper.IO.Dir.List` |
-| <a id="viper-io-dir-listseq"></a>`ListSeq` | `seq<str>(str)` | `Viper.IO.Dir.ListSeq` |
 | <a id="viper-io-dir-make"></a>`Make` | `void(str)` | `Viper.IO.Dir.Make` |
 | <a id="viper-io-dir-makeall"></a>`MakeAll` | `void(str)` | `Viper.IO.Dir.MakeAll` |
 | <a id="viper-io-dir-move"></a>`Move` | `void(str,str)` | `Viper.IO.Dir.Move` |
@@ -118,15 +115,11 @@ the class directly. Its public surface exposes operations including `Append`, `A
 | <a id="viper-io-file-readallbytes"></a>`ReadAllBytes` | `obj<Viper.Collections.Bytes>(str)` | `Viper.IO.File.ReadAllBytes` |
 | <a id="viper-io-file-readalllines"></a>`ReadAllLines` | `seq<str>(str)` | `Viper.IO.File.ReadAllLines` |
 | <a id="viper-io-file-readalltext"></a>`ReadAllText` | `str(str)` | `Viper.IO.File.ReadAllText` |
-| <a id="viper-io-file-readbytes"></a>`ReadBytes` | `obj<Viper.Collections.Bytes>(str)` | `Viper.IO.File.ReadBytes` |
-| <a id="viper-io-file-readlines"></a>`ReadLines` | `seq<str>(str)` | `Viper.IO.File.ReadLines` |
-| <a id="viper-io-file-size"></a>`Size` | `i64(str)` | `Viper.IO.File.Size` |
+| <a id="viper-io-file-sizebytes"></a>`SizeBytes` | `i64(str)` | `Viper.IO.File.SizeBytes` |
 | <a id="viper-io-file-touch"></a>`Touch` | `void(str)` | `Viper.IO.File.Touch` |
 | <a id="viper-io-file-writeallbytes"></a>`WriteAllBytes` | `void(str,obj<Viper.Collections.Bytes>)` | `Viper.IO.File.WriteAllBytes` |
 | <a id="viper-io-file-writealllines"></a>`WriteAllLines` | `void(str,seq<str>)` | `Viper.IO.File.WriteAllLines` |
 | <a id="viper-io-file-writealltext"></a>`WriteAllText` | `void(str,str)` | `Viper.IO.File.WriteAllText` |
-| <a id="viper-io-file-writebytes"></a>`WriteBytes` | `void(str,obj<Viper.Collections.Bytes>)` | `Viper.IO.File.WriteBytes` |
-| <a id="viper-io-file-writelines"></a>`WriteLines` | `void(str,seq<str>)` | `Viper.IO.File.WriteLines` |
 | <a id="viper-io-file-moveover"></a>`MoveOver` | `void(str,str)` | `Viper.IO.File.MoveOver` |
 
 <a id="viper-io-path"></a>
@@ -135,25 +128,25 @@ the class directly. Its public surface exposes operations including `Append`, `A
 Provides static utility class for path manipulation.
 
 `Viper.IO.Path` exposes a registry-backed runtime surface without requiring callers to construct
-the class directly. Its public surface exposes operations including `Abs`, `Dir`, `Ext`,
-`ExeDir`.
+the class directly. Its public surface exposes operations including `Absolute`, `Directory`,
+`Extension`, `ExeDir`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-io-path-abs"></a>`Abs` | `str(str)` | `Viper.IO.Path.Abs` |
-| <a id="viper-io-path-dir"></a>`Dir` | `str(str)` | `Viper.IO.Path.Dir` |
-| <a id="viper-io-path-ext"></a>`Ext` | `str(str)` | `Viper.IO.Path.Ext` |
+| <a id="viper-io-path-absolute"></a>`Absolute` | `str(str)` | `Viper.IO.Path.Absolute` |
+| <a id="viper-io-path-directory"></a>`Directory` | `str(str)` | `Viper.IO.Path.Directory` |
+| <a id="viper-io-path-extension"></a>`Extension` | `str(str)` | `Viper.IO.Path.Extension` |
 | <a id="viper-io-path-exedir"></a>`ExeDir` | `str()` | `Viper.IO.Path.ExeDir` |
 | <a id="viper-io-path-datadir"></a>`DataDir` | `str(str)` | `Viper.IO.Path.DataDir` |
-| <a id="viper-io-path-isabs"></a>`IsAbs` | `i1(str)` | `Viper.IO.Path.IsAbs` |
+| <a id="viper-io-path-isabsolute"></a>`IsAbsolute` | `i1(str)` | `Viper.IO.Path.IsAbsolute` |
 | <a id="viper-io-path-join"></a>`Join` | `str(str,str)` | `Viper.IO.Path.Join` |
 | <a id="viper-io-path-name"></a>`Name` | `str(str)` | `Viper.IO.Path.Name` |
-| <a id="viper-io-path-norm"></a>`Norm` | `str(str)` | `Viper.IO.Path.Norm` |
-| <a id="viper-io-path-sep"></a>`Sep` | `str()` | `Viper.IO.Path.Sep` |
+| <a id="viper-io-path-normalize"></a>`Normalize` | `str(str)` | `Viper.IO.Path.Normalize` |
+| <a id="viper-io-path-separator"></a>`Separator` | `str()` | `Viper.IO.Path.Separator` |
 | <a id="viper-io-path-stem"></a>`Stem` | `str(str)` | `Viper.IO.Path.Stem` |
-| <a id="viper-io-path-withext"></a>`WithExt` | `str(str,str)` | `Viper.IO.Path.WithExt` |
+| <a id="viper-io-path-withextension"></a>`WithExtension` | `str(str,str)` | `Viper.IO.Path.WithExtension` |
 
 <a id="viper-io-binfile"></a>
 ### `Viper.IO.BinFile`
@@ -161,16 +154,16 @@ the class directly. Its public surface exposes operations including `Abs`, `Dir`
 Provides binary file stream operations.
 
 `Viper.IO.BinFile` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes properties such as `Eof`, `Pos`, `Size`
-and operations including `Open`, `Close`, `Flush`, `Read`.
+construct the class directly. Its public surface exposes properties such as `Eof`, `Position`,
+`SizeBytes` and operations including `Open`, `Close`, `Flush`, `Read`.
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
 | <a id="viper-io-binfile-eof"></a>`Eof` | `i1` | read-only |
-| <a id="viper-io-binfile-pos"></a>`Pos` | `i64` | read-only |
-| <a id="viper-io-binfile-size"></a>`Size` | `i64` | read-only |
+| <a id="viper-io-binfile-position"></a>`Position` | `i64` | read-only |
+| <a id="viper-io-binfile-sizebytes"></a>`SizeBytes` | `i64` | read-only |
 
 #### Methods
 
@@ -191,8 +184,9 @@ and operations including `Open`, `Close`, `Flush`, `Read`.
 Provides in-memory binary stream.
 
 Create `Viper.IO.MemStream` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Pos`,
-`Length`, `Capacity` and operations including `ReadI8`, `WriteI8`, `ReadU8`, `WriteU8`.
+object with the instance members below. Its public surface exposes properties such as
+`Position`, `Length`, `Capacity` and operations including `ReadI8`, `WriteI8`, `ReadU8`,
+`WriteU8`.
 
 Constructor: `Viper.IO.MemStream.New`
 
@@ -200,7 +194,7 @@ Constructor: `Viper.IO.MemStream.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-io-memstream-pos"></a>`Pos` | `i64` | read/write |
+| <a id="viper-io-memstream-position"></a>`Position` | `i64` | read/write |
 | <a id="viper-io-memstream-length"></a>`Length` | `i64` | read-only |
 | <a id="viper-io-memstream-capacity"></a>`Capacity` | `i64` | read-only |
 
@@ -244,8 +238,9 @@ Constructor: `Viper.IO.MemStream.New`
 Provides positioned binary read/write buffer.
 
 Create `Viper.IO.BinaryBuffer` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Pos`,
-`Length` and operations including `NewCap`, `NewCapacity`, `FromBytes`, `WriteByte`.
+object with the instance members below. Its public surface exposes properties such as
+`Position`, `Length` and operations including `NewCapacity`, `FromBytes`, `WriteByte`,
+`WriteI16LittleEndian`.
 
 Constructor: `Viper.IO.BinaryBuffer.New`
 
@@ -253,40 +248,39 @@ Constructor: `Viper.IO.BinaryBuffer.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-io-binarybuffer-pos"></a>`Pos` | `i64` | read/write |
+| <a id="viper-io-binarybuffer-position"></a>`Position` | `i64` | read/write |
 | <a id="viper-io-binarybuffer-length"></a>`Length` | `i64` | read-only |
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-io-binarybuffer-newcap"></a>`NewCap` | `obj(i64)` | `Viper.IO.BinaryBuffer.NewCap` |
 | <a id="viper-io-binarybuffer-newcapacity"></a>`NewCapacity` | `obj(i64)` | `Viper.IO.BinaryBuffer.NewCapacity` |
 | <a id="viper-io-binarybuffer-frombytes"></a>`FromBytes` | `obj(obj)` | `Viper.IO.BinaryBuffer.FromBytes` |
 | <a id="viper-io-binarybuffer-writebyte"></a>`WriteByte` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteByte` |
-| <a id="viper-io-binarybuffer-writei16le"></a>`WriteI16LE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI16LE` |
-| <a id="viper-io-binarybuffer-writei16be"></a>`WriteI16BE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI16BE` |
-| <a id="viper-io-binarybuffer-writeu16le"></a>`WriteU16LE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU16LE` |
-| <a id="viper-io-binarybuffer-writeu16be"></a>`WriteU16BE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU16BE` |
-| <a id="viper-io-binarybuffer-writei32le"></a>`WriteI32LE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI32LE` |
-| <a id="viper-io-binarybuffer-writei32be"></a>`WriteI32BE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI32BE` |
-| <a id="viper-io-binarybuffer-writeu32le"></a>`WriteU32LE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU32LE` |
-| <a id="viper-io-binarybuffer-writeu32be"></a>`WriteU32BE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU32BE` |
-| <a id="viper-io-binarybuffer-writei64le"></a>`WriteI64LE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI64LE` |
-| <a id="viper-io-binarybuffer-writei64be"></a>`WriteI64BE` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI64BE` |
+| <a id="viper-io-binarybuffer-writei16littleendian"></a>`WriteI16LittleEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI16LittleEndian` |
+| <a id="viper-io-binarybuffer-writei16bigendian"></a>`WriteI16BigEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI16BigEndian` |
+| <a id="viper-io-binarybuffer-writeu16littleendian"></a>`WriteU16LittleEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU16LittleEndian` |
+| <a id="viper-io-binarybuffer-writeu16bigendian"></a>`WriteU16BigEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU16BigEndian` |
+| <a id="viper-io-binarybuffer-writei32littleendian"></a>`WriteI32LittleEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI32LittleEndian` |
+| <a id="viper-io-binarybuffer-writei32bigendian"></a>`WriteI32BigEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI32BigEndian` |
+| <a id="viper-io-binarybuffer-writeu32littleendian"></a>`WriteU32LittleEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU32LittleEndian` |
+| <a id="viper-io-binarybuffer-writeu32bigendian"></a>`WriteU32BigEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteU32BigEndian` |
+| <a id="viper-io-binarybuffer-writei64littleendian"></a>`WriteI64LittleEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI64LittleEndian` |
+| <a id="viper-io-binarybuffer-writei64bigendian"></a>`WriteI64BigEndian` | `void(i64)` | `Viper.IO.BinaryBuffer.WriteI64BigEndian` |
 | <a id="viper-io-binarybuffer-writestr"></a>`WriteStr` | `void(str)` | `Viper.IO.BinaryBuffer.WriteStr` |
 | <a id="viper-io-binarybuffer-writebytes"></a>`WriteBytes` | `void(obj)` | `Viper.IO.BinaryBuffer.WriteBytes` |
 | <a id="viper-io-binarybuffer-readbyte"></a>`ReadByte` | `i64()` | `Viper.IO.BinaryBuffer.ReadByte` |
-| <a id="viper-io-binarybuffer-readi16le"></a>`ReadI16LE` | `i64()` | `Viper.IO.BinaryBuffer.ReadI16LE` |
-| <a id="viper-io-binarybuffer-readi16be"></a>`ReadI16BE` | `i64()` | `Viper.IO.BinaryBuffer.ReadI16BE` |
-| <a id="viper-io-binarybuffer-readu16le"></a>`ReadU16LE` | `i64()` | `Viper.IO.BinaryBuffer.ReadU16LE` |
-| <a id="viper-io-binarybuffer-readu16be"></a>`ReadU16BE` | `i64()` | `Viper.IO.BinaryBuffer.ReadU16BE` |
-| <a id="viper-io-binarybuffer-readi32le"></a>`ReadI32LE` | `i64()` | `Viper.IO.BinaryBuffer.ReadI32LE` |
-| <a id="viper-io-binarybuffer-readi32be"></a>`ReadI32BE` | `i64()` | `Viper.IO.BinaryBuffer.ReadI32BE` |
-| <a id="viper-io-binarybuffer-readu32le"></a>`ReadU32LE` | `i64()` | `Viper.IO.BinaryBuffer.ReadU32LE` |
-| <a id="viper-io-binarybuffer-readu32be"></a>`ReadU32BE` | `i64()` | `Viper.IO.BinaryBuffer.ReadU32BE` |
-| <a id="viper-io-binarybuffer-readi64le"></a>`ReadI64LE` | `i64()` | `Viper.IO.BinaryBuffer.ReadI64LE` |
-| <a id="viper-io-binarybuffer-readi64be"></a>`ReadI64BE` | `i64()` | `Viper.IO.BinaryBuffer.ReadI64BE` |
+| <a id="viper-io-binarybuffer-readi16littleendian"></a>`ReadI16LittleEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadI16LittleEndian` |
+| <a id="viper-io-binarybuffer-readi16bigendian"></a>`ReadI16BigEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadI16BigEndian` |
+| <a id="viper-io-binarybuffer-readu16littleendian"></a>`ReadU16LittleEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadU16LittleEndian` |
+| <a id="viper-io-binarybuffer-readu16bigendian"></a>`ReadU16BigEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadU16BigEndian` |
+| <a id="viper-io-binarybuffer-readi32littleendian"></a>`ReadI32LittleEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadI32LittleEndian` |
+| <a id="viper-io-binarybuffer-readi32bigendian"></a>`ReadI32BigEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadI32BigEndian` |
+| <a id="viper-io-binarybuffer-readu32littleendian"></a>`ReadU32LittleEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadU32LittleEndian` |
+| <a id="viper-io-binarybuffer-readu32bigendian"></a>`ReadU32BigEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadU32BigEndian` |
+| <a id="viper-io-binarybuffer-readi64littleendian"></a>`ReadI64LittleEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadI64LittleEndian` |
+| <a id="viper-io-binarybuffer-readi64bigendian"></a>`ReadI64BigEndian` | `i64()` | `Viper.IO.BinaryBuffer.ReadI64BigEndian` |
 | <a id="viper-io-binarybuffer-readstr"></a>`ReadStr` | `str()` | `Viper.IO.BinaryBuffer.ReadStr` |
 | <a id="viper-io-binarybuffer-readbytes"></a>`ReadBytes` | `obj(i64)` | `Viper.IO.BinaryBuffer.ReadBytes` |
 | <a id="viper-io-binarybuffer-tobytes"></a>`ToBytes` | `obj()` | `Viper.IO.BinaryBuffer.ToBytes` |
@@ -299,15 +293,16 @@ Constructor: `Viper.IO.BinaryBuffer.New`
 Provides unified stream interface.
 
 `Viper.IO.Stream` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes properties such as `Type`, `Pos`,
-`Length` and operations including `OpenFile`, `OpenMemory`, `OpenBytes`, `FromBinFile`.
+construct the class directly. Its public surface exposes properties such as `Type`,
+`Position`, `Length` and operations including `OpenFile`, `OpenMemory`, `OpenBytes`,
+`FromBinFile`.
 
 #### Properties
 
 | Property | Type | Access |
 |---|---|---|
 | <a id="viper-io-stream-type"></a>`Type` | `i64` | read-only |
-| <a id="viper-io-stream-pos"></a>`Pos` | `i64` | read/write |
+| <a id="viper-io-stream-position"></a>`Position` | `i64` | read/write |
 | <a id="viper-io-stream-length"></a>`Length` | `i64` | read-only |
 | <a id="viper-io-stream-eof"></a>`Eof` | `i1` | read-only |
 
@@ -337,8 +332,8 @@ construct the class directly. Its public surface exposes properties such as `Typ
 Provides line-by-line text file reader.
 
 `Viper.IO.LineReader` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes a property such as `Eof` and operations
-including `Open`, `Close`, `PeekChar`, `Read`.
+construct the class directly. Its public surface exposes properties such as `Eof` and
+operations including `Open`, `Close`, `PeekChar`, `Read`.
 
 #### Properties
 
@@ -363,7 +358,7 @@ including `Open`, `Close`, `PeekChar`, `Read`.
 Provides buffered text file writer.
 
 `Viper.IO.LineWriter` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes a property such as `NewLine` and
+construct the class directly. Its public surface exposes properties such as `NewLine` and
 operations including `Open`, `Append`, `Close`, `Flush`.
 
 #### Properties
@@ -382,7 +377,7 @@ operations including `Open`, `Append`, `Close`, `Flush`.
 | <a id="viper-io-linewriter-flush"></a>`Flush` | `void()` | `Viper.IO.LineWriter.Flush` |
 | <a id="viper-io-linewriter-write"></a>`Write` | `void(str)` | `Viper.IO.LineWriter.Write` |
 | <a id="viper-io-linewriter-writechar"></a>`WriteChar` | `void(i64)` | `Viper.IO.LineWriter.WriteChar` |
-| <a id="viper-io-linewriter-writeln"></a>`WriteLn` | `void(str)` | `Viper.IO.LineWriter.WriteLn` |
+| <a id="viper-io-linewriter-writeline"></a>`WriteLine` | `void(str)` | `Viper.IO.LineWriter.WriteLine` |
 
 <a id="viper-io-savedata"></a>
 ### `Viper.IO.SaveData`
@@ -522,13 +517,10 @@ construct the class directly. Its public surface exposes properties such as `Pat
 |---|---|---|
 | `Viper.IO.Dir.Current` | `str()` | `rt_dir_current` |
 | `Viper.IO.Dir.Dirs` | `seq<str>(str)` | `rt_dir_dirs` |
-| `Viper.IO.Dir.DirsSeq` | `seq<str>(str)` | `rt_dir_dirs_seq` |
 | `Viper.IO.Dir.Exists` | `i1(str)` | `rt_dir_exists` |
 | `Viper.IO.Dir.Entries` | `seq<str>(str)` | `rt_dir_entries_seq` |
 | `Viper.IO.Dir.Files` | `seq<str>(str)` | `rt_dir_files` |
-| `Viper.IO.Dir.FilesSeq` | `seq<str>(str)` | `rt_dir_files_seq` |
 | `Viper.IO.Dir.List` | `seq<str>(str)` | `rt_dir_list` |
-| `Viper.IO.Dir.ListSeq` | `seq<str>(str)` | `rt_dir_list_seq` |
 | `Viper.IO.Dir.Make` | `void(str)` | `rt_dir_make` |
 | `Viper.IO.Dir.MakeAll` | `void(str)` | `rt_dir_make_all` |
 | `Viper.IO.Dir.Move` | `void(str,str)` | `rt_dir_move` |
@@ -558,31 +550,27 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | `Viper.IO.File.ReadAllBytes` | `obj<Viper.Collections.Bytes>(str)` | `rt_io_file_read_all_bytes` |
 | `Viper.IO.File.ReadAllLines` | `seq<str>(str)` | `rt_io_file_read_all_lines` |
 | `Viper.IO.File.ReadAllText` | `str(str)` | `rt_io_file_read_all_text` |
-| `Viper.IO.File.ReadBytes` | `obj<Viper.Collections.Bytes>(str)` | `rt_file_read_bytes` |
-| `Viper.IO.File.ReadLines` | `seq<str>(str)` | `rt_file_read_lines` |
-| `Viper.IO.File.Size` | `i64(str)` | `rt_file_size` |
+| `Viper.IO.File.SizeBytes` | `i64(str)` | `rt_file_size` |
 | `Viper.IO.File.Touch` | `void(str)` | `rt_file_touch` |
 | `Viper.IO.File.WriteAllBytes` | `void(str,obj<Viper.Collections.Bytes>)` | `rt_io_file_write_all_bytes` |
 | `Viper.IO.File.WriteAllLines` | `void(str,seq<str>)` | `rt_io_file_write_all_lines` |
 | `Viper.IO.File.WriteAllText` | `void(str,str)` | `rt_io_file_write_all_text` |
-| `Viper.IO.File.WriteBytes` | `void(str,obj<Viper.Collections.Bytes>)` | `rt_file_write_bytes` |
-| `Viper.IO.File.WriteLines` | `void(str,seq<str>)` | `rt_file_write_lines` |
-| `Viper.IO.Path.Abs` | `str(str)` | `rt_path_abs` |
-| `Viper.IO.Path.Dir` | `str(str)` | `rt_path_dir` |
-| `Viper.IO.Path.Ext` | `str(str)` | `rt_path_ext` |
-| `Viper.IO.Path.IsAbs` | `i1(str)` | `rt_path_is_abs` |
+| `Viper.IO.Path.Absolute` | `str(str)` | `rt_path_abs` |
+| `Viper.IO.Path.Directory` | `str(str)` | `rt_path_dir` |
+| `Viper.IO.Path.Extension` | `str(str)` | `rt_path_ext` |
+| `Viper.IO.Path.IsAbsolute` | `i1(str)` | `rt_path_is_abs` |
 | `Viper.IO.Path.Join` | `str(str,str)` | `rt_path_join` |
 | `Viper.IO.Path.Name` | `str(str)` | `rt_path_name` |
-| `Viper.IO.Path.Norm` | `str(str)` | `rt_path_norm` |
-| `Viper.IO.Path.Sep` | `str()` | `rt_path_sep` |
+| `Viper.IO.Path.Normalize` | `str(str)` | `rt_path_norm` |
+| `Viper.IO.Path.Separator` | `str()` | `rt_path_sep` |
 | `Viper.IO.Path.Stem` | `str(str)` | `rt_path_stem` |
-| `Viper.IO.Path.WithExt` | `str(str,str)` | `rt_path_with_ext` |
+| `Viper.IO.Path.WithExtension` | `str(str,str)` | `rt_path_with_ext` |
 | `Viper.IO.Path.ExeDir` | `str()` | `rt_path_exe_dir_str` |
 | `Viper.IO.Path.DataDir` | `str(str)` | `rt_path_data_dir` |
 | `Viper.IO.Assets.Load` | `obj(str)` | `rt_asset_load` |
 | `Viper.IO.Assets.LoadBytes` | `obj(str)` | `rt_asset_load_bytes` |
 | `Viper.IO.Assets.Exists` | `i1(str)` | `rt_asset_exists` |
-| `Viper.IO.Assets.Size` | `i64(str)` | `rt_asset_size` |
+| `Viper.IO.Assets.SizeBytes` | `i64(str)` | `rt_asset_size` |
 | `Viper.IO.Assets.List` | `obj()` | `rt_asset_list` |
 | `Viper.IO.Assets.Mount` | `i64(str)` | `rt_asset_mount` |
 | `Viper.IO.Assets.Unmount` | `i64(str)` | `rt_asset_unmount` |
@@ -590,18 +578,18 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | <a id="viper-io-binfile-get-eof"></a>`Viper.IO.BinFile.get_Eof` | `i1(obj)` | `rt_binfile_eof` |
 | `Viper.IO.BinFile.Flush` | `void(obj)` | `rt_binfile_flush` |
 | `Viper.IO.BinFile.Open` | `obj(str,str)` | `rt_binfile_open` |
-| <a id="viper-io-binfile-get-pos"></a>`Viper.IO.BinFile.get_Pos` | `i64(obj)` | `rt_binfile_pos` |
+| <a id="viper-io-binfile-get-position"></a>`Viper.IO.BinFile.get_Position` | `i64(obj)` | `rt_binfile_pos` |
 | `Viper.IO.BinFile.Read` | `i64(obj,obj,i64,i64)` | `rt_binfile_read` |
 | `Viper.IO.BinFile.ReadByte` | `i64(obj)` | `rt_binfile_read_byte` |
 | `Viper.IO.BinFile.Seek` | `i64(obj,i64,i64)` | `rt_binfile_seek` |
-| <a id="viper-io-binfile-get-size"></a>`Viper.IO.BinFile.get_Size` | `i64(obj)` | `rt_binfile_size` |
+| <a id="viper-io-binfile-get-sizebytes"></a>`Viper.IO.BinFile.get_SizeBytes` | `i64(obj)` | `rt_binfile_size` |
 | `Viper.IO.BinFile.Write` | `void(obj,obj,i64,i64)` | `rt_binfile_write` |
 | `Viper.IO.BinFile.WriteByte` | `void(obj,i64)` | `rt_binfile_write_byte` |
 | `Viper.IO.MemStream.New` | `obj()` | `rt_memstream_new` |
 | `Viper.IO.MemStream.NewCapacity` | `obj(i64)` | `rt_memstream_new_capacity` |
 | `Viper.IO.MemStream.FromBytes` | `obj(obj)` | `rt_memstream_from_bytes` |
-| <a id="viper-io-memstream-get-pos"></a>`Viper.IO.MemStream.get_Pos` | `i64(obj)` | `rt_memstream_get_pos` |
-| <a id="viper-io-memstream-set-pos"></a>`Viper.IO.MemStream.set_Pos` | `void(obj,i64)` | `rt_memstream_set_pos` |
+| <a id="viper-io-memstream-get-position"></a>`Viper.IO.MemStream.get_Position` | `i64(obj)` | `rt_memstream_get_pos` |
+| <a id="viper-io-memstream-set-position"></a>`Viper.IO.MemStream.set_Position` | `void(obj,i64)` | `rt_memstream_set_pos` |
 | <a id="viper-io-memstream-get-length"></a>`Viper.IO.MemStream.get_Length` | `i64(obj)` | `rt_memstream_get_len` |
 | <a id="viper-io-memstream-get-capacity"></a>`Viper.IO.MemStream.get_Capacity` | `i64(obj)` | `rt_memstream_get_capacity` |
 | `Viper.IO.MemStream.ReadI8` | `i64(obj)` | `rt_memstream_read_i8` |
@@ -631,37 +619,36 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | `Viper.IO.MemStream.Seek` | `void(obj,i64)` | `rt_memstream_seek` |
 | `Viper.IO.MemStream.Skip` | `void(obj,i64)` | `rt_memstream_skip` |
 | `Viper.IO.BinaryBuffer.New` | `obj()` | `rt_binbuf_new` |
-| `Viper.IO.BinaryBuffer.NewCap` | `obj(i64)` | `rt_binbuf_new_cap` |
 | `Viper.IO.BinaryBuffer.NewCapacity` | `obj(i64)` | `rt_binbuf_new_cap` |
 | `Viper.IO.BinaryBuffer.FromBytes` | `obj(obj)` | `rt_binbuf_from_bytes` |
 | `Viper.IO.BinaryBuffer.WriteByte` | `void(obj,i64)` | `rt_binbuf_write_byte` |
-| `Viper.IO.BinaryBuffer.WriteI16LE` | `void(obj,i64)` | `rt_binbuf_write_i16le` |
-| `Viper.IO.BinaryBuffer.WriteI16BE` | `void(obj,i64)` | `rt_binbuf_write_i16be` |
-| `Viper.IO.BinaryBuffer.WriteU16LE` | `void(obj,i64)` | `rt_binbuf_write_u16le` |
-| `Viper.IO.BinaryBuffer.WriteU16BE` | `void(obj,i64)` | `rt_binbuf_write_u16be` |
-| `Viper.IO.BinaryBuffer.WriteI32LE` | `void(obj,i64)` | `rt_binbuf_write_i32le` |
-| `Viper.IO.BinaryBuffer.WriteI32BE` | `void(obj,i64)` | `rt_binbuf_write_i32be` |
-| `Viper.IO.BinaryBuffer.WriteU32LE` | `void(obj,i64)` | `rt_binbuf_write_u32le` |
-| `Viper.IO.BinaryBuffer.WriteU32BE` | `void(obj,i64)` | `rt_binbuf_write_u32be` |
-| `Viper.IO.BinaryBuffer.WriteI64LE` | `void(obj,i64)` | `rt_binbuf_write_i64le` |
-| `Viper.IO.BinaryBuffer.WriteI64BE` | `void(obj,i64)` | `rt_binbuf_write_i64be` |
+| `Viper.IO.BinaryBuffer.WriteI16LittleEndian` | `void(obj,i64)` | `rt_binbuf_write_i16le` |
+| `Viper.IO.BinaryBuffer.WriteI16BigEndian` | `void(obj,i64)` | `rt_binbuf_write_i16be` |
+| `Viper.IO.BinaryBuffer.WriteU16LittleEndian` | `void(obj,i64)` | `rt_binbuf_write_u16le` |
+| `Viper.IO.BinaryBuffer.WriteU16BigEndian` | `void(obj,i64)` | `rt_binbuf_write_u16be` |
+| `Viper.IO.BinaryBuffer.WriteI32LittleEndian` | `void(obj,i64)` | `rt_binbuf_write_i32le` |
+| `Viper.IO.BinaryBuffer.WriteI32BigEndian` | `void(obj,i64)` | `rt_binbuf_write_i32be` |
+| `Viper.IO.BinaryBuffer.WriteU32LittleEndian` | `void(obj,i64)` | `rt_binbuf_write_u32le` |
+| `Viper.IO.BinaryBuffer.WriteU32BigEndian` | `void(obj,i64)` | `rt_binbuf_write_u32be` |
+| `Viper.IO.BinaryBuffer.WriteI64LittleEndian` | `void(obj,i64)` | `rt_binbuf_write_i64le` |
+| `Viper.IO.BinaryBuffer.WriteI64BigEndian` | `void(obj,i64)` | `rt_binbuf_write_i64be` |
 | `Viper.IO.BinaryBuffer.WriteStr` | `void(obj,str)` | `rt_binbuf_write_str` |
 | `Viper.IO.BinaryBuffer.WriteBytes` | `void(obj,obj)` | `rt_binbuf_write_bytes` |
 | `Viper.IO.BinaryBuffer.ReadByte` | `i64(obj)` | `rt_binbuf_read_byte` |
-| `Viper.IO.BinaryBuffer.ReadI16LE` | `i64(obj)` | `rt_binbuf_read_i16le` |
-| `Viper.IO.BinaryBuffer.ReadI16BE` | `i64(obj)` | `rt_binbuf_read_i16be` |
-| `Viper.IO.BinaryBuffer.ReadU16LE` | `i64(obj)` | `rt_binbuf_read_u16le` |
-| `Viper.IO.BinaryBuffer.ReadU16BE` | `i64(obj)` | `rt_binbuf_read_u16be` |
-| `Viper.IO.BinaryBuffer.ReadI32LE` | `i64(obj)` | `rt_binbuf_read_i32le` |
-| `Viper.IO.BinaryBuffer.ReadI32BE` | `i64(obj)` | `rt_binbuf_read_i32be` |
-| `Viper.IO.BinaryBuffer.ReadU32LE` | `i64(obj)` | `rt_binbuf_read_u32le` |
-| `Viper.IO.BinaryBuffer.ReadU32BE` | `i64(obj)` | `rt_binbuf_read_u32be` |
-| `Viper.IO.BinaryBuffer.ReadI64LE` | `i64(obj)` | `rt_binbuf_read_i64le` |
-| `Viper.IO.BinaryBuffer.ReadI64BE` | `i64(obj)` | `rt_binbuf_read_i64be` |
+| `Viper.IO.BinaryBuffer.ReadI16LittleEndian` | `i64(obj)` | `rt_binbuf_read_i16le` |
+| `Viper.IO.BinaryBuffer.ReadI16BigEndian` | `i64(obj)` | `rt_binbuf_read_i16be` |
+| `Viper.IO.BinaryBuffer.ReadU16LittleEndian` | `i64(obj)` | `rt_binbuf_read_u16le` |
+| `Viper.IO.BinaryBuffer.ReadU16BigEndian` | `i64(obj)` | `rt_binbuf_read_u16be` |
+| `Viper.IO.BinaryBuffer.ReadI32LittleEndian` | `i64(obj)` | `rt_binbuf_read_i32le` |
+| `Viper.IO.BinaryBuffer.ReadI32BigEndian` | `i64(obj)` | `rt_binbuf_read_i32be` |
+| `Viper.IO.BinaryBuffer.ReadU32LittleEndian` | `i64(obj)` | `rt_binbuf_read_u32le` |
+| `Viper.IO.BinaryBuffer.ReadU32BigEndian` | `i64(obj)` | `rt_binbuf_read_u32be` |
+| `Viper.IO.BinaryBuffer.ReadI64LittleEndian` | `i64(obj)` | `rt_binbuf_read_i64le` |
+| `Viper.IO.BinaryBuffer.ReadI64BigEndian` | `i64(obj)` | `rt_binbuf_read_i64be` |
 | `Viper.IO.BinaryBuffer.ReadStr` | `str(obj)` | `rt_binbuf_read_str` |
 | `Viper.IO.BinaryBuffer.ReadBytes` | `obj(obj,i64)` | `rt_binbuf_read_bytes` |
-| <a id="viper-io-binarybuffer-get-pos"></a>`Viper.IO.BinaryBuffer.get_Pos` | `i64(obj)` | `rt_binbuf_get_position` |
-| <a id="viper-io-binarybuffer-set-pos"></a>`Viper.IO.BinaryBuffer.set_Pos` | `void(obj,i64)` | `rt_binbuf_set_position` |
+| <a id="viper-io-binarybuffer-get-position"></a>`Viper.IO.BinaryBuffer.get_Position` | `i64(obj)` | `rt_binbuf_get_position` |
+| <a id="viper-io-binarybuffer-set-position"></a>`Viper.IO.BinaryBuffer.set_Position` | `void(obj,i64)` | `rt_binbuf_set_position` |
 | <a id="viper-io-binarybuffer-get-length"></a>`Viper.IO.BinaryBuffer.get_Length` | `i64(obj)` | `rt_binbuf_get_len` |
 | `Viper.IO.BinaryBuffer.ToBytes` | `obj(obj)` | `rt_binbuf_to_bytes` |
 | `Viper.IO.BinaryBuffer.Reset` | `void(obj)` | `rt_binbuf_reset` |
@@ -671,8 +658,8 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | `Viper.IO.Stream.FromBinFile` | `obj(obj)` | `rt_stream_from_binfile` |
 | `Viper.IO.Stream.FromMemStream` | `obj(obj)` | `rt_stream_from_memstream` |
 | <a id="viper-io-stream-get-type"></a>`Viper.IO.Stream.get_Type` | `i64(obj)` | `rt_stream_get_type` |
-| <a id="viper-io-stream-get-pos"></a>`Viper.IO.Stream.get_Pos` | `i64(obj)` | `rt_stream_get_pos` |
-| <a id="viper-io-stream-set-pos"></a>`Viper.IO.Stream.set_Pos` | `void(obj,i64)` | `rt_stream_set_pos` |
+| <a id="viper-io-stream-get-position"></a>`Viper.IO.Stream.get_Position` | `i64(obj)` | `rt_stream_get_pos` |
+| <a id="viper-io-stream-set-position"></a>`Viper.IO.Stream.set_Position` | `void(obj,i64)` | `rt_stream_set_pos` |
 | <a id="viper-io-stream-get-length"></a>`Viper.IO.Stream.get_Length` | `i64(obj)` | `rt_stream_get_len` |
 | <a id="viper-io-stream-get-eof"></a>`Viper.IO.Stream.get_Eof` | `i1(obj)` | `rt_stream_is_eof` |
 | `Viper.IO.Stream.Read` | `obj(obj,i64)` | `rt_stream_read` |
@@ -700,7 +687,7 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | <a id="viper-io-linewriter-set-newline"></a>`Viper.IO.LineWriter.set_NewLine` | `void(obj,str)` | `rt_linewriter_set_newline` |
 | `Viper.IO.LineWriter.Write` | `void(obj,str)` | `rt_linewriter_write` |
 | `Viper.IO.LineWriter.WriteChar` | `void(obj,i64)` | `rt_linewriter_write_char` |
-| `Viper.IO.LineWriter.WriteLn` | `void(obj,str)` | `rt_linewriter_write_ln` |
+| `Viper.IO.LineWriter.WriteLine` | `void(obj,str)` | `rt_linewriter_write_ln` |
 | `Viper.IO.SaveData.New` | `obj(str)` | `rt_savedata_new` |
 | `Viper.IO.SaveData.SetInt` | `void(obj,str,i64)` | `rt_savedata_set_int` |
 | `Viper.IO.SaveData.SetString` | `void(obj,str,str)` | `rt_savedata_set_string` |

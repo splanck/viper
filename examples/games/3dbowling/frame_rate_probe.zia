@@ -50,7 +50,7 @@ func simulate(hz: Integer) -> CadenceResult {
     meter.reset(config.RELEASE_ASSIST_STANDARD);
     meter.beginCharge();
 
-    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var world = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var ball = new Ball();
     ball.initBall(world);
     ball.doDelivery(0.0, 0.0, 0.78, 0.0,

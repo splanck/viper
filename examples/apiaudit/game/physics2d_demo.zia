@@ -23,7 +23,7 @@ func start() {
 
     // --- SetVel / ApplyForce ---
     Say("--- Velocity ---");
-    body.SetVel(10.0, 0.0);
+    body.SetVelocity(10.0, 0.0);
     SayNum(body.get_VelocityX());
     SayNum(body.get_VelocityY());
     body.ApplyForce(0.0, 100.0);
@@ -44,7 +44,7 @@ func start() {
 
     // --- SetPos ---
     Say("--- SetPos ---");
-    body.SetPos(50.0, 50.0);
+    body.SetPosition(50.0, 50.0);
     SayNum(body.get_X());
     SayNum(body.get_Y());
 

@@ -124,13 +124,13 @@ func start() {
     // --- Count ---
     Say("--- Count ---");
     Say("Bits.Count(0):");
-    SayInt(Bits.Count(0));
+    SayInt(Bits.CountOnes(0));
     Say("Bits.Count(1):");
-    SayInt(Bits.Count(1));
+    SayInt(Bits.CountOnes(1));
     Say("Bits.Count(7):");
-    SayInt(Bits.Count(7));
+    SayInt(Bits.CountOnes(7));
     Say("Bits.Count(255):");
-    SayInt(Bits.Count(255));
+    SayInt(Bits.CountOnes(255));
 
     // --- CountLeadingZeros ---
     Say("--- CountLeadingZeros ---");

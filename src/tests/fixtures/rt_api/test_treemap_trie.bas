@@ -1,6 +1,6 @@
 ' test_treemap_trie.bas — TreeMap, Trie, SortedSet, BiMap
-DIM tm AS Viper.Collections.TreeMap
-tm = Viper.Collections.TreeMap.New()
+DIM tm AS Viper.Collections.SortedMap
+tm = Viper.Collections.SortedMap.New()
 PRINT "tm empty: "; tm.IsEmpty
 tm.Set("banana", "yellow")
 tm.Set("apple", "red")

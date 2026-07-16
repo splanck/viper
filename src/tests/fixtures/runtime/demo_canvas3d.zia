@@ -11,33 +11,33 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Meshes
-    var cube = Mesh3D.FromOBJ("src/tests/fixtures/runtime/test_cube.obj");
-    var sphere = Mesh3D.NewSphere(0.5, 20);
-    var floor = Mesh3D.NewPlane(12.0, 12.0);
-    var cylinder = Mesh3D.NewCylinder(0.3, 2.0, 12);
+    var cube = Mesh3D.FromObj("src/tests/fixtures/runtime/test_cube.obj");
+    var sphere = Mesh3D.Sphere(0.5, 20);
+    var floor = Mesh3D.Plane(12.0, 12.0);
+    var cylinder = Mesh3D.Cylinder(0.3, 2.0, 12);
 
     // Materials
-    var blue_mat = Material3D.NewColor(0.2, 0.4, 0.9);
+    var blue_mat = Material3D.FromColor(0.2, 0.4, 0.9);
     Material3D.SetShininess(blue_mat, 64.0);
 
-    var gold_mat = Material3D.NewColor(0.95, 0.8, 0.2);
+    var gold_mat = Material3D.FromColor(0.95, 0.8, 0.2);
     Material3D.SetShininess(gold_mat, 128.0);
 
-    var red_mat = Material3D.NewColor(0.9, 0.15, 0.15);
+    var red_mat = Material3D.FromColor(0.9, 0.15, 0.15);
     Material3D.SetShininess(red_mat, 32.0);
 
-    var green_mat = Material3D.NewColor(0.15, 0.6, 0.15);
+    var green_mat = Material3D.FromColor(0.15, 0.6, 0.15);
     Material3D.SetShininess(green_mat, 16.0);
 
-    var floor_mat = Material3D.NewColor(0.35, 0.35, 0.4);
+    var floor_mat = Material3D.FromColor(0.35, 0.35, 0.4);
     Material3D.SetShininess(floor_mat, 4.0);
 
     // Lights
     var sun_dir = new Vec3(-0.6, -1.0, -0.4);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.85);
 
     var point_pos = new Vec3(3.0, 3.0, 3.0);
-    var point = Light3D.NewPoint(point_pos, 0.8, 0.4, 0.1, 0.2);
+    var point = Light3D.Point(point_pos, 0.8, 0.4, 0.1, 0.2);
 
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetLight(canvas, 1, point);
@@ -46,7 +46,7 @@ func start() {
     var floor_xform = Mat4.Translate(0.0, -1.5, 0.0);
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.04, 0.04, 0.08);
 

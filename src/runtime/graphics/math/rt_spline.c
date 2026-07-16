@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_spline.c
+// File: src/runtime/graphics/math/rt_spline.c
 // Purpose: Spline curve interpolation for the Viper.Spline class. Supports three
 //   curve types over Vec2 control points: linear (piecewise straight segments),
 //   Catmull-Rom (smooth curve through all control points), and cubic Bezier
@@ -15,13 +15,13 @@
 // Key invariants:
 //   - Control point coordinates (x, y) are stored as separate double arrays xs
 //     and ys, extracted from the Vec2 sequence at construction time.
-//   - Catmull-Rom uses a centripetal parameterization and clamps end-point
-//     tangents using phantom points mirrored from the first/last segments.
-//   - Bezier evaluation uses De Casteljau's algorithm; for n control points it
-//     operates on a degree-(n-1) curve.
+//   - Catmull-Rom uses the uniform 0.5-tangent basis and duplicates the first or
+//     last control point as the out-of-range neighbor at each endpoint.
+//   - Bezier evaluation uses the cubic Bernstein basis over exactly four points.
 //   - Spline objects are immutable after construction; the control point arrays
 //     are allocated with calloc and freed via the GC finalizer.
-//   - t values outside [0, 1] are clamped to the nearest valid segment.
+//   - Finite out-of-range t values clamp for linear/Catmull-Rom evaluation but
+//     extrapolate for Bezier evaluation. Non-finite t is not validated.
 //
 // Ownership/Lifetime:
 //   - ViperSpline structs are allocated via rt_obj_new_i64 (GC heap); the xs
@@ -419,9 +419,9 @@ static void tangent_catmull_rom(ViperSpline *s, double t, double *ox, double *oy
 // Public API
 //=============================================================================
 
-/// @brief Evaluate the spline at parameter `t` ∈ [0, 1] (clamped). Returns a freshly allocated
-/// Vec2 at that point along the curve. Dispatches to the per-type evaluator
-/// (Catmull/Bezier/Linear).
+/// @brief Evaluate the spline at parameter `t`, normally in [0, 1], and return a fresh Vec2.
+/// @details Linear and Catmull-Rom clamp finite out-of-range values; Bezier extrapolates.
+///          Non-finite parameters are unsafe for evaluators that convert t to a segment index.
 void *rt_spline_eval(void *spline, double t) {
     ViperSpline *s = spline_checked(spline, "Spline.Eval: invalid spline");
     if (!s)
@@ -441,8 +441,9 @@ void *rt_spline_eval(void *spline, double t) {
     return rt_vec2_new(ox, oy);
 }
 
-/// @brief Approximate the spline's tangent vector at `t` (numerical derivative via finite
-/// differences). Useful for orienting objects following the curve. Returns a fresh Vec2.
+/// @brief Return the spline's unnormalized tangent vector at `t` as a fresh Vec2.
+/// @details Linear uses the active segment delta, Bezier uses its analytic derivative,
+///          and Catmull-Rom uses a finite-difference derivative.
 void *rt_spline_tangent(void *spline, double t) {
     ViperSpline *s = spline_checked(spline, "Spline.Tangent: invalid spline");
     if (!s)
@@ -469,7 +470,7 @@ int64_t rt_spline_point_count(void *spline) {
 }
 
 /// @brief Read the i-th control/anchor point from the spline as a fresh Vec2. Useful for
-/// debug visualization or editing tools. Out-of-range index returns origin.
+/// debug visualization or editing tools. An out-of-range index traps.
 void *rt_spline_point_at(void *spline, int64_t index) {
     ViperSpline *s = spline_checked(spline, "Spline.PointAt: invalid spline");
     if (!s)

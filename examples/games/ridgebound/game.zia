@@ -308,7 +308,7 @@ class RidgeboundGame {
     }
 
     expose func run() {
-        while (quitRequested == false && world.Tick()) {
+        while (quitRequested == false && world.Update()) {
             if (screenState == STATE_PLAYING && mouseCaptured == false && input.MousePressed(MouseButtons.get_Left())) {
                 input.CaptureMouse();
                 mouseCaptured = true;
@@ -317,7 +317,7 @@ class RidgeboundGame {
                 input.ReleaseMouse();
                 mouseCaptured = false;
             }
-            step(world.Dt);
+            step(world.DeltaTime);
             if (screenState != STATE_PLAYING && mouseCaptured) {
                 input.ReleaseMouse();
                 mouseCaptured = false;

@@ -70,9 +70,9 @@ func start() {
     var asYaml = Viper.Data.Serialize.Convert(simpleJson, 0, 2);
     if (Viper.String.get_Length(asYaml) < 3) { Say("FAIL: Convert JSON→YAML should produce output"); return; }
 
-    // === Test 11: Error (after valid parse, should be empty or ok) ===
-    var err = Viper.Data.Serialize.Error();
-    // Just verify it returns a string (may or may not be empty)
+    // === Test 11: ParseResult reports success as a structured Result ===
+    var parseCheck = Viper.Data.Serialize.ParseResult(simpleJson, 0);
+    if (not parseCheck.IsOk) { Say("FAIL: ParseResult should succeed for valid JSON"); return; }
 
     Say("RESULT: ok");
 }

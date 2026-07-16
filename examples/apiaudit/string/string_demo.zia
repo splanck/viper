@@ -47,8 +47,8 @@ func start() {
 
     // --- Has / StartsWith / EndsWith ---
     Say("--- Has / StartsWith / EndsWith ---");
-    SayBool(Has("hello world", "world"));
-    SayBool(Has("hello world", "xyz"));
+    SayBool(Contains("hello world", "world"));
+    SayBool(Contains("hello world", "xyz"));
     SayBool(StartsWith("hello world", "hello"));
     SayBool(StartsWith("hello world", "world"));
     SayBool(EndsWith("hello world", "world"));
@@ -70,8 +70,8 @@ func start() {
 
     // --- Flip ---
     Say("--- Flip ---");
-    Say(Flip("abcde"));
-    Say(Flip("racecar"));
+    Say(Reverse("abcde"));
+    Say(Reverse("racecar"));
 
     // --- Repeat ---
     Say("--- Repeat ---");
@@ -91,9 +91,9 @@ func start() {
 
     // --- Cmp / CmpNoCase / Equals ---
     Say("--- Cmp / CmpNoCase / Equals ---");
-    SayInt(Cmp("apple", "banana"));
-    SayInt(Cmp("banana", "apple"));
-    SayInt(Cmp("apple", "apple"));
+    SayInt(Compare("apple", "banana"));
+    SayInt(Compare("banana", "apple"));
+    SayInt(Compare("apple", "apple"));
     SayInt(CmpNoCase("Hello", "hello"));
     SayBool(Equals("abc", "abc"));
     SayBool(Equals("abc", "xyz"));

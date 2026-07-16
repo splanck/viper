@@ -32,7 +32,7 @@ PRINT "ReadAllText: "; Viper.IO.File.ReadAllText(testFile)
 
 ' --- Size ---
 PRINT "--- Size ---"
-PRINT "Size: "; Viper.IO.File.Size(testFile)
+PRINT "Size: "; Viper.IO.File.SizeBytes(testFile)
 
 ' --- AppendLine ---
 PRINT "--- AppendLine ---"

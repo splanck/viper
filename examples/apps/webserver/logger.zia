@@ -155,10 +155,10 @@ func log_request(clientIp: String, method: String, path: String,
 
 // Get current time in milliseconds for duration tracking
 func log_startTimer() -> Integer {
-    return Time.Clock.Ticks();
+    return Time.Clock.NowMs();
 }
 
 // Calculate elapsed time in milliseconds
 func log_elapsed(startTime: Integer) -> Integer {
-    return Time.Clock.Ticks() - startTime;
+    return Time.Clock.NowMs() - startTime;
 }

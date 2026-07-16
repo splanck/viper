@@ -46,6 +46,10 @@ void rt_water3d_set_env_map(void *water, void *cubemap);
 void rt_water3d_set_reflectivity(void *water, double r);
 /// @brief Set the mesh tessellation resolution (clamped to [8, 256]).
 void rt_water3d_set_resolution(void *water, int64_t resolution);
+/// @brief Distance-gate the CPU wave rebuild around the last drawing camera (0 = off).
+void rt_water3d_set_sim_distance(void *water, double distance);
+/// @brief Current simulation gate distance (0 = off).
+double rt_water3d_get_sim_distance(void *water);
 /// @brief Add a Gerstner wave (direction, speed, amplitude, wavelength). Up to 8 waves total.
 void rt_water3d_add_wave(
     void *water, double dirX, double dirZ, double speed, double amplitude, double wavelength);

@@ -551,8 +551,7 @@ int64_t rt_binfile_read_byte(void *obj) {
 /// by one. For files opened in append mode, the byte is written to the end
 /// of the file.
 ///
-/// Only the low 8 bits of the byte value are written. Values outside 0-255
-/// are masked to fit (e.g., 256 becomes 0, -1 becomes 255).
+/// Values outside 0-255 trap; accepted values are written unchanged.
 ///
 /// **Example usage:**
 /// ```
@@ -564,7 +563,7 @@ int64_t rt_binfile_read_byte(void *obj) {
 /// ```
 ///
 /// @param obj Pointer to a BinFile object. Must not be NULL and file must be open.
-/// @param byte The byte value to write (only low 8 bits are used).
+/// @param byte The byte value to write (0 through 255).
 ///
 /// @note This function traps on failure conditions:
 ///       - NULL obj

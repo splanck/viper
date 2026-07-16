@@ -79,7 +79,7 @@ func ForDocument(action: String,
     } else if doc != null {
         cfg.kind = KIND_CURRENT_FILE;
         cfg.targetPath = doc.filePath;
-        cfg.workingDirectory = Path.Dir(doc.filePath);
+        cfg.workingDirectory = Path.Directory(doc.filePath);
     }
 
     if cfg.program == "" { cfg.program = "viper"; }

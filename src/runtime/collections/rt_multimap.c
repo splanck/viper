@@ -9,8 +9,8 @@
 // Purpose: Implements a string-keyed multimap where each key can map to
 //   multiple values. Internally backed by a hash table where each bucket entry
 //   holds a Seq of values for that key. Supports add (appending to a key's
-//   list), get (returning the Seq for a key), remove (removing one value from
-//   a key), and removeAll (removing an entire key and its Seq).
+//   list), get (returning the Seq for a key), and removeAll (removing an
+//   entire key and its Seq); there is no single-value removal operation.
 //
 // Key invariants:
 //   - Backed by a hash table with initial capacity MM_INITIAL_CAPACITY (16)

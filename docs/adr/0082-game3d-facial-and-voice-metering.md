@@ -21,7 +21,7 @@ both mixing paths accumulate the pre-gain normalized sum of squares for the
 block and publish it as the voice level. Measuring *pre-attenuation* is
 deliberate — distance/volume falloff must not close a speaking character's
 mouth. Metering costs nothing when off (a flag check per voice per block).
-Exposed as `Viper.Sound.Voice.EnableMetering(id)` / `GetLevel(id)`.
+Exposed as `Viper.Audio.Voice.EnableMetering(id)` / `GetLevel(id)`.
 
 `LipSync3D` binds to an entity's `MorphTarget3D` plus up to four mouth shapes
 with per-shape scales. `drive(voiceId)` samples the meter (x2.83 to map RMS

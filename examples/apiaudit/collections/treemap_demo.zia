@@ -1,4 +1,4 @@
-// treemap_demo.zia - Comprehensive API audit for Viper.Collections.TreeMap
+// treemap_demo.zia - Comprehensive API audit for Viper.Collections.SortedMap
 // Tests: New, Set, Get, Has, Drop, Clear, Len, IsEmpty,
 //        Keys, Values, First, Last, Floor, Ceil
 

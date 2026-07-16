@@ -157,8 +157,8 @@ class WalkMinGame {
     expose func run() {
         fps.CaptureMouse();
 
-        while (quitRequested == false && world.Tick()) {
-            var dt = world.Dt;
+        while (quitRequested == false && world.Update()) {
+            var dt = world.DeltaTime;
             if (dt <= 0.0) { dt = 0.016; }
             if (dt > 0.050) { dt = 0.050; }
 
@@ -198,7 +198,7 @@ class WalkMinGame {
         x: Float,
         y: Float,
         z: Float) {
-        var body = Physics3DBody.NewAABB(halfX, halfY, halfZ, 0.0);
+        var body = PhysicsBody3D.NewAABB(halfX, halfY, halfZ, 0.0);
         var entity = Entity3D.New();
         entity.Name = name;
         entity.Layer = Layers.get_World();

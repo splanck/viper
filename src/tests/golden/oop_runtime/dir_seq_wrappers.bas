@@ -1,4 +1,4 @@
-REM BASIC: Verify Viper.IO.Dir *Seq listing wrappers
+REM BASIC: Verify Viper.IO.Dir listing helpers
 
 DIM base AS STRING
 base = "tmp_dir_seq_wrappers"
@@ -19,34 +19,34 @@ Viper.IO.File.WriteAllText(file1, "one")
 Viper.IO.File.WriteAllText(file2, "two")
 
 DIM list AS Viper.Collections.Seq
-list = Viper.IO.Dir.ListSeq(base)
+list = Viper.IO.Dir.List(base)
 
 DIM list_join AS STRING
 list_join = "|" + Viper.String.Join("|", list) + "|"
 
 PRINT list.Count
-PRINT list_join.Has("|subdir|")
-PRINT list_join.Has("|file1.txt|")
-PRINT list_join.Has("|file2.txt|")
+PRINT list_join.Contains("|subdir|")
+PRINT list_join.Contains("|file1.txt|")
+PRINT list_join.Contains("|file2.txt|")
 
 DIM files AS Viper.Collections.Seq
-files = Viper.IO.Dir.FilesSeq(base)
+files = Viper.IO.Dir.Files(base)
 
 DIM files_join AS STRING
 files_join = "|" + Viper.String.Join("|", files) + "|"
 
 PRINT files.Count
-PRINT files_join.Has("|file1.txt|")
-PRINT files_join.Has("|file2.txt|")
+PRINT files_join.Contains("|file1.txt|")
+PRINT files_join.Contains("|file2.txt|")
 
 DIM dirs AS Viper.Collections.Seq
-dirs = Viper.IO.Dir.DirsSeq(base)
+dirs = Viper.IO.Dir.Dirs(base)
 
 DIM dirs_join AS STRING
 dirs_join = "|" + Viper.String.Join("|", dirs) + "|"
 
 PRINT dirs.Count
-PRINT dirs_join.Has("|subdir|")
+PRINT dirs_join.Contains("|subdir|")
 
 Viper.IO.Dir.RemoveAll(base)
 END

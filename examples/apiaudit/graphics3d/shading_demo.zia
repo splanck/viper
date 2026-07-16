@@ -21,27 +21,27 @@ func start() {
     var target = new Vec3(0.0, 0.0, 0.0);
     Camera3D.LookAt(camera, eye, target, new Vec3(0.0, 1.0, 0.0));
 
-    var sphere = Mesh3D.NewSphere(1.5, 24);
+    var sphere = Mesh3D.Sphere(1.5, 24);
 
     // 1. BlinnPhong (default, model=0)
-    var matPhong = Material3D.NewColor(0.8, 0.2, 0.2);
+    var matPhong = Material3D.FromColor(0.8, 0.2, 0.2);
     Material3D.SetShininess(matPhong, 32.0);
 
     // 2. Toon (model=1, 4 bands)
-    var matToon = Material3D.NewColor(0.2, 0.6, 0.8);
+    var matToon = Material3D.FromColor(0.2, 0.6, 0.8);
     Material3D.SetShininess(matToon, 32.0);
     Material3D.SetShadingModel(matToon, 1);
     Material3D.SetCustomParam(matToon, 0, 4.0);
 
     // 3. Fresnel (model=4, power=3, bias=0.05)
-    var matFresnel = Material3D.NewColor(0.1, 0.1, 0.3);
+    var matFresnel = Material3D.FromColor(0.1, 0.1, 0.3);
     Material3D.SetShininess(matFresnel, 64.0);
     Material3D.SetShadingModel(matFresnel, 4);
     Material3D.SetCustomParam(matFresnel, 0, 3.0);
     Material3D.SetCustomParam(matFresnel, 1, 0.05);
 
     // 4. Emissive glow (model=5, strength=3)
-    var matEmissive = Material3D.NewColor(0.1, 0.1, 0.1);
+    var matEmissive = Material3D.FromColor(0.1, 0.1, 0.1);
     Material3D.SetEmissiveColor(matEmissive, 0.8, 0.3, 0.0);
     Material3D.SetShadingModel(matEmissive, 5);
     Material3D.SetCustomParam(matEmissive, 0, 3.0);
@@ -53,13 +53,13 @@ func start() {
     var xform4 = Mat4.Translate(5.0, 0.0, 0.0);
 
     // Floor
-    var floor = Mesh3D.NewPlane(20.0, 20.0);
-    var floorMat = Material3D.NewColor(0.3, 0.3, 0.3);
+    var floor = Mesh3D.Plane(20.0, 20.0);
+    var floorMat = Material3D.FromColor(0.3, 0.3, 0.3);
     var floorXform = Mat4.Translate(0.0, -1.5, 0.0);
 
     // Lighting
     var sunDir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sunDir, 1.0, 1.0, 1.0);
+    var sun = Light3D.Directional(sunDir, 1.0, 1.0, 1.0);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
 

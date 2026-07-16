@@ -68,7 +68,7 @@ PRINT r.Capacity  ' 3 (capacity unchanged)
 ' --- NewDefault (default capacity) ---
 PRINT "--- NewDefault ---"
 DIM rd AS OBJECT
-rd = Viper.Collections.Ring.NewDefault()
+rd = Viper.Collections.Ring.New()
 PRINT rd.IsEmpty   ' 1
 rd.Push(Viper.Core.Box.I64(1))
 PRINT rd.Count       ' 1

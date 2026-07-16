@@ -37,10 +37,10 @@ PRINT h.IsEmpty   ' 1
 ' --- TryPeekOption / TryPopOption (safe on empty) ---
 PRINT "--- TryPeekOption / TryPopOption ---"
 DIM tp AS OBJECT
-tp = h.TryPeekOption()
+tp = h.TryPeek()
 PRINT tp.IsNone   ' 1
 DIM tpop AS OBJECT
-tpop = h.TryPopOption()
+tpop = h.TryPop()
 PRINT tpop.IsNone ' 1
 
 ' --- NewMax (max-heap) ---

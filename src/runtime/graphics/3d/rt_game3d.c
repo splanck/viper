@@ -1608,30 +1608,95 @@ int8_t rt_game3d_world_tick(void *obj) {
 /// the
 ///          resulting collision/trigger callbacks; called (possibly multiple times) from the world
 ///          step.
-/// @brief Tick every spawned entity's attached Behavior3D by @p dt.
-/// @details Runs before animations/physics/binding sync so behavior writes land
-///          in the same simulation step. Iterates a snapshot of the current
-///          count so a lifetime-despawn during the walk (which compacts the
-///          registry) can't skip or double-tick surviving entities.
-static void game3d_world_update_behaviors(rt_game3d_world *world, double dt) {
-    if (!world || !world->entities)
+/// @brief Despawn-safe sweep over the entity registry: run @p tick exactly once
+///   per entity present during the sweep.
+/// @details The registry compacts with swap-remove, so a despawn during a tick
+///   can move an unvisited entity into an already-visited slot (skip) or leave
+///   the current slot holding an already-ticked entity (double-tick) — the old
+///   `count < before → i--` heuristic only handled self-despawn. Each sweep
+///   bumps the world stamp; an entity runs only when its stamp differs, every
+///   ticked slot is revisited immediately, and catch-up passes repeat until a
+///   full scan ticks nothing new. Entities spawned mid-sweep join the tail
+///   unstamped and tick in the same sweep (matching the old semantics).
+static void game3d_world_sweep_entities(rt_game3d_world *world,
+                                        double dt,
+                                        void (*tick)(rt_game3d_world *, rt_game3d_entity *,
+                                                     double)) {
+    if (!world || !world->entities || !tick)
         return;
-    int32_t entity_count = game3d_world_safe_entity_count(world);
-    for (int32_t i = 0; i < entity_count && i < world->entity_count; i++) {
-        rt_game3d_entity *entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
-            world->entities[i], RT_G3D_GAME3D_ENTITY_CLASS_ID);
-        if (!entity || !entity->alive || entity->destroyed || !entity->behavior)
-            continue;
-        {
-            int32_t before = world->entity_count;
-            rt_game3d_behavior_update(entity->behavior, entity, dt);
-            /* A lifetime despawn removed this slot: revisit the same index. */
-            if (world->entity_count < before) {
+    world->sim_tick_stamp++;
+    if (world->sim_tick_stamp == 0) {
+        /* Stamp wrapped: clear every entity stamp so nothing aliases. */
+        int32_t count = game3d_world_safe_entity_count(world);
+        for (int32_t i = 0; i < count; i++) {
+            rt_game3d_entity *entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
+                world->entities[i], RT_G3D_GAME3D_ENTITY_CLASS_ID);
+            if (entity)
+                entity->sim_tick_stamp = 0;
+        }
+        world->sim_tick_stamp = 1;
+    }
+    {
+        uint32_t stamp = world->sim_tick_stamp;
+        int progressed = 1;
+        while (progressed) {
+            progressed = 0;
+            /* entity_count is re-read every iteration (ticks mutate the
+             * registry) and bounded by capacity so corrupt counts from
+             * robustness fixtures cannot walk past the array. */
+            for (int32_t i = 0;
+                 i < world->entity_count && i < world->entity_capacity && i >= 0;
+                 i++) {
+                rt_game3d_entity *entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
+                    world->entities[i], RT_G3D_GAME3D_ENTITY_CLASS_ID);
+                if (!entity || entity->sim_tick_stamp == stamp)
+                    continue;
+                entity->sim_tick_stamp = stamp;
+                if (!entity->alive || entity->destroyed)
+                    continue;
+                tick(world, entity, dt);
+                progressed = 1;
+                /* Revisit this slot: a despawn inside the tick may have
+                 * swapped an unstamped survivor into it. */
                 i--;
-                entity_count--;
             }
         }
     }
+}
+
+/// @brief Sweep callback: tick one entity's Behavior3D.
+static void game3d_sweep_tick_behavior(rt_game3d_world *world,
+                                       rt_game3d_entity *entity,
+                                       double dt) {
+    (void)world;
+    if (entity->behavior)
+        rt_game3d_behavior_update(entity->behavior, entity, dt);
+}
+
+/// @brief Sweep callback: tick one entity's perception + behavior tree.
+static void game3d_sweep_tick_ai(rt_game3d_world *world, rt_game3d_entity *entity, double dt) {
+    if (entity->perception || entity->btree)
+        game3d_ai_tick(world, entity, dt);
+}
+
+/// @brief Sweep callback: footsteps then interactor for one entity, preserving
+///   the per-entity ordering of the old fused loop.
+static void game3d_sweep_tick_footsteps_interactor(rt_game3d_world *world,
+                                                   rt_game3d_entity *entity,
+                                                   double dt) {
+    if (entity->footsteps)
+        game3d_footsteps_tick(world, entity, dt);
+    /* Footsteps may have despawned this very entity; re-check before interactor. */
+    if (entity->alive && !entity->destroyed && entity->interactor)
+        game3d_interactor_tick(world, entity, dt);
+}
+
+/// @brief Tick every spawned entity's attached Behavior3D by @p dt.
+/// @details Runs before animations/physics/binding sync so behavior writes land
+///          in the same simulation step. Uses the stamped registry sweep so
+///          despawns during a tick can neither skip nor double-tick survivors.
+static void game3d_world_update_behaviors(rt_game3d_world *world, double dt) {
+    game3d_world_sweep_entities(world, dt, game3d_sweep_tick_behavior);
 }
 
 /// @brief Capture every spawned entity's node pose before a simulation step.
@@ -1788,23 +1853,9 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
     game3d_world_dialogue_tick(world, dt);
     {
         /* AI (perception then behavior trees) runs before controllers so
-         * decisions feed the same step's movement. */
-        int32_t ai_count = world->entity_count;
-        if (ai_count < 0 || ai_count > world->entity_capacity)
-            ai_count = world->entity_capacity > 0 ? world->entity_capacity : 0;
-        for (int32_t ai = 0; ai < ai_count && ai < world->entity_count; ++ai) {
-            rt_game3d_entity *ai_entity = world->entities ? world->entities[ai] : NULL;
-            if (ai_entity && ai_entity->alive && (ai_entity->perception || ai_entity->btree)) {
-                int32_t before = world->entity_count;
-                game3d_ai_tick(world, ai_entity, dt);
-                /* A despawn during the tick compacts the registry (swap-remove);
-                 * revisit this slot so the moved-in survivor is not skipped. */
-                if (world->entity_count < before) {
-                    --ai;
-                    --ai_count;
-                }
-            }
-        }
+         * decisions feed the same step's movement. Stamped sweep: despawns
+         * during a tick can neither skip nor double-tick survivors. */
+        game3d_world_sweep_entities(world, dt, game3d_sweep_tick_ai);
     }
     if (!timeline_owns_camera)
         game3d_world_update_controller(world, dt);
@@ -1818,29 +1869,9 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
     game3d_persistence_tick(world);
     {
         /* Footsteps consume this frame's animator events (after animation, before
-         * scene sync so decals/audio land on the current pose). */
-        int32_t fs_count = world->entity_count;
-        if (fs_count < 0 || fs_count > world->entity_capacity)
-            fs_count = world->entity_capacity > 0 ? world->entity_capacity : 0;
-        for (int32_t fs = 0; fs < fs_count && fs < world->entity_count; ++fs) {
-            rt_game3d_entity *fs_entity = world->entities ? world->entities[fs] : NULL;
-            int32_t before = world->entity_count;
-            if (fs_entity && fs_entity->alive && fs_entity->footsteps)
-                game3d_footsteps_tick(world, fs_entity, dt);
-            /* If a tick despawned this entity, the slot was compacted (swap-remove):
-             * don't touch fs_entity again, and revisit the slot for the survivor. */
-            if (world->entity_count < before) {
-                --fs;
-                --fs_count;
-                continue;
-            }
-            if (fs_entity && fs_entity->alive && fs_entity->interactor)
-                game3d_interactor_tick(world, fs_entity, dt);
-            if (world->entity_count < before) {
-                --fs;
-                --fs_count;
-            }
-        }
+         * scene sync so decals/audio land on the current pose). Stamped sweep:
+         * despawns during a tick can neither skip nor double-tick survivors. */
+        game3d_world_sweep_entities(world, dt, game3d_sweep_tick_footsteps_interactor);
     }
     if (world->scene)
         rt_scene3d_sync_bindings(world->scene, dt);

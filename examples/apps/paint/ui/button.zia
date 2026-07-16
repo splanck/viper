@@ -2,7 +2,7 @@
 // MODULE: ui/button (Button + ToolButton)
 // PURPOSE: Two button widgets: a generic text Button and a fixed-size
 //          square ToolButton for the tool palette. Both wrap the
-//          runtime's GameButton for actual rendering.
+//          runtime's HudButton for actual rendering.
 //
 // KEY-DESIGN-CHOICES:
 //   * CLASSIC HOVER/PRESSED/CLICKED STATE MACHINE. handleMouse tracks
@@ -10,7 +10,7 @@
 //     committing a click only when mouse is released while still
 //     inside. `wasClicked` is a one-frame latch that the main loop
 //     clears each frame via resetClick().
-//   * DEFERRED WIDGET INIT. GameButton construction happens inside
+//   * DEFERRED WIDGET INIT. HudButton construction happens inside
 //     setup() (and lazily on first draw if setup wasn't called) —
 //     avoids needing a non-null widget in the default constructor.
 //   * SEPARATE ToolButton. Looks like a small specialisation of
@@ -41,7 +41,7 @@ class Button {
     hide Integer hovered;       // 1 if mouse is over button
     hide Integer pressed;       // 1 if mouse is pressed on button
     hide Integer wasClicked;    // 1 if button was clicked this frame
-    hide GameButton widget;     // Runtime styled button renderer
+    hide HudButton widget;     // Runtime styled button renderer
 
     // Default constructor
     expose func init() {
@@ -71,7 +71,7 @@ class Button {
         hovered = 0;
         pressed = 0;
         wasClicked = 0;
-        widget = GameButton.New(x, y, width, height, text);
+        widget = HudButton.New(x, y, width, height, text);
         widget.SetBorder(1, config.UI_BORDER);
     }
 
@@ -148,7 +148,7 @@ class Button {
         }
 
         if widget == null {
-            widget = GameButton.New(x, y, width, height, text);
+            widget = HudButton.New(x, y, width, height, text);
         }
         widget.set_X(x);
         widget.set_Y(y);
@@ -173,7 +173,7 @@ class ToolButton {
     hide Integer hovered;
     hide Integer pressed;
     hide Integer wasClicked;
-    hide GameButton widget;
+    hide HudButton widget;
 
     // Default constructor
     expose func init() {
@@ -201,7 +201,7 @@ class ToolButton {
         hovered = 0;
         pressed = 0;
         wasClicked = 0;
-        widget = GameButton.New(x, y, size, size, icon);
+        widget = HudButton.New(x, y, size, size, icon);
         widget.SetBorder(1, config.UI_BORDER);
     }
 
@@ -257,7 +257,7 @@ class ToolButton {
         }
 
         if widget == null {
-            widget = GameButton.New(x, y, size, size, icon);
+            widget = HudButton.New(x, y, size, size, icon);
         }
         widget.set_X(x);
         widget.set_Y(y);

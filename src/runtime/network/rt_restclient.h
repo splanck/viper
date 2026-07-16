@@ -9,13 +9,12 @@
 //
 // Key invariants:
 //   - Persistent headers (e.g., Authorization) are sent with every request.
-//   - Base URL is prepended to all relative request paths.
-//   - JSON helper methods automatically set Content-Type: application/json.
-//   - Timeout applies to connection establishment and data transfer.
+//   - Base URL and request path are joined by slash normalization, not RFC reference resolution.
+//   - JSON helper methods append Content-Type/Accept application/json fields.
+//   - Timeout is reused for connection attempts and socket-I/O phases.
 //
 // Ownership/Lifetime:
-//   - RestClient objects are heap-allocated; caller is responsible for lifetime management.
-//   - Returned response strings are newly allocated; caller must release.
+//   - RestClient objects and returned response/string handles are runtime managed.
 //
 // Links: src/runtime/network/rt_restclient.c (implementation), src/runtime/core/rt_string.h
 //
@@ -176,7 +175,7 @@ void *rt_restclient_head_result(void *obj, rt_string path);
 /// @brief GET request, return parsed JSON.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
-/// @return Parsed JSON (Map or Seq), or null on error.
+/// @return Any parsed JSON value, or null for a non-2xx response.
 /// @note Sets Accept: application/json header.
 void *rt_restclient_get_json(void *obj, rt_string path);
 
@@ -184,7 +183,7 @@ void *rt_restclient_get_json(void *obj, rt_string path);
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @param json_body JSON object (Map or Seq) to serialize.
-/// @return Parsed JSON response, or null on error.
+/// @return Parsed JSON response, or null for non-2xx/empty response.
 /// @note Sets Content-Type: application/json header.
 void *rt_restclient_post_json(void *obj, rt_string path, void *json_body);
 
@@ -192,20 +191,20 @@ void *rt_restclient_post_json(void *obj, rt_string path, void *json_body);
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @param json_body JSON object (Map or Seq) to serialize.
-/// @return Parsed JSON response, or null on error.
+/// @return Parsed JSON response, or null for non-2xx/empty response.
 void *rt_restclient_put_json(void *obj, rt_string path, void *json_body);
 
 /// @brief PATCH JSON request.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @param json_body JSON object (Map or Seq) to serialize.
-/// @return Parsed JSON response, or null on error.
+/// @return Parsed JSON response, or null for non-2xx/empty response.
 void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body);
 
 /// @brief DELETE with JSON response.
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
-/// @return Parsed JSON response, or null on error.
+/// @return Parsed JSON response, or null for non-2xx/empty response.
 void *rt_restclient_delete_json(void *obj, rt_string path);
 
 //=============================================================================

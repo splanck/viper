@@ -39,7 +39,7 @@ useful from a language catch/recovery path or an embedding host with a recovery
 hook.
 
 This is the modern, read-only diagnostics surface. It preserves the existing
-low-level `Viper.Error.*` compatibility hooks while giving applications and
+low-level `Viper.Runtime.Unsafe` trap hooks while giving applications and
 tools an explicit `Option` result instead of requiring them to poll individual
 mutable trap fields. New code should not mutate trap state directly;
 compiler/runtime interop hooks live under `Viper.Runtime.Unsafe`.

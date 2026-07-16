@@ -238,7 +238,7 @@ TEST(ZiaDestructors, ExplicitReleaseInvokesDispatcher) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Memory;
+bind Viper.Runtime.Unsafe;
 
 class Resource {
     deinit { }

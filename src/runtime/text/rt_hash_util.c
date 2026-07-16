@@ -96,8 +96,10 @@ static int hash_random_fill(uint8_t *buf, size_t len) {
 
 /// @brief Sample 16 bytes of CSPRNG entropy into the SipHash 128-bit key.
 /// @details Run-once via `pthread_once` / `InitOnceExecuteOnce` (see
-///          `rt_hash_ensure_seeded_`). On CSPRNG failure, traps rather
-///          than downgrading to predictable process-local entropy.
+///          `rt_hash_ensure_seeded_`). On CSPRNG failure it traps, but a
+///          returning trap hook currently lets the function publish the
+///          zero-initialized key as seeded; callers must not treat that path
+///          as a successful entropy downgrade.
 static void hash_seed_init(void) {
     uint8_t buf[16];
     if (hash_random_fill(buf, 16) == 0) {

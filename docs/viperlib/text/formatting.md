@@ -25,7 +25,7 @@ Simple string templating with placeholder substitution.
 | `RenderSeq(template, values)`             | `String(String, Seq)`               | Replace `{{0}}`, `{{1}}` with Seq values          |
 | `RenderWith(template, values, pre, suf)`  | `String(String, Map, String, String)` | Use custom delimiters instead of `{{` `}}`      |
 | `Has(template, key)`                      | `Boolean(String, String)`           | Check if template contains placeholder for key   |
-| `Keys(template)`                          | `Bag(String)`                       | Extract all unique placeholder keys               |
+| `Keys(template)`                          | Registry: `Seq<String>(String)`; runtime: `StringSet` | Extract all unique placeholder keys      |
 | `Escape(text)`                            | `String(String)`                    | Escape `{{` and `}}` for literal output           |
 
 ### Placeholder Syntax
@@ -39,13 +39,15 @@ Simple string templating with placeholder substitution.
 
 ### Notes
 
-- Map values must be boxed strings (created with boxing)
-- Seq values must be boxed strings (created with boxing)
-- Non-string boxed values in the Map/Seq are ignored (placeholder left as-is)
+- Map and Seq substitutions accept runtime String values directly or strings wrapped with
+  `Viper.Core.Box.Str`
+- Other value types in the Map/Seq are ignored (the placeholder is left as-is)
 - Placeholder indices that overflow integer range are ignored (placeholder left as-is)
 - Template rendering and escaping use runtime string byte length, so embedded `NUL` bytes in values are preserved
 - `Escape()` always returns a new string result, even when the input contains no template delimiters
-- `Keys()` currently returns an owned `Viper.Collections.Bag`, so key order is unspecified; use `Items()` when a `Seq` is needed
+- `Keys()` returns an owned `Viper.Collections.StringSet` (and is registered as such), so key
+  order is unspecified, duplicate placeholders produce one key, and natural member access such as
+  `.Count`/`.Has(...)` resolves against StringSet.
 - Thread safe: all functions are stateless
 
 ### Traps
@@ -60,7 +62,7 @@ Simple string templating with placeholder substitution.
 module TemplateDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Json as Json;
+bind Viper.Data.Json as Json;
 
 func start() {
     var data = Json.Parse("{\"name\":\"Zia\",\"version\":\"1.0\"}");
@@ -73,16 +75,16 @@ func start() {
 
 ```basic
 ' Use Json.Parse to create a map for template variables
-DIM data AS OBJECT = Viper.Text.Json.Parse("{""name"":""Zia"",""version"":""1.0""}")
+DIM data AS OBJECT = Viper.Data.Json.Parse("{""name"":""Zia"",""version"":""1.0""}")
 DIM result AS STRING = Viper.Text.Template.Render("Hello {{name}} v{{version}}!", data)
 PRINT result  ' Output: Hello Zia v1.0!
 ```
 
-### Basic BASIC Example
+### Additional BASIC Example
 
 ```basic
 ' Create a Map with values
-DIM values AS OBJECT = Map.New()
+DIM values AS Viper.Collections.Map = Viper.Collections.Map.New()
 values.Set("name", Viper.Core.Box.Str("Alice"))
 values.Set("count", Viper.Core.Box.Str("5"))
 
@@ -103,7 +105,7 @@ PRINT result  ' Output: "Hello {{unknown}}!"
 
 ```basic
 ' Create a Seq with positional values
-DIM values AS OBJECT = Seq.New()
+DIM values AS Viper.Collections.Seq = Viper.Collections.Seq.New()
 values.Push(Viper.Core.Box.Str("Alice"))
 values.Push(Viper.Core.Box.Str("Bob"))
 values.Push(Viper.Core.Box.Str("Charlie"))
@@ -120,7 +122,7 @@ PRINT result  ' Output: "Alice and {{99}}"
 ### Custom Delimiters Example
 
 ```basic
-DIM values AS OBJECT = Map.New()
+DIM values AS Viper.Collections.Map = Viper.Collections.Map.New()
 values.Set("name", Viper.Core.Box.Str("Alice"))
 values.Set("count", Viper.Core.Box.Str("5"))
 
@@ -147,8 +149,8 @@ IF Viper.Text.Template.Has(template, "name") THEN
     PRINT "Template uses 'name' placeholder"
 END IF
 
-' Get all placeholder keys as a Bag of unique strings
-DIM keys AS Viper.Collections.Bag = Viper.Text.Template.Keys(template)
+' Get all placeholder keys as a StringSet of unique strings
+DIM keys AS Viper.Collections.StringSet = Viper.Text.Template.Keys(template)
 PRINT keys.Count  ' Output: 3
 
 ' Iterate over keys (order not guaranteed)
@@ -164,7 +166,7 @@ DIM escaped AS STRING = Viper.Text.Template.Escape(text)
 PRINT escaped  ' Output: "Use {{{{name}}}} for placeholders"
 
 ' The escaped text, when rendered, produces the original braces
-DIM values AS OBJECT = Map.New()
+DIM values AS Viper.Collections.Map = Viper.Collections.Map.New()
 DIM result AS STRING = Viper.Text.Template.Render(escaped, values)
 PRINT result  ' Output: "Use {{name}} for placeholders"
 ```
@@ -192,7 +194,7 @@ many intermediate string objects.
 | Property   | Type    | Description                              |
 |------------|---------|------------------------------------------|
 | `Length`   | Integer | Current byte length of the accumulated string |
-| `Capacity` | Integer | Current buffer capacity in bytes         |
+| `Capacity` | Integer | Allocated buffer capacity in bytes, including room for the terminating `NUL` |
 
 ### Methods
 
@@ -267,6 +269,7 @@ NEXT i
 - `Append(NULL)` treats the input as empty; `AppendLine(NULL)` appends just `\n`.
 - `Length` is a byte count, not a Unicode codepoint count.
 - Embedded `NUL` bytes are preserved in appended text and in `ToString()`.
+- `Clear()` resets `Length` to zero but retains the allocated buffer and its `Capacity` for reuse.
 - Calling instance properties or methods with a null `StringBuilder` receiver traps with `InvalidOperation`.
 
 ---
@@ -281,9 +284,9 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 
 | Method                            | Signature                        | Description                                              |
 |-----------------------------------|----------------------------------|----------------------------------------------------------|
-| `Wrap(text, width)`               | `String(String, Integer)`        | Wrap text to width, inserting newlines at word boundaries |
-| `WrapLines(text, width)`          | `Seq(String, Integer)`           | Wrap text and return as a Seq of line strings             |
-| `Fill(text, width)`               | `String(String, Integer)`        | Wrap text and join lines with single newlines             |
+| `Wrap(text, width)`               | `String(String, Integer)`        | Wrap text to a byte width, inserting newlines when needed |
+| `WrapLines(text, width)`          | `Seq(String, Integer)`           | Wrap text and return a Seq of line strings                 |
+| `Fill(text, width)`               | `String(String, Integer)`        | Exact alias of `Wrap`                                      |
 | `Indent(text, prefix)`            | `String(String, String)`         | Add prefix to the start of each line                     |
 | `Dedent(text)`                    | `String(String)`                 | Remove common leading whitespace from all lines          |
 | `Hang(text, prefix)`              | `String(String, String)`         | Indent all lines except the first (hanging indent)       |
@@ -294,21 +297,30 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 | `Right(text, width)`              | `String(String, Integer)`        | Right-align text, padding with spaces to width           |
 | `Center(text, width)`             | `String(String, Integer)`        | Center text, padding with spaces to width                |
 | `LineCount(text)`                 | `Integer(String)`                | Count the number of lines in text                        |
-| `MaxLineLen(text)`                | `Integer(String)`                | Get the length of the longest line                       |
+| `MaxLineLength(text)`                | `Integer(String)`                | Get the byte length of the longest line                  |
 
 ### Notes
 
-- `Wrap` breaks at word boundaries when possible; words longer than a positive width may be split, and `width <= 0` disables wrapping
-- `Fill` is equivalent to `Wrap` but ensures single newlines between lines (normalizes whitespace)
-- `Truncate` appends "..." only when the text exceeds the specified width; the total length including "..." equals width
+- Widths and line lengths are byte counts, not Unicode codepoint counts or terminal display widths.
+  Wrapping, truncation, and shortening can split a multi-byte UTF-8 sequence and return malformed
+  text; see [VDOC-046](../../documentation-review-findings.md#vdoc-046--textwrapper-can-split-utf-8-sequences).
+- `Wrap` prefers the last ASCII space or tab before the limit, hard-splits longer words, preserves
+  existing `LF` line breaks and other whitespace, and disables wrapping when `width <= 0`.
+- `Fill` calls `Wrap` directly. It does not normalize whitespace or existing line breaks.
+- `Truncate` appends "..." only when the text exceeds the specified width; the total byte length
+  including "..." equals width.
 - `TruncateWith` clips a suffix that is longer than the requested width so the returned string never exceeds width
 - `Dedent` removes a common leading whitespace byte prefix; tabs and spaces are not treated as interchangeable
 - `LineCount` does not count a final trailing newline as an extra empty line
-- `Shorten` keeps the beginning and end of the text, replacing the middle with "..."
+- `Shorten` keeps the beginning and end of the text, replacing the middle with "..."; truncation
+  and shortening return an empty string for nonempty text when `width <= 0`.
 - `Wrap`, `Fill`, `WrapLines`, indentation, truncation, shortening, alignment, and line-metric helpers treat null text as empty text
 - A null indent or hanging prefix is treated as an empty prefix; a null truncation suffix is treated as an empty suffix
-- `Indent("", prefix)` returns an empty string instead of a standalone prefix, and `Dedent` preserves blank lines while removing common indentation from non-blank lines
-- `WrapLines` returns an owned sequence of owned line strings
+- `Indent("", prefix)` returns an empty string instead of a standalone prefix. A trailing `LF`
+  creates a trailing prefixed empty line; `Dedent` preserves blank lines while removing common
+  indentation from non-blank lines.
+- `WrapLines` returns an owned sequence of owned line strings. Empty or null input produces one
+  empty line, not an empty sequence.
 
 ### Zia Example
 
@@ -322,7 +334,7 @@ bind Viper.Text.Fmt as Fmt;
 func start() {
     var text = "The quick brown fox jumps over the lazy dog near the riverbank";
 
-    // Wrap text at 20 characters
+    // Wrap text at 20 bytes
     Say(TW.Wrap(text, 20));
 
     // Center text
@@ -337,7 +349,7 @@ func start() {
 
     // Line metrics
     Say("Lines: " + Fmt.Int(TW.LineCount(lines)));
-    Say("MaxLen: " + Fmt.Int(TW.MaxLineLen(lines)));
+    Say("MaxLen: " + Fmt.Int(TW.MaxLineLength(lines)));
 }
 ```
 
@@ -365,9 +377,9 @@ PRINT "["; Viper.Text.TextWrapper.Center("hello", 20); "]"  ' Output: [       he
 
 ' Truncation
 DIM long AS STRING = "This is a very long sentence"
-PRINT Viper.Text.TextWrapper.Truncate(long, 15)              ' Output: "This is a ve..."
+PRINT Viper.Text.TextWrapper.Truncate(long, 15)              ' 15 bytes; ends in three periods
 PRINT Viper.Text.TextWrapper.TruncateWith(long, 15, "~")     ' Output: "This is a very~"
-PRINT Viper.Text.TextWrapper.Shorten(long, 20)               ' Output: "This is ...sentence"
+PRINT Viper.Text.TextWrapper.Shorten(long, 20)               ' 20 bytes; middle replaced by three periods
 
 ' Indentation
 DIM block AS STRING = "line one" + CHR$(10) + "line two" + CHR$(10) + "line three"
@@ -393,12 +405,12 @@ PRINT Viper.Text.TextWrapper.Hang(block, "    ")
 
 ' Line metrics
 PRINT Viper.Text.TextWrapper.LineCount(block)    ' Output: 3
-PRINT Viper.Text.TextWrapper.MaxLineLen(block)   ' Output: 10
+PRINT Viper.Text.TextWrapper.MaxLineLength(block)   ' Output: 10
 ```
 
 ### Use Cases
 
-- **Console output:** Format text to terminal width
+- **ASCII console output:** Format text to a byte-oriented width
 - **Reports:** Align columns and wrap long descriptions
 - **Help text:** Format command-line help messages with indentation
 - **Notifications:** Truncate long messages for display in limited space
@@ -428,13 +440,18 @@ Number formatting utilities for human-readable display of integers and floating-
 
 - `Bytes` scales by 1024 through B, KB, MB, GB, TB, PB, and EB. Scaled magnitudes below 10 use two decimal places; larger scaled magnitudes use one.
 - `Currency` adds thousands separators and always shows two decimal places (e.g., `$1,234.56`)
-- `Currency` preserves the full runtime string for the symbol, including embedded `NUL` bytes
+- A null currency symbol defaults to `$`; an empty symbol remains empty. The full runtime symbol,
+  including embedded `NUL` bytes, is preserved.
 - `Decimals`, `Currency`, and `Percent` use canonical `NaN`, `Infinity`, and `-Infinity` spellings for non-finite values; `Percent` appends `%`
 - `Decimals` clamps the requested precision to 0 through 20 places; `Percent` rounds to at most one decimal place and drops a trailing `.0`
 - `Ordinal` handles special cases: 11th, 12th, 13th (not 11st, 12nd, 13th)
-- `Bytes` and `Pad` handle the full signed 64-bit integer range, including `INT64_MIN`
+- `Bytes` and `Pad` handle the full signed 64-bit integer range, including `INT64_MIN`; `Pad`
+  clamps its requested minimum width to 1 through 64 bytes.
 - `Thousands` preserves the full runtime string for the separator, including embedded `NUL` bytes; null or empty separators default to `","`
 - `ToWords` handles the full signed 64-bit range and produces hyphenated compound numbers (e.g., "forty-two", "one hundred twenty-three")
+- Despite the class name, finite floating-point output uses the process C numeric locale. The VM
+  selects the `C` locale, but an embedding process can produce decimal-comma output; see
+  [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
 - Formatting helpers trap on internal builder allocation or overflow failure instead of returning partial output
 
 ### Zia Example
@@ -499,7 +516,7 @@ PRINT Viper.Text.InvariantNumberFormat.ToWords(100)  ' Output: "one hundred"
 - **Reports:** Format numbers for display in tables and summaries
 - **File sizes:** Show download sizes in human-readable units
 - **Invoices:** Format currency amounts with proper symbols
-- **Localization:** Apply locale-appropriate thousands separators
+- **Stable application output:** Use fixed formatting when the process numeric locale is `C`
 
 ---
 
@@ -579,7 +596,9 @@ PRINT Viper.Text.Pluralize.Count(3, "child") ' Output: "3 children"
 
 ## Viper.Text.Version
 
-Semantic version parsing, comparison, and manipulation. The core syntax follows SemVer 2.0.0, with an additional optional leading `v` or `V` accepted for compatibility.
+Semantic version parsing, comparison, and manipulation. The core syntax follows
+[Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html), with an additional optional
+leading `v` or `V` accepted for compatibility.
 
 **Type:** Instance class
 **Constructor:** `Parse(versionString)` -- parses a version string and returns a Version object (`NULL` if invalid)
@@ -614,15 +633,21 @@ Semantic version parsing, comparison, and manipulation. The core syntax follows 
 
 - Follows SemVer 2.0.0: `MAJOR.MINOR.PATCH[-prerelease][+buildmetadata]`
 - `Parse` requires all three numeric components and returns NULL for invalid SemVer strings
+- Numeric components are limited to the signed 64-bit range `0` through `9223372036854775807`
+  (the class exposes them as integer properties). SemVer itself sets no component-size limit, so
+  larger otherwise-valid version strings are rejected by design.
 - Pre-release and build identifiers must be non-empty dot-separated ASCII alphanumeric/hyphen identifiers; numeric pre-release identifiers cannot have leading zeroes
 - `Cmp` ignores build metadata per the SemVer specification; pre-release versions have lower precedence than the associated normal version
-- `Parse` and `IsValid` also accept one optional leading `v` or `V`; this is a Viper extension to strict SemVer 2.0.0
+- `Parse` and `IsValid` also accept one optional leading `v` or `V`; this is a Viper extension to
+  strict SemVer 2.0.0, and `ToString()` omits that prefix.
 - `Satisfies` supports constraint operators: `>=`, `<=`, `>`, `<`, `=`, `!=`, `^` (compatible), and `~` (same major/minor)
 - `Satisfies` trims leading and trailing whitespace around the constraint and version operand
 - Constraint operands must contain all three numeric components. An empty or whitespace-only constraint matches every valid receiver.
 - Embedded `NUL` bytes in constraints are not treated as terminators; constraints containing them are parsed by full byte length and generally fail as invalid
 - `Compare` orders an invalid parse below a valid one (and considers two invalid parses equal); `ParseMajor`, `ParseMinor`, and `ParsePatch` return `0` when parsing fails, so use `IsValid` when zero is ambiguous
-- `BumpMajor`, `BumpMinor`, and `BumpPatch` return new numeric version strings, drop prerelease/build metadata, and do not modify the original object
+- `BumpMajor`, `BumpMinor`, and `BumpPatch` return new numeric version strings, drop
+  prerelease/build metadata, and do not modify the original object. They trap if the component to
+  increment is already `9223372036854775807`.
 
 ### Zia Example
 
@@ -720,35 +745,51 @@ Tolerant HTML parser and utility functions for escaping, unescaping, tag strippi
 
 | Method                       | Signature              | Description                                              |
 |------------------------------|------------------------|----------------------------------------------------------|
-| `Parse(html)`                | `Map(String)`          | Parse HTML into a tree of Map nodes                      |
+| `Parse(html)`                | `Object(String)`       | Return a Map-backed parse tree                           |
 | `ToText(html)`               | `String(String)`       | Strip tags and unescape entities to get plain text       |
 | `Escape(text)`               | `String(String)`       | Escape HTML special characters (`<`, `>`, `&`, `"`, `'`) |
 | `Unescape(text)`             | `String(String)`       | Unescape HTML entities (`&lt;`, `&gt;`, `&amp;`, etc.)   |
 | `StripTags(html)`            | `String(String)`       | Remove all HTML tags (entities left as-is)               |
-| `ExtractLinks(html)`         | `Seq(String)`          | Extract all `href` values from `<a>` tags                |
-| `ExtractText(html, tagName)` | `Seq(String, String)`  | Extract text content of all matching tags                |
+| `ExtractLinks(html)`         | `Object(String)`       | Return a Seq containing all `href` values from `<a>` tags |
+| `ExtractText(html, tagName)` | `Object(String, String)` | Return a Seq containing text from matching tags        |
 
 ### Parse Tree Structure
 
-`Parse()` returns a root Map node. Each node has the following keys:
+`Parse()` returns a synthetic root Map whose `tag` and `text` are empty. Each Map node has the
+following keys:
 
 | Key        | Type           | Description                            |
 |------------|----------------|----------------------------------------|
 | `tag`      | String         | Tag name (e.g., `"div"`, `"p"`)        |
-| `text`     | String         | Text content of the element            |
+| `text`     | String         | Payload for a text node; empty on element nodes |
 | `attrs`    | Map            | Attribute name-value pairs             |
-| `children` | Seq of Maps    | Child element nodes                    |
+| `children` | Seq of Maps    | Child element and text nodes            |
+
+Text is represented by child nodes with an empty `tag`, an empty `attrs` Map and their source text
+in `text`; it is not accumulated into the containing element's `text` field.
 
 ### Notes
 
-- **Tolerant parser:** Handles malformed HTML without trapping. Unclosed tags, missing quotes, and other common issues are handled gracefully.
+- **Tolerant subset parser:** Unclosed tags, missing quotes, and other common malformed inputs do
+  not trap, but this is not an HTML5 parser. It has no raw-text element model or browser-style tree
+  correction, and a `>` inside a quoted attribute ends the tag.
 - Closing tags are matched by tag name; unmatched closing tags are ignored instead of blindly popping the parse stack.
-- **Entity support:** Handles named entities (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&apos;`, `&nbsp;`), numeric entities (`&#60;`, `&#x3C;`), and passes through unknown entities unchanged.
+- Tag and attribute names retain their input spelling. Closing-tag and extraction matching is
+  ASCII case-insensitive.
+- **Entity support:** Handles the named entities `&lt;`, `&gt;`, `&amp;`, `&quot;`, `&apos;`, and
+  `&nbsp;` (as an ordinary ASCII space). Decimal and hexadecimal numeric references decode only
+  code points 1 through 127; other and unknown entities pass through unchanged. Parse-tree text and
+  attributes are not entity-decoded.
 - **StripTags vs ToText:** `StripTags` removes tags but leaves entities as-is. `ToText` removes tags AND unescapes entities.
 - `StripTags` inserts separators for block-like tags such as paragraphs and line breaks, while inline tags such as `span`, `b`, and `i` do not invent spaces inside a word.
 - Escaping, unescaping, stripping, and extraction use runtime string byte length, so embedded `NUL` bytes are preserved.
 - `ExtractLinks` recognizes `href` attributes with whitespace around `=`, quoted or unquoted values, absolute paths such as `/about`, and self-closing tags; it ignores non-`href` names such as `data-href`.
-- `ExtractLinks` and `ExtractText` return owned sequences of owned strings.
+- `Parse` is registered as returning a `Viper.Collections.Map`, and `ExtractLinks`/`ExtractText`
+  as string sequences, so chained member access resolves against the returned collections.
+- `ExtractLinks` returns raw attribute text without entity decoding. `ExtractLinks` and
+  `ExtractText` return owned sequences of owned strings.
+- `ExtractText` tracks nesting depth for same-name elements: each top-level match yields one
+  string containing the element's complete stripped text (nested matches fold into their parent).
 - String-returning helpers return an empty string for `NULL`; extraction helpers return an empty `Seq`; `Parse(NULL)` returns an empty root Map node.
 
 ### Zia Example
@@ -829,7 +870,9 @@ DIM tree AS Viper.Collections.Map = Viper.Text.Html.Parse("<div class=""main""><
 
 ## Viper.Text.Markdown
 
-Basic Markdown to HTML conversion and text extraction. Supports common Markdown syntax including headers, bold, italic, links, code, lists, and paragraphs.
+Small Markdown-like HTML conversion and text extraction utility. It supports a practical subset of
+headings, emphasis, links, code, lists, horizontal rules, and paragraph lines; it is not a
+CommonMark parser.
 
 **Type:** Static utility class
 
@@ -853,8 +896,9 @@ Basic Markdown to HTML conversion and text extraction. Supports common Markdown 
 | `[text](url)`         | `<a href="url">text</a>` | Links              |
 | `- item` or `* item`  | `<ul><li>item</li></ul>` | Consecutive unordered list items |
 | fenced code block     | `<pre><code>...</code></pre>` | Triple-backtick code blocks |
-| `---`, `***`, or `___` | `<hr>`               | Horizontal rules (three or more markers, spaces allowed) |
-| Blank line             | `<p>...</p>`         | Paragraph breaks       |
+| `---`, `***`, or `___` | `<hr>`               | Three or more contiguous markers; `_ _ _` is also accepted |
+| Ordinary source line   | `<p>...</p>`         | Each non-special line becomes its own paragraph |
+| Blank line             | no output            | Closes an open list but emits no element |
 
 ### Zia Example
 
@@ -909,11 +953,19 @@ PRINT Viper.Collections.Seq.GetStr(headings, 0)  ' Output: "Introduction"
 ### Notes
 
 - This is a basic Markdown converter, not a full CommonMark implementation
-- Supports the most commonly used Markdown features
+- Input is split only on `LF`. A preceding `CR` is retained in headings, paragraphs, and code, so
+  normalize CRLF input before conversion; see
+  [VDOC-050](../../documentation-review-findings.md#vdoc-050--markdown-retains-carriage-returns-from-crlf-input).
+- Spaced `- - -` and `* * *` horizontal rules are consumed as list items, and a list is not closed
+  before every following block type; see
+  [VDOC-049](../../documentation-review-findings.md#vdoc-049--markdown-block-state-produces-wrong-or-invalid-html).
 - Link URLs are escaped before being written to HTML attributes, and unsafe schemes are blocked even with leading whitespace/control bytes
 - `ExtractLinks` applies the same unsafe-scheme policy and returns `"#"` in place of a blocked URL
 - Unmatched `**`, `*`, and backtick markers are emitted as literal text rather than as unclosed formatting spans
-- `ToText` preserves source line breaks but does not append an extra final newline; malformed link starts such as `[` stay literal, and underscore emphasis markers are stripped like asterisks
+- `ToText` preserves source line breaks but does not append an extra final newline; malformed link
+  starts such as `[` stay literal. It removes every underscore byte, including literal underscores
+  in names such as `snake_case`; see
+  [VDOC-051](../../documentation-review-findings.md#vdoc-051--markdowntotext-deletes-literal-underscores).
 - `ExtractHeadings` follows the same heading rule as rendering: one to six `#` characters followed by a space
 - `ExtractHeadings` returns the raw heading contents, including any inline Markdown markers
 - Extraction helpers return owned sequences of owned strings

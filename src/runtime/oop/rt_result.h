@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_option.h" /* rt_cb_invoke1 callback-invoker strategy types */
 #include "rt_string.h"
 #include <stdint.h>
 
@@ -164,6 +165,20 @@ void *rt_result_expect_err(void *obj, rt_string msg);
 //=========================================================================
 // Transformation
 //=========================================================================
+
+/// @brief Core of @ref rt_result_map with a pluggable callback invoker.
+/// @details Single source of truth for the combinator's semantics; used by the
+///          native wrapper and the VM callback bridges.
+void *rt_result_map_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx);
+
+/// @brief Core of @ref rt_result_map_err with a pluggable callback invoker.
+void *rt_result_map_err_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx);
+
+/// @brief Core of @ref rt_result_and_then with a pluggable callback invoker.
+void *rt_result_and_then_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx);
+
+/// @brief Core of @ref rt_result_or_else with a pluggable callback invoker.
+void *rt_result_or_else_invoke(void *obj, void *fn, rt_cb_invoke1 invoke, void *ctx);
 
 /// @brief Transform the Ok value using a function.
 /// @param obj Opaque Result object pointer.

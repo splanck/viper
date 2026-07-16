@@ -131,7 +131,7 @@ func assertEmpty(actual: String, msg: String) {
 
 // Assert string contains substring
 func assertContains(haystack: String, needle: String, msg: String) {
-    if (Viper.String.Has(haystack, needle)) {
+    if (Viper.String.Contains(haystack, needle)) {
         pass();
     } else {
         fail(msg + " (\"" + haystack + "\" does not contain \"" + needle + "\")");

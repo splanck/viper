@@ -226,7 +226,7 @@ class SearchController {
             runRequested = true;
         }
         if shell.toolPanels.searchPanel != null and shell.toolPanels.searchPanel.IsVisible()
-           and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter())
+           and Input.Keyboard.WasPressed(Viper.Input.Key.Enter)
            and Str.Trim(shell.toolPanels.searchQueryInput.get_Text()) != "" {
             runRequested = true;
         }
@@ -1191,7 +1191,7 @@ func SearchDiskFileTooLarge(docMgr: document_manager.DocumentManager,
                             filePath: String) -> Boolean {
     if filePath == "" or IO.File.Exists(filePath) == false { return false; }
     if docMgr != null and docMgr.FindByPath(filePath) >= 0 { return false; }
-    return IO.File.Size(filePath) > MAX_SEARCH_FILE_BYTES;
+    return IO.File.SizeBytes(filePath) > MAX_SEARCH_FILE_BYTES;
 }
 
 func searchOneFile(shell: app_shell.AppShell,

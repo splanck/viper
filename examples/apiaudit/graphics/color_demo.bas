@@ -56,15 +56,15 @@ PRINT "GetA(transparent): "; Viper.Graphics.Color.GetA(transparent)
 
 ' --- FromHSL ---
 PRINT "--- FromHSL ---"
-DIM hslRed AS INTEGER = Viper.Graphics.Color.FromHSL(0, 100, 50)
+DIM hslRed AS INTEGER = Viper.Graphics.Color.FromHsl(0, 100, 50)
 PRINT "FromHSL(0, 100, 50): "; hslRed
-DIM hslGreen AS INTEGER = Viper.Graphics.Color.FromHSL(120, 100, 50)
+DIM hslGreen AS INTEGER = Viper.Graphics.Color.FromHsl(120, 100, 50)
 PRINT "FromHSL(120, 100, 50): "; hslGreen
-DIM hslBlue AS INTEGER = Viper.Graphics.Color.FromHSL(240, 100, 50)
+DIM hslBlue AS INTEGER = Viper.Graphics.Color.FromHsl(240, 100, 50)
 PRINT "FromHSL(240, 100, 50): "; hslBlue
-DIM hslWhite AS INTEGER = Viper.Graphics.Color.FromHSL(0, 0, 100)
+DIM hslWhite AS INTEGER = Viper.Graphics.Color.FromHsl(0, 0, 100)
 PRINT "FromHSL(0, 0, 100): "; hslWhite
-DIM hslBlack AS INTEGER = Viper.Graphics.Color.FromHSL(0, 0, 0)
+DIM hslBlack AS INTEGER = Viper.Graphics.Color.FromHsl(0, 0, 0)
 PRINT "FromHSL(0, 0, 0): "; hslBlack
 
 ' --- GetH ---

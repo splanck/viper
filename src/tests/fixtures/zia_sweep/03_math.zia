@@ -98,8 +98,8 @@ func testRounding() {
     assertApprox(Viper.Math.Round(3.5), 4.0, 0.001, "round half");
 
     // Trunc
-    assertApprox(Viper.Math.Trunc(3.7), 3.0, 0.001, "trunc positive");
-    assertApprox(Viper.Math.Trunc(-3.7), -3.0, 0.001, "trunc negative");
+    assertApprox(Viper.Math.Truncate(3.7), 3.0, 0.001, "trunc positive");
+    assertApprox(Viper.Math.Truncate(-3.7), -3.0, 0.001, "trunc negative");
 }
 
 func testMinMax() {

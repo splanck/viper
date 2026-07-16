@@ -1201,7 +1201,7 @@ int64_t rt_soundsource3d_play(void *obj) {
     int64_t spatial_volume = 0;
     int64_t spatial_pan = 0;
     if (!source || !source->sound)
-        return 0;
+        return -1;
 
     sound3d_source_sync_binding(source, 0.0);
     sound3d_refresh_active_listener();
@@ -1223,13 +1223,17 @@ int64_t rt_soundsource3d_play(void *obj) {
                                  source->sound, spatial_volume, spatial_pan, source->mix_group)
                            : rt_sound_play_ex_in_group(
                                  source->sound, spatial_volume, spatial_pan, source->mix_group);
-    if (source->voice_id <= 0)
+    if (source->voice_id <= 0) {
+        // VoiceId (object state) stays 0 for "no active voice", but the
+        // play CALL reports failure with -1 like every Sound.Play* variant
+        // (VDOC-120).
         source->voice_id = 0;
-    else
-        rt_sound3d_register_voice_ex(source->voice_id,
-                                     source->ref_distance,
-                                     source->max_distance,
-                                     sound3d_clamp_volume(source->volume));
+        return -1;
+    }
+    rt_sound3d_register_voice_ex(source->voice_id,
+                                 source->ref_distance,
+                                 source->max_distance,
+                                 sound3d_clamp_volume(source->volume));
     return source->voice_id;
 }
 

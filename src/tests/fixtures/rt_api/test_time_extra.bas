@@ -10,8 +10,8 @@ PRINT "sw elapsed ms >= 0: "; (sw.ElapsedMs >= 0)
 sw.Reset()
 PRINT "sw elapsed after reset: "; sw.ElapsedMs
 
-PRINT "clock ticks > 0: "; (Viper.Time.Clock.Ticks() > 0)
-PRINT "clock ticksus > 0: "; (Viper.Time.Clock.TicksUs() > 0)
+PRINT "clock ticks > 0: "; (Viper.Time.Clock.NowMs() > 0)
+PRINT "clock ticksus > 0: "; (Viper.Time.Clock.NowMicros() > 0)
 
 DIM cd AS Viper.Time.Countdown
 cd = Viper.Time.Countdown.New(5000)

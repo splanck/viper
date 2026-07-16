@@ -33,10 +33,10 @@ func main() {
     doc.addLayer("Ink");
     doc.setPixel(1, 1, 0x0000FF);
     Diag.AssertEq(doc.layerCount(), 2, "layer count after add");
-    Diag.AssertEq(doc.getPixels().GetRGB(1, 1), 0x0000FF, "composite includes active layer");
+    Diag.AssertEq(doc.getPixels().GetRgb(1, 1), 0x0000FF, "composite includes active layer");
 
     doc.toggleLayerVisible(doc.activeLayerIndex());
-    Diag.AssertEq(doc.getPixels().GetRGB(1, 1), 0xFFFFFF, "hidden layer is excluded from composite");
+    Diag.AssertEq(doc.getPixels().GetRgb(1, 1), 0xFFFFFF, "hidden layer is excluded from composite");
     doc.toggleLayerVisible(doc.activeLayerIndex());
 
     var revBeforeInvert = doc.revision;

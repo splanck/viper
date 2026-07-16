@@ -82,6 +82,10 @@ void rt_particles3d_get_position(void *obj, double out[3]);
 int64_t rt_particles3d_get_count(void *obj);
 /// @brief True if the emitter is in continuous-emission mode (between Start and Stop).
 int8_t rt_particles3d_get_emitting(void *obj);
+/// @brief Set the live spawn PRNG state (reproducible streams; 0 maps to the fallback seed).
+void rt_particles3d_set_seed(void *obj, int64_t seed);
+/// @brief Current spawn PRNG state (checkpointable for replay).
+int64_t rt_particles3d_get_seed(void *obj);
 
 #ifdef __cplusplus
 }

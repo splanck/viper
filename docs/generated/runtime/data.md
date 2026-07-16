@@ -13,7 +13,7 @@ Provides Xml functionality for structured data processing.
 
 `Viper.Data.Xml` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Parse`,
-`ParseResult`, `Error`, `IsValid`.
+`ParseResult`, `IsValid`, `Element`.
 
 #### Methods
 
@@ -21,7 +21,6 @@ construct the class directly. Its public surface exposes operations including `P
 |---|---|---|
 | <a id="viper-data-xml-parse"></a>`Parse` | `obj(str)` | `Viper.Data.Xml.Parse` |
 | <a id="viper-data-xml-parseresult"></a>`ParseResult` | `obj<Viper.Result>(str)` | `Viper.Data.Xml.ParseResult` |
-| <a id="viper-data-xml-error"></a>`Error` | `str()` | `Viper.Data.Xml.Error` |
 | <a id="viper-data-xml-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Data.Xml.IsValid` |
 | <a id="viper-data-xml-element"></a>`Element` | `obj(str)` | `Viper.Data.Xml.Element` |
 | <a id="viper-data-xml-text"></a>`Text` | `obj(str)` | `Viper.Data.Xml.Text` |
@@ -35,12 +34,12 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-data-xml-hasattr"></a>`HasAttr` | `i1(obj,str)` | `Viper.Data.Xml.HasAttr` |
 | <a id="viper-data-xml-setattr"></a>`SetAttr` | `void(obj,str,str)` | `Viper.Data.Xml.SetAttr` |
 | <a id="viper-data-xml-removeattr"></a>`RemoveAttr` | `i1(obj,str)` | `Viper.Data.Xml.RemoveAttr` |
-| <a id="viper-data-xml-attrnames"></a>`AttrNames` | `obj(obj)` | `Viper.Data.Xml.AttrNames` |
-| <a id="viper-data-xml-children"></a>`Children` | `obj(obj)` | `Viper.Data.Xml.Children` |
+| <a id="viper-data-xml-attrnames"></a>`AttrNames` | `seq<str>(obj)` | `Viper.Data.Xml.AttrNames` |
+| <a id="viper-data-xml-children"></a>`Children` | `seq<obj>(obj)` | `Viper.Data.Xml.Children` |
 | <a id="viper-data-xml-childcount"></a>`ChildCount` | `i64(obj)` | `Viper.Data.Xml.ChildCount` |
 | <a id="viper-data-xml-childat"></a>`ChildAt` | `obj(obj,i64)` | `Viper.Data.Xml.ChildAt` |
 | <a id="viper-data-xml-child"></a>`Child` | `obj(obj,str)` | `Viper.Data.Xml.Child` |
-| <a id="viper-data-xml-childrenbytag"></a>`ChildrenByTag` | `obj(obj,str)` | `Viper.Data.Xml.ChildrenByTag` |
+| <a id="viper-data-xml-childrenbytag"></a>`ChildrenByTag` | `seq<obj>(obj,str)` | `Viper.Data.Xml.ChildrenByTag` |
 | <a id="viper-data-xml-append"></a>`Append` | `void(obj,obj)` | `Viper.Data.Xml.Append` |
 | <a id="viper-data-xml-insert"></a>`Insert` | `void(obj,i64,obj)` | `Viper.Data.Xml.Insert` |
 | <a id="viper-data-xml-remove"></a>`Remove` | `i1(obj,obj)` | `Viper.Data.Xml.Remove` |
@@ -48,9 +47,8 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-data-xml-settext"></a>`SetText` | `void(obj,str)` | `Viper.Data.Xml.SetText` |
 | <a id="viper-data-xml-parent"></a>`Parent` | `obj(obj)` | `Viper.Data.Xml.Parent` |
 | <a id="viper-data-xml-root"></a>`Root` | `obj(obj)` | `Viper.Data.Xml.Root` |
-| <a id="viper-data-xml-findall"></a>`FindAll` | `obj(obj,str)` | `Viper.Data.Xml.FindAll` |
-| <a id="viper-data-xml-find"></a>`Find` | `obj(obj,str)` | `Viper.Data.Xml.Find` |
-| <a id="viper-data-xml-findoption"></a>`FindOption` | `obj<Viper.Option>(obj,str)` | `Viper.Data.Xml.FindOption` |
+| <a id="viper-data-xml-findall"></a>`FindAll` | `seq<obj>(obj,str)` | `Viper.Data.Xml.FindAll` |
+| <a id="viper-data-xml-find"></a>`Find` | `obj<Viper.Option>(obj,str)` | `Viper.Data.Xml.Find` |
 | <a id="viper-data-xml-format"></a>`Format` | `str(obj)` | `Viper.Data.Xml.Format` |
 | <a id="viper-data-xml-formatpretty"></a>`FormatPretty` | `str(obj,i64)` | `Viper.Data.Xml.FormatPretty` |
 | <a id="viper-data-xml-escape"></a>`Escape` | `str(str)` | `Viper.Data.Xml.Escape` |
@@ -63,7 +61,7 @@ Provides Yaml functionality for structured data processing.
 
 `Viper.Data.Yaml` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Parse`,
-`ParseResult`, `Error`, `IsValid`.
+`ParseResult`, `IsValid`, `Format`.
 
 #### Methods
 
@@ -71,7 +69,6 @@ construct the class directly. Its public surface exposes operations including `P
 |---|---|---|
 | <a id="viper-data-yaml-parse"></a>`Parse` | `obj(str)` | `Viper.Data.Yaml.Parse` |
 | <a id="viper-data-yaml-parseresult"></a>`ParseResult` | `obj<Viper.Result>(str)` | `Viper.Data.Yaml.ParseResult` |
-| <a id="viper-data-yaml-error"></a>`Error` | `str()` | `Viper.Data.Yaml.Error` |
 | <a id="viper-data-yaml-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Data.Yaml.IsValid` |
 | <a id="viper-data-yaml-format"></a>`Format` | `str(obj)` | `Viper.Data.Yaml.Format` |
 | <a id="viper-data-yaml-formatindent"></a>`FormatIndent` | `str(obj,i64)` | `Viper.Data.Yaml.FormatIndent` |
@@ -102,15 +99,190 @@ construct the class directly. Its public surface exposes operations including `P
 | <a id="viper-data-serialize-formatname"></a>`FormatName` | `str(i64)` | `Viper.Data.Serialize.FormatName` |
 | <a id="viper-data-serialize-mimetype"></a>`MimeType` | `str(i64)` | `Viper.Data.Serialize.MimeType` |
 | <a id="viper-data-serialize-formatfromname"></a>`FormatFromName` | `i64(str)` | `Viper.Data.Serialize.FormatFromName` |
-| <a id="viper-data-serialize-error"></a>`Error` | `str()` | `Viper.Data.Serialize.Error` |
+
+<a id="viper-data-csv"></a>
+### `Viper.Data.Csv`
+
+Provides CSV parsing and formatting (RFC 4180).
+
+`Viper.Text.Csv` exposes a registry-backed runtime surface without requiring callers to
+construct the class directly. Its public surface exposes operations including `Format`,
+`FormatLine`, `FormatLineWith`, `FormatWith`.
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-data-csv-format"></a>`Format` | `str(obj)` | `Viper.Data.Csv.Format` |
+| <a id="viper-data-csv-formatline"></a>`FormatLine` | `str(obj)` | `Viper.Data.Csv.FormatLine` |
+| <a id="viper-data-csv-formatlinewith"></a>`FormatLineWith` | `str(obj,str)` | `Viper.Data.Csv.FormatLineWith` |
+| <a id="viper-data-csv-formatwith"></a>`FormatWith` | `str(obj,str)` | `Viper.Data.Csv.FormatWith` |
+| <a id="viper-data-csv-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Data.Csv.IsValid` |
+| <a id="viper-data-csv-parse"></a>`Parse` | `seq<obj>(str)` | `Viper.Data.Csv.Parse` |
+| <a id="viper-data-csv-parseline"></a>`ParseLine` | `seq<str>(str)` | `Viper.Data.Csv.ParseLine` |
+| <a id="viper-data-csv-parselinewith"></a>`ParseLineWith` | `seq<str>(str,str)` | `Viper.Data.Csv.ParseLineWith` |
+| <a id="viper-data-csv-parsewith"></a>`ParseWith` | `seq<obj>(str,str)` | `Viper.Data.Csv.ParseWith` |
+
+<a id="viper-data-ini"></a>
+### `Viper.Data.Ini`
+
+Provides INI config file parsing and formatting.
+
+`Viper.Text.Ini` exposes a registry-backed runtime surface without requiring callers to
+construct the class directly. Its public surface exposes operations including `Parse`,
+`Format`, `Get`, `Set`.
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-data-ini-parse"></a>`Parse` | `obj(str)` | `Viper.Data.Ini.Parse` |
+| <a id="viper-data-ini-format"></a>`Format` | `str(obj)` | `Viper.Data.Ini.Format` |
+| <a id="viper-data-ini-get"></a>`Get` | `str(obj,str,str)` | `Viper.Data.Ini.Get` |
+| <a id="viper-data-ini-set"></a>`Set` | `void(obj,str,str,str)` | `Viper.Data.Ini.Set` |
+| <a id="viper-data-ini-hassection"></a>`HasSection` | `i1(obj,str)` | `Viper.Data.Ini.HasSection` |
+| <a id="viper-data-ini-sections"></a>`Sections` | `seq<str>(obj)` | `Viper.Data.Ini.Sections` |
+| <a id="viper-data-ini-remove"></a>`Remove` | `i1(obj,str,str)` | `Viper.Data.Ini.Remove` |
+
+<a id="viper-data-json"></a>
+### `Viper.Data.Json`
+
+Provides JSON parsing and formatting (ECMA-404/RFC 8259).
+
+`Viper.Text.Json` exposes a registry-backed runtime surface without requiring callers to
+construct the class directly. Its public surface exposes operations including `Format`,
+`FormatPretty`, `IsValid`, `NewObject`.
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-data-json-format"></a>`Format` | `str(obj)` | `Viper.Data.Json.Format` |
+| <a id="viper-data-json-formatpretty"></a>`FormatPretty` | `str(obj,i64)` | `Viper.Data.Json.FormatPretty` |
+| <a id="viper-data-json-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Data.Json.IsValid` |
+| <a id="viper-data-json-newobject"></a>`NewObject` | `obj<Viper.Collections.Map>()` | `Viper.Data.Json.NewObject` |
+| <a id="viper-data-json-has"></a>`Has` | `i1(obj,str)` | `Viper.Collections.Map.Has` |
+| <a id="viper-data-json-getstr"></a>`GetStr` | `str(obj,str)` | `Viper.Collections.Map.GetStr` |
+| <a id="viper-data-json-getint"></a>`GetInt` | `i64(obj,str)` | `Viper.Collections.Map.GetInt` |
+| <a id="viper-data-json-getbool"></a>`GetBool` | `i1(obj,str)` | `Viper.Collections.Map.GetBool` |
+| <a id="viper-data-json-setstr"></a>`SetStr` | `void(obj,str,str)` | `Viper.Collections.Map.SetStr` |
+| <a id="viper-data-json-setint"></a>`SetInt` | `void(obj,str,i64)` | `Viper.Collections.Map.SetInt` |
+| <a id="viper-data-json-setbool"></a>`SetBool` | `void(obj,str,i1)` | `Viper.Collections.Map.SetBool` |
+| <a id="viper-data-json-parse"></a>`Parse` | `obj(str)` | `Viper.Data.Json.Parse` |
+| <a id="viper-data-json-parsearray"></a>`ParseArray` | `seq<obj>(str)` | `Viper.Data.Json.ParseArray` |
+| <a id="viper-data-json-parseobject"></a>`ParseObject` | `obj<Viper.Collections.Map>(str)` | `Viper.Data.Json.ParseObject` |
+| <a id="viper-data-json-typeof"></a>`TypeOf` | `str(obj)` | `Viper.Data.Json.TypeOf` |
+
+<a id="viper-data-jsonstream"></a>
+### `Viper.Data.JsonStream`
+
+Provides SAX-style streaming JSON parser.
+
+Create `Viper.Text.JsonStream` values through its registered constructor and use the returned
+object with the instance members below. Its public surface exposes properties such as `Depth`,
+`TokenType` and operations including `BoolValue`, `HasNext`, `Next`, `NextResult`.
+
+Constructor: `Viper.Data.JsonStream.New`
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-data-jsonstream-depth"></a>`Depth` | `i64` | read-only |
+| <a id="viper-data-jsonstream-tokentype"></a>`TokenType` | `i64` | read-only |
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-data-jsonstream-boolvalue"></a>`BoolValue` | `i1()` | `Viper.Data.JsonStream.BoolValue` |
+| <a id="viper-data-jsonstream-hasnext"></a>`HasNext` | `i1()` | `Viper.Data.JsonStream.HasNext` |
+| <a id="viper-data-jsonstream-next"></a>`Next` | `i64()` | `Viper.Data.JsonStream.Next` |
+| <a id="viper-data-jsonstream-nextresult"></a>`NextResult` | `obj<Viper.Result>()` | `Viper.Data.JsonStream.NextResult` |
+| <a id="viper-data-jsonstream-numbervalue"></a>`NumberValue` | `f64()` | `Viper.Data.JsonStream.NumberValue` |
+| <a id="viper-data-jsonstream-skip"></a>`Skip` | `void()` | `Viper.Data.JsonStream.Skip` |
+| <a id="viper-data-jsonstream-stringvalue"></a>`StringValue` | `str()` | `Viper.Data.JsonStream.StringValue` |
+| <a id="viper-data-jsonstream-new"></a>`New` | `obj(str)` | `Viper.Data.JsonStream.New` |
+
+<a id="viper-data-toml"></a>
+### `Viper.Data.Toml`
+
+Provides TOML config parsing and formatting.
+
+`Viper.Text.Toml` exposes a registry-backed runtime surface without requiring callers to
+construct the class directly. Its public surface exposes operations including `Parse`,
+`IsValid`, `Format`, `Get`.
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-data-toml-parse"></a>`Parse` | `obj(str)` | `Viper.Data.Toml.Parse` |
+| <a id="viper-data-toml-isvalid"></a>`IsValid` | `i1(str)` | `Viper.Data.Toml.IsValid` |
+| <a id="viper-data-toml-format"></a>`Format` | `str(obj)` | `Viper.Data.Toml.Format` |
+| <a id="viper-data-toml-get"></a>`Get` | `obj(obj,str)` | `Viper.Data.Toml.Get` |
+| <a id="viper-data-toml-getstr"></a>`GetStr` | `str(obj,str)` | `Viper.Data.Toml.GetStr` |
+
+<a id="viper-data-jsonpath"></a>
+### `Viper.Data.JsonPath`
+
+Provides JSONPath query expressions.
+
+`Viper.Text.JsonPath` exposes a registry-backed runtime surface without requiring callers to
+construct the class directly. Its public surface exposes operations including `Get`, `GetOr`,
+`Has`, `Query`.
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-data-jsonpath-get"></a>`Get` | `obj(obj,str)` | `Viper.Data.JsonPath.Get` |
+| <a id="viper-data-jsonpath-getor"></a>`GetOr` | `obj(obj,str,obj)` | `Viper.Data.JsonPath.GetOr` |
+| <a id="viper-data-jsonpath-has"></a>`Has` | `i1(obj,str)` | `Viper.Data.JsonPath.Has` |
+| <a id="viper-data-jsonpath-query"></a>`Query` | `seq<obj>(obj,str)` | `Viper.Data.JsonPath.Query` |
+| <a id="viper-data-jsonpath-getstr"></a>`GetStr` | `str(obj,str)` | `Viper.Data.JsonPath.GetStr` |
+| <a id="viper-data-jsonpath-getint"></a>`GetInt` | `i64(obj,str)` | `Viper.Data.JsonPath.GetInt` |
 
 ## Functions
 
 | Function | Signature | Runtime symbol |
 |---|---|---|
+| `Viper.Data.Csv.ParseLine` | `seq<str>(str)` | `rt_csv_parse_line` |
+| `Viper.Data.Csv.ParseLineWith` | `seq<str>(str,str)` | `rt_csv_parse_line_with` |
+| `Viper.Data.Csv.Parse` | `seq<obj>(str)` | `rt_csv_parse` |
+| `Viper.Data.Csv.ParseWith` | `seq<obj>(str,str)` | `rt_csv_parse_with` |
+| `Viper.Data.Csv.FormatLine` | `str(obj)` | `rt_csv_format_line` |
+| `Viper.Data.Csv.FormatLineWith` | `str(obj,str)` | `rt_csv_format_line_with` |
+| `Viper.Data.Csv.Format` | `str(obj)` | `rt_csv_format` |
+| `Viper.Data.Csv.FormatWith` | `str(obj,str)` | `rt_csv_format_with` |
+| `Viper.Data.Csv.IsValid` | `i1(str)` | `rt_csv_is_valid` |
+| `Viper.Data.Ini.Parse` | `obj(str)` | `rt_ini_parse` |
+| `Viper.Data.Ini.Format` | `str(obj)` | `rt_ini_format` |
+| `Viper.Data.Ini.Get` | `str(obj,str,str)` | `rt_ini_get` |
+| `Viper.Data.Ini.Set` | `void(obj,str,str,str)` | `rt_ini_set` |
+| `Viper.Data.Ini.HasSection` | `i1(obj,str)` | `rt_ini_has_section` |
+| `Viper.Data.Ini.Sections` | `seq<str>(obj)` | `rt_ini_sections` |
+| `Viper.Data.Ini.Remove` | `i1(obj,str,str)` | `rt_ini_remove` |
+| `Viper.Data.Json.Parse` | `obj(str)` | `rt_json_parse` |
+| `Viper.Data.Json.ParseObject` | `obj<Viper.Collections.Map>(str)` | `rt_json_parse_object` |
+| `Viper.Data.Json.ParseArray` | `seq<obj>(str)` | `rt_json_parse_array` |
+| `Viper.Data.Json.Format` | `str(obj)` | `rt_json_format` |
+| `Viper.Data.Json.FormatPretty` | `str(obj,i64)` | `rt_json_format_pretty` |
+| `Viper.Data.Json.IsValid` | `i1(str)` | `rt_json_is_valid` |
+| `Viper.Data.Json.TypeOf` | `str(obj)` | `rt_json_type_of` |
+| `Viper.Data.Json.NewObject` | `obj<Viper.Collections.Map>()` | `rt_map_new` |
+| `Viper.Data.JsonStream.New` | `obj(str)` | `rt_json_stream_new` |
+| `Viper.Data.JsonStream.Next` | `i64(obj)` | `rt_json_stream_next` |
+| `Viper.Data.JsonStream.NextResult` | `obj<Viper.Result>(obj)` | `rt_json_stream_next_result` |
+| `Viper.Data.JsonStream.TokenType` | `i64(obj)` | `rt_json_stream_token_type` |
+| `Viper.Data.JsonStream.StringValue` | `str(obj)` | `rt_json_stream_string_value` |
+| `Viper.Data.JsonStream.NumberValue` | `f64(obj)` | `rt_json_stream_number_value` |
+| `Viper.Data.JsonStream.BoolValue` | `i1(obj)` | `rt_json_stream_bool_value` |
+| `Viper.Data.JsonStream.Depth` | `i64(obj)` | `rt_json_stream_depth` |
+| `Viper.Data.JsonStream.Skip` | `void(obj)` | `rt_json_stream_skip` |
+| `Viper.Data.JsonStream.HasNext` | `i1(obj)` | `rt_json_stream_has_next` |
 | `Viper.Data.Xml.Parse` | `obj(str)` | `rt_xml_parse` |
 | `Viper.Data.Xml.ParseResult` | `obj<Viper.Result>(str)` | `rt_xml_parse_result` |
-| `Viper.Data.Xml.Error` | `str()` | `rt_xml_error` |
 | `Viper.Data.Xml.IsValid` | `i1(str)` | `rt_xml_is_valid` |
 | `Viper.Data.Xml.Element` | `obj(str)` | `rt_xml_element` |
 | `Viper.Data.Xml.Text` | `obj(str)` | `rt_xml_text` |
@@ -124,12 +296,12 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Data.Xml.HasAttr` | `i1(obj,str)` | `rt_xml_has_attr` |
 | `Viper.Data.Xml.SetAttr` | `void(obj,str,str)` | `rt_xml_set_attr` |
 | `Viper.Data.Xml.RemoveAttr` | `i1(obj,str)` | `rt_xml_remove_attr` |
-| `Viper.Data.Xml.AttrNames` | `obj(obj)` | `rt_xml_attr_names` |
-| `Viper.Data.Xml.Children` | `obj(obj)` | `rt_xml_children` |
+| `Viper.Data.Xml.AttrNames` | `seq<str>(obj)` | `rt_xml_attr_names` |
+| `Viper.Data.Xml.Children` | `seq<obj>(obj)` | `rt_xml_children` |
 | `Viper.Data.Xml.ChildCount` | `i64(obj)` | `rt_xml_child_count` |
 | `Viper.Data.Xml.ChildAt` | `obj(obj,i64)` | `rt_xml_child_at` |
 | `Viper.Data.Xml.Child` | `obj(obj,str)` | `rt_xml_child` |
-| `Viper.Data.Xml.ChildrenByTag` | `obj(obj,str)` | `rt_xml_children_by_tag` |
+| `Viper.Data.Xml.ChildrenByTag` | `seq<obj>(obj,str)` | `rt_xml_children_by_tag` |
 | `Viper.Data.Xml.Append` | `void(obj,obj)` | `rt_xml_append` |
 | `Viper.Data.Xml.Insert` | `void(obj,i64,obj)` | `rt_xml_insert` |
 | `Viper.Data.Xml.Remove` | `i1(obj,obj)` | `rt_xml_remove` |
@@ -137,20 +309,23 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Data.Xml.SetText` | `void(obj,str)` | `rt_xml_set_text` |
 | `Viper.Data.Xml.Parent` | `obj(obj)` | `rt_xml_parent` |
 | `Viper.Data.Xml.Root` | `obj(obj)` | `rt_xml_root` |
-| `Viper.Data.Xml.FindAll` | `obj(obj,str)` | `rt_xml_find_all` |
-| `Viper.Data.Xml.Find` | `obj(obj,str)` | `rt_xml_find` |
-| `Viper.Data.Xml.FindOption` | `obj<Viper.Option>(obj,str)` | `rt_xml_find_option` |
+| `Viper.Data.Xml.FindAll` | `seq<obj>(obj,str)` | `rt_xml_find_all` |
+| `Viper.Data.Xml.Find` | `obj<Viper.Option>(obj,str)` | `rt_xml_find_option` |
 | `Viper.Data.Xml.Format` | `str(obj)` | `rt_xml_format` |
 | `Viper.Data.Xml.FormatPretty` | `str(obj,i64)` | `rt_xml_format_pretty` |
 | `Viper.Data.Xml.Escape` | `str(str)` | `rt_xml_escape` |
 | `Viper.Data.Xml.Unescape` | `str(str)` | `rt_xml_unescape` |
 | `Viper.Data.Yaml.Parse` | `obj(str)` | `rt_yaml_parse` |
 | `Viper.Data.Yaml.ParseResult` | `obj<Viper.Result>(str)` | `rt_yaml_parse_result` |
-| `Viper.Data.Yaml.Error` | `str()` | `rt_yaml_error` |
 | `Viper.Data.Yaml.IsValid` | `i1(str)` | `rt_yaml_is_valid` |
 | `Viper.Data.Yaml.Format` | `str(obj)` | `rt_yaml_format` |
 | `Viper.Data.Yaml.FormatIndent` | `str(obj,i64)` | `rt_yaml_format_indent` |
 | `Viper.Data.Yaml.TypeOf` | `str(obj)` | `rt_yaml_type_of` |
+| `Viper.Data.Toml.Parse` | `obj(str)` | `rt_toml_parse` |
+| `Viper.Data.Toml.IsValid` | `i1(str)` | `rt_toml_is_valid` |
+| `Viper.Data.Toml.Format` | `str(obj)` | `rt_toml_format` |
+| `Viper.Data.Toml.Get` | `obj(obj,str)` | `rt_toml_get` |
+| `Viper.Data.Toml.GetStr` | `str(obj,str)` | `rt_toml_get_str` |
 | `Viper.Data.Serialize.Parse` | `obj(str,i64)` | `rt_serialize_parse` |
 | `Viper.Data.Serialize.ParseResult` | `obj<Viper.Result>(str,i64)` | `rt_serialize_parse_result` |
 | `Viper.Data.Serialize.Format` | `str(obj,i64)` | `rt_serialize_format` |
@@ -163,5 +338,10 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Data.Serialize.FormatName` | `str(i64)` | `rt_serialize_format_name` |
 | `Viper.Data.Serialize.MimeType` | `str(i64)` | `rt_serialize_mime_type` |
 | `Viper.Data.Serialize.FormatFromName` | `i64(str)` | `rt_serialize_format_from_name` |
-| `Viper.Data.Serialize.Error` | `str()` | `rt_serialize_error` |
+| `Viper.Data.JsonPath.Get` | `obj(obj,str)` | `rt_jsonpath_get` |
+| `Viper.Data.JsonPath.GetOr` | `obj(obj,str,obj)` | `rt_jsonpath_get_or` |
+| `Viper.Data.JsonPath.Has` | `i1(obj,str)` | `rt_jsonpath_has` |
+| `Viper.Data.JsonPath.Query` | `seq<obj>(obj,str)` | `rt_jsonpath_query` |
+| `Viper.Data.JsonPath.GetStr` | `str(obj,str)` | `rt_jsonpath_get_str` |
+| `Viper.Data.JsonPath.GetInt` | `i64(obj,str)` | `rt_jsonpath_get_int` |
 

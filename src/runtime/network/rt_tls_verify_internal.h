@@ -10,7 +10,7 @@
 //   TLS certificate-verification runtime, whose implementation is split into
 //   rt_tls_verify_common.c (platform-neutral DER/SAN/hostname parsing),
 //   rt_tls_verify_win.c (CryptoAPI chain + CertificateVerify), and
-//   rt_tls_verify_posix.c (native macOS Security.framework / Linux manual path).
+//   rt_tls_verify_posix.c (manual PEM-bundle verification on macOS and Linux).
 //
 // Key invariants:
 //   - The seven cert/ASN.1 helpers below are defined once in the common TU and

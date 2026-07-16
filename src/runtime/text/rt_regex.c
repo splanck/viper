@@ -6,17 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_regex.c
-// Purpose: Implements regular expression pattern matching for the Viper.Text.Regex
-//          class using a backtracking NFA approach. Supports literals, '.', '^',
-//          '$', character classes '[...]', shorthand classes (\d \w \s),
-//          quantifiers (*, +, ?, {n,m}), non-greedy quantifiers (*?, +?, ??),
-//          groups '()', and alternation '|'.
+// Purpose: Implements regular expression pattern matching for the static
+//          Viper.Text.Pattern class using a backtracking AST matcher.
+//          Supports literals, '.', '^', '$', character classes '[...]',
+//          shorthand classes (\d \w \s and their complements), quantifiers
+//          (*, +, ?), non-greedy quantifiers (*?, +?, ??), capture groups
+//          '()', and alternation '|'.
 //
 // Key invariants:
-//   - Backreferences, lookahead, lookbehind, and named groups are NOT supported.
+//   - Bounded quantifiers '{n,m}', backreferences, lookaround, and named
+//     groups are NOT supported; braces are ordinary literal characters.
+//   - Patterns containing an embedded NUL byte trap (VDOC-053).
 //   - Pattern compilation is cached (lock-protected) to amortize repeat use.
 //   - FindAll returns all non-overlapping matches left-to-right.
-//   - Replace replaces all non-overlapping matches with the replacement string.
+//   - Replace replaces all non-overlapping matches; zero-width matches
+//     preserve the stepped-over source byte (VDOC-054).
 //   - Anchors (^ $) are applied relative to the full input string.
 //   - Character classes are byte-level; Unicode codepoints are not decomposed.
 //
@@ -138,6 +142,13 @@ static const char *pattern_required(rt_string pattern) {
         rt_trap("Pattern: invalid pattern string");
         return "";
     }
+    // Runtime strings are length-prefixed and may contain NUL, but the regex
+    // engine consumes C strings; a shorter C view would silently truncate the
+    // pattern and alias distinct patterns in the compile cache.
+    if (strlen(cstr) != (size_t)rt_str_len(pattern)) {
+        rt_trap("Pattern: pattern contains NUL byte");
+        return "";
+    }
     return cstr;
 }
 
@@ -194,6 +205,7 @@ re_node *node_new(re_node_type type) {
         return NULL;
     }
     n->type = type;
+    n->group_index = -1;
     return n;
 }
 
@@ -311,50 +323,40 @@ void class_add_range(re_class *c, int from, int to) {
     }
 }
 
+/// @brief Return 1 when `ch` is in the base set of a lowercase shorthand.
+static int shorthand_member(char shorthand, int ch) {
+    switch (shorthand) {
+        case 'd':
+            return ch >= '0' && ch <= '9';
+        case 'w':
+            return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                   (ch >= '0' && ch <= '9') || ch == '_';
+        case 's':
+            return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
+                   ch == '\v';
+        default:
+            return 0;
+    }
+}
+
 /// @brief Apply a `\\d`/`\\D`/`\\w`/`\\W`/`\\s`/`\\S` shorthand to a class.
 ///
-/// Lowercase shorthands set the matching characters; uppercase variants
-/// also flip the `negated` flag so the class matches the complement.
-/// Used both inside `[...]` brackets and as standalone atoms.
+/// Lowercase shorthands union the matching bytes into the class bitmap;
+/// uppercase variants union the complement bytes directly. Unioning (rather
+/// than toggling the class-wide `negated` flag) keeps mixed classes like
+/// `[a\\D]` correct: complementing one member must not complement the whole
+/// class (VDOC-055). Used both inside `[...]` brackets and as standalone
+/// atoms.
 void class_add_shorthand(re_class *c, char shorthand) {
-    switch (shorthand) {
-        case 'd': // digits
-            class_add_range(c, '0', '9');
-            break;
-        case 'D': // non-digits
-            class_add_range(c, '0', '9');
-            c->negated = !c->negated;
-            break;
-        case 'w': // word chars
-            class_add_range(c, 'a', 'z');
-            class_add_range(c, 'A', 'Z');
-            class_add_range(c, '0', '9');
-            class_set(c, '_');
-            break;
-        case 'W': // non-word chars
-            class_add_range(c, 'a', 'z');
-            class_add_range(c, 'A', 'Z');
-            class_add_range(c, '0', '9');
-            class_set(c, '_');
-            c->negated = !c->negated;
-            break;
-        case 's': // whitespace
-            class_set(c, ' ');
-            class_set(c, '\t');
-            class_set(c, '\n');
-            class_set(c, '\r');
-            class_set(c, '\f');
-            class_set(c, '\v');
-            break;
-        case 'S': // non-whitespace
-            class_set(c, ' ');
-            class_set(c, '\t');
-            class_set(c, '\n');
-            class_set(c, '\r');
-            class_set(c, '\f');
-            class_set(c, '\v');
-            c->negated = !c->negated;
-            break;
+    char base = shorthand;
+    int complement = 0;
+    if (shorthand >= 'A' && shorthand <= 'Z') {
+        base = (char)(shorthand - 'A' + 'a');
+        complement = 1;
+    }
+    for (int ch = 0; ch < 256; ch++) {
+        if (shorthand_member(base, ch) != complement)
+            class_set(c, ch);
     }
 }
 
@@ -415,7 +417,7 @@ static compiled_pattern *compile_pattern(const char *pattern) {
         return NULL;
     }
 
-    parser_state p = {pattern, 0, safe_strlen_int(pattern)};
+    parser_state p = {pattern, 0, safe_strlen_int(pattern), 0};
 
     cp->root = parse_alternation(&p);
 
@@ -804,8 +806,25 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
         memcpy(result + result_len, rep_str, rep_len);
         result_len += rep_len;
 
-        // Move past match
-        pos = match_end > match_start ? match_end : match_start + 1;
+        // Move past match. A zero-width match must not swallow the byte we
+        // step over to guarantee progress (VDOC-054).
+        if (match_end > match_start) {
+            pos = match_end;
+        } else {
+            if (match_start < text_len) {
+                if (!ensure_result_capacity(&result,
+                                            &result_cap,
+                                            result_len,
+                                            1,
+                                            "Pattern: replacement length overflow")) {
+                    free(result);
+                    release_cached_pattern(cp);
+                    return rt_string_from_bytes("", 0);
+                }
+                result[result_len++] = txt_str[match_start];
+            }
+            pos = match_start + 1;
+        }
     }
 
     rt_string out = rt_string_from_bytes(result, result_len);
@@ -874,38 +893,41 @@ void *rt_pattern_split(rt_string text, rt_string pattern) {
     int text_len = safe_rt_string_len_int(text);
     int pos = 0;
 
+    int seg_start = 0;
     while (pos <= text_len) {
         int match_start, match_end;
-        if (!re_find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
-            // No more matches; add remaining text
-            rt_string part = rt_string_from_bytes(txt_str + pos, text_len - pos);
-            rt_seq_push(seq, (void *)part);
-            rt_string_unref(part);
+        if (!re_find_match(cp, txt_str, text_len, pos, &match_start, &match_end))
             break;
+
+        if (match_end == match_start) {
+            // Zero-width match: never split at the current segment start or
+            // at end-of-text; the stepped-over byte stays in the next
+            // segment so no source bytes are lost (VDOC-054).
+            if (match_start >= text_len)
+                break;
+            if (match_start > seg_start) {
+                rt_string part =
+                    rt_string_from_bytes(txt_str + seg_start, match_start - seg_start);
+                rt_seq_push(seq, (void *)part);
+                rt_string_unref(part);
+                seg_start = match_start;
+            }
+            pos = match_start + 1;
+            continue;
         }
 
         // Add text before match
-        rt_string part = rt_string_from_bytes(txt_str + pos, match_start - pos);
+        rt_string part = rt_string_from_bytes(txt_str + seg_start, match_start - seg_start);
         rt_seq_push(seq, (void *)part);
         rt_string_unref(part);
-
-        // Move past match
-        pos = match_end > match_start ? match_end : match_start + 1;
-
-        // If we're at end after match, add empty string
-        if (pos > text_len) {
-            rt_string empty = rt_const_cstr("");
-            rt_seq_push(seq, (void *)empty);
-            rt_string_unref(empty);
-        }
+        seg_start = match_end;
+        pos = match_end;
     }
 
-    // Handle empty text or pattern that doesn't match
-    if (rt_seq_len(seq) == 0) {
-        rt_string part = rt_string_from_bytes(txt_str, text_len);
-        rt_seq_push(seq, (void *)part);
-        rt_string_unref(part);
-    }
+    // Remaining text (empty when the text ends with a separator).
+    rt_string tail = rt_string_from_bytes(txt_str + seg_start, text_len - seg_start);
+    rt_seq_push(seq, (void *)tail);
+    rt_string_unref(tail);
 
     release_cached_pattern(cp);
     return seq;

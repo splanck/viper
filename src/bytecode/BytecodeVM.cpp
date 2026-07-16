@@ -25,6 +25,9 @@
 #include "rt_async.h"
 #include "rt_future.h"
 #include "rt_game3d.h"
+#include "rt_lazy.h"
+#include "rt_option.h"
+#include "rt_result.h"
 #include "rt_http_server.h"
 #include "rt_https_server.h"
 #include "rt_object.h"
@@ -142,6 +145,7 @@ UnifiedRuntimeHandler gPriorThreadStartOwnedHandler = nullptr;
 UnifiedRuntimeHandler gPriorThreadStartSafeHandler = nullptr;
 UnifiedRuntimeHandler gPriorThreadStartSafeOwnedHandler = nullptr;
 UnifiedRuntimeHandler gPriorAsyncRunHandler = nullptr;
+UnifiedRuntimeHandler gPriorPoolSubmitOwnedHandler = nullptr;
 UnifiedRuntimeHandler gPriorHttpBindHandler = nullptr;
 UnifiedRuntimeHandler gPriorHttpsBindHandler = nullptr;
 UnifiedRuntimeHandler gPriorGame3DRunHandler = nullptr;
@@ -161,6 +165,21 @@ UnifiedRuntimeHandler gPriorParallelMapHandler = nullptr;
 UnifiedRuntimeHandler gPriorParallelMapPoolHandler = nullptr;
 UnifiedRuntimeHandler gPriorParallelReduceHandler = nullptr;
 UnifiedRuntimeHandler gPriorParallelReducePoolHandler = nullptr;
+UnifiedRuntimeHandler gPriorLazyNewHandler = nullptr;
+UnifiedRuntimeHandler gPriorLazyGetHandler = nullptr;
+UnifiedRuntimeHandler gPriorLazyGetStrHandler = nullptr;
+UnifiedRuntimeHandler gPriorLazyGetI64Handler = nullptr;
+UnifiedRuntimeHandler gPriorLazyForceHandler = nullptr;
+UnifiedRuntimeHandler gPriorLazyMapHandler = nullptr;
+UnifiedRuntimeHandler gPriorLazyAndThenHandler = nullptr;
+UnifiedRuntimeHandler gPriorOptionMapHandler = nullptr;
+UnifiedRuntimeHandler gPriorOptionAndThenHandler = nullptr;
+UnifiedRuntimeHandler gPriorOptionOrElseHandler = nullptr;
+UnifiedRuntimeHandler gPriorOptionFilterHandler = nullptr;
+UnifiedRuntimeHandler gPriorResultMapHandler = nullptr;
+UnifiedRuntimeHandler gPriorResultMapErrHandler = nullptr;
+UnifiedRuntimeHandler gPriorResultAndThenHandler = nullptr;
+UnifiedRuntimeHandler gPriorResultOrElseHandler = nullptr;
 
 } // namespace
 
@@ -1800,6 +1819,94 @@ bool BytecodeVM::invokeVoidReentrant(const BytecodeFunction *func,
     reentrantReturnSp_ = savedReturnSp;
     if (state_ == VMState::Trapped)
         return false;
+    sp_ = savedSp;
+    state_ = savedState;
+    return true;
+}
+
+/// @brief Invoke a value-returning bytecode function without resetting the active VM.
+bool BytecodeVM::invokeValueReentrant(const BytecodeFunction *func,
+                                      const std::vector<BCSlot> &args,
+                                      BCSlot *out) {
+    registerUnifiedVmRuntimeHandlers();
+    if (out)
+        *out = BCSlot{};
+    if (!module_) {
+        if (!(loadFailed_ && state_ == VMState::Trapped))
+            trap(TrapKind::RuntimeError, "No module loaded");
+        return false;
+    }
+    if (!func) {
+        trap(TrapKind::RuntimeError, "Null function entry");
+        return false;
+    }
+    if (!functionBelongsToModule(func)) {
+        trap(TrapKind::RuntimeError, "Function entry does not belong to loaded module");
+        return false;
+    }
+    if (!func->hasReturn) {
+        trap(TrapKind::RuntimeError, "Reentrant callback must return a value");
+        return false;
+    }
+    if (args.size() != func->numParams) {
+        trap(TrapKind::RuntimeError, "Function entry arity mismatch");
+        return false;
+    }
+    if (!fp_ || callStack_.empty()) {
+        BCSlot result = exec(func, args);
+        if (state_ == VMState::Trapped)
+            return false;
+        if (out)
+            *out = result;
+        return true;
+    }
+    if (state_ == VMState::Trapped)
+        return false;
+
+    BCSlot *savedSp = sp_;
+    if (savedSp + static_cast<std::ptrdiff_t>(args.size()) >
+        valueStack_.data() + valueStack_.size()) {
+        trap(TrapKind::StackOverflow, "reentrant callback arguments exceed value stack");
+        return false;
+    }
+
+    const VMState savedState = state_;
+    const size_t savedStopDepth = reentrantStopDepth_;
+    BCSlot *savedReturnSp = reentrantReturnSp_;
+    const size_t callerDepth = callStack_.size();
+
+    ActiveBytecodeVMGuard vmGuard(this);
+    ActiveBytecodeModuleGuard moduleGuard(module_);
+    reentrantStopDepth_ = callerDepth;
+    reentrantReturnSp_ = savedSp;
+    state_ = VMState::Running;
+
+    for (const auto &arg : args) {
+        *sp_++ = arg;
+        setSlotOwnsString(sp_ - 1, false);
+    }
+
+    callReentrant(func);
+    if (state_ != VMState::Trapped && fp_) {
+#if defined(__GNUC__) || defined(__clang__)
+        if (useThreadedDispatch_) {
+            runThreaded();
+        } else {
+            run();
+        }
+#else
+        run();
+#endif
+    }
+
+    reentrantStopDepth_ = savedStopDepth;
+    reentrantReturnSp_ = savedReturnSp;
+    if (state_ == VMState::Trapped)
+        return false;
+    // returnValueFromFrame restored sp to the boundary and pushed the result there.
+    if (out && sp_ > savedSp)
+        *out = *savedSp;
+    setSlotOwnsString(savedSp, false);
     sp_ = savedSp;
     state_ = savedState;
     return true;
@@ -5735,7 +5842,7 @@ static void unified_https_server_bind_handler(void **args, void *result) {
 /// @brief Runtime handler for Async.Run usable from both engines: validates
 ///        the entry signature, builds the appropriate async payload, and
 ///        schedules it on a worker, returning the promise.
-static void unified_async_run_handler(void **args, void *result) {
+static void unified_async_run_impl(void **args, void *result, bool owned) {
     void *entry = nullptr;
     void *arg = nullptr;
     if (args && args[0])
@@ -5782,7 +5889,7 @@ static void unified_async_run_handler(void **args, void *result) {
                                                              stdVm->externRegistry(),
                                                              entryFn,
                                                              arg,
-                                                             arg != nullptr,
+                                                             owned && arg != nullptr,
                                                              promise};
         if (!payload) {
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
@@ -5846,7 +5953,7 @@ static void unified_async_run_handler(void **args, void *result) {
                                                                 moduleOwner.get(),
                                                                 ownedEntryFn,
                                                                 arg,
-                                                                arg != nullptr,
+                                                                owned && arg != nullptr,
                                                                 bcVm->captureExecutionEnvironment(),
                                                                 promise};
         if (!payload) {
@@ -5876,12 +5983,78 @@ static void unified_async_run_handler(void **args, void *result) {
         return;
     }
 
-    if (gPriorAsyncRunHandler) {
+    if (!owned && gPriorAsyncRunHandler) {
         gPriorAsyncRunHandler(args, result);
         return;
     }
-    void *future = rt_async_run(entry, arg);
+    void *future = owned ? rt_async_run_owned(entry, arg) : rt_async_run(entry, arg);
     publishAsyncFutureResult(result, future);
+}
+
+/// Handler for Viper.Threads.Async.Run — the arg is borrowed (native parity, VDOC-127).
+static void unified_async_run_handler(void **args, void *result) {
+    unified_async_run_impl(args, result, /*owned=*/false);
+}
+
+/// Handler for Viper.Threads.Async.RunOwned — the Future owns the arg on every backend.
+static void unified_async_run_owned_handler(void **args, void *result) {
+    unified_async_run_impl(args, result, /*owned=*/true);
+}
+
+/// @brief Trap for Async callback variants without a managed bridge (VDOC-127).
+/// @details The cancellable and map variants would otherwise fall through to
+///          the native C implementation, which casts the opaque VM function
+///          value to a native pointer — undefined behavior. Trap with a clear
+///          message when either interpreted backend is active.
+static bool asyncCallbackUnsupportedOnVm(const char *api) {
+    if (il::vm::activeVMInstance() || activeBytecodeVMInstance()) {
+        rt_trap((std::string(api) +
+                 ": callback execution is not supported on the interpreted backends; "
+                 "compile to native to run it")
+                    .c_str());
+        return true;
+    }
+    return false;
+}
+
+static void unified_async_run_cancellable_handler(void **args, void *result) {
+    if (asyncCallbackUnsupportedOnVm("Async.RunCancellable"))
+        return;
+    void *entry = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *arg = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *token = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *future = rt_async_run_cancellable(entry, arg, token);
+    publishAsyncFutureResult(result, future);
+}
+
+static void unified_async_run_cancellable_owned_handler(void **args, void *result) {
+    if (asyncCallbackUnsupportedOnVm("Async.RunCancellableOwned"))
+        return;
+    void *entry = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *arg = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *token = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *future = rt_async_run_cancellable_owned(entry, arg, token);
+    publishAsyncFutureResult(result, future);
+}
+
+static void unified_async_map_handler(void **args, void *result) {
+    if (asyncCallbackUnsupportedOnVm("Async.Map"))
+        return;
+    void *future = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *fn = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *mapped = rt_async_map(future, fn, arg);
+    publishAsyncFutureResult(result, mapped);
+}
+
+static void unified_async_map_owned_handler(void **args, void *result) {
+    if (asyncCallbackUnsupportedOnVm("Async.MapOwned"))
+        return;
+    void *future = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *fn = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *mapped = rt_async_map_owned(future, fn, arg);
+    publishAsyncFutureResult(result, mapped);
 }
 
 /// @brief Run an index-range callback sequentially on the active BytecodeVM.
@@ -6015,8 +6188,16 @@ static void unified_parallel_for_pool_handler(void **args, void *result) {
 static void unified_pool_submit_handler(void **args, void *result) {
     if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
         if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
             void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
             void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+            // Pool state is honored on the VM too (VDOC-125): a shut-down or
+            // invalid pool rejects the submission like the native backend.
+            if (!pool || rt_threadpool_get_is_shutdown(pool)) {
+                if (result)
+                    *reinterpret_cast<int8_t *>(result) = 0;
+                return;
+            }
             runBytecodePoolTask(*bcVm, *bcModule, callback, arg, "Pool.Submit");
             if (result)
                 *reinterpret_cast<int8_t *>(result) = 1;
@@ -6031,6 +6212,33 @@ static void unified_pool_submit_handler(void **args, void *result) {
     void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
     int8_t submitted = rt_threadpool_submit(pool, callback, arg);
+    if (result)
+        *reinterpret_cast<int8_t *>(result) = submitted;
+}
+
+/// @brief SubmitOwned bridge: synchronous on the BytecodeVM, so the pool-side
+///        retain/release nets out within the call (VDOC-128).
+static void unified_pool_submit_owned_handler(void **args, void *result) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+            if (!pool || rt_threadpool_get_is_shutdown(pool)) {
+                if (result)
+                    *reinterpret_cast<int8_t *>(result) = 0;
+                return;
+            }
+            runBytecodePoolTask(*bcVm, *bcModule, callback, arg, "Pool.SubmitOwned");
+            if (result)
+                *reinterpret_cast<int8_t *>(result) = 1;
+            return;
+        }
+    }
+    void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    int8_t submitted = rt_threadpool_submit_owned(pool, callback, arg);
     if (result)
         *reinterpret_cast<int8_t *>(result) = submitted;
 }
@@ -6072,27 +6280,109 @@ static void unified_parallel_invoke_pool_handler(void **args, void *result) {
     rt_parallel_invoke_pool(funcs, pool);
 }
 
-/// @brief Trap (on the BytecodeVM) for a sequence-callback parallel op that isn't bridged yet.
-/// @details ForEach/Map/Reduce iterate a runtime seq and need per-element-type BCSlot bridging
-///          plus result-seq construction, which the interpreted backends do not yet build.
-///          On the BytecodeVM the native path would dispatch a tagged bytecode function value as a
-///          native pointer (SIGSEGV), so trap with an explicit message instead of crashing. Returns
-///          true when it trapped (i.e. the BytecodeVM is the active backend).
-static bool bytecodeSeqCallbackUnsupported(const char *api) {
-    if (activeBytecodeVMInstance()) {
-        rt_trap((std::string(api) + ": sequence-callback execution is not yet supported on the "
-                                    "bytecode VM; compile to native to run it")
-                    .c_str());
-        return true;
+/// @brief Run a `(Ptr) -> Unit` callback over each Seq element (VDOC-126).
+/// @details Sequential equivalent of the native Parallel.ForEach on the
+///          BytecodeVM: same visible effects, single-threaded ordering.
+static void runBytecodeSeqForEach(BytecodeVM &vm,
+                                  const BytecodeModule &module,
+                                  void *seq,
+                                  void *func,
+                                  const char *api) {
+    if (!seq)
+        return;
+    const BytecodeFunction *fn = resolveBytecodeEntry(&module, func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return;
     }
-    return false;
+    if (fn->hasReturn || fn->numParams != 1) {
+        rt_trap((std::string(api) + ": callback must be (Object) -> Unit").c_str());
+        return;
+    }
+    const int64_t count = rt_seq_len(seq);
+    for (int64_t i = 0; i < count; ++i) {
+        std::vector<BCSlot> callArgs(1);
+        callArgs[0].ptr = rt_seq_get(seq, i);
+        if (!vm.invokeVoidReentrant(fn, callArgs))
+            return;
+    }
+}
+
+/// @brief Map a Seq through a `(Ptr) -> Ptr` callback (VDOC-126); returns an
+///        owning Seq of the mapped values in order.
+static void *runBytecodeSeqMap(BytecodeVM &vm,
+                               const BytecodeModule &module,
+                               void *seq,
+                               void *func,
+                               const char *api) {
+    void *out = rt_seq_new();
+    rt_seq_set_owns_elements(out, 1);
+    if (!seq)
+        return out;
+    const BytecodeFunction *fn = resolveBytecodeEntry(&module, func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return out;
+    }
+    if (!fn->hasReturn || fn->numParams != 1) {
+        rt_trap((std::string(api) + ": callback must be (Object) -> Object").c_str());
+        return out;
+    }
+    const int64_t count = rt_seq_len(seq);
+    for (int64_t i = 0; i < count; ++i) {
+        std::vector<BCSlot> callArgs(1);
+        callArgs[0].ptr = rt_seq_get(seq, i);
+        BCSlot r{};
+        if (!vm.invokeValueReentrant(fn, callArgs, &r))
+            return out;
+        rt_seq_push(out, r.ptr);
+    }
+    return out;
+}
+
+/// @brief Left-fold a Seq through a `(Ptr, Ptr) -> Ptr` callback (VDOC-126).
+static void *runBytecodeSeqReduce(BytecodeVM &vm,
+                                  const BytecodeModule &module,
+                                  void *seq,
+                                  void *func,
+                                  void *identity,
+                                  const char *api) {
+    if (!seq)
+        return identity;
+    const BytecodeFunction *fn = resolveBytecodeEntry(&module, func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return identity;
+    }
+    if (!fn->hasReturn || fn->numParams != 2) {
+        rt_trap((std::string(api) + ": callback must be (Object, Object) -> Object").c_str());
+        return identity;
+    }
+    void *acc = identity;
+    const int64_t count = rt_seq_len(seq);
+    for (int64_t i = 0; i < count; ++i) {
+        std::vector<BCSlot> callArgs(2);
+        callArgs[0].ptr = acc;
+        callArgs[1].ptr = rt_seq_get(seq, i);
+        BCSlot r{};
+        if (!vm.invokeValueReentrant(fn, callArgs, &r))
+            return acc;
+        acc = r.ptr;
+    }
+    return acc;
 }
 
 /// Handler for Viper.Threads.Parallel.ForEach — traps on the BytecodeVM (not bridged); otherwise
 /// chains to the prior handler (tree-walker traps too; native fans out across the pool).
 static void unified_parallel_foreach_handler(void **args, void *result) {
-    if (bytecodeSeqCallbackUnsupported("Parallel.ForEach"))
-        return;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            runBytecodeSeqForEach(*bcVm, *bcModule, seq, func, "Parallel.ForEach");
+            return;
+        }
+    }
     if (gPriorParallelForEachHandler) {
         gPriorParallelForEachHandler(args, result);
         return;
@@ -6104,8 +6394,14 @@ static void unified_parallel_foreach_handler(void **args, void *result) {
 
 /// Handler for Viper.Threads.Parallel.ForEachPool — see @ref unified_parallel_foreach_handler.
 static void unified_parallel_foreach_pool_handler(void **args, void *result) {
-    if (bytecodeSeqCallbackUnsupported("Parallel.ForEachPool"))
-        return;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            runBytecodeSeqForEach(*bcVm, *bcModule, seq, func, "Parallel.ForEachPool");
+            return;
+        }
+    }
     if (gPriorParallelForEachPoolHandler) {
         gPriorParallelForEachPoolHandler(args, result);
         return;
@@ -6119,8 +6415,16 @@ static void unified_parallel_foreach_pool_handler(void **args, void *result) {
 /// Handler for Viper.Threads.Parallel.Map — traps on the BytecodeVM (not bridged); otherwise
 /// chains.
 static void unified_parallel_map_handler(void **args, void *result) {
-    if (bytecodeSeqCallbackUnsupported("Parallel.Map"))
-        return;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            void *mapped = runBytecodeSeqMap(*bcVm, *bcModule, seq, func, "Parallel.Map");
+            if (result)
+                *reinterpret_cast<void **>(result) = mapped;
+            return;
+        }
+    }
     if (gPriorParallelMapHandler) {
         gPriorParallelMapHandler(args, result);
         return;
@@ -6134,8 +6438,16 @@ static void unified_parallel_map_handler(void **args, void *result) {
 
 /// Handler for Viper.Threads.Parallel.MapPool — see @ref unified_parallel_map_handler.
 static void unified_parallel_map_pool_handler(void **args, void *result) {
-    if (bytecodeSeqCallbackUnsupported("Parallel.MapPool"))
-        return;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            void *mapped = runBytecodeSeqMap(*bcVm, *bcModule, seq, func, "Parallel.MapPool");
+            if (result)
+                *reinterpret_cast<void **>(result) = mapped;
+            return;
+        }
+    }
     if (gPriorParallelMapPoolHandler) {
         gPriorParallelMapPoolHandler(args, result);
         return;
@@ -6150,8 +6462,18 @@ static void unified_parallel_map_pool_handler(void **args, void *result) {
 
 /// Handler for Viper.Threads.Parallel.Reduce — traps on the BytecodeVM (not bridged); else chains.
 static void unified_parallel_reduce_handler(void **args, void *result) {
-    if (bytecodeSeqCallbackUnsupported("Parallel.Reduce"))
-        return;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+            void *reduced =
+                runBytecodeSeqReduce(*bcVm, *bcModule, seq, func, identity, "Parallel.Reduce");
+            if (result)
+                *reinterpret_cast<void **>(result) = reduced;
+            return;
+        }
+    }
     if (gPriorParallelReduceHandler) {
         gPriorParallelReduceHandler(args, result);
         return;
@@ -6166,8 +6488,18 @@ static void unified_parallel_reduce_handler(void **args, void *result) {
 
 /// Handler for Viper.Threads.Parallel.ReducePool — see @ref unified_parallel_reduce_handler.
 static void unified_parallel_reduce_pool_handler(void **args, void *result) {
-    if (bytecodeSeqCallbackUnsupported("Parallel.ReducePool"))
-        return;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+            void *reduced = runBytecodeSeqReduce(
+                *bcVm, *bcModule, seq, func, identity, "Parallel.ReducePool");
+            if (result)
+                *reinterpret_cast<void **>(result) = reduced;
+            return;
+        }
+    }
     if (gPriorParallelReducePoolHandler) {
         gPriorParallelReducePoolHandler(args, result);
         return;
@@ -6179,6 +6511,392 @@ static void unified_parallel_reduce_pool_handler(void **args, void *result) {
     void *reduced = rt_parallel_reduce_pool(seq, func, identity, pool);
     if (result)
         *reinterpret_cast<void **>(result) = reduced;
+}
+
+//===----------------------------------------------------------------------===//
+// Viper.Functional.Lazy handlers (deferred suppliers and combinator callbacks)
+//===----------------------------------------------------------------------===//
+
+/// @brief Execute a zero-argument, value-returning bytecode supplier reentrantly.
+/// @return The supplier's object result, or null after a trap.
+static void *runBytecodeSupplier(BytecodeVM &vm,
+                                 const BytecodeModule &module,
+                                 void *handle,
+                                 const char *api) {
+    const BytecodeFunction *fn = resolveBytecodeEntry(&module, handle);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid supplier function").c_str());
+        return nullptr;
+    }
+    if (!fn->hasReturn || fn->numParams != 0) {
+        rt_trap((std::string(api) + ": supplier must be () -> Object").c_str());
+        return nullptr;
+    }
+    BCSlot out{};
+    if (!vm.invokeValueReentrant(fn, {}, &out))
+        return nullptr;
+    return out.ptr;
+}
+
+/// @brief Execute a one-argument, value-returning bytecode callback reentrantly.
+/// @return The callback's object result, or null after a trap.
+static void *runBytecodeCallback1(
+    BytecodeVM &vm, const BytecodeModule &module, void *callback, void *value, const char *api) {
+    const BytecodeFunction *fn = resolveBytecodeEntry(&module, callback);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return nullptr;
+    }
+    if (!fn->hasReturn || fn->numParams != 1) {
+        rt_trap((std::string(api) + ": callback must be (Object) -> Object").c_str());
+        return nullptr;
+    }
+    BCSlot arg{};
+    arg.ptr = value;
+    BCSlot out{};
+    if (!vm.invokeValueReentrant(fn, {arg}, &out))
+        return nullptr;
+    return out.ptr;
+}
+
+/// @brief Run a pending handle-kind Lazy supplier on the active BytecodeVM.
+static void completeBytecodePendingLazy(BytecodeVM &vm,
+                                        const BytecodeModule &module,
+                                        void *lazy,
+                                        const char *api) {
+    if (void *handle = rt_lazy_pending_handle(lazy)) {
+        void *value = runBytecodeSupplier(vm, module, handle, api);
+        rt_lazy_complete_obj(lazy, value);
+    }
+}
+
+/// Handler for Viper.Functional.Lazy.New — stores the bytecode supplier as a handle-kind
+/// Lazy so accessors can execute it reentrantly; otherwise chains to the prior handler.
+static void unified_lazy_new_handler(void **args, void *result) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *supplier = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            const BytecodeFunction *fn = resolveBytecodeEntry(bcModule, supplier);
+            if (!fn) {
+                rt_trap("Lazy.New: invalid supplier function");
+                return;
+            }
+            if (!fn->hasReturn || fn->numParams != 0) {
+                rt_trap("Lazy.New: supplier must be () -> Object");
+                return;
+            }
+            (void)bcVm;
+            void *lazy = rt_lazy_new_handle(supplier);
+            if (result)
+                *reinterpret_cast<void **>(result) = lazy;
+            return;
+        }
+    }
+    if (gPriorLazyNewHandler) {
+        gPriorLazyNewHandler(args, result);
+        return;
+    }
+    void *supplier = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *lazy = rt_lazy_new_wrapper(supplier);
+    if (result)
+        *reinterpret_cast<void **>(result) = lazy;
+}
+
+/// Handler for Viper.Functional.Lazy.Get — completes a pending bytecode supplier first.
+static void unified_lazy_get_handler(void **args, void *result) {
+    void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            completeBytecodePendingLazy(*bcVm, *bcModule, lazy, "Lazy.Get");
+            void *value = rt_lazy_get(lazy);
+            if (result)
+                *reinterpret_cast<void **>(result) = value;
+            return;
+        }
+    }
+    if (gPriorLazyGetHandler) {
+        gPriorLazyGetHandler(args, result);
+        return;
+    }
+    void *value = rt_lazy_get(lazy);
+    if (result)
+        *reinterpret_cast<void **>(result) = value;
+}
+
+/// Handler for Viper.Functional.Lazy.GetStr — completes a pending bytecode supplier first.
+static void unified_lazy_get_str_handler(void **args, void *result) {
+    void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            completeBytecodePendingLazy(*bcVm, *bcModule, lazy, "Lazy.GetStr");
+            rt_string value = rt_lazy_get_str(lazy);
+            if (result)
+                *reinterpret_cast<rt_string *>(result) = value;
+            return;
+        }
+    }
+    if (gPriorLazyGetStrHandler) {
+        gPriorLazyGetStrHandler(args, result);
+        return;
+    }
+    rt_string value = rt_lazy_get_str(lazy);
+    if (result)
+        *reinterpret_cast<rt_string *>(result) = value;
+}
+
+/// Handler for Viper.Functional.Lazy.GetI64 — completes a pending bytecode supplier first.
+static void unified_lazy_get_i64_handler(void **args, void *result) {
+    void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            completeBytecodePendingLazy(*bcVm, *bcModule, lazy, "Lazy.GetI64");
+            int64_t value = rt_lazy_get_i64(lazy);
+            if (result)
+                *reinterpret_cast<int64_t *>(result) = value;
+            return;
+        }
+    }
+    if (gPriorLazyGetI64Handler) {
+        gPriorLazyGetI64Handler(args, result);
+        return;
+    }
+    int64_t value = rt_lazy_get_i64(lazy);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = value;
+}
+
+/// Handler for Viper.Functional.Lazy.Force — completes a pending bytecode supplier first.
+static void unified_lazy_force_handler(void **args, void *result) {
+    (void)result;
+    void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            completeBytecodePendingLazy(*bcVm, *bcModule, lazy, "Lazy.Force");
+            rt_lazy_force(lazy);
+            return;
+        }
+    }
+    if (gPriorLazyForceHandler) {
+        gPriorLazyForceHandler(args, result);
+        return;
+    }
+    rt_lazy_force(lazy);
+}
+
+/// Handler for Viper.Functional.Lazy.Map — bridges the callback for the BytecodeVM;
+/// mirrors the C semantics (force source, apply, wrap pre-evaluated).
+static void unified_lazy_map_handler(void **args, void *result) {
+    void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *mapped = nullptr;
+            if (lazy && callback) {
+                completeBytecodePendingLazy(*bcVm, *bcModule, lazy, "Lazy.Map");
+                void *value = rt_lazy_get(lazy);
+                void *transformed =
+                    runBytecodeCallback1(*bcVm, *bcModule, callback, value, "Lazy.Map");
+                mapped = rt_lazy_of(transformed);
+            } else {
+                mapped = lazy;
+            }
+            if (result)
+                *reinterpret_cast<void **>(result) = mapped;
+            return;
+        }
+    }
+    if (gPriorLazyMapHandler) {
+        gPriorLazyMapHandler(args, result);
+        return;
+    }
+    void *mapped = rt_lazy_map_wrapper(lazy, callback);
+    if (result)
+        *reinterpret_cast<void **>(result) = mapped;
+}
+
+/// Handler for Viper.Functional.Lazy.AndThen — bridges the callback for the BytecodeVM;
+/// mirrors the C semantics (force source, return the callback's Lazy directly).
+static void unified_lazy_and_then_handler(void **args, void *result) {
+    void *lazy = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *chained = nullptr;
+            if (lazy && callback) {
+                completeBytecodePendingLazy(*bcVm, *bcModule, lazy, "Lazy.AndThen");
+                void *value = rt_lazy_get(lazy);
+                chained = runBytecodeCallback1(*bcVm, *bcModule, callback, value, "Lazy.AndThen");
+            } else {
+                chained = lazy;
+            }
+            if (result)
+                *reinterpret_cast<void **>(result) = chained;
+            return;
+        }
+    }
+    if (gPriorLazyAndThenHandler) {
+        gPriorLazyAndThenHandler(args, result);
+        return;
+    }
+    void *chained = rt_lazy_flat_map_wrapper(lazy, callback);
+    if (result)
+        *reinterpret_cast<void **>(result) = chained;
+}
+
+//===----------------------------------------------------------------------===//
+// Viper.Option / Viper.Result combinator handlers
+//===----------------------------------------------------------------------===//
+
+/// @brief Context threaded through the rt_cb_invoke* strategies for bytecode execution.
+struct BcInvokerCtx {
+    BytecodeVM *vm;
+    const BytecodeModule *module;
+    const char *api;
+};
+
+/// @brief rt_cb_invoke1 strategy executing the callback on the active BytecodeVM.
+static void *bcInvoke1(void *ctxRaw, void *fn, void *arg) {
+    auto *ctx = static_cast<BcInvokerCtx *>(ctxRaw);
+    return runBytecodeCallback1(*ctx->vm, *ctx->module, fn, arg, ctx->api);
+}
+
+/// @brief rt_cb_invoke0 strategy executing the callback on the active BytecodeVM.
+static void *bcInvoke0(void *ctxRaw, void *fn) {
+    auto *ctx = static_cast<BcInvokerCtx *>(ctxRaw);
+    return runBytecodeSupplier(*ctx->vm, *ctx->module, fn, ctx->api);
+}
+
+/// @brief rt_cb_invoke_pred strategy executing the predicate on the active BytecodeVM.
+static int8_t bcInvokePred(void *ctxRaw, void *fn, void *arg) {
+    auto *ctx = static_cast<BcInvokerCtx *>(ctxRaw);
+    const BytecodeFunction *callback = resolveBytecodeEntry(ctx->module, fn);
+    if (!callback) {
+        rt_trap((std::string(ctx->api) + ": invalid predicate function").c_str());
+        return 0;
+    }
+    if (!callback->hasReturn || callback->numParams != 1) {
+        rt_trap((std::string(ctx->api) + ": predicate must be (Object) -> Boolean").c_str());
+        return 0;
+    }
+    BCSlot argSlot{};
+    argSlot.ptr = arg;
+    BCSlot out{};
+    if (!ctx->vm->invokeValueReentrant(callback, {argSlot}, &out))
+        return 0;
+    return out.i64 != 0 ? 1 : 0;
+}
+
+/// @brief Shared body for the eight Option/Result combinator handlers.
+/// @details Runs the combinator core with a bytecode invoker when a BytecodeVM is
+///          active; otherwise chains to the prior handler or the native wrapper.
+template <typename CoreFn, typename Strategy, typename NativeFn>
+static void dispatchBytecodeCombinator(void **args,
+                                       void *result,
+                                       const char *api,
+                                       CoreFn core,
+                                       Strategy strategy,
+                                       NativeFn native,
+                                       UnifiedRuntimeHandler prior) {
+    if (BytecodeVM *bcVm = activeBytecodeVMInstance()) {
+        if (const BytecodeModule *bcModule = activeBytecodeModule()) {
+            void *receiver = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+            void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+            BcInvokerCtx ctx{bcVm, bcModule, api};
+            void *combined = core(receiver, callback, strategy, &ctx);
+            if (result)
+                *reinterpret_cast<void **>(result) = combined;
+            return;
+        }
+    }
+    if (prior) {
+        prior(args, result);
+        return;
+    }
+    void *receiver = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *combined = native(receiver, callback);
+    if (result)
+        *reinterpret_cast<void **>(result) = combined;
+}
+
+static void unified_option_map_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Option.Map",
+                               &rt_option_map_invoke,
+                               &bcInvoke1,
+                               &rt_option_map_wrapper,
+                               gPriorOptionMapHandler);
+}
+
+static void unified_option_and_then_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Option.AndThen",
+                               &rt_option_and_then_invoke,
+                               &bcInvoke1,
+                               &rt_option_and_then_wrapper,
+                               gPriorOptionAndThenHandler);
+}
+
+static void unified_option_or_else_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Option.OrElse",
+                               &rt_option_or_else_invoke,
+                               &bcInvoke0,
+                               &rt_option_or_else_wrapper,
+                               gPriorOptionOrElseHandler);
+}
+
+static void unified_option_filter_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Option.Filter",
+                               &rt_option_filter_invoke,
+                               &bcInvokePred,
+                               &rt_option_filter_wrapper,
+                               gPriorOptionFilterHandler);
+}
+
+static void unified_result_map_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Result.Map",
+                               &rt_result_map_invoke,
+                               &bcInvoke1,
+                               &rt_result_map_wrapper,
+                               gPriorResultMapHandler);
+}
+
+static void unified_result_map_err_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Result.MapErr",
+                               &rt_result_map_err_invoke,
+                               &bcInvoke1,
+                               &rt_result_map_err_wrapper,
+                               gPriorResultMapErrHandler);
+}
+
+static void unified_result_and_then_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Result.AndThen",
+                               &rt_result_and_then_invoke,
+                               &bcInvoke1,
+                               &rt_result_and_then_wrapper,
+                               gPriorResultAndThenHandler);
+}
+
+static void unified_result_or_else_handler(void **args, void *result) {
+    dispatchBytecodeCombinator(args,
+                               result,
+                               "Result.OrElse",
+                               &rt_result_or_else_invoke,
+                               &bcInvoke1,
+                               &rt_result_or_else_wrapper,
+                               gPriorResultOrElseHandler);
 }
 
 /// @brief Install the dual-engine runtime handlers for callback-taking runtime APIs.
@@ -6210,9 +6928,52 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Threads.Thread.StartSafeOwned",
                             reinterpret_cast<void *>(&unified_thread_start_safe_owned_handler),
                             gPriorThreadStartSafeOwnedHandler);
+        capturePriorHandler("Viper.Threads.Pool.SubmitOwned",
+                            reinterpret_cast<void *>(&unified_pool_submit_owned_handler),
+                            gPriorPoolSubmitOwnedHandler);
         capturePriorHandler("Viper.Threads.Async.Run",
                             reinterpret_cast<void *>(&unified_async_run_handler),
                             gPriorAsyncRunHandler);
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Async.RunOwned";
+            ext.signature =
+                make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_async_run_owned_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Async.RunCancellable";
+            ext.signature = make_signature(
+                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Async.RunCancellableOwned";
+            ext.signature = make_signature(
+                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_async_run_cancellable_owned_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Async.Map";
+            ext.signature = make_signature(
+                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_async_map_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
+        {
+            il::vm::ExternDesc ext;
+            ext.name = "Viper.Threads.Async.MapOwned";
+            ext.signature = make_signature(
+                ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+            ext.fn = reinterpret_cast<void *>(&unified_async_map_owned_handler);
+            il::vm::RuntimeBridge::registerExtern(ext);
+        }
         capturePriorHandler("Viper.Network.HttpServer.BindHandler",
                             reinterpret_cast<void *>(&unified_http_server_bind_handler),
                             gPriorHttpBindHandler);
@@ -6271,6 +7032,51 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Threads.Parallel.ReducePool",
                             reinterpret_cast<void *>(&unified_parallel_reduce_pool_handler),
                             gPriorParallelReducePoolHandler);
+        capturePriorHandler("Viper.Functional.Lazy.New",
+                            reinterpret_cast<void *>(&unified_lazy_new_handler),
+                            gPriorLazyNewHandler);
+        capturePriorHandler("Viper.Functional.Lazy.Get",
+                            reinterpret_cast<void *>(&unified_lazy_get_handler),
+                            gPriorLazyGetHandler);
+        capturePriorHandler("Viper.Functional.Lazy.GetStr",
+                            reinterpret_cast<void *>(&unified_lazy_get_str_handler),
+                            gPriorLazyGetStrHandler);
+        capturePriorHandler("Viper.Functional.Lazy.GetI64",
+                            reinterpret_cast<void *>(&unified_lazy_get_i64_handler),
+                            gPriorLazyGetI64Handler);
+        capturePriorHandler("Viper.Functional.Lazy.Force",
+                            reinterpret_cast<void *>(&unified_lazy_force_handler),
+                            gPriorLazyForceHandler);
+        capturePriorHandler("Viper.Functional.Lazy.Map",
+                            reinterpret_cast<void *>(&unified_lazy_map_handler),
+                            gPriorLazyMapHandler);
+        capturePriorHandler("Viper.Functional.Lazy.AndThen",
+                            reinterpret_cast<void *>(&unified_lazy_and_then_handler),
+                            gPriorLazyAndThenHandler);
+        capturePriorHandler("Viper.Option.Map",
+                            reinterpret_cast<void *>(&unified_option_map_handler),
+                            gPriorOptionMapHandler);
+        capturePriorHandler("Viper.Option.AndThen",
+                            reinterpret_cast<void *>(&unified_option_and_then_handler),
+                            gPriorOptionAndThenHandler);
+        capturePriorHandler("Viper.Option.OrElse",
+                            reinterpret_cast<void *>(&unified_option_or_else_handler),
+                            gPriorOptionOrElseHandler);
+        capturePriorHandler("Viper.Option.Filter",
+                            reinterpret_cast<void *>(&unified_option_filter_handler),
+                            gPriorOptionFilterHandler);
+        capturePriorHandler("Viper.Result.Map",
+                            reinterpret_cast<void *>(&unified_result_map_handler),
+                            gPriorResultMapHandler);
+        capturePriorHandler("Viper.Result.MapErr",
+                            reinterpret_cast<void *>(&unified_result_map_err_handler),
+                            gPriorResultMapErrHandler);
+        capturePriorHandler("Viper.Result.AndThen",
+                            reinterpret_cast<void *>(&unified_result_and_then_handler),
+                            gPriorResultAndThenHandler);
+        capturePriorHandler("Viper.Result.OrElse",
+                            reinterpret_cast<void *>(&unified_result_or_else_handler),
+                            gPriorResultOrElseHandler);
     });
 
     using il::runtime::signatures::make_signature;
@@ -6450,6 +7256,77 @@ void registerUnifiedVmRuntimeHandlers() {
                                        {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr},
                                        {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_parallel_reduce_pool_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Functional.Lazy.New";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_lazy_new_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Functional.Lazy.Get";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_lazy_get_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Functional.Lazy.GetStr";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::Str});
+        ext.fn = reinterpret_cast<void *>(&unified_lazy_get_str_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Functional.Lazy.GetI64";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr}, {SigParam::I64});
+        ext.fn = reinterpret_cast<void *>(&unified_lazy_get_i64_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Functional.Lazy.Force";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_lazy_force_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Functional.Lazy.Map";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_lazy_map_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Functional.Lazy.AndThen";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_lazy_and_then_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+
+    struct CombinatorExtern {
+        const char *name;
+        void (*handler)(void **, void *);
+    };
+    static constexpr CombinatorExtern kCombinators[] = {
+        {"Viper.Option.Map", &unified_option_map_handler},
+        {"Viper.Option.AndThen", &unified_option_and_then_handler},
+        {"Viper.Option.OrElse", &unified_option_or_else_handler},
+        {"Viper.Option.Filter", &unified_option_filter_handler},
+        {"Viper.Result.Map", &unified_result_map_handler},
+        {"Viper.Result.MapErr", &unified_result_map_err_handler},
+        {"Viper.Result.AndThen", &unified_result_and_then_handler},
+        {"Viper.Result.OrElse", &unified_result_or_else_handler},
+    };
+    for (const auto &entry : kCombinators) {
+        il::vm::ExternDesc ext;
+        ext.name = entry.name;
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(entry.handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
 }

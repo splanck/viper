@@ -594,7 +594,7 @@ func columnTypeName(dataType: Integer) -> String {
 
 // Simple OID generator: hash of object name for stable pseudo-OIDs
 func generateOid(name: String) -> Integer {
-    var h = Viper.Crypto.Hash.Fast(name);
+    var h = Viper.Crypto.Hash.NonCryptoFast(name);
     if h < 0 { h = 0 - h; }
     // Map to positive range (avoid collision with PG system OIDs < 16384)
     return 16384 + (h % 100000);

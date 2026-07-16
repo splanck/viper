@@ -35,22 +35,6 @@ construct the class directly. Its public surface exposes operations including `I
 | <a id="viper-core-box-eqi64"></a>`EqI64` | `i1(obj,i64)` | `Viper.Core.Box.EqI64` |
 | <a id="viper-core-box-eqf64"></a>`EqF64` | `i1(obj,f64)` | `Viper.Core.Box.EqF64` |
 | <a id="viper-core-box-eqstr"></a>`EqStr` | `i1(obj,str)` | `Viper.Core.Box.EqStr` |
-| <a id="viper-core-box-valuetype"></a>`ValueType` | `obj(i64)` | `Viper.Core.Box.ValueType` |
-| <a id="viper-core-box-valuetypeaddfield"></a>`ValueTypeAddField` | `void(obj,i64,i64,i1)` | `Viper.Core.Box.ValueTypeAddField` |
-
-<a id="viper-core-valuetype"></a>
-### `Viper.Core.ValueType`
-
-Provides Value Type functionality for core runtime services.
-
-`Viper.Core.ValueType` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `AddField`.
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-core-valuetype-addfield"></a>`AddField` | `void(i64,i64,i1)` | `Viper.Core.Box.ValueTypeAddField` |
 
 <a id="viper-core-diagnostics"></a>
 ### `Viper.Core.Diagnostics`
@@ -86,18 +70,16 @@ Provides Parse functionality for core runtime services.
 
 `Viper.Core.Parse` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `TryInt`,
-`TryNum`, `TryDouble`, `TryBool`.
+`TryDouble`, `TryBool`, `IntOr`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-core-parse-tryint"></a>`TryInt` | `obj<Viper.Option>(str)` | `Viper.Core.Parse.TryInt` |
-| <a id="viper-core-parse-trynum"></a>`TryNum` | `obj<Viper.Option>(str)` | `Viper.Core.Parse.TryNum` |
 | <a id="viper-core-parse-trydouble"></a>`TryDouble` | `obj<Viper.Option>(str)` | `Viper.Core.Parse.TryDouble` |
 | <a id="viper-core-parse-trybool"></a>`TryBool` | `obj<Viper.Option>(str)` | `Viper.Core.Parse.TryBool` |
 | <a id="viper-core-parse-intor"></a>`IntOr` | `i64(str,i64)` | `Viper.Core.Parse.IntOr` |
-| <a id="viper-core-parse-numor"></a>`NumOr` | `f64(str,f64)` | `Viper.Core.Parse.NumOr` |
 | <a id="viper-core-parse-doubleor"></a>`DoubleOr` | `f64(str,f64)` | `Viper.Core.Parse.DoubleOr` |
 | <a id="viper-core-parse-boolor"></a>`BoolOr` | `i1(str,i1)` | `Viper.Core.Parse.BoolOr` |
 | <a id="viper-core-parse-isint"></a>`IsInt` | `i1(str)` | `Viper.Core.Parse.IsInt` |
@@ -111,7 +93,7 @@ Provides Convert functionality for core runtime services.
 
 `Viper.Core.Convert` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `ToDouble`,
-`ToInt64`, `NumToInt`, `ToString_Double`.
+`ToInt64`, `NumToInt`, `ToStringDouble`.
 
 #### Methods
 
@@ -120,8 +102,6 @@ construct the class directly. Its public surface exposes operations including `T
 | <a id="viper-core-convert-todouble"></a>`ToDouble` | `f64(str)` | `Viper.Core.Convert.ToDouble` |
 | <a id="viper-core-convert-toint64"></a>`ToInt64` | `i64(str)` | `Viper.Core.Convert.ToInt64` |
 | <a id="viper-core-convert-numtoint"></a>`NumToInt` | `i64(f64)` | `Viper.Core.Convert.NumToInt` |
-| <a id="viper-core-convert-tostring-double"></a>`ToString_Double` | `str(f64)` | `Viper.Core.Convert.ToString_Double` |
-| <a id="viper-core-convert-tostring-int"></a>`ToString_Int` | `str(i64)` | `Viper.Core.Convert.ToString_Int` |
 | <a id="viper-core-convert-tostringdouble"></a>`ToStringDouble` | `str(f64)` | `Viper.Core.Convert.ToStringDouble` |
 | <a id="viper-core-convert-tostringint"></a>`ToStringInt` | `str(i64)` | `Viper.Core.Convert.ToStringInt` |
 
@@ -131,7 +111,7 @@ construct the class directly. Its public surface exposes operations including `T
 Provides pub/sub message bus.
 
 Create `Viper.Core.MessageBus` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as
+object with the instance members below. Its public surface exposes properties such as
 `TotalSubscriptions` and operations including `Callback`, `Clear`, `ClearTopic`, `Publish`.
 
 Constructor: `Viper.Core.MessageBus.New`
@@ -152,7 +132,7 @@ Constructor: `Viper.Core.MessageBus.New`
 | <a id="viper-core-messagebus-publish"></a>`Publish` | `i64(str,obj)` | `Viper.Core.MessageBus.Publish` |
 | <a id="viper-core-messagebus-subscribe"></a>`Subscribe` | `i64(str,obj)` | `Viper.Core.MessageBus.Subscribe` |
 | <a id="viper-core-messagebus-subscribercount"></a>`SubscriberCount` | `i64(str)` | `Viper.Core.MessageBus.SubscriberCount` |
-| <a id="viper-core-messagebus-topics"></a>`Topics` | `obj()` | `Viper.Core.MessageBus.Topics` |
+| <a id="viper-core-messagebus-topics"></a>`Topics` | `seq<str>()` | `Viper.Core.MessageBus.Topics` |
 | <a id="viper-core-messagebus-unsubscribe"></a>`Unsubscribe` | `i1(i64)` | `Viper.Core.MessageBus.Unsubscribe` |
 | <a id="viper-core-messagebus-new"></a>`New` | `obj()` | `Viper.Core.MessageBus.New` |
 
@@ -198,8 +178,6 @@ construct the class directly. Its public surface exposes operations including `E
 | `Viper.Core.Box.EqI64` | `i1(obj,i64)` | `rt_box_eq_i64` |
 | `Viper.Core.Box.EqF64` | `i1(obj,f64)` | `rt_box_eq_f64` |
 | `Viper.Core.Box.EqStr` | `i1(obj,str)` | `rt_box_eq_str` |
-| `Viper.Core.Box.ValueType` | `obj(i64)` | `rt_box_value_type` |
-| `Viper.Core.Box.ValueTypeAddField` | `void(obj,i64,i64,i1)` | `rt_box_value_type_add_field` |
 | `Viper.Core.MessageBus.New` | `obj()` | `rt_msgbus_new` |
 | `Viper.Core.MessageBus.Callback` | `obj(obj)` | `rt_msgbus_callback_new` |
 | `Viper.Core.MessageBus.Subscribe` | `i64(obj,str,obj)` | `rt_msgbus_subscribe` |
@@ -207,7 +185,7 @@ construct the class directly. Its public surface exposes operations including `E
 | `Viper.Core.MessageBus.Publish` | `i64(obj,str,obj)` | `rt_msgbus_publish` |
 | `Viper.Core.MessageBus.SubscriberCount` | `i64(obj,str)` | `rt_msgbus_subscriber_count` |
 | <a id="viper-core-messagebus-get-totalsubscriptions"></a>`Viper.Core.MessageBus.get_TotalSubscriptions` | `i64(obj)` | `rt_msgbus_total_subscriptions` |
-| `Viper.Core.MessageBus.Topics` | `obj(obj)` | `rt_msgbus_topics` |
+| `Viper.Core.MessageBus.Topics` | `seq<str>(obj)` | `rt_msgbus_topics` |
 | `Viper.Core.MessageBus.ClearTopic` | `void(obj,str)` | `rt_msgbus_clear_topic` |
 | `Viper.Core.MessageBus.Clear` | `void(obj)` | `rt_msgbus_clear` |
 | `Viper.Core.Diagnostics.Assert` | `void(i1,str)` | `rt_diag_assert` |
@@ -232,17 +210,13 @@ construct the class directly. Its public surface exposes operations including `E
 | `Viper.Core.Object.IsNull` | `i1(obj)` | `rt_obj_is_null` |
 | `Viper.Core.Convert.ToDouble` | `f64(str)` | `rt_to_double` |
 | `Viper.Core.Convert.ToInt64` | `i64(str)` | `rt_to_int` |
-| `Viper.Core.Convert.ToString_Int` | `str(i64)` | `rt_int_to_str` |
-| `Viper.Core.Convert.ToString_Double` | `str(f64)` | `rt_f64_to_str` |
 | `Viper.Core.Convert.ToStringInt` | `str(i64)` | `rt_int_to_str` |
 | `Viper.Core.Convert.ToStringDouble` | `str(f64)` | `rt_f64_to_str` |
 | `Viper.Core.Convert.NumToInt` | `i64(f64)` | `rt_f64_to_i64` |
 | `Viper.Core.Parse.TryInt` | `obj<Viper.Option>(str)` | `rt_parse_int64_option` |
-| `Viper.Core.Parse.TryNum` | `obj<Viper.Option>(str)` | `rt_parse_double_option` |
 | `Viper.Core.Parse.TryDouble` | `obj<Viper.Option>(str)` | `rt_parse_double_option` |
 | `Viper.Core.Parse.TryBool` | `obj<Viper.Option>(str)` | `rt_parse_bool_option` |
 | `Viper.Core.Parse.IntOr` | `i64(str,i64)` | `rt_parse_int_or` |
-| `Viper.Core.Parse.NumOr` | `f64(str,f64)` | `rt_parse_num_or` |
 | `Viper.Core.Parse.DoubleOr` | `f64(str,f64)` | `rt_parse_num_or` |
 | `Viper.Core.Parse.BoolOr` | `i1(str,i1)` | `rt_parse_bool_or` |
 | `Viper.Core.Parse.IsInt` | `i1(str)` | `rt_parse_is_int` |

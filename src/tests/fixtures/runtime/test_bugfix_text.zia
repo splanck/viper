@@ -2,11 +2,11 @@ module TestBugfixText;
 
 bind "./_support";
 bind Viper.Terminal;
-bind Viper.Text.Csv as Csv;
+bind Viper.Data.Csv as Csv;
 bind Viper.Text.Markdown as Md;
-bind Viper.Text.JsonPath as JP;
-bind Viper.Text.Json as Json;
-bind Viper.Text.Toml as Toml;
+bind Viper.Data.JsonPath as JP;
+bind Viper.Data.Json as Json;
+bind Viper.Data.Toml as Toml;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Box as Box;
 bind Viper.Text.Fmt as Fmt;

@@ -9,7 +9,7 @@
 // Purpose: Implements Markdown parsing utilities for the Viper.Text.Markdown
 //          class. Provides ExtractLinks (URLs), ExtractHeadings (heading text),
 //          ToHtml (basic Markdown to HTML conversion), and
-//          StripMarkdown (remove formatting, return plain text).
+//          ToText (remove formatting, return plain text).
 //
 // Key invariants:
 //   - ExtractLinks returns a Seq<String> of URL targets, with unsafe schemes
@@ -17,8 +17,9 @@
 //   - ExtractHeadings returns a Seq<String> of heading text.
 //   - ToHtml converts headings, bold, italic, links, code, and lists; does not
 //     implement the full CommonMark spec.
-//   - StripMarkdown removes **, *, _, `, and link syntax leaving plain text.
-//   - All functions return empty sequences for empty or whitespace-only input.
+//   - ToText removes **, *, _, `, and link syntax leaving plain text.
+//   - Empty input returns empty strings/sequences; whitespace-only input is
+//     kept as content (e.g. ToHtml(" ") emits a paragraph containing a space).
 //
 // Ownership/Lifetime:
 //   - All returned sequences and strings are fresh allocations owned by caller.
@@ -321,6 +322,26 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
 
 // --- Public API ---
 
+/// @brief Return 1 when a line is a horizontal rule: three or more of the same
+///        marker (-, *, _) separated only by spaces. Checked before list-item
+///        recognition so `* * *` and `- - -` render as <hr>, not list items
+///        (VDOC-049).
+static int markdown_line_is_hr(const char *p, int64_t line_len) {
+    if (line_len < 3)
+        return 0;
+    char hr_char = *p;
+    if (hr_char != '-' && hr_char != '*' && hr_char != '_')
+        return 0;
+    int count = 0;
+    for (int64_t i = 0; i < line_len; i++) {
+        if (p[i] == hr_char)
+            count++;
+        else if (p[i] != ' ')
+            return 0;
+    }
+    return count >= 3;
+}
+
 /// @brief Convert Markdown text to HTML.
 rt_string rt_markdown_to_html(rt_string md) {
     if (!md)
@@ -343,6 +364,10 @@ rt_string rt_markdown_to_html(rt_string md) {
         const char *eol = p;
         while (eol < end && *eol != '\n')
             eol++;
+        const char *line_break = eol;
+        // CRLF input: exclude a trailing CR from line content (VDOC-050).
+        if (eol > p && eol[-1] == '\r')
+            eol--;
         int64_t line_len = (int64_t)(eol - p);
 
         // Empty line
@@ -351,7 +376,25 @@ rt_string rt_markdown_to_html(rt_string md) {
                 markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</ul>\n"));
                 in_list = 0;
             }
-            p = eol + 1;
+            p = line_break < end ? line_break + 1 : end;
+            continue;
+        }
+
+        // Classify the line once so an open list closes before ANY non-list
+        // block (heading, code fence, rule, paragraph) — otherwise those
+        // elements land inside the <ul> (VDOC-049).
+        const int is_hr = markdown_line_is_hr(p, line_len);
+        const int is_list_item =
+            !is_hr && (*p == '-' || *p == '*') && p + 1 < eol && p[1] == ' ';
+        if (in_list && !is_list_item) {
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</ul>\n"));
+            in_list = 0;
+        }
+
+        // Horizontal rule (before list items: `* * *` is a rule, not a list)
+        if (is_hr) {
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<hr>\n"));
+            p = line_break < end ? line_break + 1 : end;
             continue;
         }
 
@@ -366,12 +409,12 @@ rt_string rt_markdown_to_html(rt_string md) {
             process_inline(&sb, h, (int64_t)(eol - h));
             snprintf(tag, sizeof(tag), "</h%d>\n", level);
             markdown_check_sb(&sb, rt_sb_append_cstr(&sb, tag));
-            p = eol + 1;
+            p = line_break < end ? line_break + 1 : end;
             continue;
         }
 
         // Unordered list item (- or *)
-        if ((*p == '-' || *p == '*') && p + 1 < eol && p[1] == ' ') {
+        if (is_list_item) {
             if (!in_list) {
                 markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<ul>\n"));
                 in_list = 1;
@@ -379,66 +422,40 @@ rt_string rt_markdown_to_html(rt_string md) {
             markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<li>"));
             process_inline(&sb, p + 2, (int64_t)(eol - p - 2));
             markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</li>\n"));
-            p = eol + 1;
+            p = line_break < end ? line_break + 1 : end;
             continue;
         }
 
         // Code block ```
         if (line_len >= 3 && p[0] == '`' && p[1] == '`' && p[2] == '`') {
-            p = eol + 1;
+            p = line_break < end ? line_break + 1 : end;
             markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<pre><code>"));
             while (p < end) {
                 eol = p;
                 while (eol < end && *eol != '\n')
                     eol++;
+                const char *fence_break = eol;
+                if (eol > p && eol[-1] == '\r')
+                    eol--;
                 line_len = (int64_t)(eol - p);
                 if (line_len >= 3 && p[0] == '`' && p[1] == '`' && p[2] == '`') {
-                    p = eol + 1;
+                    p = fence_break < end ? fence_break + 1 : end;
                     break;
                 }
                 for (int64_t i = 0; i < line_len; i++)
                     append_escaped(&sb, p[i]);
                 markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "\n"));
-                p = eol + 1;
+                p = fence_break < end ? fence_break + 1 : end;
             }
             markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</code></pre>\n"));
             continue;
-        }
-
-        // Horizontal rule
-        if (line_len >= 3) {
-            int is_hr = 1;
-            char hr_char = *p;
-            if (hr_char == '-' || hr_char == '*' || hr_char == '_') {
-                for (int64_t i = 0; i < line_len; i++) {
-                    if (p[i] != hr_char && p[i] != ' ') {
-                        is_hr = 0;
-                        break;
-                    }
-                }
-                int count = 0;
-                for (int64_t i = 0; i < line_len; i++)
-                    if (p[i] == hr_char)
-                        count++;
-                if (is_hr && count >= 3) {
-                    markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<hr>\n"));
-                    p = eol + 1;
-                    continue;
-                }
-            }
-        }
-
-        // Close list if open
-        if (in_list) {
-            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</ul>\n"));
-            in_list = 0;
         }
 
         // Regular paragraph
         markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<p>"));
         process_inline(&sb, p, line_len);
         markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</p>\n"));
-        p = eol + 1;
+        p = line_break < end ? line_break + 1 : end;
     }
 
     if (in_list)
@@ -469,6 +486,10 @@ rt_string rt_markdown_to_text(rt_string md) {
         const char *eol = p;
         while (eol < end && *eol != '\n')
             eol++;
+        const char *line_break = eol;
+        // CRLF input: exclude a trailing CR from line content (VDOC-050).
+        if (eol > p && eol[-1] == '\r')
+            eol--;
 
         if (!first_line)
             markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "\n"));
@@ -480,10 +501,49 @@ rt_string rt_markdown_to_text(rt_string md) {
         if (heading_level > 0)
             start = p + heading_level + 1;
 
-        // Strip inline formatting
+        // Strip inline formatting. Marker bytes are dropped only when they
+        // form a matched pair on this line (mirrors process_inline); an
+        // unmatched marker stays literal. Underscores additionally follow the
+        // intraword rule: `_` flanked by alphanumerics (snake_case) never
+        // opens or closes emphasis, so identifiers survive (VDOC-051).
         for (const char *c = start; c < eol; c++) {
-            if (*c == '*' || *c == '_' || *c == '`')
+            if (*c == '*' || *c == '`') {
+                const char *close = c + 1;
+                while (close < eol && *close != *c)
+                    close++;
+                if (close >= eol) {
+                    markdown_check_sb(&sb, rt_sb_append_bytes(&sb, c, 1));
+                    continue;
+                }
+                if (close > c + 1)
+                    markdown_check_sb(&sb, rt_sb_append_bytes(&sb, c + 1, close - (c + 1)));
+                c = close;
                 continue;
+            }
+            if (*c == '_') {
+                int open_intraword = (c > start && isalnum((unsigned char)c[-1])) &&
+                                     (c + 1 < eol && isalnum((unsigned char)c[1]));
+                const char *close = eol;
+                if (!open_intraword) {
+                    close = c + 1;
+                    while (close < eol) {
+                        int close_intraword =
+                            isalnum((unsigned char)close[-1]) &&
+                            (close + 1 < eol && isalnum((unsigned char)close[1]));
+                        if (*close == '_' && !close_intraword)
+                            break;
+                        close++;
+                    }
+                }
+                if (close >= eol) {
+                    markdown_check_sb(&sb, rt_sb_append_bytes(&sb, c, 1));
+                    continue;
+                }
+                if (close > c + 1)
+                    markdown_check_sb(&sb, rt_sb_append_bytes(&sb, c + 1, close - (c + 1)));
+                c = close;
+                continue;
+            }
             if (*c == '[') {
                 // Extract link text only
                 const char *link_text_end = c + 1;
@@ -508,7 +568,7 @@ rt_string rt_markdown_to_text(rt_string md) {
             }
             markdown_check_sb(&sb, rt_sb_append_bytes(&sb, c, 1));
         }
-        p = eol < end ? eol + 1 : end;
+        p = line_break < end ? line_break + 1 : end;
     }
 
     rt_string result = markdown_string_from_bytes_or_trap(sb.data, sb.len);
@@ -583,7 +643,11 @@ void *rt_markdown_extract_headings(rt_string md) {
                 const char *eol = h;
                 while (eol < end_src && *eol != '\n')
                     eol++;
-                rt_string heading = markdown_string_from_bytes_or_trap(h, (size_t)(eol - h));
+                const char *content_end = eol;
+                if (content_end > h && content_end[-1] == '\r')
+                    content_end--;
+                rt_string heading =
+                    markdown_string_from_bytes_or_trap(h, (size_t)(content_end - h));
                 rt_seq_push(seq, heading);
                 rt_string_unref(heading);
                 p = eol;

@@ -16,7 +16,7 @@ bind "../core/events" as events;
 bind "../core/mathutil" as M;
 
 class EnemyProjectiles {
-    hide G3D.Physics3DWorld phys;
+    hide G3D.PhysicsWorld3D phys;
     hide events.EventBus bus;
     hide List[Float] x; hide List[Float] y; hide List[Float] z;
     hide List[Float] vx; hide List[Float] vy; hide List[Float] vz;
@@ -41,7 +41,7 @@ class EnemyProjectiles {
         landed = 0;
     }
 
-    expose func setup(p: G3D.Physics3DWorld, b: events.EventBus) {
+    expose func setup(p: G3D.PhysicsWorld3D, b: events.EventBus) {
         phys = p;
         bus = b;
         var i = 0;
@@ -59,7 +59,7 @@ class EnemyProjectiles {
     }
 
     hide func makeGlow(r: Float, g: Float, b: Float, intensity: Float) -> G3D.Material3D {
-        var mat = G3D.Material3D.NewColor(r, g, b);
+        var mat = G3D.Material3D.FromColor(r, g, b);
         G3D.Material3D.SetEmissiveColor(mat, r, g, b);
         mat.EmissiveIntensity = intensity;
         mat.Roughness = 0.25;

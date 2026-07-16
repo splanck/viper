@@ -8,7 +8,7 @@
 // File: src/runtime/core/rt_args.c
 // Purpose: Implements the Viper.System.Environment class - access to command-line
 //          arguments (argc/argv) and environment variables. Provides argument
-//          count/value queries, full command-line reconstruction, and
+//          count/value queries, lossy space-joined command-line display, and
 //          getenv/setenv/hasenv wrappers for the BASIC runtime ABI.
 //
 // Key invariants:
@@ -20,8 +20,10 @@
 //   - Out-of-range indices trap rather than fabricating values.
 //   - Environment variable names are case-sensitive on Unix and case-insensitive
 //     on Windows (platform behavior is preserved transparently).
-//   - SetVariable (putenv/setenv) affects only the current process; changes are
-//     not propagated to child processes unless explicitly inherited.
+//   - SetVariable affects the current process environment. Subsequent child
+//     processes inherit it unless their launch API supplies a replacement block.
+//   - The legacy host-argv initialization flag is process-global and currently
+//     non-atomic; concurrent first access is unsafe (VDOC-211).
 //   - Returned rt_string values are newly allocated; callers own the reference.
 //
 // Ownership/Lifetime:
@@ -242,11 +244,12 @@ static void rt_args_populate_host(RtArgsState *state) {
 /// @brief Lazily import host argv into @p state on the first legacy-context read.
 /// @details The legacy context delays host-argv import until first read so a
 ///          process that wants to provide its own argv (test harness, tool
-///          runner) gets a chance to push first. State transitions:
-///            - `0` → `1` → `2`: first thread runs the import and locks others out.
+///          runner) gets a chance to push first. Intended state transitions:
+///            - `0` → `1` → `2`: first caller runs the import.
 ///            - `2`: no-op.
-///            - `1`: another thread is mid-import; yield and spin until it
-///              transitions to `2` so we don't race past a partial population.
+///            - `1`: another caller appears to be mid-import; wait for `2`.
+///          The flag is not atomic, so this is not valid cross-thread
+///          synchronization; concurrent legacy first access remains a data race.
 /// @param state Legacy args state to populate (no-op when NULL).
 static void rt_args_ensure_legacy_host_initialized(RtArgsState *state) {
     if (!state)

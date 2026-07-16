@@ -12,21 +12,18 @@
 Provides Aes constants and static operations for cryptographic workflows.
 
 `Viper.Crypto.Aes` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Encrypt`, `Decrypt`, `DecryptResult`, `TryDecrypt`.
+Its public surface exposes operations including `EncryptAuth`, `DecryptAuth`,
+`DecryptAuthResult`, `TryDecryptAuth`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-aes-encrypt"></a>`Encrypt` | `obj(obj,obj,obj)` | `Viper.Crypto.Aes.Encrypt` |
-| <a id="viper-crypto-aes-decrypt"></a>`Decrypt` | `obj(obj,obj,obj)` | `Viper.Crypto.Aes.Decrypt` |
-| <a id="viper-crypto-aes-decryptresult"></a>`DecryptResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Aes.DecryptResult` |
-| <a id="viper-crypto-aes-trydecrypt"></a>`TryDecrypt` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Aes.TryDecrypt` |
-| <a id="viper-crypto-aes-encryptauth"></a>`EncryptAuth` | `obj(obj,obj,obj)` | `Viper.Crypto.Aes.EncryptAuth` |
+| <a id="viper-crypto-aes-encryptauth"></a>`EncryptAuth` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `Viper.Crypto.Aes.EncryptAuth` |
 | <a id="viper-crypto-aes-decryptauth"></a>`DecryptAuth` | `obj(obj,obj,obj)` | `Viper.Crypto.Aes.DecryptAuth` |
 | <a id="viper-crypto-aes-decryptauthresult"></a>`DecryptAuthResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Aes.DecryptAuthResult` |
 | <a id="viper-crypto-aes-trydecryptauth"></a>`TryDecryptAuth` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Aes.TryDecryptAuth` |
-| <a id="viper-crypto-aes-encryptstr"></a>`EncryptStr` | `obj(str,str)` | `Viper.Crypto.Aes.EncryptStr` |
+| <a id="viper-crypto-aes-encryptstr"></a>`EncryptStr` | `obj<Viper.Collections.Bytes>(str,str)` | `Viper.Crypto.Aes.EncryptStr` |
 | <a id="viper-crypto-aes-decryptstr"></a>`DecryptStr` | `str(obj,str)` | `Viper.Crypto.Aes.DecryptStr` |
 | <a id="viper-crypto-aes-decryptstrresult"></a>`DecryptStrResult` | `obj<Viper.Result>(obj,str)` | `Viper.Crypto.Aes.DecryptStrResult` |
 | <a id="viper-crypto-aes-trydecryptstr"></a>`TryDecryptStr` | `obj<Viper.Option>(obj,str)` | `Viper.Crypto.Aes.TryDecryptStr` |
@@ -36,18 +33,18 @@ surface exposes operations including `Encrypt`, `Decrypt`, `DecryptResult`, `Try
 
 Provides Aes constants and static operations for cryptographic workflows.
 
-`Viper.Crypto.Legacy.Aes` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `EncryptCBC`, `DecryptCBC`, `DecryptCBCResult`,
-`TryDecryptCBC`.
+`Viper.Crypto.Legacy.Aes` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `EncryptCbc`, `DecryptCbc`,
+`DecryptCbcResult`, `TryDecryptCbc`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-legacy-aes-encryptcbc"></a>`EncryptCBC` | `obj(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.EncryptCBC` |
-| <a id="viper-crypto-legacy-aes-decryptcbc"></a>`DecryptCBC` | `obj(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.DecryptCBC` |
-| <a id="viper-crypto-legacy-aes-decryptcbcresult"></a>`DecryptCBCResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.DecryptCBCResult` |
-| <a id="viper-crypto-legacy-aes-trydecryptcbc"></a>`TryDecryptCBC` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.TryDecryptCBC` |
+| <a id="viper-crypto-legacy-aes-encryptcbc"></a>`EncryptCbc` | `obj(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.EncryptCbc` |
+| <a id="viper-crypto-legacy-aes-decryptcbc"></a>`DecryptCbc` | `obj(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.DecryptCbc` |
+| <a id="viper-crypto-legacy-aes-decryptcbcresult"></a>`DecryptCbcResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.DecryptCbcResult` |
+| <a id="viper-crypto-legacy-aes-trydecryptcbc"></a>`TryDecryptCbc` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Legacy.Aes.TryDecryptCbc` |
 
 <a id="viper-crypto-hash"></a>
 ### `Viper.Crypto.Hash`
@@ -55,32 +52,22 @@ public surface exposes operations including `EncryptCBC`, `DecryptCBC`, `Decrypt
 Provides modern hash/HMAC helpers plus legacy compatibility mirrors.
 
 `Viper.Crypto.Hash` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `CRC32`,
-`CRC32Bytes`, `MD5`, `MD5Bytes`.
+construct the class directly. Its public surface exposes operations including `Sha256`,
+`Sha256Bytes`, `HmacSha256`, `HmacSha256Bytes`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-hash-crc32"></a>`CRC32` | `i64(str)` | `Viper.Crypto.Hash.CRC32` |
-| <a id="viper-crypto-hash-crc32bytes"></a>`CRC32Bytes` | `i64(obj)` | `Viper.Crypto.Hash.CRC32Bytes` |
-| <a id="viper-crypto-hash-md5"></a>`MD5` | `str(str)` | `Viper.Crypto.Hash.MD5` |
-| <a id="viper-crypto-hash-md5bytes"></a>`MD5Bytes` | `str(obj)` | `Viper.Crypto.Hash.MD5Bytes` |
-| <a id="viper-crypto-hash-sha1"></a>`SHA1` | `str(str)` | `Viper.Crypto.Hash.SHA1` |
-| <a id="viper-crypto-hash-sha1bytes"></a>`SHA1Bytes` | `str(obj)` | `Viper.Crypto.Hash.SHA1Bytes` |
-| <a id="viper-crypto-hash-sha256"></a>`SHA256` | `str(str)` | `Viper.Crypto.Hash.SHA256` |
-| <a id="viper-crypto-hash-sha256bytes"></a>`SHA256Bytes` | `str(obj)` | `Viper.Crypto.Hash.SHA256Bytes` |
-| <a id="viper-crypto-hash-hmacmd5"></a>`HmacMD5` | `str(str,str)` | `Viper.Crypto.Hash.HmacMD5` |
-| <a id="viper-crypto-hash-hmacmd5bytes"></a>`HmacMD5Bytes` | `str(obj,obj)` | `Viper.Crypto.Hash.HmacMD5Bytes` |
-| <a id="viper-crypto-hash-hmacsha1"></a>`HmacSHA1` | `str(str,str)` | `Viper.Crypto.Hash.HmacSHA1` |
-| <a id="viper-crypto-hash-hmacsha1bytes"></a>`HmacSHA1Bytes` | `str(obj,obj)` | `Viper.Crypto.Hash.HmacSHA1Bytes` |
-| <a id="viper-crypto-hash-hmacsha256"></a>`HmacSHA256` | `str(str,str)` | `Viper.Crypto.Hash.HmacSHA256` |
-| <a id="viper-crypto-hash-hmacsha256bytes"></a>`HmacSHA256Bytes` | `str(obj,obj)` | `Viper.Crypto.Hash.HmacSHA256Bytes` |
+| <a id="viper-crypto-hash-sha256"></a>`Sha256` | `str(str)` | `Viper.Crypto.Hash.Sha256` |
+| <a id="viper-crypto-hash-sha256bytes"></a>`Sha256Bytes` | `str(obj)` | `Viper.Crypto.Hash.Sha256Bytes` |
+| <a id="viper-crypto-hash-hmacsha256"></a>`HmacSha256` | `str(str,str)` | `Viper.Crypto.Hash.HmacSha256` |
+| <a id="viper-crypto-hash-hmacsha256bytes"></a>`HmacSha256Bytes` | `str(obj,obj)` | `Viper.Crypto.Hash.HmacSha256Bytes` |
 | <a id="viper-crypto-hash-constanttimeequals"></a>`ConstantTimeEquals` | `i1(str,str)` | `Viper.Crypto.Hash.ConstantTimeEquals` |
 | <a id="viper-crypto-hash-constanttimeequalsbytes"></a>`ConstantTimeEqualsBytes` | `i1(obj,obj)` | `Viper.Crypto.Hash.ConstantTimeEqualsBytes` |
-| <a id="viper-crypto-hash-fast"></a>`Fast` | `i64(str)` | `Viper.Crypto.Hash.Fast` |
-| <a id="viper-crypto-hash-fastbytes"></a>`FastBytes` | `i64(obj)` | `Viper.Crypto.Hash.FastBytes` |
-| <a id="viper-crypto-hash-fastint"></a>`FastInt` | `i64(i64)` | `Viper.Crypto.Hash.FastInt` |
+| <a id="viper-crypto-hash-noncryptofast"></a>`NonCryptoFast` | `i64(str)` | `Viper.Crypto.Hash.NonCryptoFast` |
+| <a id="viper-crypto-hash-noncryptofastbytes"></a>`NonCryptoFastBytes` | `i64(obj)` | `Viper.Crypto.Hash.NonCryptoFastBytes` |
+| <a id="viper-crypto-hash-noncryptofastint"></a>`NonCryptoFastInt` | `i64(i64)` | `Viper.Crypto.Hash.NonCryptoFastInt` |
 
 <a id="viper-crypto-legacy-hash"></a>
 ### `Viper.Crypto.Legacy.Hash`
@@ -88,23 +75,23 @@ construct the class directly. Its public surface exposes operations including `C
 Provides compatibility hashes and checksums.
 
 `Viper.Crypto.Legacy.Hash` exposes a registry-backed runtime surface without requiring callers
-to construct the class directly. Its public surface exposes operations including `CRC32`,
-`CRC32Bytes`, `MD5`, `MD5Bytes`.
+to construct the class directly. Its public surface exposes operations including `Crc32`,
+`Crc32Bytes`, `Md5`, `Md5Bytes`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-legacy-hash-crc32"></a>`CRC32` | `i64(str)` | `Viper.Crypto.Legacy.Hash.CRC32` |
-| <a id="viper-crypto-legacy-hash-crc32bytes"></a>`CRC32Bytes` | `i64(obj)` | `Viper.Crypto.Legacy.Hash.CRC32Bytes` |
-| <a id="viper-crypto-legacy-hash-md5"></a>`MD5` | `str(str)` | `Viper.Crypto.Legacy.Hash.MD5` |
-| <a id="viper-crypto-legacy-hash-md5bytes"></a>`MD5Bytes` | `str(obj)` | `Viper.Crypto.Legacy.Hash.MD5Bytes` |
-| <a id="viper-crypto-legacy-hash-sha1"></a>`SHA1` | `str(str)` | `Viper.Crypto.Legacy.Hash.SHA1` |
-| <a id="viper-crypto-legacy-hash-sha1bytes"></a>`SHA1Bytes` | `str(obj)` | `Viper.Crypto.Legacy.Hash.SHA1Bytes` |
-| <a id="viper-crypto-legacy-hash-hmacmd5"></a>`HmacMD5` | `str(str,str)` | `Viper.Crypto.Legacy.Hash.HmacMD5` |
-| <a id="viper-crypto-legacy-hash-hmacmd5bytes"></a>`HmacMD5Bytes` | `str(obj,obj)` | `Viper.Crypto.Legacy.Hash.HmacMD5Bytes` |
-| <a id="viper-crypto-legacy-hash-hmacsha1"></a>`HmacSHA1` | `str(str,str)` | `Viper.Crypto.Legacy.Hash.HmacSHA1` |
-| <a id="viper-crypto-legacy-hash-hmacsha1bytes"></a>`HmacSHA1Bytes` | `str(obj,obj)` | `Viper.Crypto.Legacy.Hash.HmacSHA1Bytes` |
+| <a id="viper-crypto-legacy-hash-crc32"></a>`Crc32` | `i64(str)` | `Viper.Crypto.Legacy.Hash.Crc32` |
+| <a id="viper-crypto-legacy-hash-crc32bytes"></a>`Crc32Bytes` | `i64(obj)` | `Viper.Crypto.Legacy.Hash.Crc32Bytes` |
+| <a id="viper-crypto-legacy-hash-md5"></a>`Md5` | `str(str)` | `Viper.Crypto.Legacy.Hash.Md5` |
+| <a id="viper-crypto-legacy-hash-md5bytes"></a>`Md5Bytes` | `str(obj)` | `Viper.Crypto.Legacy.Hash.Md5Bytes` |
+| <a id="viper-crypto-legacy-hash-sha1"></a>`Sha1` | `str(str)` | `Viper.Crypto.Legacy.Hash.Sha1` |
+| <a id="viper-crypto-legacy-hash-sha1bytes"></a>`Sha1Bytes` | `str(obj)` | `Viper.Crypto.Legacy.Hash.Sha1Bytes` |
+| <a id="viper-crypto-legacy-hash-hmacmd5"></a>`HmacMd5` | `str(str,str)` | `Viper.Crypto.Legacy.Hash.HmacMd5` |
+| <a id="viper-crypto-legacy-hash-hmacmd5bytes"></a>`HmacMd5Bytes` | `str(obj,obj)` | `Viper.Crypto.Legacy.Hash.HmacMd5Bytes` |
+| <a id="viper-crypto-legacy-hash-hmacsha1"></a>`HmacSha1` | `str(str,str)` | `Viper.Crypto.Legacy.Hash.HmacSha1` |
+| <a id="viper-crypto-legacy-hash-hmacsha1bytes"></a>`HmacSha1Bytes` | `str(obj,obj)` | `Viper.Crypto.Legacy.Hash.HmacSha1Bytes` |
 
 <a id="viper-crypto-keyderive"></a>
 ### `Viper.Crypto.KeyDerive`
@@ -112,17 +99,17 @@ to construct the class directly. Its public surface exposes operations including
 Provides key derivation functions.
 
 `Viper.Crypto.KeyDerive` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Pbkdf2SHA256`,
-`Pbkdf2SHA256Str`, `ScryptSHA256`, `ScryptSHA256Str`.
+construct the class directly. Its public surface exposes operations including `Pbkdf2Sha256`,
+`Pbkdf2Sha256Encoded`, `Scrypt`, `ScryptEncoded`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-keyderive-pbkdf2sha256"></a>`Pbkdf2SHA256` | `obj(str,obj,i64,i64)` | `Viper.Crypto.KeyDerive.Pbkdf2SHA256` |
-| <a id="viper-crypto-keyderive-pbkdf2sha256str"></a>`Pbkdf2SHA256Str` | `str(str,obj,i64,i64)` | `Viper.Crypto.KeyDerive.Pbkdf2SHA256Str` |
-| <a id="viper-crypto-keyderive-scryptsha256"></a>`ScryptSHA256` | `obj(str,obj,i64,i64,i64,i64)` | `Viper.Crypto.KeyDerive.ScryptSHA256` |
-| <a id="viper-crypto-keyderive-scryptsha256str"></a>`ScryptSHA256Str` | `str(str,obj,i64,i64,i64,i64)` | `Viper.Crypto.KeyDerive.ScryptSHA256Str` |
+| <a id="viper-crypto-keyderive-pbkdf2sha256"></a>`Pbkdf2Sha256` | `obj(str,obj,i64,i64)` | `Viper.Crypto.KeyDerive.Pbkdf2Sha256` |
+| <a id="viper-crypto-keyderive-pbkdf2sha256encoded"></a>`Pbkdf2Sha256Encoded` | `str(str,obj,i64,i64)` | `Viper.Crypto.KeyDerive.Pbkdf2Sha256Encoded` |
+| <a id="viper-crypto-keyderive-scrypt"></a>`Scrypt` | `obj(str,obj,i64,i64,i64,i64)` | `Viper.Crypto.KeyDerive.Scrypt` |
+| <a id="viper-crypto-keyderive-scryptencoded"></a>`ScryptEncoded` | `str(str,obj,i64,i64,i64,i64)` | `Viper.Crypto.KeyDerive.ScryptEncoded` |
 
 <a id="viper-crypto-password"></a>
 ### `Viper.Crypto.Password`
@@ -144,8 +131,8 @@ construct the class directly. Its public surface exposes operations including `H
 | <a id="viper-crypto-password-verify"></a>`Verify` | `i1(str,str)` | `Viper.Crypto.Password.Verify` |
 | <a id="viper-crypto-password-needsrehash"></a>`NeedsRehash` | `i1(str)` | `Viper.Crypto.Password.NeedsRehash` |
 
-<a id="viper-crypto-rand"></a>
-### `Viper.Crypto.Rand`
+<a id="viper-crypto-securerandom"></a>
+### `Viper.Crypto.SecureRandom`
 
 Provides secure random number generation.
 
@@ -156,29 +143,27 @@ construct the class directly. Its public surface exposes operations including `B
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-rand-bytes"></a>`Bytes` | `obj<Viper.Collections.Bytes>(i64)` | `Viper.Crypto.Rand.Bytes` |
-| <a id="viper-crypto-rand-int"></a>`Int` | `i64(i64,i64)` | `Viper.Crypto.Rand.Int` |
+| <a id="viper-crypto-securerandom-bytes"></a>`Bytes` | `obj<Viper.Collections.Bytes>(i64)` | `Viper.Crypto.SecureRandom.Bytes` |
+| <a id="viper-crypto-securerandom-int"></a>`Int` | `i64(i64,i64)` | `Viper.Crypto.SecureRandom.Int` |
 
-<a id="viper-crypto-module"></a>
-### `Viper.Crypto.Module`
+<a id="viper-crypto-compliance"></a>
+### `Viper.Crypto.Compliance`
 
 Provides validation-readiness mode and self-test status.
 
 `Viper.Crypto.Module` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including
-`EnableApprovedMode`, `DisableApprovedMode`, `IsApprovedMode`, `EnableApprovedModeForProcess`.
+`EnableApprovedModeForProcess`, `DisableApprovedModeForProcess`, `IsApprovedModeForProcess`,
+`Status`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-module-enableapprovedmode"></a>`EnableApprovedMode` | `i1()` | `Viper.Crypto.Module.EnableApprovedMode` |
-| <a id="viper-crypto-module-disableapprovedmode"></a>`DisableApprovedMode` | `void()` | `Viper.Crypto.Module.DisableApprovedMode` |
-| <a id="viper-crypto-module-isapprovedmode"></a>`IsApprovedMode` | `i1()` | `Viper.Crypto.Module.IsApprovedMode` |
-| <a id="viper-crypto-module-enableapprovedmodeforprocess"></a>`EnableApprovedModeForProcess` | `i1()` | `Viper.Crypto.Module.EnableApprovedModeForProcess` |
-| <a id="viper-crypto-module-disableapprovedmodeforprocess"></a>`DisableApprovedModeForProcess` | `void()` | `Viper.Crypto.Module.DisableApprovedModeForProcess` |
-| <a id="viper-crypto-module-isapprovedmodeforprocess"></a>`IsApprovedModeForProcess` | `i1()` | `Viper.Crypto.Module.IsApprovedModeForProcess` |
-| <a id="viper-crypto-module-status"></a>`Status` | `str()` | `Viper.Crypto.Module.Status` |
+| <a id="viper-crypto-compliance-enableapprovedmodeforprocess"></a>`EnableApprovedModeForProcess` | `i1()` | `Viper.Crypto.Compliance.EnableApprovedModeForProcess` |
+| <a id="viper-crypto-compliance-disableapprovedmodeforprocess"></a>`DisableApprovedModeForProcess` | `void()` | `Viper.Crypto.Compliance.DisableApprovedModeForProcess` |
+| <a id="viper-crypto-compliance-isapprovedmodeforprocess"></a>`IsApprovedModeForProcess` | `i1()` | `Viper.Crypto.Compliance.IsApprovedModeForProcess` |
+| <a id="viper-crypto-compliance-status"></a>`Status` | `str()` | `Viper.Crypto.Compliance.Status` |
 
 <a id="viper-crypto-cipher"></a>
 ### `Viper.Crypto.Cipher`
@@ -193,29 +178,29 @@ construct the class directly. Its public surface exposes operations including `E
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-crypto-cipher-encrypt"></a>`Encrypt` | `obj(obj,str)` | `Viper.Crypto.Cipher.Encrypt` |
+| <a id="viper-crypto-cipher-encrypt"></a>`Encrypt` | `obj<Viper.Collections.Bytes>(obj,str)` | `Viper.Crypto.Cipher.Encrypt` |
 | <a id="viper-crypto-cipher-decrypt"></a>`Decrypt` | `obj(obj,str)` | `Viper.Crypto.Cipher.Decrypt` |
 | <a id="viper-crypto-cipher-decryptresult"></a>`DecryptResult` | `obj<Viper.Result>(obj,str)` | `Viper.Crypto.Cipher.DecryptResult` |
 | <a id="viper-crypto-cipher-trydecrypt"></a>`TryDecrypt` | `obj<Viper.Option>(obj,str)` | `Viper.Crypto.Cipher.TryDecrypt` |
-| <a id="viper-crypto-cipher-encryptaad"></a>`EncryptAAD` | `obj(obj,str,obj)` | `Viper.Crypto.Cipher.EncryptAAD` |
-| <a id="viper-crypto-cipher-decryptaad"></a>`DecryptAAD` | `obj(obj,str,obj)` | `Viper.Crypto.Cipher.DecryptAAD` |
-| <a id="viper-crypto-cipher-decryptaadresult"></a>`DecryptAADResult` | `obj<Viper.Result>(obj,str,obj)` | `Viper.Crypto.Cipher.DecryptAADResult` |
-| <a id="viper-crypto-cipher-trydecryptaad"></a>`TryDecryptAAD` | `obj<Viper.Option>(obj,str,obj)` | `Viper.Crypto.Cipher.TryDecryptAAD` |
-| <a id="viper-crypto-cipher-encryptwithkey"></a>`EncryptWithKey` | `obj(obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKey` |
+| <a id="viper-crypto-cipher-encryptaad"></a>`EncryptAad` | `obj<Viper.Collections.Bytes>(obj,str,obj)` | `Viper.Crypto.Cipher.EncryptAad` |
+| <a id="viper-crypto-cipher-decryptaad"></a>`DecryptAad` | `obj(obj,str,obj)` | `Viper.Crypto.Cipher.DecryptAad` |
+| <a id="viper-crypto-cipher-decryptaadresult"></a>`DecryptAadResult` | `obj<Viper.Result>(obj,str,obj)` | `Viper.Crypto.Cipher.DecryptAadResult` |
+| <a id="viper-crypto-cipher-trydecryptaad"></a>`TryDecryptAad` | `obj<Viper.Option>(obj,str,obj)` | `Viper.Crypto.Cipher.TryDecryptAad` |
+| <a id="viper-crypto-cipher-encryptwithkey"></a>`EncryptWithKey` | `obj<Viper.Collections.Bytes>(obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKey` |
 | <a id="viper-crypto-cipher-decryptwithkey"></a>`DecryptWithKey` | `obj(obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKey` |
 | <a id="viper-crypto-cipher-decryptwithkeyresult"></a>`DecryptWithKeyResult` | `obj<Viper.Result>(obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyResult` |
 | <a id="viper-crypto-cipher-trydecryptwithkey"></a>`TryDecryptWithKey` | `obj<Viper.Option>(obj,obj)` | `Viper.Crypto.Cipher.TryDecryptWithKey` |
-| <a id="viper-crypto-cipher-encryptwithkeyaad"></a>`EncryptWithKeyAAD` | `obj(obj,obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKeyAAD` |
-| <a id="viper-crypto-cipher-decryptwithkeyaad"></a>`DecryptWithKeyAAD` | `obj(obj,obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyAAD` |
-| <a id="viper-crypto-cipher-decryptwithkeyaadresult"></a>`DecryptWithKeyAADResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyAADResult` |
-| <a id="viper-crypto-cipher-trydecryptwithkeyaad"></a>`TryDecryptWithKeyAAD` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Cipher.TryDecryptWithKeyAAD` |
-| <a id="viper-crypto-cipher-generatekey"></a>`GenerateKey` | `obj()` | `Viper.Crypto.Cipher.GenerateKey` |
+| <a id="viper-crypto-cipher-encryptwithkeyaad"></a>`EncryptWithKeyAad` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `Viper.Crypto.Cipher.EncryptWithKeyAad` |
+| <a id="viper-crypto-cipher-decryptwithkeyaad"></a>`DecryptWithKeyAad` | `obj(obj,obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyAad` |
+| <a id="viper-crypto-cipher-decryptwithkeyaadresult"></a>`DecryptWithKeyAadResult` | `obj<Viper.Result>(obj,obj,obj)` | `Viper.Crypto.Cipher.DecryptWithKeyAadResult` |
+| <a id="viper-crypto-cipher-trydecryptwithkeyaad"></a>`TryDecryptWithKeyAad` | `obj<Viper.Option>(obj,obj,obj)` | `Viper.Crypto.Cipher.TryDecryptWithKeyAad` |
+| <a id="viper-crypto-cipher-generatekey"></a>`GenerateKey` | `obj<Viper.Collections.Bytes>()` | `Viper.Crypto.Cipher.GenerateKey` |
 | <a id="viper-crypto-cipher-derivekey"></a>`DeriveKey` | `obj(str,obj)` | `Viper.Crypto.Cipher.DeriveKey` |
 
 <a id="viper-crypto-tls"></a>
 ### `Viper.Crypto.Tls`
 
-Provides tLS 1.3 secure connections.
+Provides TLS 1.3 secure connections.
 
 `Viper.Crypto.Tls` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Host`, `Port`,
@@ -246,86 +231,68 @@ construct the class directly. Its public surface exposes properties such as `Hos
 | <a id="viper-crypto-tls-recv"></a>`Recv` | `obj(i64)` | `Viper.Crypto.Tls.Recv` |
 | <a id="viper-crypto-tls-recvstr"></a>`RecvStr` | `str(i64)` | `Viper.Crypto.Tls.RecvStr` |
 | <a id="viper-crypto-tls-recvline"></a>`RecvLine` | `str()` | `Viper.Crypto.Tls.RecvLine` |
-| <a id="viper-crypto-tls-error"></a>`Error` | `str()` | `Viper.Crypto.Tls.Error` |
 | <a id="viper-crypto-tls-close"></a>`Close` | `void()` | `Viper.Crypto.Tls.Close` |
 
 ## Functions
 
 | Function | Signature | Runtime symbol |
 |---|---|---|
-| `Viper.Crypto.Hash.CRC32` | `i64(str)` | `rt_hash_crc32` |
-| `Viper.Crypto.Hash.CRC32Bytes` | `i64(obj)` | `rt_hash_crc32_bytes` |
-| `Viper.Crypto.Hash.MD5` | `str(str)` | `rt_hash_md5` |
-| `Viper.Crypto.Hash.MD5Bytes` | `str(obj)` | `rt_hash_md5_bytes` |
-| `Viper.Crypto.Hash.SHA1` | `str(str)` | `rt_hash_sha1` |
-| `Viper.Crypto.Hash.SHA1Bytes` | `str(obj)` | `rt_hash_sha1_bytes` |
-| `Viper.Crypto.Hash.SHA256` | `str(str)` | `rt_hash_sha256` |
-| `Viper.Crypto.Hash.SHA256Bytes` | `str(obj)` | `rt_hash_sha256_bytes` |
-| `Viper.Crypto.Hash.HmacMD5` | `str(str,str)` | `rt_hash_hmac_md5` |
-| `Viper.Crypto.Hash.HmacMD5Bytes` | `str(obj,obj)` | `rt_hash_hmac_md5_bytes` |
-| `Viper.Crypto.Hash.HmacSHA1` | `str(str,str)` | `rt_hash_hmac_sha1` |
-| `Viper.Crypto.Hash.HmacSHA1Bytes` | `str(obj,obj)` | `rt_hash_hmac_sha1_bytes` |
-| `Viper.Crypto.Hash.HmacSHA256` | `str(str,str)` | `rt_hash_hmac_sha256` |
-| `Viper.Crypto.Hash.HmacSHA256Bytes` | `str(obj,obj)` | `rt_hash_hmac_sha256_bytes` |
+| `Viper.Crypto.Hash.Sha256` | `str(str)` | `rt_hash_sha256` |
+| `Viper.Crypto.Hash.Sha256Bytes` | `str(obj)` | `rt_hash_sha256_bytes` |
+| `Viper.Crypto.Hash.HmacSha256` | `str(str,str)` | `rt_hash_hmac_sha256` |
+| `Viper.Crypto.Hash.HmacSha256Bytes` | `str(obj,obj)` | `rt_hash_hmac_sha256_bytes` |
 | `Viper.Crypto.Hash.ConstantTimeEquals` | `i1(str,str)` | `rt_hash_constant_time_equals` |
 | `Viper.Crypto.Hash.ConstantTimeEqualsBytes` | `i1(obj,obj)` | `rt_hash_constant_time_equals_bytes` |
-| `Viper.Crypto.Legacy.Hash.CRC32` | `i64(str)` | `rt_hash_crc32` |
-| `Viper.Crypto.Legacy.Hash.CRC32Bytes` | `i64(obj)` | `rt_hash_crc32_bytes` |
-| `Viper.Crypto.Legacy.Hash.MD5` | `str(str)` | `rt_hash_md5` |
-| `Viper.Crypto.Legacy.Hash.MD5Bytes` | `str(obj)` | `rt_hash_md5_bytes` |
-| `Viper.Crypto.Legacy.Hash.SHA1` | `str(str)` | `rt_hash_sha1` |
-| `Viper.Crypto.Legacy.Hash.SHA1Bytes` | `str(obj)` | `rt_hash_sha1_bytes` |
-| `Viper.Crypto.Legacy.Hash.HmacMD5` | `str(str,str)` | `rt_hash_hmac_md5` |
-| `Viper.Crypto.Legacy.Hash.HmacMD5Bytes` | `str(obj,obj)` | `rt_hash_hmac_md5_bytes` |
-| `Viper.Crypto.Legacy.Hash.HmacSHA1` | `str(str,str)` | `rt_hash_hmac_sha1` |
-| `Viper.Crypto.Legacy.Hash.HmacSHA1Bytes` | `str(obj,obj)` | `rt_hash_hmac_sha1_bytes` |
-| `Viper.Crypto.Hash.Fast` | `i64(str)` | `rt_hash_fast` |
-| `Viper.Crypto.Hash.FastBytes` | `i64(obj)` | `rt_hash_fast_bytes` |
-| `Viper.Crypto.Hash.FastInt` | `i64(i64)` | `rt_hash_fast_int` |
-| `Viper.Crypto.KeyDerive.Pbkdf2SHA256` | `obj(str,obj,i64,i64)` | `rt_keyderive_pbkdf2_sha256` |
-| `Viper.Crypto.KeyDerive.Pbkdf2SHA256Str` | `str(str,obj,i64,i64)` | `rt_keyderive_pbkdf2_sha256_str` |
-| `Viper.Crypto.KeyDerive.ScryptSHA256` | `obj(str,obj,i64,i64,i64,i64)` | `rt_keyderive_scrypt_sha256` |
-| `Viper.Crypto.KeyDerive.ScryptSHA256Str` | `str(str,obj,i64,i64,i64,i64)` | `rt_keyderive_scrypt_sha256_str` |
-| `Viper.Crypto.Rand.Bytes` | `obj<Viper.Collections.Bytes>(i64)` | `rt_crypto_rand_bytes` |
-| `Viper.Crypto.Rand.Int` | `i64(i64,i64)` | `rt_crypto_rand_int` |
-| `Viper.Crypto.Module.EnableApprovedMode` | `i1()` | `rt_crypto_module_enable_approved_mode` |
-| `Viper.Crypto.Module.DisableApprovedMode` | `void()` | `rt_crypto_module_disable_approved_mode` |
-| `Viper.Crypto.Module.IsApprovedMode` | `i1()` | `rt_crypto_module_is_approved_mode_viper` |
-| `Viper.Crypto.Module.EnableApprovedModeForProcess` | `i1()` | `rt_crypto_module_enable_approved_mode` |
-| `Viper.Crypto.Module.DisableApprovedModeForProcess` | `void()` | `rt_crypto_module_disable_approved_mode` |
-| `Viper.Crypto.Module.IsApprovedModeForProcess` | `i1()` | `rt_crypto_module_is_approved_mode_viper` |
-| `Viper.Crypto.Module.Status` | `str()` | `rt_crypto_module_status_text` |
-| `Viper.Crypto.Cipher.Encrypt` | `obj(obj,str)` | `rt_cipher_encrypt` |
+| `Viper.Crypto.Legacy.Hash.Crc32` | `i64(str)` | `rt_hash_crc32` |
+| `Viper.Crypto.Legacy.Hash.Crc32Bytes` | `i64(obj)` | `rt_hash_crc32_bytes` |
+| `Viper.Crypto.Legacy.Hash.Md5` | `str(str)` | `rt_hash_md5` |
+| `Viper.Crypto.Legacy.Hash.Md5Bytes` | `str(obj)` | `rt_hash_md5_bytes` |
+| `Viper.Crypto.Legacy.Hash.Sha1` | `str(str)` | `rt_hash_sha1` |
+| `Viper.Crypto.Legacy.Hash.Sha1Bytes` | `str(obj)` | `rt_hash_sha1_bytes` |
+| `Viper.Crypto.Legacy.Hash.HmacMd5` | `str(str,str)` | `rt_hash_hmac_md5` |
+| `Viper.Crypto.Legacy.Hash.HmacMd5Bytes` | `str(obj,obj)` | `rt_hash_hmac_md5_bytes` |
+| `Viper.Crypto.Legacy.Hash.HmacSha1` | `str(str,str)` | `rt_hash_hmac_sha1` |
+| `Viper.Crypto.Legacy.Hash.HmacSha1Bytes` | `str(obj,obj)` | `rt_hash_hmac_sha1_bytes` |
+| `Viper.Crypto.Hash.NonCryptoFast` | `i64(str)` | `rt_hash_fast` |
+| `Viper.Crypto.Hash.NonCryptoFastBytes` | `i64(obj)` | `rt_hash_fast_bytes` |
+| `Viper.Crypto.Hash.NonCryptoFastInt` | `i64(i64)` | `rt_hash_fast_int` |
+| `Viper.Crypto.KeyDerive.Pbkdf2Sha256` | `obj(str,obj,i64,i64)` | `rt_keyderive_pbkdf2_sha256` |
+| `Viper.Crypto.KeyDerive.Pbkdf2Sha256Encoded` | `str(str,obj,i64,i64)` | `rt_keyderive_pbkdf2_sha256_str` |
+| `Viper.Crypto.KeyDerive.Scrypt` | `obj(str,obj,i64,i64,i64,i64)` | `rt_keyderive_scrypt_sha256` |
+| `Viper.Crypto.KeyDerive.ScryptEncoded` | `str(str,obj,i64,i64,i64,i64)` | `rt_keyderive_scrypt_sha256_str` |
+| `Viper.Crypto.SecureRandom.Bytes` | `obj<Viper.Collections.Bytes>(i64)` | `rt_crypto_rand_bytes` |
+| `Viper.Crypto.SecureRandom.Int` | `i64(i64,i64)` | `rt_crypto_rand_int` |
+| `Viper.Crypto.Compliance.EnableApprovedModeForProcess` | `i1()` | `rt_crypto_module_enable_approved_mode` |
+| `Viper.Crypto.Compliance.DisableApprovedModeForProcess` | `void()` | `rt_crypto_module_disable_approved_mode` |
+| `Viper.Crypto.Compliance.IsApprovedModeForProcess` | `i1()` | `rt_crypto_module_is_approved_mode_viper` |
+| `Viper.Crypto.Compliance.Status` | `str()` | `rt_crypto_module_status_text` |
+| `Viper.Crypto.Cipher.Encrypt` | `obj<Viper.Collections.Bytes>(obj,str)` | `rt_cipher_encrypt` |
 | `Viper.Crypto.Cipher.Decrypt` | `obj(obj,str)` | `rt_cipher_decrypt` |
 | `Viper.Crypto.Cipher.DecryptResult` | `obj<Viper.Result>(obj,str)` | `rt_cipher_decrypt_result` |
 | `Viper.Crypto.Cipher.TryDecrypt` | `obj<Viper.Option>(obj,str)` | `rt_cipher_try_decrypt` |
-| `Viper.Crypto.Cipher.EncryptAAD` | `obj(obj,str,obj)` | `rt_cipher_encrypt_aad` |
-| `Viper.Crypto.Cipher.DecryptAAD` | `obj(obj,str,obj)` | `rt_cipher_decrypt_aad` |
-| `Viper.Crypto.Cipher.DecryptAADResult` | `obj<Viper.Result>(obj,str,obj)` | `rt_cipher_decrypt_aad_result` |
-| `Viper.Crypto.Cipher.TryDecryptAAD` | `obj<Viper.Option>(obj,str,obj)` | `rt_cipher_try_decrypt_aad` |
-| `Viper.Crypto.Cipher.EncryptWithKey` | `obj(obj,obj)` | `rt_cipher_encrypt_with_key` |
+| `Viper.Crypto.Cipher.EncryptAad` | `obj<Viper.Collections.Bytes>(obj,str,obj)` | `rt_cipher_encrypt_aad` |
+| `Viper.Crypto.Cipher.DecryptAad` | `obj(obj,str,obj)` | `rt_cipher_decrypt_aad` |
+| `Viper.Crypto.Cipher.DecryptAadResult` | `obj<Viper.Result>(obj,str,obj)` | `rt_cipher_decrypt_aad_result` |
+| `Viper.Crypto.Cipher.TryDecryptAad` | `obj<Viper.Option>(obj,str,obj)` | `rt_cipher_try_decrypt_aad` |
+| `Viper.Crypto.Cipher.EncryptWithKey` | `obj<Viper.Collections.Bytes>(obj,obj)` | `rt_cipher_encrypt_with_key` |
 | `Viper.Crypto.Cipher.DecryptWithKey` | `obj(obj,obj)` | `rt_cipher_decrypt_with_key` |
 | `Viper.Crypto.Cipher.DecryptWithKeyResult` | `obj<Viper.Result>(obj,obj)` | `rt_cipher_decrypt_with_key_result` |
 | `Viper.Crypto.Cipher.TryDecryptWithKey` | `obj<Viper.Option>(obj,obj)` | `rt_cipher_try_decrypt_with_key` |
-| `Viper.Crypto.Cipher.EncryptWithKeyAAD` | `obj(obj,obj,obj)` | `rt_cipher_encrypt_with_key_aad` |
-| `Viper.Crypto.Cipher.DecryptWithKeyAAD` | `obj(obj,obj,obj)` | `rt_cipher_decrypt_with_key_aad` |
-| `Viper.Crypto.Cipher.DecryptWithKeyAADResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_cipher_decrypt_with_key_aad_result` |
-| `Viper.Crypto.Cipher.TryDecryptWithKeyAAD` | `obj<Viper.Option>(obj,obj,obj)` | `rt_cipher_try_decrypt_with_key_aad` |
-| `Viper.Crypto.Cipher.GenerateKey` | `obj()` | `rt_cipher_generate_key` |
+| `Viper.Crypto.Cipher.EncryptWithKeyAad` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `rt_cipher_encrypt_with_key_aad` |
+| `Viper.Crypto.Cipher.DecryptWithKeyAad` | `obj(obj,obj,obj)` | `rt_cipher_decrypt_with_key_aad` |
+| `Viper.Crypto.Cipher.DecryptWithKeyAadResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_cipher_decrypt_with_key_aad_result` |
+| `Viper.Crypto.Cipher.TryDecryptWithKeyAad` | `obj<Viper.Option>(obj,obj,obj)` | `rt_cipher_try_decrypt_with_key_aad` |
+| `Viper.Crypto.Cipher.GenerateKey` | `obj<Viper.Collections.Bytes>()` | `rt_cipher_generate_key` |
 | `Viper.Crypto.Cipher.DeriveKey` | `obj(str,obj)` | `rt_cipher_derive_key` |
-| `Viper.Crypto.Aes.Encrypt` | `obj(obj,obj,obj)` | `rt_aes_encrypt` |
-| `Viper.Crypto.Aes.Decrypt` | `obj(obj,obj,obj)` | `rt_aes_decrypt` |
-| `Viper.Crypto.Aes.DecryptResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_aes_decrypt_result` |
-| `Viper.Crypto.Aes.TryDecrypt` | `obj<Viper.Option>(obj,obj,obj)` | `rt_aes_try_decrypt` |
-| `Viper.Crypto.Legacy.Aes.EncryptCBC` | `obj(obj,obj,obj)` | `rt_aes_encrypt` |
-| `Viper.Crypto.Legacy.Aes.DecryptCBC` | `obj(obj,obj,obj)` | `rt_aes_decrypt` |
-| `Viper.Crypto.Legacy.Aes.DecryptCBCResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_aes_decrypt_result` |
-| `Viper.Crypto.Legacy.Aes.TryDecryptCBC` | `obj<Viper.Option>(obj,obj,obj)` | `rt_aes_try_decrypt` |
-| `Viper.Crypto.Aes.EncryptAuth` | `obj(obj,obj,obj)` | `rt_aes_encrypt_auth` |
+| `Viper.Crypto.Legacy.Aes.EncryptCbc` | `obj(obj,obj,obj)` | `rt_aes_encrypt` |
+| `Viper.Crypto.Legacy.Aes.DecryptCbc` | `obj(obj,obj,obj)` | `rt_aes_decrypt` |
+| `Viper.Crypto.Legacy.Aes.DecryptCbcResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_aes_decrypt_result` |
+| `Viper.Crypto.Legacy.Aes.TryDecryptCbc` | `obj<Viper.Option>(obj,obj,obj)` | `rt_aes_try_decrypt` |
+| `Viper.Crypto.Aes.EncryptAuth` | `obj<Viper.Collections.Bytes>(obj,obj,obj)` | `rt_aes_encrypt_auth` |
 | `Viper.Crypto.Aes.DecryptAuth` | `obj(obj,obj,obj)` | `rt_aes_decrypt_auth` |
 | `Viper.Crypto.Aes.DecryptAuthResult` | `obj<Viper.Result>(obj,obj,obj)` | `rt_aes_decrypt_auth_result` |
 | `Viper.Crypto.Aes.TryDecryptAuth` | `obj<Viper.Option>(obj,obj,obj)` | `rt_aes_try_decrypt_auth` |
-| `Viper.Crypto.Aes.EncryptStr` | `obj(str,str)` | `rt_aes_encrypt_str` |
+| `Viper.Crypto.Aes.EncryptStr` | `obj<Viper.Collections.Bytes>(str,str)` | `rt_aes_encrypt_str` |
 | `Viper.Crypto.Aes.DecryptStr` | `str(obj,str)` | `rt_aes_decrypt_str` |
 | `Viper.Crypto.Aes.DecryptStrResult` | `obj<Viper.Result>(obj,str)` | `rt_aes_decrypt_str_result` |
 | `Viper.Crypto.Aes.TryDecryptStr` | `obj<Viper.Option>(obj,str)` | `rt_aes_try_decrypt_str` |
@@ -351,5 +318,4 @@ construct the class directly. Its public surface exposes properties such as `Hos
 | `Viper.Crypto.Tls.RecvStr` | `str(obj,i64)` | `rt_viper_tls_recv_str` |
 | `Viper.Crypto.Tls.Close` | `void(obj)` | `rt_viper_tls_close` |
 | `Viper.Crypto.Tls.RecvLine` | `str(obj)` | `rt_viper_tls_recv_line` |
-| `Viper.Crypto.Tls.Error` | `str(obj)` | `rt_viper_tls_error` |
 

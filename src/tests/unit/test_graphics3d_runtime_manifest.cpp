@@ -27,10 +27,10 @@
 
 namespace {
 
-constexpr std::size_t kExpectedFunctionCount = 2075;
+constexpr std::size_t kExpectedFunctionCount = 1958;
 constexpr std::size_t kExpectedClassCount = 125;
-constexpr std::size_t kExpectedPropertyCount = 741;
-constexpr std::size_t kExpectedMethodCount = 1122;
+constexpr std::size_t kExpectedPropertyCount = 645;
+constexpr std::size_t kExpectedMethodCount = 1099;
 
 bool is3DName(std::string_view name) {
     return name.starts_with("Viper.Graphics3D.") || name.starts_with("Viper.Game3D.");
@@ -156,6 +156,13 @@ int main() {
         }
     }
 
+    /* On mismatch, print actual vs expected so the deliberate-review update is
+     * a copy-paste instead of a guessing game. */
+    if (functionCount != kExpectedFunctionCount || classCount != kExpectedClassCount ||
+        propertyCount != kExpectedPropertyCount || methodCount != kExpectedMethodCount) {
+        std::cerr << "MANIFEST ACTUALS: functions=" << functionCount << " classes=" << classCount
+                  << " properties=" << propertyCount << " methods=" << methodCount << '\n';
+    }
     ok = require(functionCount == kExpectedFunctionCount,
                  "public 3D function count changed; review and update the ABI manifest") &&
          ok;
@@ -171,7 +178,7 @@ int main() {
 
     // Filled from the canonical registry after deliberate ABI review. This one value
     // covers every function name/signature/C symbol and every class member binding.
-    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x073a01d54a8f4c4d);
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x3c153691115a043d);
     if (hash.value() != kExpectedManifestHash) {
         std::cerr << "FAIL: 3D ABI manifest changed; reviewed hash is 0x" << std::hex
                   << hash.value() << '\n';

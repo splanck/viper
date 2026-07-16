@@ -698,7 +698,7 @@ rt_string rt_fmt_bool(bool value) {
     return value ? rt_string_from_bytes("true", 4) : rt_string_from_bytes("false", 5);
 }
 
-/// @brief Format a boolean as "Yes"/"No".
+/// @brief Format a boolean as lowercase "yes"/"no".
 /// @details Lowercase per the BUG-015 regression contract — the prompted-for
 ///          output matches the literal tokens users type back in "yes/no"
 ///          prompt flows. Callers wanting title-case can substitute

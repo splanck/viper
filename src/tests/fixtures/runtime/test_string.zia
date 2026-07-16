@@ -154,10 +154,10 @@ func testStartsEndsWith() {
 func testHas() {
     setTest("Has (Contains)");
 
-    assertTrue(Viper.String.Has("hello world", "world"), "has 'world'");
-    assertTrue(Viper.String.Has("hello world", "o w"), "has 'o w'");
-    assertTrue(Viper.String.Has("hello", ""), "has empty");
-    assertFalse(Viper.String.Has("hello world", "xyz"), "has not found");
+    assertTrue(Viper.String.Contains("hello world", "world"), "has 'world'");
+    assertTrue(Viper.String.Contains("hello world", "o w"), "has 'o w'");
+    assertTrue(Viper.String.Contains("hello", ""), "has empty");
+    assertFalse(Viper.String.Contains("hello world", "xyz"), "has not found");
 }
 
 func testReplace() {
@@ -204,23 +204,23 @@ func testCount() {
 func testFlip() {
     setTest("Flip");
 
-    assertEqStr(Viper.String.Flip("hello"), "olleh", "flip 'hello'");
-    assertEqStr(Viper.String.Flip("a"), "a", "flip single");
-    assertEqStr(Viper.String.Flip(""), "", "flip empty");
-    assertEqStr(Viper.String.Flip("ab"), "ba", "flip 'ab'");
+    assertEqStr(Viper.String.Reverse("hello"), "olleh", "flip 'hello'");
+    assertEqStr(Viper.String.Reverse("a"), "a", "flip single");
+    assertEqStr(Viper.String.Reverse(""), "", "flip empty");
+    assertEqStr(Viper.String.Reverse("ab"), "ba", "flip 'ab'");
 }
 
 func testCompare() {
     setTest("Compare");
 
     // Cmp (case-sensitive)
-    assertEqInt(Viper.String.Cmp("abc", "abc"), 0, "cmp equal");
-    assertTrue(Viper.String.Cmp("abc", "abd") < 0, "cmp less");
-    assertTrue(Viper.String.Cmp("abd", "abc") > 0, "cmp greater");
+    assertEqInt(Viper.String.Compare("abc", "abc"), 0, "cmp equal");
+    assertTrue(Viper.String.Compare("abc", "abd") < 0, "cmp less");
+    assertTrue(Viper.String.Compare("abd", "abc") > 0, "cmp greater");
 
     // CmpNoCase (case-insensitive)
-    assertEqInt(Viper.String.CmpNoCase("ABC", "abc"), 0, "cmpnocase equal");
-    assertEqInt(Viper.String.CmpNoCase("Hello", "HELLO"), 0, "cmpnocase mixed");
+    assertEqInt(Viper.String.CompareIgnoreCase("ABC", "abc"), 0, "cmpnocase equal");
+    assertEqInt(Viper.String.CompareIgnoreCase("Hello", "HELLO"), 0, "cmpnocase mixed");
 }
 
 func testAscChr() {

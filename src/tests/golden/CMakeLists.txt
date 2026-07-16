@@ -32,6 +32,8 @@ function(viper_add_golden_suite_tests)
     _golden_error(basic_error_float_to_int ${_BE} float_to_int EXPECT_EXIT_ZERO)
     _golden_error(basic_error_float_in_string ${_BE} float_in_string)
     _golden_error(basic_error_bad_conversions ${_BE} bad_conversions)
+    _golden_error(basic_error_obj_to_int_assign ${_BE} obj_to_int_assign)
+    _golden_error(basic_error_obj_param_primitive_arg ${_BE} obj_param_primitive_arg)
     _golden_error(basic_error_bad_math_funcs ${_BE} bad_math_funcs)
     _golden_error(basic_error_private_method_access ${_BE} private_method_access)
     _golden_error(basic_error_private_field_access ${_BE} private_field_access)
@@ -237,6 +239,15 @@ function(viper_add_golden_suite_tests)
     _golden_il_run_file(eh_runtime_bounds_with_handler ${EH_RUNTIME_DIR}/bounds_with_handler.il ${EH_RUNTIME_DIR}/bounds_with_handler.out)
 
     _golden_il_run_file(il_quickstart_example ${_VIPER_GOLDEN_DIR}/quickstart.il ${_VIPER_GOLDEN_DIR}/quickstart.stdout)
+
+    # `viper run file.il` must execute IL like the legacy `-run` form (VDOC-013).
+    file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout _expect_run_sub)
+    string(STRIP "${_expect_run_sub}" _expect_run_sub)
+    viper_add_ctest(il_quickstart_run_subcommand
+            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
+            -DIL_FILE=${_VIPER_GOLDEN_DIR}/quickstart.il
+            "-DEXPECT=${_expect_run_sub}" -DRUN_CMD=run
+            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
     _golden_il_run_file(il_viper_ns_print_i64 ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.il ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.stdout)
 
     # When dual-publish is enabled, legacy rt_* alias should still work

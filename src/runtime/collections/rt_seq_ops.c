@@ -31,6 +31,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+
+#include "rt_box.h"
 #include "rt_object.h"
 #include "rt_option.h"
 #include "rt_seq.h"
@@ -65,33 +67,14 @@ static void *seq_new_empty_like(rt_seq_impl *source) {
 //=============================================================================
 
 /// @brief Default comparison function for sorting.
-/// @details Compares elements as strings if they appear to be strings,
-///          otherwise compares by pointer value. String comparison is
-///          case-sensitive and lexicographic.
+/// @details Delegates to the shared collection order (VDOC-089), so Seq sorts
+///          boxed strings/integers exactly like List and the relation is
+///          total and transitive.
 /// @param a First element pointer.
 /// @param b Second element pointer.
 /// @return Negative if a < b, zero if equal, positive if a > b.
 static int64_t seq_default_compare(void *a, void *b) {
-    // If both are NULL, they're equal
-    if (!a && !b)
-        return 0;
-    // NULL sorts before non-NULL
-    if (!a)
-        return -1;
-    if (!b)
-        return 1;
-
-    // Check if elements are strings using the runtime string checker
-    if (rt_string_is_handle(a) && rt_string_is_handle(b)) {
-        return rt_str_cmp((rt_string)a, (rt_string)b);
-    }
-
-    // Fall back to pointer comparison for non-strings
-    if (a < b)
-        return -1;
-    if (a > b)
-        return 1;
-    return 0;
+    return rt_box_default_sort_compare(a, b);
 }
 
 /// @brief Merge two sorted halves of an array.

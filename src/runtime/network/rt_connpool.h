@@ -10,9 +10,10 @@
 // Key invariants:
 //   - Connections are keyed by host:port.
 //   - Pool is thread-safe (internal mutex).
-//   - Idle connections are evicted after max_idle_sec.
+//   - Idle connections are evicted after 60 seconds during Acquire().
 // Ownership/Lifetime:
 //   - Pool objects are GC-managed via rt_obj_set_finalizer.
+//   - Release transfers the connection back to the pool; Clear also closes checked-out entries.
 // Links: rt_network.h (TCP)
 //
 //===----------------------------------------------------------------------===//
@@ -32,10 +33,10 @@ void *rt_connpool_new(int64_t max_size);
 /// @brief Acquire a plain TCP connection from the pool (or create new).
 void *rt_connpool_acquire(void *pool, rt_string host, int64_t port);
 
-/// @brief Return a connection to the pool for reuse.
+/// @brief Transfer a connection back to the pool for reuse (or closure when full/unhealthy).
 void rt_connpool_release(void *pool, void *conn);
 
-/// @brief Close and remove all pooled connections.
+/// @brief Close and remove all pooled connections, including checked-out tracked entries.
 void rt_connpool_clear(void *pool);
 
 /// @brief Get number of connections currently in the pool.

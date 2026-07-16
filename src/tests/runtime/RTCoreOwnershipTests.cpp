@@ -107,9 +107,9 @@ static void test_result_retains_runtime_objects(void) {
 }
 
 static void test_runtime_metadata_matches_core_contracts(void) {
-    const auto retain = il::runtime::classifyRuntimeOwnership("Viper.Memory.Retain");
+    const auto retain = il::runtime::classifyRuntimeOwnership("Viper.Runtime.Unsafe.Retain");
     assert(retain.retainsArg(0));
-    const auto releaseStr = il::runtime::classifyRuntimeOwnership("Viper.Memory.ReleaseStr");
+    const auto releaseStr = il::runtime::classifyRuntimeOwnership("Viper.Runtime.Unsafe.ReleaseStr");
     assert(releaseStr.consumesArg(0));
     const auto releaseStrSym = il::runtime::classifyRuntimeOwnership("rt_memory_release_str");
     assert(releaseStrSym.consumesArg(0));
@@ -159,7 +159,7 @@ static void test_runtime_metadata_matches_core_contracts(void) {
         il::runtime::classifyRuntimeOwnership("Viper.Core.Convert.ToStringDouble");
     assert(convertToStringDouble.returnsOwned);
     assert(convertToStringDouble.mayAllocate);
-    const auto parseDoubleOwn = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryNum");
+    const auto parseDoubleOwn = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryDouble");
     assert(parseDoubleOwn.returnsOwned);
     assert(parseDoubleOwn.mayAllocate);
     const auto parseCanonicalDoubleOwn =
@@ -169,7 +169,7 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     const auto parseTryBool = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryBool");
     assert(parseTryBool.returnsOwned);
     assert(parseTryBool.mayAllocate);
-    const auto parseAlias = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryNum");
+    const auto parseAlias = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.TryDouble");
     assert(parseAlias.returnsOwned);
     assert(parseAlias.mayAllocate);
     const auto parseBoolSym = il::runtime::classifyRuntimeOwnership("rt_parse_bool_option");
@@ -200,7 +200,7 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     const auto dequePeek =
         il::runtime::classifyRuntimeOwnership("Viper.Collections.Deque.PeekFront");
     assert(dequePeek.returnsOwned);
-    const auto seqRemove = il::runtime::classifyRuntimeOwnership("Viper.Collections.Seq.Remove");
+    const auto seqRemove = il::runtime::classifyRuntimeOwnership("Viper.Collections.Seq.RemoveAt");
     assert(seqRemove.returnsOwned);
     const auto heapPop = il::runtime::classifyRuntimeOwnership("Viper.Collections.Heap.Pop");
     assert(heapPop.returnsOwned);
@@ -241,7 +241,7 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     assert(strLen.readonly);
     assert(!strLen.nothrow);
 
-    const auto *parseDouble = il::runtime::findRuntimeSignature("Viper.Core.Parse.TryNum");
+    const auto *parseDouble = il::runtime::findRuntimeSignature("Viper.Core.Parse.TryDouble");
     assert(parseDouble != nullptr);
     assert(parseDouble->paramTypes.size() == 1);
     assert(parseDouble->retType.kind == il::core::Type::Kind::Ptr);

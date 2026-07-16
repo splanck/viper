@@ -15,7 +15,7 @@
 //   - LF (\n), CR (\r), and CRLF (\r\n) are all recognized as line terminators.
 //   - Returned line strings do not include the line terminator character(s).
 //   - The EOF flag is set after the last line is consumed; subsequent reads
-//     return NULL.
+//     return a fresh empty string.
 //   - A one-character peek buffer is used to detect CRLF without double-reads.
 //   - The closed flag prevents double-close and operations on a closed reader.
 //   - The GC finalizer closes the FILE* if the caller forgets to call Close.
@@ -104,7 +104,8 @@ static void rt_linereader_finalize(void *obj) {
 /// @brief Opens a text file for line-by-line reading.
 ///
 /// Creates a new LineReader object connected to the specified file path. The file
-/// is opened in text mode for reading. The returned LineReader provides convenient
+/// is opened in binary mode so newline bytes are handled uniformly by this module.
+/// The returned LineReader provides convenient
 /// methods for reading lines, characters, or the entire file content.
 ///
 /// The LineReader is managed by Viper's garbage collector and will automatically
@@ -139,8 +140,7 @@ static void rt_linereader_finalize(void *obj) {
 ///         - Memory allocation failure
 ///
 /// @note The LineReader reads the file sequentially - there is no seek operation.
-/// @note Files are opened in text mode, which may affect newline handling on
-///       some platforms.
+/// @note Files are opened in binary mode; LF, CR, and CRLF recognition is explicit.
 /// @note Thread safety: Not thread-safe. Each thread should have its own LineReader.
 ///
 /// @see rt_linereader_close For closing the reader

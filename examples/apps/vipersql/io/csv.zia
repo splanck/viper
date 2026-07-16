@@ -23,7 +23,7 @@
 //     io/csv.zia   (YOU ARE HERE)
 //         │
 //         ▼
-//     Viper.Text.Csv                (runtime CSV parser)
+//     Viper.Data.Csv                (runtime CSV parser)
 //     Viper.IO.File                 (whole-file read/write)
 //     engine/table.zia              (row insertion)
 //
@@ -65,7 +65,7 @@ bind Viper.String as String;
 bind Viper.Text.Fmt as Fmt;
 bind Viper.IO as IO;
 bind Viper.Text.StringBuilder as SB;
-bind Viper.Text.Csv as Csv;
+bind Viper.Data.Csv as Csv;
 bind Viper.Collections.Seq as Seq;
 bind "../engine/types";
 bind "../engine/schema";
@@ -300,7 +300,7 @@ class CsvHandler {
     }
 
     /// @brief Parse one CSV line into its fields.  Delegates to
-    ///        `Viper.Text.Csv.ParseLine` which handles the
+    ///        `Viper.Data.Csv.ParseLine` which handles the
     ///        standard quoting rules.
     hide func parseCSVLine(line: String) -> List[String] {
         var seq = Csv.ParseLine(line);

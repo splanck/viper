@@ -183,6 +183,7 @@
 @property(nonatomic, strong) NSMutableDictionary *cubemapCache;
 @property(nonatomic, strong) NSMutableDictionary *geometryCache;
 @property(nonatomic, strong) NSMutableDictionary *morphCache;
+@property(nonatomic, strong) NSMutableDictionary *extraInfluenceCache;
 @property(nonatomic, strong) NSMutableDictionary *renderTargetCache;
 @property(nonatomic, strong) NSMutableDictionary *samplerCache;
 @property(nonatomic) uint64_t frameSerial;
@@ -325,6 +326,20 @@
 @implementation VGFXMetalMorphCacheEntry
 @end
 
+/* Influences 5-8 side-stream buffers, keyed by the mesh geometry identity.
+ * Import-time data: revalidated by geometry_revision, so re-uploads happen
+ * only when the mesh's geometry actually changes. */
+@interface VGFXMetalExtraInfluenceCacheEntry : NSObject
+@property(nonatomic, strong) id<MTLBuffer> buffer;
+@property(nonatomic, assign) const void *key;
+@property(nonatomic) uint32_t revision;
+@property(nonatomic) uint32_t vertexCount;
+@property(nonatomic) uint64_t lastUsedFrame;
+@end
+
+@implementation VGFXMetalExtraInfluenceCacheEntry
+@end
+
 @interface VGFXMetalRenderTargetCacheEntry : NSObject
 @property(nonatomic, strong) id<MTLTexture> colorTexture;
 @property(nonatomic, strong) id<MTLTexture> motionTexture;
@@ -361,6 +376,8 @@
 
 const vgfx3d_backend_t vgfx3d_metal_backend = {
     .name = "metal",
+    .gpu_skinning = 1,
+    .gpu_skinning_extras = 1,
     /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas
      * (texture index 17); the shader remaps their UVs by static tile rects. */
     .shadow_atlas_slots = 1,

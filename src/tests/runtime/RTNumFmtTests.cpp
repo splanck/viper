@@ -10,9 +10,11 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <clocale>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -368,7 +370,32 @@ static void test_pad() {
 }
 
 /// @brief Main.
+static void test_decimals_locale_independent() {
+    // VDOC-041: InvariantNumberFormat must emit '.' regardless of the
+    // process C numeric locale (decimal-comma locales must not leak in).
+    const char *saved_locale = setlocale(LC_NUMERIC, NULL);
+    std::string saved = saved_locale ? saved_locale : "C";
+    const char *candidates[] = {
+        "fr_FR.UTF-8", "de_DE.UTF-8", "French_France.1252", "German_Germany.1252", NULL};
+    bool changed = false;
+    for (int i = 0; candidates[i] != NULL; ++i) {
+        if (setlocale(LC_NUMERIC, candidates[i]) != NULL) {
+            changed = true;
+            break;
+        }
+    }
+
+    rt_string r = rt_numfmt_decimals(3.14159, 2);
+    assert(str_eq(r, "3.14"));
+    rt_string p = rt_numfmt_percent(0.125);
+    assert(strchr(rt_string_cstr(p), ',') == NULL);
+
+    if (changed)
+        setlocale(LC_NUMERIC, saved.c_str());
+}
+
 int main() {
+    test_decimals_locale_independent();
     // Decimals
     test_decimals_basic();
     test_decimals_zero();

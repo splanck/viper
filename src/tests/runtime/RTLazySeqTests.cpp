@@ -11,9 +11,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_lazyseq.h"
+#include "rt_box.h"
+#include "rt_heap.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 
+#include "rt_trap.h"
+
 #include <cassert>
+#include <csetjmp>
 #include <climits>
 #include <cstdio>
 
@@ -423,7 +429,96 @@ static void test_lazyseq_il_wrappers() {
 // Entry Point
 //=============================================================================
 
+static void test_wrapper_receiver_validation() {
+    // VDOC-090: an IL-boundary call with a non-LazySeq receiver traps instead
+    // of reinterpreting foreign object fields as cursor state.
+    extern void rt_lazyseq_w_reset(void *);
+    void *not_a_lazyseq = rt_seq_new();
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    bool trapped = true;
+    if (setjmp(env) == 0) {
+        rt_lazyseq_w_reset(not_a_lazyseq);
+        trapped = false;
+    }
+    rt_trap_clear_recovery();
+    assert(trapped && "wrong receiver must trap");
+}
+
+static void test_collectors_own_elements() {
+    // VDOC-091: Repeat retains its value and collected Seqs own their
+    // entries, so materialized elements stay alive independently.
+    void *boxed = rt_box_i64(7);
+    size_t base = rt_heap_hdr(boxed)->refcnt;
+
+    rt_lazyseq rep = rt_lazyseq_repeat(boxed, 3);
+    assert(rt_heap_hdr(boxed)->refcnt == base + 1); // node retains the value
+
+    void *seq = rt_lazyseq_to_seq(rep);
+    assert(rt_seq_len(seq) == 3);
+    // Owning collection: three additional strong references.
+    assert(rt_heap_hdr(boxed)->refcnt == base + 4);
+}
+
+static void test_invalid_limits_trap() {
+    // VDOC-092: invalid bounds trap consistently instead of silently
+    // producing NULL pipelines or unintended infinite sources.
+    {
+        jmp_buf env;
+        rt_trap_set_recovery(&env);
+        bool trapped = true;
+        if (setjmp(env) == 0) {
+            (void)rt_lazyseq_repeat(rt_box_i64(1), -2);
+            trapped = false;
+        }
+        rt_trap_clear_recovery();
+        assert(trapped && "Repeat(-2) must trap");
+    }
+    {
+        rt_lazyseq src = rt_lazyseq_range(0, 10, 1);
+        jmp_buf env;
+        rt_trap_set_recovery(&env);
+        bool trapped = true;
+        if (setjmp(env) == 0) {
+            (void)rt_lazyseq_take(src, -1);
+            trapped = false;
+        }
+        rt_trap_clear_recovery();
+        assert(trapped && "Take(-1) must trap");
+    }
+    {
+        jmp_buf env;
+        rt_trap_set_recovery(&env);
+        bool trapped = true;
+        if (setjmp(env) == 0) {
+            (void)rt_lazyseq_range(0, 10, 0);
+            trapped = false;
+        }
+        rt_trap_clear_recovery();
+        assert(trapped && "Range step 0 must trap");
+    }
+    // -1 remains the infinite sentinel.
+    rt_lazyseq inf = rt_lazyseq_repeat(rt_box_i64(9), -1);
+    assert(inf != nullptr);
+}
+
+static void test_next_option_null_elements() {
+    // VDOC-095: NextOption distinguishes a yielded null element from end.
+    extern void *rt_lazyseq_w_next_option(void *);
+    rt_lazyseq rep = rt_lazyseq_repeat(nullptr, 2);
+    void *first = rt_lazyseq_w_next_option(rep);
+    assert(rt_option_is_some(first) == 1);   // a real (null) element
+    void *second = rt_lazyseq_w_next_option(rep);
+    assert(rt_option_is_some(second) == 1);
+    void *done = rt_lazyseq_w_next_option(rep);
+    assert(rt_option_is_none(done) == 1);    // exhaustion, not an element
+}
+
 int main() {
+    test_wrapper_receiver_validation();
+    test_next_option_null_elements();
+    test_collectors_own_elements();
+    test_invalid_limits_trap();
     printf("=== RT LazySeq Tests ===\n\n");
 
     test_lazyseq_range();

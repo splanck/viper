@@ -8,7 +8,9 @@
 // NULL, providing safe access without explicit missing-key checks.
 //
 // Key invariants:
-//   - rt_defaultmap_get never returns NULL; it returns the configured default for missing keys.
+//   - rt_defaultmap_get returns the configured default for missing keys; the
+//     result can still be NULL when the default is NULL or a stored value is
+//     NULL.
 //   - NULL keys are treated as the empty key; embedded NUL bytes are part of key identity.
 //   - The default value is set at creation time and cannot be changed.
 //   - Values are retained in the map; the default value is also retained.
@@ -57,7 +59,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value);
 /// @param map DefaultMap object.
 /// @param key Key string.
 /// @return 1 if explicitly set, 0 otherwise.
-int64_t rt_defaultmap_has(void *map, rt_string key);
+int8_t rt_defaultmap_has(void *map, rt_string key);
 
 /// @brief Remove a key-value pair.
 /// @param map DefaultMap object.

@@ -13,18 +13,18 @@ last-verified: 2026-05-15
 ## Contents
 
 - [Viper.Game.UI.HudLabel](#vipergameuihudlabel)
-- [Viper.Game.UI.Bar](#vipergameuibar)
-- [Viper.Game.UI.Panel](#vipergameuipanel)
-- [Viper.Game.UI.NineSlice](#vipergameuinineslice)
-- [Viper.Game.UI.MenuList](#vipergameuimenulist)
+- [Viper.Game.UI.HudBar](#vipergameuibar)
+- [Viper.Game.UI.HudPanel](#vipergameuipanel)
+- [Viper.Game.UI.HudNineSlice](#vipergameuinineslice)
+- [Viper.Game.UI.HudMenuList](#vipergameuimenulist)
 - [Viper.Game.UI.HudTextInput](#vipergameuihudtextinput)
-- [Viper.Game.UI.Table](#vipergameuitable)
-- [Viper.Game.UI.TableClickResult](#vipergameuitableclickresult)
-- [Viper.Game.UI.Modal](#vipergameuimodal)
+- [Viper.Game.UI.HudTable](#vipergameuitable)
+- [Viper.Game.UI.HudTableClickResult](#vipergameuitableclickresult)
+- [Viper.Game.UI.HudModal](#vipergameuimodal)
 - [Viper.Game.UI.HudSlider](#vipergameuihudslider)
 - [Viper.Game.UI.HudDropdown](#vipergameuihuddropdown)
 - [Viper.Game.UI.HudTooltip](#vipergameuihudtooltip)
-- [Viper.Game.UI.GameButton](#vipergameuigamebutton)
+- [Viper.Game.UI.HudButton](#vipergameuigamebutton)
 - [Viper.Game.Dialogue](#vipergamedialogue)
 - [Usage Example](#usage-example)
 
@@ -53,14 +53,14 @@ Positioned text widget with optional BitmapFont support and integer scaling.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetText(text)` | `void(String)` | Update label text (max 511 bytes, UTF-8-safe truncation) |
-| `SetPos(x, y)` | `void(Integer, Integer)` | Move to new position |
+| `SetPosition(x, y)` | `void(Integer, Integer)` | Move to new position |
 | `Draw(canvas)` | `void(Canvas)` | Render to canvas |
 
 The assigned `Font` must be `null` or a `BitmapFont`. It is retained by the label and released when replaced or when the label is freed.
 
 ---
 
-## Viper.Game.UI.Bar
+## Viper.Game.UI.HudBar
 
 Progress/health/XP bar with configurable fill direction, colors, and optional border.
 
@@ -82,7 +82,7 @@ Progress/health/XP bar with configurable fill direction, colors, and optional bo
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetValue(value, max)` | `void(Integer, Integer)` | Set current/max values. Value clamped to [0, max], max clamped to >= 1 |
-| `SetPos(x, y)` | `void(Integer, Integer)` | Move to new position |
+| `SetPosition(x, y)` | `void(Integer, Integer)` | Move to new position |
 | `SetSize(w, h)` | `void(Integer, Integer)` | Resize the bar |
 | `SetColors(fg, bg)` | `void(Integer, Integer)` | Update fill and background colors |
 | `Draw(canvas)` | `void(Canvas)` | Render to canvas |
@@ -91,7 +91,7 @@ Positive non-zero values always draw at least one pixel of fill, so low health/p
 
 ---
 
-## Viper.Game.UI.Panel
+## Viper.Game.UI.HudPanel
 
 Semi-transparent rectangular panel with optional border and rounded corners. Ideal for HUD backgrounds, dialogue boxes, and overlays.
 
@@ -109,7 +109,7 @@ Semi-transparent rectangular panel with optional border and rounded corners. Ide
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetPos(x, y)` | `void(Integer, Integer)` | Move to new position |
+| `SetPosition(x, y)` | `void(Integer, Integer)` | Move to new position |
 | `SetSize(w, h)` | `void(Integer, Integer)` | Resize the panel |
 | `SetColor(color, alpha)` | `void(Integer, Integer)` | Update background color and alpha (0-255) |
 | `SetBorder(color, thickness)` | `void(Integer, Integer)` | Set border color and thickness; color 0 or thickness <= 0 disables the border |
@@ -119,7 +119,7 @@ Rounded corners are preserved for both opaque and alpha-blended panel fills. Bor
 
 ---
 
-## Viper.Game.UI.NineSlice
+## Viper.Game.UI.HudNineSlice
 
 Scalable bordered UI element that draws a source image using the 9-slice technique. Corners stay fixed, edges tile along one axis, center tiles to fill. Perfect for dialogue boxes, buttons, and inventory slots.
 
@@ -144,7 +144,7 @@ When the target rectangle is smaller than the configured margins, corners and ed
 
 ---
 
-## Viper.Game.UI.MenuList
+## Viper.Game.UI.HudMenuList
 
 Vertical menu with selection highlight and keyboard-friendly wrap-around navigation.
 
@@ -229,7 +229,7 @@ length policy (`0` disables it).
 
 ---
 
-## Viper.Game.UI.Table
+## Viper.Game.UI.HudTable
 
 Sortable table widget for compact scoreboards, inventories, debug panels, and settings lists.
 
@@ -272,9 +272,9 @@ UTF-8 codepoint boundaries.
 
 ---
 
-## Viper.Game.UI.TableClickResult
+## Viper.Game.UI.HudTableClickResult
 
-Structured result object returned by `Table.HandleClickResult(x, y)`.
+Structured result object returned by `Table.HandleClick(x, y)`.
 
 ### Properties
 
@@ -294,7 +294,7 @@ Structured result object returned by `Table.HandleClickResult(x, y)`.
 
 ---
 
-## Viper.Game.UI.Modal
+## Viper.Game.UI.HudModal
 
 Modal dialog with title, content text, buttons, and optional child widgets.
 
@@ -385,7 +385,7 @@ Hover-delayed tooltip bubble.
 
 ---
 
-## Viper.Game.UI.GameButton
+## Viper.Game.UI.HudButton
 
 Standalone styled button for custom game menus and HUD layouts.
 
@@ -449,8 +449,8 @@ and optional BitmapFont rendering.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetBgColor(color, alpha)` | `void(Integer, Integer)` | Set background fill color and alpha |
-| `SetPos(x, y)` | `void(Integer, Integer)` | Move the dialogue box |
+| `SetBackgroundColor(color, alpha)` | `void(Integer, Integer)` | Set background fill color and alpha |
+| `SetPosition(x, y)` | `void(Integer, Integer)` | Move the dialogue box |
 | `SetSize(width, height)` | `void(Integer, Integer)` | Resize the dialogue box |
 | `Say(speaker, text)` | `void(String, String)` | Queue a spoken line |
 | `SayText(text)` | `void(String)` | Queue narration with no speaker label |

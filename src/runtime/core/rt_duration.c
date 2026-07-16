@@ -423,9 +423,9 @@ int64_t rt_duration_cmp(int64_t d1, int64_t d2) {
 // Duration Formatting
 //=============================================================================
 
-/// @brief Format a duration as a human-readable string.
-/// @details Produces output like "2d 3h 15m 30s 500ms", omitting zero components.
-///          Negative durations are prefixed with "-". Zero returns "0ms".
+/// @brief Format a duration as a fixed clock-style string.
+/// @details Produces `[-]d.HH:MM:SS[.fff]` when days are nonzero and
+///          `[-]HH:MM:SS[.fff]` otherwise. Negative values carry one leading sign.
 /// @param duration Duration in milliseconds.
 /// @return Newly allocated runtime string.
 rt_string rt_duration_to_string(int64_t duration) {

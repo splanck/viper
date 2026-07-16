@@ -302,7 +302,7 @@ expose func RewriteZiaBindLine(line: String,
     var resolved = ResolveBindPath(importPath, importingPath);
     var mapped = "";
     if oldWasDir {
-        var prefix = oldNorm + Path.Sep();
+        var prefix = oldNorm + Path.Separator();
         if Str.StartsWith(resolved, prefix) {
             var suffix = Str.Mid(resolved, Str.get_Length(prefix) + 1);
             mapped = Path.Join(newNorm, suffix);
@@ -312,8 +312,8 @@ expose func RewriteZiaBindLine(line: String,
     }
     if mapped == "" { return line; }
 
-    var keepNoExt = Path.Ext(importPath) == "";
-    var replacement = RelativeBindPath(Path.Dir(importingPath), mapped, importPath, keepNoExt);
+    var keepNoExt = Path.Extension(importPath) == "";
+    var replacement = RelativeBindPath(Path.Directory(importingPath), mapped, importPath, keepNoExt);
     var before = "";
     if firstQuote > 1 {
         before = Str.Left(line, firstQuote);
@@ -330,10 +330,10 @@ expose func RewriteZiaBindLine(line: String,
 /// @return Normalized absolute target path, adding `.zia` when omitted.
 expose func ResolveBindPath(importPath: String, importingPath: String) -> String {
     var candidate = importPath;
-    if Path.IsAbs(candidate) == false {
-        candidate = Path.Join(Path.Dir(importingPath), candidate);
+    if Path.IsAbsolute(candidate) == false {
+        candidate = Path.Join(Path.Directory(importingPath), candidate);
     }
-    if Path.Ext(candidate) == "" {
+    if Path.Extension(candidate) == "" {
         candidate = candidate + ".zia";
     }
     return NormalizeAbsPath(candidate);
@@ -350,7 +350,7 @@ expose func RelativeBindPath(importingDir: String,
                              oldImportPath: String,
                              keepNoExt: Boolean) -> String {
     var targetNorm = NormalizeAbsPath(targetPath);
-    if Path.IsAbs(oldImportPath) {
+    if Path.IsAbsolute(oldImportPath) {
         return MaybeStripZiaExtension(NormalizeBindSeparators(targetNorm), keepNoExt);
     }
 
@@ -396,7 +396,7 @@ expose func RelativeBindPath(importingDir: String,
 /// @param path Path to absolutize and normalize.
 /// @return Runtime-normalized absolute path.
 expose func NormalizeAbsPath(path: String) -> String {
-    return Path.Norm(Path.Abs(path));
+    return Path.Normalize(Path.Absolute(path));
 }
 
 /// @brief Convert path separators to source-level forward slashes.
@@ -404,7 +404,7 @@ expose func NormalizeAbsPath(path: String) -> String {
 /// @return Path text suitable for Zia source bind strings.
 expose func NormalizeBindSeparators(path: String) -> String {
     var normalized = Str.Replace(path, "\\", "/");
-    var sep = Path.Sep();
+    var sep = Path.Separator();
     if sep != "/" {
         normalized = Str.Replace(normalized, sep, "/");
     }

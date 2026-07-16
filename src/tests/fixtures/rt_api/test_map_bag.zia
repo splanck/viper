@@ -21,7 +21,7 @@ func start() {
     m.Clear();
     SayBool(m.IsEmpty);
 
-    var b = new Viper.Collections.Bag();
+    var b = new Viper.Collections.StringSet();
     SayBool(b.IsEmpty);
     b.Add("x");
     b.Add("y");
@@ -32,20 +32,20 @@ func start() {
     SayBool(b.Has("w"));
     b.Remove("x");
     SayInt(b.Count);
-    SayInt(b.Items().Count);
+    SayInt(b.ToSeq().Count);
     b.Clear();
     SayBool(b.IsEmpty);
 
     var cm = new Viper.Collections.CountMap();
-    cm.Inc("a");
-    cm.Inc("a");
-    cm.Inc("b");
-    cm.IncBy("c", 5);
+    cm.Increment("a");
+    cm.Increment("a");
+    cm.Increment("b");
+    cm.IncrementBy("c", 5);
     SayInt(cm.Get("a"));
     SayInt(cm.Get("c"));
     SayInt(cm.Total);
     SayInt(cm.Count);
-    cm.Dec("a");
+    cm.Decrement("a");
     SayInt(cm.Get("a"));
     cm.Set("d", 10);
     SayInt(cm.Get("d"));

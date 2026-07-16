@@ -55,7 +55,7 @@
 // THE RUNTIME PRIMITIVE PALETTE
 // -----------------------------
 //   Pixels.New(w, h)              — allocate a buffer.
-//   Pixels.SetRGB(x, y, col)      — write one pixel.
+//   Pixels.SetRgb(x, y, col)      — write one pixel.
 //   Pixels.DrawBox(x, y, w, h, col) — filled rectangle.
 //   Pixels.DrawDisc(cx, cy, r, col) — filled circle.
 //   Pixels.DrawEllipse(...)       — ellipse.
@@ -1485,8 +1485,8 @@ class SpriteFactory {
         px.DrawTriangle(30, 36, 36, 36, 33, 45, 0x6A6A8E);
 
         // Drip dots at tips
-        px.SetRGB(10, 47, 0x4488CC);
-        px.SetRGB(33, 47, 0x4488CC);
+        px.SetRgb(10, 47, 0x4488CC);
+        px.SetRgb(33, 47, 0x4488CC);
         return px;
     }
 

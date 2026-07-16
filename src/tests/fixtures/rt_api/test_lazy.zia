@@ -10,7 +10,7 @@ func start() {
     SayInt(Viper.Functional.Lazy.GetI64(lazy));
 
     var seq = Viper.Functional.LazySeq.Range(1, 5, 1);
-    var out = Viper.Functional.LazySeq.ToSeqN(seq, 3);
+    var out = Viper.Functional.LazySeq.ToSeqLimited(seq, 3);
     SayInt(out.Count);
 
     Say("done");

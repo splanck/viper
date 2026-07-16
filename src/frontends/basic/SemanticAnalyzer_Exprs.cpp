@@ -142,8 +142,8 @@ static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target
 static std::string saferRuntimePointerAlternative(std::string_view target) {
     if (target == "Viper.Core.Parse.TryInt")
         return "Viper.Core.Parse.IntOr";
-    if (target == "Viper.Core.Parse.TryNum")
-        return "Viper.Core.Parse.NumOr";
+    if (target == "Viper.Core.Parse.TryDouble")
+        return "Viper.Core.Parse.DoubleOr";
     if (target == "Viper.Core.Parse.TryBool")
         return "Viper.Core.Parse.BoolOr";
     return {};
@@ -665,6 +665,38 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
+    /// @brief Reject primitive arguments bound to object parameters of a runtime method.
+    /// @details Runtime object parameters are pointers at the IL level; an INTEGER,
+    ///          FLOAT, or BOOLEAN argument would otherwise reach IL verification as an
+    ///          invalid i64/f64 operand. Strings are permitted (the lowerer passes them
+    ///          as managed references), as are OBJECT and untyped/unknown arguments and
+    ///          the literal `0` null-object idiom.
+    /// @return True when every argument is acceptable; false after emitting B2001.
+    bool checkObjectParamArgs(const RuntimeMethodInfo &info,
+                              const std::vector<BasicType> &argTypes,
+                              const std::vector<ExprPtr> &args,
+                              const std::string &method,
+                              il::support::SourceLoc loc) {
+        const std::size_t count = std::min(info.args.size(), argTypes.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            if (info.args[i] != BasicType::Object)
+                continue;
+            const BasicType argTy = argTypes[i];
+            if (argTy == BasicType::Int || argTy == BasicType::Float ||
+                argTy == BasicType::Bool) {
+                if (argTy == BasicType::Int && i < args.size() && args[i]) {
+                    if (const auto *lit = as<const IntExpr>(*args[i]); lit && lit->value == 0)
+                        continue; // Literal 0 is the null-object idiom.
+                }
+                std::string msg = "argument " + std::to_string(i + 1) + " to '" + method +
+                                  "' expects an OBJECT; box primitives with Viper.Core.Box";
+                analyzer_.de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// @brief Method calls validate runtime/OOP methods and return known result types.
     void visit(MethodCallExpr &expr) override {
         SemanticAnalyzer::Type baseType = SemanticAnalyzer::Type::Unknown;
@@ -712,6 +744,10 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
                                                      expr.args,
                                                      expr.loc,
                                                      expr.method)) {
+                result_ = SemanticAnalyzer::Type::Unknown;
+                return;
+            }
+            if (!checkObjectParamArgs(*info, runtimeArgTypes, expr.args, expr.method, expr.loc)) {
                 result_ = SemanticAnalyzer::Type::Unknown;
                 return;
             }
@@ -771,10 +807,23 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
                             result_ = SemanticAnalyzer::Type::Unknown;
                             return;
                         }
+                        if (!checkObjectParamArgs(
+                                *objectInfo, runtimeArgTypes, expr.args, expr.method, expr.loc)) {
+                            result_ = SemanticAnalyzer::Type::Unknown;
+                            return;
+                        }
                         result_ =
                             semantic_analyzer_detail::semanticTypeFromBasicType(objectInfo->ret);
                     } else {
-                        emitNoSuchMethod(analyzer_.de, *className, expr.method, expr.loc);
+                        // A method with this name may exist but be inaccessible
+                        // (e.g. PRIVATE): defer so the lowering-stage access check
+                        // reports the precise visibility diagnostic (B2021) instead
+                        // of a misleading "no such method".
+                        bool nameExists = false;
+                        if (const auto *klass = analyzer_.oopIndex().findClass(*className))
+                            nameExists = klass->methods.contains(expr.method);
+                        if (!nameExists)
+                            emitNoSuchMethod(analyzer_.de, *className, expr.method, expr.loc);
                         result_ = SemanticAnalyzer::Type::Unknown;
                     }
                     return;
@@ -803,6 +852,10 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
                                                          expr.args,
                                                          expr.loc,
                                                          expr.method)) {
+                    result_ = SemanticAnalyzer::Type::Unknown;
+                    return;
+                }
+                if (!checkObjectParamArgs(*info, runtimeArgTypes, expr.args, expr.method, expr.loc)) {
                     result_ = SemanticAnalyzer::Type::Unknown;
                     return;
                 }

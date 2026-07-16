@@ -6,7 +6,7 @@ bind Viper.Terminal;
 func start() {
     // --- MemStream: integer read/write ---
     var ms = new Viper.IO.MemStream();
-    SayInt(ms.Pos);
+    SayInt(ms.Position);
     SayInt(ms.Length);
 
     ms.WriteI8(42);
@@ -46,13 +46,13 @@ func start() {
     ms.WriteI8(3);
     ms.Seek(0);
     ms.Skip(1);
-    SayInt(ms.Pos);
+    SayInt(ms.Position);
 
     // --- Text streams via explicit open factories ---
     var textPath = "/tmp/viper_rt_api_memstream_lines.txt";
     var writer = Viper.IO.LineWriter.Open(textPath);
     writer.Write("alpha");
-    writer.WriteLn("beta");
+    writer.WriteLine("beta");
     writer.Close();
 
     var reader = Viper.IO.LineReader.Open(textPath);

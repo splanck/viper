@@ -6,30 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_cipher.c
-// Purpose: Implements high-level symmetric encryption/decryption for the
-//          Viper.Crypto.Cipher class using ChaCha20-Poly1305 AEAD. Exposes
-//          four public entry points pairs: Encrypt / Decrypt (password →
-//          PBKDF2-derived key) and EncryptWithKey / DecryptWithKey (raw
-//          32-byte key), each with both legacy non-AAD and new AAD-aware
-//          overloads. The AAD overloads expose Additional Authenticated
-//          Data so the Poly1305 tag covers application context (request
-//          metadata, version tags, etc.) in addition to the ciphertext.
+// Purpose: Implements high-level authenticated encryption for Viper.Crypto.Cipher.
+//          Compatibility mode uses ChaCha20-Poly1305; approved mode uses
+//          AES-256-GCM. Password and raw-key forms each expose AAD-aware,
+//          Result, and Option variants.
 //
 // Key invariants:
-//   - Nonces are 12 bytes (96-bit), generated as random-prefix plus atomic
-//     counter to avoid per-process birthday-bound reuse under high volume.
-//   - Output format: [4-byte magic][12-byte nonce][16-byte tag][ciphertext].
-//     The leading magic distinguishes password-derived (CIPHER_PW_MAGIC) from
-//     raw-key (CIPHER_KEY_MAGIC) ciphertexts so a key-form value can't be fed
-//     to the password-form decryptor and vice versa.
-//   - AAD overloads compose a stable header (magic + version + flags) with
-//     the application-supplied AAD via combine_aad so the Poly1305 tag
-//     authenticates the wrapper format AND the application context.
+//   - Nonces are 12 bytes: a 4-byte CSPRNG prefix plus an 8-byte process-local
+//     atomic counter. The prefix is not persisted and gives only probabilistic
+//     cross-process separation for a reused raw key.
+//   - Password format: [magic(4)][iterations(4)][salt(16)][nonce(12)]
+//     [ciphertext][tag(16)]. Raw-key format: [magic(4)][nonce(12)]
+//     [ciphertext][tag(16)].
+//   - AAD overloads compose the complete format header with application AAD so
+//     the active AEAD tag authenticates both wrapper and application context.
 //   - Authenticated encryption: any tampering with ciphertext, nonce, magic,
 //     or AAD is detected and Decrypt returns NULL (not a trap).
 //   - Keys must be exactly 32 bytes (256-bit); wrong size traps.
-//   - Decryption verifies the Poly1305 MAC before returning plaintext.
-//   - All functions are thread-safe; no global mutable cipher state.
+//   - Decryption verifies the active AEAD tag before returning plaintext.
+//   - Nonce allocation uses shared atomic state; other operation state is local.
 //
 // Ownership/Lifetime:
 //   - Returned ciphertext/plaintext rt_bytes buffers are fresh allocations
@@ -483,8 +478,10 @@ static void write_be64(uint8_t *out, uint64_t v) {
 /// @details The first four bytes are CSPRNG output and the remaining eight
 ///          bytes are a process-local atomic counter. This preserves the
 ///          existing nonce size while preventing duplicate nonces within one
-///          process until the 64-bit counter wraps. The random prefix keeps
-///          nonces distinct across processes that start with the same counter.
+///          process until counter exhaustion. The random prefix provides only
+///          32 bits of probabilistic separation across processes that reuse a
+///          key; it is not durable nonce state. The signed counter currently has
+///          no explicit exhaustion guard.
 /// @param nonce Destination buffer of exactly @c CIPHER_NONCE_SIZE bytes.
 static void cipher_random_nonce(uint8_t nonce[CIPHER_NONCE_SIZE]) {
     rt_crypto_random_bytes(nonce, 4);
@@ -511,7 +508,7 @@ static int has_magic(const uint8_t *data, int64_t len, const uint8_t magic[4]) {
 }
 
 /// @brief Concatenate the format header with caller-supplied AAD into a single buffer.
-/// @details The Poly1305 tag must authenticate the wrapper format header
+/// @details The active AEAD tag must authenticate the wrapper format header
 ///          (so an attacker can't strip / replace it) AND the application's
 ///          AAD. We splice them: returned buffer is [header || user_aad];
 ///          @p aad_out points at it; @p aad_len_out is the total length.
@@ -575,18 +572,18 @@ static uint8_t *combine_aad(const uint8_t *header,
 // Password-Based Encryption
 //=============================================================================
 
-/// @brief Encrypt data using a password with ChaCha20-Poly1305 AEAD.
+/// @brief Encrypt data using a password with the mode-selected AEAD.
 /// @details Derives a 256-bit key from the password using PBKDF2-HMAC-SHA256
 ///          (`CIPHER_PBKDF2_ITERATIONS`, currently 300,000 iterations) with a
-///          fresh random 16-byte salt. Generates
-///          a random 12-byte nonce. Encrypts and authenticates the plaintext
-///          using ChaCha20-Poly1305 (RFC 8439), producing a 16-byte Poly1305
-///          authentication tag that detects any tampering.
+///          fresh random 16-byte salt. Generates a 12-byte random-prefix/counter
+///          nonce. Encrypts and authenticates the plaintext using the active
+///          ChaCha20-Poly1305 or AES-256-GCM service and produces a 16-byte tag.
 ///
-///          Wire format: [salt(16) | nonce(12) | ciphertext | tag(16)]
+///          Wire format: [magic(4) | iterations(4) | salt(16) | nonce(12) |
+///          ciphertext | tag(16)].
 ///
-///          The salt is unique per call, so encrypting the same plaintext with
-///          the same password always produces different ciphertext.
+///          The salt is independently random per call, so encrypting the same
+///          plaintext with the same password produces independently keyed output.
 /// @param plaintext Bytes object containing data to encrypt (traps if NULL).
 /// @param password  Password string for key derivation (traps if empty).
 /// @return Bytes object containing the encrypted payload.
@@ -594,13 +591,13 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     return rt_cipher_encrypt_aad(plaintext, password, NULL);
 }
 
-/// @brief Password-derived ChaCha20-Poly1305 encryption with caller-supplied AAD.
+/// @brief Password-derived authenticated encryption with caller-supplied AAD.
 /// @details Implements `Viper.Crypto.Cipher.EncryptAAD(plaintext, password, aad)`.
 ///          Generates a fresh 16-byte salt, runs PBKDF2-HMAC-SHA256
 ///          (CIPHER_PBKDF2_ITERATIONS rounds) to derive a 32-byte key,
-///          generates a fresh 12-byte nonce, and produces the wire format
-///          [CIPHER_PW_MAGIC | salt | nonce | tag | ciphertext]. The Poly1305
-///          tag authenticates [magic||salt||nonce] (via combine_aad) plus the
+///          generates a fresh random-prefix/counter nonce, and produces the wire
+///          format [magic | iterations | salt | nonce | ciphertext | tag]. The
+///          active AEAD tag authenticates [magic||iterations||salt||nonce] plus the
 ///          application-supplied @p aad, so any tampering with format header
 ///          OR application context fails verification.
 /// @param plaintext Bytes to encrypt. Required.
@@ -641,7 +638,7 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     if (out_len == 0)
         return NULL;
 
-    // Generate random salt and nonce
+    // Generate an independent salt and a process-scoped prefix/counter nonce.
     uint8_t salt[CIPHER_SALT_SIZE];
     uint8_t nonce[CIPHER_NONCE_SIZE];
     rt_crypto_random_bytes(salt, CIPHER_SALT_SIZE);
@@ -711,12 +708,13 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
 /// @brief Decrypt data that was encrypted with rt_cipher_encrypt.
 /// @details Extracts the salt and nonce from the ciphertext header, re-derives
 ///          the key using PBKDF2-HMAC-SHA256, then decrypts and verifies the
-///          Poly1305 authentication tag. If verification fails (wrong password
-///          or corrupted data), falls back to the legacy HKDF-based key
-///          derivation scheme for backward compatibility. Returns NULL if both
-///          derivation schemes fail authentication.
+///          active AEAD tag. Unversioned legacy input is tried with the former
+///          PBKDF2 derivation and then the older HKDF-based derivation. A frame
+///          whose first four random legacy bytes collide with current magic is
+///          classified as current and does not reach the legacy path.
 ///
-///          Expected wire format: [salt(16) | nonce(12) | ciphertext | tag(16)]
+///          Current wire format: [magic(4) | iterations(4) | salt(16) |
+///          nonce(12) | ciphertext | tag(16)].
 /// @param ciphertext Bytes object containing the encrypted payload.
 /// @param password   Password string for key derivation.
 /// @return Bytes object containing the decrypted plaintext, or NULL on auth failure.
@@ -750,10 +748,10 @@ void *rt_cipher_try_decrypt(void *ciphertext, rt_string password) {
     return cipher_password_option(rt_cipher_decrypt, ciphertext, password);
 }
 
-/// @brief Password-derived ChaCha20-Poly1305 decryption with AAD verification.
+/// @brief Password-derived authenticated decryption with AAD verification.
 /// @details Inverse of rt_cipher_encrypt_aad. Validates the leading
 ///          CIPHER_PW_MAGIC, re-derives the 32-byte key from the embedded
-///          salt via PBKDF2, then runs ChaCha20-Poly1305 verify-and-decrypt
+///          salt via PBKDF2, then runs the format-selected AEAD verify-and-decrypt
 ///          with [magic||salt||nonce||@p aad] as the expected AAD. Any
 ///          mismatch (wrong password, wrong AAD, tampered ciphertext)
 ///          returns NULL — the caller must treat NULL as authentication
@@ -943,12 +941,13 @@ void *rt_cipher_try_decrypt_aad(void *ciphertext, rt_string password, void *aad)
 // Key-Based Encryption
 //=============================================================================
 
-/// @brief Encrypt data using a raw 256-bit key with ChaCha20-Poly1305 AEAD.
+/// @brief Encrypt data using a raw 256-bit key with the mode-selected AEAD.
 /// @details Like rt_cipher_encrypt but skips key derivation — the caller
 ///          provides a pre-derived 32-byte key (e.g., from rt_cipher_generate_key
-///          or rt_cipher_derive_key). A random 12-byte nonce is generated per call.
+///          or rt_cipher_derive_key). A 4-byte-random-prefix/8-byte-counter nonce
+///          is generated per call.
 ///
-///          Wire format: [nonce(12) | ciphertext | tag(16)]
+///          Wire format: [magic(4) | nonce(12) | ciphertext | tag(16)].
 ///
 ///          Note: no salt is stored because no password derivation occurs.
 /// @param plaintext  Bytes object containing data to encrypt (traps if NULL).
@@ -958,14 +957,14 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     return rt_cipher_encrypt_with_key_aad(plaintext, key_bytes, NULL);
 }
 
-/// @brief Raw-key ChaCha20-Poly1305 encryption with caller-supplied AAD.
+/// @brief Raw-key authenticated encryption with caller-supplied AAD.
 /// @details Implements `Viper.Crypto.Cipher.EncryptWithKeyAAD(plaintext, key, aad)`.
 ///          Like rt_cipher_encrypt_aad but uses a 32-byte raw key directly
 ///          (no PBKDF2 derivation, no salt). Output uses CIPHER_KEY_MAGIC
 ///          so the format-detection guard distinguishes it from password-
 ///          derived ciphertexts. Wire layout:
-///          [CIPHER_KEY_MAGIC | nonce(12) | tag(16) | ciphertext]. The Poly1305
-///          tag authenticates [magic||nonce||@p aad].
+///          [CIPHER_KEY_MAGIC | nonce(12) | ciphertext | tag(16)]. The active
+///          AEAD tag authenticates [magic||nonce||@p aad].
 /// @param plaintext  Bytes to encrypt. Required.
 /// @param key_bytes  Exactly 32 bytes. Other lengths trap.
 /// @param aad        Optional bytes object with application AAD; may be NULL.
@@ -1009,7 +1008,7 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     if (out_len == 0)
         return NULL;
 
-    // Generate random nonce
+    // Generate a process-scoped random-prefix/counter nonce.
     uint8_t nonce[CIPHER_NONCE_SIZE];
     cipher_random_nonce(nonce);
 
@@ -1063,10 +1062,10 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
 
 /// @brief Decrypt data that was encrypted with rt_cipher_encrypt_with_key.
 /// @details Extracts the 12-byte nonce from the ciphertext header, then
-///          decrypts and verifies the Poly1305 authentication tag using the
-///          provided 32-byte key. Traps if authentication fails.
+///          decrypts and verifies the active AEAD tag using the provided
+///          32-byte key. Returns NULL if authentication fails.
 ///
-///          Expected wire format: [nonce(12) | ciphertext | tag(16)]
+///          Current wire format: [magic(4) | nonce(12) | ciphertext | tag(16)].
 /// @param ciphertext Bytes object containing the encrypted payload.
 /// @param key_bytes  Bytes object containing exactly 32 bytes.
 /// @return Bytes object containing the decrypted plaintext.
@@ -1098,9 +1097,9 @@ void *rt_cipher_try_decrypt_with_key(void *ciphertext, void *key_bytes) {
     return cipher_key_option(rt_cipher_decrypt_with_key, ciphertext, key_bytes);
 }
 
-/// @brief Raw-key ChaCha20-Poly1305 decryption with AAD verification.
+/// @brief Raw-key authenticated decryption with AAD verification.
 /// @details Inverse of rt_cipher_encrypt_with_key_aad. Validates the leading
-///          CIPHER_KEY_MAGIC, runs ChaCha20-Poly1305 verify-and-decrypt with
+///          current key-format magic and runs the selected AEAD verify-and-decrypt with
 ///          [magic||nonce||@p aad] as the expected AAD. Any mismatch
 ///          returns NULL — caller must treat NULL as authentication failure,
 ///          not as plaintext.

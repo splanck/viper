@@ -27,7 +27,7 @@ module game_setup;
 bind Viper.Graphics3D;
 bind Viper.Input;
 bind Viper.Input.Key as Key;
-bind Viper.Sound;
+bind Viper.Audio;
 bind Viper.Terminal;
 bind "../config";
 bind "../menu";
@@ -58,7 +58,7 @@ class BowlingGameSetup extends BowlingGameState {
         printBanner();
         initSubsystems();
         gameLoop();
-        if (soundReady) { Audio.Shutdown(); }
+        if (soundReady) { Mixer.Shutdown(); }
         Say("Thanks for playing Neon Lanes Championship!");
     }
 
@@ -178,13 +178,13 @@ class BowlingGameSetup extends BowlingGameState {
     /// @brief Initialize the audio system and load the SFX bank.
     /// @note Gracefully degrades on systems without audio.
     hide func initSound() {
-        var ok = Audio.Init();
+        var ok = Mixer.Init();
         if (ok == 0) {
             Say("Audio unavailable — continuing without sound");
             return;
         }
 
-        Audio.SetMasterVolume(menuObj.getMasterVolume());
+        Mixer.SetMasterVolume(menuObj.getMasterVolume());
         soundBank = SoundBank.New();
         soundBank.RegisterSound("roll_soft", Synth.Noise(360, 12));
         soundBank.RegisterSound("roll_medium", Synth.Noise(520, 24));
@@ -253,7 +253,7 @@ class BowlingGameSetup extends BowlingGameState {
 
     hide func startMusic(state: Integer) {
         if (soundReady == false || state == musicState) { return; }
-        Audio.StopAllSounds();
+        Mixer.StopAllSounds();
         var trackName = "music_menu";
         if (state == 1) { trackName = "music_game"; }
         if (soundBank.Has(trackName)) {
@@ -275,7 +275,7 @@ class BowlingGameSetup extends BowlingGameState {
     /// @brief Play a 2D SFX. No-op if audio failed to initialize.
     hide func playSound(name: String) {
         if (soundReady) {
-            soundBank.PlayEx(name, menuObj.getEffectsVolume(), 0);
+            soundBank.Play(name, menuObj.getEffectsVolume(), 0);
         }
     }
 
@@ -297,10 +297,10 @@ class BowlingGameSetup extends BowlingGameState {
     ///        particle / celebration managers; wire up env reflections.
     hide func createGameplayWorld() {
         clearGameplayWorld();
-        physWorld = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+        physWorld = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
         // More solver passes stabilize the 10-pin contact island so a hit
         // rack resolves cleanly and pins carry into each other (default 6).
-        Physics3DWorld.set_SolverIterations(physWorld, 12);
+        PhysicsWorld3D.set_SolverIterations(physWorld, 12);
 
         laneObj = new LaneBuilder();
         laneObj.initLane(physWorld, oilPattern);
@@ -402,7 +402,7 @@ class BowlingGameSetup extends BowlingGameState {
         if (bowlerAvatar != null) {
             bowlerAvatar.setReducedMotion(menuObj.getReducedMotion());
         }
-        if (soundReady) { Audio.SetMasterVolume(menuObj.getMasterVolume()); }
+        if (soundReady) { Mixer.SetMasterVolume(menuObj.getMasterVolume()); }
     }
 
     /// @brief Reset to TITLE-screen state with a fresh presentation world.

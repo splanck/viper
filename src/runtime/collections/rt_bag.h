@@ -9,12 +9,13 @@
 //
 // Key invariants:
 //   - Stores unique strings only; duplicate insertions are silently ignored.
-//   - All operations are O(1) average-case using an open-addressing hash table.
+//   - All operations are O(1) average-case using a separate-chaining hash table.
 //   - Iteration order is unspecified and may change after insertions.
 //   - rt_bag_has returns 1 if present, 0 if absent.
 //
 // Ownership/Lifetime:
-//   - Bag objects are heap-allocated; caller is responsible for lifetime management.
+//   - Bag objects are GC-managed (rt_obj_new_i64) with a runtime finalizer;
+//     callers must not free them directly.
 //   - String values are copied into the bag; caller retains ownership of input strings.
 //
 // Error conventions:

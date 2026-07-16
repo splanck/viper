@@ -30,7 +30,7 @@ func start() {
     var canvas = Canvas3D.New("Terrain LOD Demo", WINDOW_W, WINDOW_H);
     var aspect = (WINDOW_W + 0.0) / (WINDOW_H + 0.0);
     var camera = Camera3D.New(65.0, aspect, 0.1, 800.0);
-    Camera3D.FPSInit(camera);
+    Camera3D.FirstPersonInit(camera);
 
     // Generate large terrain
     Say("Generating 256x256 terrain...");
@@ -40,18 +40,18 @@ func start() {
     Terrain3D.SetScale(terrain, TERRAIN_SCALE_X, TERRAIN_SCALE_Y, TERRAIN_SCALE_Z);
 
     // Configure LOD distances
-    Terrain3D.SetLODDistances(terrain, 80.0, 180.0);
+    Terrain3D.SetLodDistances(terrain, 80.0, 180.0);
     Terrain3D.SetSkirtDepth(terrain, 3.0);
     Say("  LOD: full<80, half<180, quarter beyond");
 
     // Material
-    var terrainMat = Material3D.NewColor(0.35, 0.55, 0.25);
+    var terrainMat = Material3D.FromColor(0.35, 0.55, 0.25);
     Material3D.SetShininess(terrainMat, 4.0);
     Terrain3D.SetMaterial(terrain, terrainMat);
 
     // Lighting
     var sunDir = new Vec3(-0.4, -1.0, -0.6);
-    var sunLight = Light3D.NewDirectional(sunDir, 0.9, 0.85, 0.75);
+    var sunLight = Light3D.Directional(sunDir, 0.9, 0.85, 0.75);
     Canvas3D.SetLight(canvas, 0, sunLight);
     Canvas3D.SetAmbient(canvas, 0.25, 0.28, 0.35);
 
@@ -91,7 +91,7 @@ func start() {
         if (Keyboard.IsDown(Key.LeftShift)) { updown = -1.0; }
         var speed = MOVE_SPEED;
 
-        Camera3D.FPSUpdate(camera, mdx * MOUSE_SENS, 0.0 - mdy * MOUSE_SENS,
+        Camera3D.FirstPersonUpdate(camera, mdx * MOUSE_SENS, 0.0 - mdy * MOUSE_SENS,
                            fwd, right, updown, speed, dt);
 
         // Render

@@ -104,25 +104,25 @@ func start() {
     // --- Norm ---
     Say("--- Norm ---");
     var q2 = Quat.New(1.0, 2.0, 3.0, 4.0);
-    var qn = Quat.Norm(q2);
+    var qn = Quat.Normalize(q2);
     Say("Norm(1,2,3,4) Len:");
-    SayNum(Quat.Len(qn));
+    SayNum(Quat.Length(qn));
 
     // --- Len ---
     Say("--- Len ---");
     Say("Len(identity):");
-    SayNum(Quat.Len(qi));
+    SayNum(Quat.Length(qi));
     Say("Len(rotY):");
-    SayNum(Quat.Len(qa));
+    SayNum(Quat.Length(qa));
     Say("Len(1,2,3,4):");
-    SayNum(Quat.Len(q2));
+    SayNum(Quat.Length(q2));
 
     // --- LenSq ---
     Say("--- LenSq ---");
     Say("LenSq(identity):");
-    SayNum(Quat.LenSq(qi));
+    SayNum(Quat.LengthSquared(qi));
     Say("LenSq(1,2,3,4):");
-    SayNum(Quat.LenSq(q2));
+    SayNum(Quat.LengthSquared(q2));
 
     // --- Dot ---
     Say("--- Dot ---");

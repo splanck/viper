@@ -57,7 +57,7 @@ func start() {
 
     // === Test 2: Channel ===
     var ch = Viper.Threads.Channel.New(5);
-    var cap = Viper.Threads.Channel.get_Cap(ch);
+    var cap = Viper.Threads.Channel.get_Capacity(ch);
     if (cap != 5) {
         Say("FAIL: channel capacity should be 5");
         return;

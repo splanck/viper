@@ -1237,9 +1237,9 @@ void *rt_archive_read(void *obj, rt_string name) {
 
 /// @brief `Archive.ReadStr(name)` — extract entry contents as a string.
 ///
-/// Convenience wrapper that reads the entry as Bytes then runs the
-/// bytes-to-string converter (which validates UTF-8). Traps on the
-/// same conditions as `Read`, plus any decode failure.
+/// Convenience wrapper that reads the entry as Bytes then copies those bytes
+/// into a runtime String. The conversion does not validate UTF-8 and traps on
+/// the same conditions as `Read` plus allocation failure.
 ///
 /// @param obj  Archive handle.
 /// @param name Entry name.
@@ -1437,10 +1437,9 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
 /// The map keys are `size`, `compressedSize`, `crc`, `method`,
 /// `modifiedTime`, `isDirectory`, and `isDir` (alias). Values are
 /// boxed primitives so they survive map storage. `modifiedTime` is
-/// a Unix timestamp computed from the DOS date/time fields with a
-/// simple year/month/day arithmetic — accurate to the second granularity
-/// DOS can represent (2-second steps), but does not honour leap years
-/// or DST.
+/// a Unix timestamp computed from validated DOS date/time fields using the
+/// proleptic Gregorian calendar. ZIP's two-second precision is preserved;
+/// the fields are interpreted as UTC rather than applying local time or DST.
 ///
 /// @param obj  Archive handle.
 /// @param name Entry name.

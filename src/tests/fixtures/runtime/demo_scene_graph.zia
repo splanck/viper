@@ -12,25 +12,25 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Meshes
-    var sun_mesh = Mesh3D.NewSphere(1.0, 20);
-    var planet_mesh = Mesh3D.NewSphere(0.4, 16);
-    var moon_mesh = Mesh3D.NewSphere(0.15, 12);
-    var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
+    var sun_mesh = Mesh3D.Sphere(1.0, 20);
+    var planet_mesh = Mesh3D.Sphere(0.4, 16);
+    var moon_mesh = Mesh3D.Sphere(0.15, 12);
+    var floor_mesh = Mesh3D.Plane(20.0, 20.0);
 
     // Materials
-    var sun_mat = Material3D.NewColor(1.0, 0.9, 0.3);
+    var sun_mat = Material3D.FromColor(1.0, 0.9, 0.3);
     Material3D.SetUnlit(sun_mat, true);
-    var planet_mat = Material3D.NewColor(0.2, 0.5, 0.9);
+    var planet_mat = Material3D.FromColor(0.2, 0.5, 0.9);
     Material3D.SetShininess(planet_mat, 64.0);
-    var moon_mat = Material3D.NewColor(0.7, 0.7, 0.7);
-    var floor_mat = Material3D.NewColor(0.15, 0.15, 0.2);
+    var moon_mat = Material3D.FromColor(0.7, 0.7, 0.7);
+    var floor_mat = Material3D.FromColor(0.15, 0.15, 0.2);
 
     // Lights
     var sun_dir = new Vec3(-0.3, -1.0, -0.5);
-    var sun_light = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    var sun_light = Light3D.Directional(sun_dir, 1.0, 0.95, 0.85);
     Canvas3D.SetLight(canvas, 0, sun_light);
     var point_pos = new Vec3(0.0, 2.0, 0.0);
-    var point_light = Light3D.NewPoint(point_pos, 1.0, 0.9, 0.5, 0.1);
+    var point_light = Light3D.Point(point_pos, 1.0, 0.9, 0.5, 0.1);
     Canvas3D.SetLight(canvas, 1, point_light);
     Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.15);
 
@@ -75,7 +75,7 @@ func start() {
 
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.02, 0.02, 0.05);
 

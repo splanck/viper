@@ -117,7 +117,7 @@ PRINT "Translate(1,2,3) * Point(1,0,0) Z: "; tpt.Z
 ' --- TransformVec ---
 PRINT "--- TransformVec ---"
 DIM tv AS Viper.Math.Vec3
-tv = Viper.Math.Mat4.TransformVec(tr, pt)
+tv = Viper.Math.Mat4.TransformVector(tr, pt)
 PRINT "Translate(1,2,3) * Vec(1,0,0) X: "; tv.X
 PRINT "Translate(1,2,3) * Vec(1,0,0) Y: "; tv.Y
 PRINT "Translate(1,2,3) * Vec(1,0,0) Z: "; tv.Z

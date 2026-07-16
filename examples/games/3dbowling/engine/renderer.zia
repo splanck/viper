@@ -159,14 +159,14 @@ class Renderer {
             PostFX3D.AddBloom(postfx, 0.88, 0.08, 3);
             // Screen-space reflections on the glossy lane, GPU-gated.
             if (Canvas3D.BackendSupports(canvas, "ssr")) {
-                PostFX3D.AddSSR(postfx, config.SSR_INTENSITY, config.SSR_ROUGHNESS_CUTOFF);
+                PostFX3D.AddSsr(postfx, config.SSR_INTENSITY, config.SSR_ROUGHNESS_CUTOFF);
             }
             // TAA on the slow bowling camera (no ghosting) — replaces FXAA when
             // available; otherwise fall back to FXAA so the SW probe still AAs.
             if (Canvas3D.BackendSupports(canvas, "taa")) {
-                PostFX3D.AddTAA(postfx, config.TAA_BLEND);
+                PostFX3D.AddTaa(postfx, config.TAA_BLEND);
             } else {
-                PostFX3D.AddFXAA(postfx);
+                PostFX3D.AddFxaa(postfx);
             }
             PostFX3D.AddColorGrade(postfx, 0.005, 1.06, 1.04);
             PostFX3D.AddVignette(postfx, 0.96, 0.28);
@@ -177,7 +177,7 @@ class Renderer {
 
             PostFX3D.AddTonemap(postfx, 1, 1.18);
             PostFX3D.AddBloom(postfx, 0.90, 0.06, 1);
-            PostFX3D.AddFXAA(postfx);
+            PostFX3D.AddFxaa(postfx);
             PostFX3D.AddColorGrade(postfx, 0.015, 1.04, 1.02);
         }
 

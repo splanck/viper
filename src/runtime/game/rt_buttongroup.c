@@ -27,8 +27,8 @@
 //     selection as changed, so callers never observe a stale selected ID.
 //
 // Ownership/Lifetime:
-//   - ButtonGroup objects are GC-managed (rt_obj_new_i64). The button ID array
-//     is calloc'd and freed by the GC finalizer.
+//   - ButtonGroup objects are reference-counted GC objects. The fixed-capacity
+//     button ID array is inline and needs no finalizer allocation cleanup.
 //
 // Links: src/runtime/game/rt_buttongroup.h (public API),
 //        docs/viperlib/game.md (ButtonGroup section — RT_BUTTONGROUP_MAX note)

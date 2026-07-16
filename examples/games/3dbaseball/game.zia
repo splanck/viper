@@ -111,7 +111,7 @@ class BaseballFieldDemo {
         if (Keyboard.IsDown(Key.LeftShift)) { speed = moveSpeed * config.SPRINT_MULT; }
         var climb = updown * (config.UPDOWN_SPEED / config.BASE_MOVE_SPEED);
 
-        Camera3D.FPSUpdate(
+        Camera3D.FirstPersonUpdate(
             camera,
             mdx * config.MOUSE_SENS,
             0.0 - mdy * config.MOUSE_SENS,

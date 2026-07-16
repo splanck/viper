@@ -6063,11 +6063,57 @@ static bool test_behavior3d_presets_drive_entities() {
     PASS();
 }
 
+/// Sweep regression: a behavior that despawns a DIFFERENT entity mid-sweep
+/// compacts the registry with swap-remove. The stamped sweep must neither
+/// double-tick the despawner (the old `i--` heuristic re-ran slot i) nor skip
+/// the survivor swapped into an already-visited slot. Spin angles measure
+/// exactly-once ticking: 90 deg/s x 0.25 s = 22.5 deg per tick.
+static bool test_entity_sweep_survives_cross_despawn() {
+    TEST("Entity sweep ticks each survivor exactly once across a cross-despawn");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Sweep Unit"), 64, 48);
+
+    void *despawner = rt_game3d_entity_new(); /* slot 0: ticks first */
+    void *victim = rt_game3d_entity_new();    /* slot 1: despawned by slot 0 */
+    void *survivor = rt_game3d_entity_new();  /* slot 2 (last): swapped into slot 1 */
+    rt_game3d_world_spawn(world, despawner);
+    rt_game3d_world_spawn(world, victim);
+    rt_game3d_world_spawn(world, survivor);
+
+    rt_game3d_entity_attach_behavior(
+        despawner,
+        rt_game3d_behavior_add_despawn_target_internal(
+            rt_game3d_behavior_add_spin(rt_game3d_behavior_new(), 0.0, 1.0, 0.0, 90.0), victim));
+    rt_game3d_entity_attach_behavior(
+        survivor, rt_game3d_behavior_add_spin(rt_game3d_behavior_new(), 0.0, 1.0, 0.0, 90.0));
+
+    rt_game3d_world_step_simulation(world, 0.25);
+
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(victim) == 0, "victim was despawned mid-sweep");
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(despawner) == 1, "despawner survives");
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(survivor) == 1, "survivor survives");
+    {
+        /* 22.5 degrees -> quat y = sin(11.25 deg) = 0.19509. A double tick
+         * (45 deg -> 0.38268) or a skipped tick (0) both fail. */
+        void *node = rt_game3d_entity_get_node(despawner);
+        void *rot = rt_scene_node3d_get_rotation(node);
+        EXPECT_NEAR(rt_quat_y(rot), 0.19509032, 1e-3, "despawner ticked exactly once");
+    }
+    {
+        void *node = rt_game3d_entity_get_node(survivor);
+        void *rot = rt_scene_node3d_get_rotation(node);
+        EXPECT_NEAR(rt_quat_y(rot), 0.19509032, 1e-3, "swapped-in survivor ticked exactly once");
+    }
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 int main() {
     set_software_backend_env();
     bool ok = true;
     ok = test_layermasks_and_constants() && ok;
     ok = test_behavior3d_presets_drive_entities() && ok;
+    ok = test_entity_sweep_survives_cross_despawn() && ok;
     ok = test_world_worker_controls() && ok;
     ok = test_input_axes() && ok;
     ok = test_input_update_snapshots_frame_state() && ok;

@@ -4,7 +4,7 @@ DIM clone AS OBJECT
 
 PRINT "=== Material3D PBR Demo ==="
 
-base = Viper.Graphics3D.Material3D.NewPBR(0.7, 0.55, 0.35)
+base = Viper.Graphics3D.Material3D.PBR(0.7, 0.55, 0.35)
 Viper.Graphics3D.Material3D.set_Metallic(base, 0.8)
 Viper.Graphics3D.Material3D.set_Roughness(base, 0.25)
 Viper.Graphics3D.Material3D.set_AmbientOcclusion(base, 0.9)

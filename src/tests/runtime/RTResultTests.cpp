@@ -169,6 +169,17 @@ static void test_result_ok_err_value() {
         test_result("ErrValue on Ok returns NULL", rt_result_err_value(r) == NULL);
     }
 
+    // Test 5: object accessors never reinterpret typed payloads as pointers
+    {
+        test_result("OkValue on OkI64 returns NULL", rt_result_ok_value(rt_result_ok_i64(7)) == NULL);
+        test_result("OkValue on OkF64 returns NULL",
+                    rt_result_ok_value(rt_result_ok_f64(2.5)) == NULL);
+        test_result("OkValue on OkStr returns NULL",
+                    rt_result_ok_value(rt_result_ok_str(rt_const_cstr("ok"))) == NULL);
+        test_result("ErrValue on ErrStr returns NULL",
+                    rt_result_err_value(rt_result_err_str(rt_const_cstr("e"))) == NULL);
+    }
+
     printf("\n");
 }
 

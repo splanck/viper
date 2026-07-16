@@ -10,7 +10,7 @@ PRINT Viper.Time.DateTime.Second(t)
 PRINT Viper.Time.DateTime.DayOfWeek(t)
 
 DIM iso AS STRING
-LET iso = Viper.Time.DateTime.ToISO(t)
+LET iso = Viper.Time.DateTime.ToIso8601(t)
 PRINT Viper.String.Has(iso, "2024")
 
 DIM t2 AS INTEGER

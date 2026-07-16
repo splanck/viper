@@ -712,7 +712,7 @@ function(viper_add_basic_to_il_golden_tests)
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_new_ctor.bas
-            "-DMUST_HAVE=Viper.String.FromStr"
+            "-DMUST_HAVE=Viper.String.Chr"
             -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
 
     _viper_basic_to_il_add_ctest(basic_to_il_boolean_literals

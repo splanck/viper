@@ -12,7 +12,10 @@
 //          pre-release identifiers and build metadata.
 //
 // Key invariants:
-//   - Parses MAJOR.MINOR.PATCH[-prerelease][+build] per SemVer 2.0.0.
+//   - Parses MAJOR.MINOR.PATCH[-prerelease][+build] per SemVer 2.0.0, with one
+//     deliberate deviation: numeric core components are limited to the signed
+//     64-bit range (the class exposes them as i64 properties), so components
+//     above INT64_MAX are rejected even though SemVer sets no size limit.
 //   - Comparison follows SemVer precedence: major > minor > patch > pre-release.
 //   - Pre-release versions have lower precedence than the release they extend.
 //   - Build metadata is ignored for comparison purposes.

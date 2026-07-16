@@ -30,24 +30,11 @@ indexes, and excessive content sizes return `Err(message)`. Successful loads
 return `Ok(value)`. Traps remain reserved for programmer errors such as `null` or
 invalid argument handles.
 
-The older `SceneAsset.Load*` calls remain available and return `null` for routine
-content failures. They also record compatibility diagnostics on
-`Viper.Graphics3D.AssetDiagnostics3D`. Successful partial degradation, such as an
-OBJ material whose albedo texture is missing, returns the loaded asset and
-records warnings.
-
-`AssetDiagnostics3D.LastLoadError` is empty after a fully successful load. When a loader
-returns `null`, `AssetDiagnostics3D.LastLoadErrorCode` is one of:
-
-| Code | Meaning |
-|------|---------|
-| `0` | No error |
-| `1` | NotFound |
-| `2` | Unreadable |
-| `3` | BadMagic |
-| `4` | Corrupt |
-| `5` | Unsupported |
-| `6` | TooLarge |
+Null-returning loaders (`FBX.Load`, `GLTF.Load`, `Mesh3D.FromObj`, and the
+option-taking `SceneAsset.LoadWithOptions`/`LoadWithOptionsEx`) record their
+diagnostics on `Viper.Graphics3D.AssetDiagnostics3D`. Successful partial
+degradation, such as an OBJ material whose albedo texture is missing, returns
+the loaded asset and records warnings.
 
 Warnings are per outer load, append-only, and capped. Use
 `AssetDiagnostics3D.LoadWarningCount`, `AssetDiagnostics3D.GetLoadWarning(index)`, or
@@ -65,13 +52,12 @@ the loader ignored, and skeletal CUBICSPLINE channels baked to sampled keys.
 |--------|--------------------------|---------------------|
 | `SceneAsset.LoadResult(path)` / `LoadAssetResult(path)` | Returns `Err(message)` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
 | `SceneAsset.LoadAnimationResult(path, index)` / `LoadNodeAnimationResult(path, index)` and asset variants | Returns `Err(message)` for failed asset loads or absent/out-of-range animation clips | Preserves lower-level warnings from dependency loads |
-| `SceneAsset.Load(path)` / `LoadAsset(path)` | Compatibility APIs: return `null` and set `AssetDiagnostics3D.LastLoadError` for routine content failures | Same warnings as the Result variants |
-| `SceneAsset.LoadWithOptions(path, forceTangents)` / `LoadResultWithOptions` | Same failure behavior as `Load`/`LoadResult` | `forceTangents = true` generates tangents for every UV0-mapped glTF primitive even when its material has no normal map at load time — for materials that gain normal maps after import (FBX ignores the option) |
-| `SceneAsset.LoadWithOptionsEx(path, options)` | Same failure behavior as `Load` | `options` is a comma-separated flag string; unknown flags are ignored. `forceTangents` — as above. `eightInfluences` — keep up to 8 bone influences per vertex (the strongest 4 in the vertex record, influences 5-8 on a per-mesh side stream applied by CPU skinning; such meshes bypass the GPU skinning fast path). `compressAnimations` — tolerance-based keyframe reduction on imported clips (keys reconstructible by lerp/slerp are dropped; cubic keys and endpoints always survive; dropped counts appear in `AssetDiagnostics3D.GetImportReport()` as `compressedAnimationKeysDropped`). `compactStreams` — every imported mesh opts into the compact 48-byte GPU static-cache vertex encoding (see `Mesh3D.CompactStreams`) |
+| `SceneAsset.LoadWithOptions(path, forceTangents)` / `LoadResultWithOptions` | `LoadWithOptions` returns `null` and sets warnings for routine content failures; `LoadResultWithOptions` returns `Err(message)` | `forceTangents = true` generates tangents for every UV0-mapped glTF primitive even when its material has no normal map at load time — for materials that gain normal maps after import (FBX ignores the option) |
+| `SceneAsset.LoadWithOptionsEx(path, options)` | Returns `null` for routine content failures | `options` is a comma-separated flag string; unknown flags are ignored. `forceTangents` — as above. `eightInfluences` — keep up to 8 bone influences per vertex (the strongest 4 in the vertex record, influences 5-8 on a per-mesh side stream applied by CPU skinning; such meshes bypass the GPU skinning fast path). `compressAnimations` — tolerance-based keyframe reduction on imported clips (keys reconstructible by lerp/slerp are dropped; cubic keys and endpoints always survive; dropped counts appear in `AssetDiagnostics3D.GetImportReport()` as `compressedAnimationKeysDropped`). `compactStreams` — every imported mesh opts into the compact 48-byte GPU static-cache vertex encoding (see `Mesh3D.CompactStreams`) |
 | `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
-| `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
-| `Mesh3D.FromSTL(path)` | Returns `null` for missing files, unreadable files, wrong magic, truncated binary payloads, malformed ASCII payloads, or oversized files | Degenerate triangles are skipped as before |
+| `Mesh3D.FromObj(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
+| `Mesh3D.FromStl(path)` | Returns `null` for missing files, unreadable files, wrong magic, truncated binary payloads, malformed ASCII payloads, or oversized files | Degenerate triangles are skipped as before |
 | `SceneGraph.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
 | `Pixels.Load(path)` and image loads reached from materials | Return `null` for missing, unreadable, wrong-magic, corrupt, unsupported, or oversized PNG/JPEG/BMP/GIF content | Material loaders catch this and record a warning instead of failing the whole model |
 
@@ -456,7 +442,7 @@ of `toktx --zcmp` and similar tools — are decompressed per level by the
 runtime's from-scratch decoders before decode/native retention; scheme 1
 (BasisLZ/ETC1S) is rejected with a recoverable diagnostic. Malformed or
 unsupported KTX2 input never traps: loads return null and the diagnostic is
-available through `Assets3D.GetLastLoadError`. Native mip payload lengths are
+available through `AssetDiagnostics3D.GetLoadWarnings()`. Native mip payload lengths are
 validated against the declared format/block dimensions.
 `BackendSupports("anisotropy")` reports whether the active GPU backend applies
 `Material3D.Anisotropy`; the software backend accepts the property but ignores
@@ -525,6 +511,8 @@ existing sampler objects once created.
 | `SetTextureStreaming(enabled)` | `Void(Boolean)` method | Enable automatic `TextureAsset3D` mip-residency streaming (default off) |
 | `SetTextureStreamingBias(bias)` | `Void(Number)` method | Bias streaming's desired mip; positive drops more detail, clamped to `[-16, 16]` |
 | `TextureStreamingDemotions` | `Integer` property | Lifetime count of resident-window demotions applied by streaming |
+| `PassCount` | `Integer` property | Number of CPU-timed render passes (currently 4) |
+| `PassCpuMs(i)` | `Number(Integer)` method | CPU milliseconds spent in pass `i` of the latest ended frame: `0` shadow, `1` main scene, `2` overlay, `3` backend end/present |
 
 `TextureUploadBytes` counts actual texture cache uploads and re-uploads performed by the active
 Metal, OpenGL, or D3D11 backend. Pixels-backed 2D material textures and cubemaps
@@ -545,6 +533,12 @@ percentages, and final-frame tolerance after the budgeted native mip upload
 drains. Use these members with
 `Game3D.Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
 followed by GPU texture upload pressure.
+
+`PassCpuMs` complements `FrameGpuTimeUs` on the CPU side: the frame loop stamps
+a monotonic clock at the shadow → main → overlay → backend-end boundaries, so
+`PassCpuMs(1)` isolates scene submission cost from present/blit time in
+`PassCpuMs(3)`. Values describe the latest **ended** frame and read `0` before
+the first `End`. Indices are stable; `PassCount` future-proofs iteration.
 
 `FrameGpuTimeUs` is backend-owned timing telemetry. The D3D11 backend records it
 with `D3D11_QUERY_TIMESTAMP` plus a disjoint query and reports the latest
@@ -733,6 +727,15 @@ Toggling the flag bumps the geometry revision so backend caches re-upload in
 the newly selected encoding. `SceneAsset.LoadWithOptionsEx(path,
 "compactStreams")` enables it for every imported mesh in one call.
 
+`Mesh3D.ReleaseCpuScratch()` frees a mesh's rebuildable CPU side buffers — the
+double-precision position sidecar used for floating-origin rebasing and the
+normal-recalculation accumulator — and returns the bytes released. The
+authored vertex/index payload, GPU caches, raycasts, and physics are
+untouched. Call it on static meshes after load in scenes that do not use
+floating-origin rebasing; a later `RebaseOrigin` on such a mesh falls back to
+float precision, so streamed far-origin worlds should leave the sidecar in
+place.
+
 ### Viper.Graphics3D.SceneNode
 
 `SceneNode` supports authored mesh LODs through `AddLOD(distance, mesh)`.
@@ -769,7 +772,7 @@ proxy, so it works on the same draw path as other meshes.
 
 **Type:** Instance (obj)
 **Constructors:** `Camera3D.New(fov, aspect, near, far)`,
-`Camera3D.NewHorizontalFov(fov, aspect, near, far)`,
+`Camera3D.WithHorizontalFov(fov, aspect, near, far)`,
 `Camera3D.NewOrtho(size, aspect, near, far)`
 
 #### Properties
@@ -894,7 +897,7 @@ sprite draws.
 | `SetSpecularMap(texture)` | `Void(Object)` | Bind or clear a legacy specular map |
 | `SetEmissiveMap(texture)` | `Void(Object)` | Bind or clear an emissive texture |
 | `SetMetallicRoughnessMap(texture)` | `Void(Object)` | Bind or clear the packed PBR metallic-roughness map |
-| `SetAOMap(texture)` | `Void(Object)` | Bind or clear the ambient-occlusion map |
+| `SetAmbientOcclusionMap(texture)` | `Void(Object)` | Bind or clear the ambient-occlusion map |
 | `SetEnvMap(cubemap)` | `Void(Object)` | Bind or clear an environment cubemap |
 | `SetAlbedoRenderTarget(rt)` | `Void(Object)` | Bind a `RenderTarget3D`'s live contents as the albedo texture |
 | `ClearAlbedoRenderTarget()` | `Void()` | Detach a render-target albedo binding |
@@ -999,13 +1002,13 @@ Post-processing effect chain applied to a rendered scene.
 |--------|-----------|-------------|
 | `AddBloom(threshold, intensity, passes)` | `Void(Double, Double, Integer)` | Add bloom. `passes` selects the blur-chain depth (1–6 octaves; deeper = wider halo) |
 | `AddTonemap(mode, exposure)` | `Void(Integer, Double)` | Add tone mapping (`0 = off/linear`, `1 = Reinhard`, `2 = ACES`) |
-| `AddFXAA()` | `Void()` | Add FXAA anti-aliasing |
+| `AddFxaa()` | `Void()` | Add FXAA anti-aliasing |
 | `AddColorGrade(brightnessOffset, contrast, saturation)` | `Void(Double, Double, Double)` | Add color grading. Brightness is an additive offset centered on `0.0`; contrast and saturation are multipliers centered on `1.0` |
 | `AddVignette(strength, radius)` | `Void(Double, Double)` | Add a vignette darkening effect |
-| `AddSSAO(radius, intensity, samples)` | `Void(Double, Double, Integer)` | Add screen-space ambient occlusion (radius in world units, 4–16 samples) |
-| `AddDOF(focusDist, focalRange, blurRadius)` | `Void(Double, Double, Double)` | Add depth of field |
+| `AddSsao(radius, intensity, samples)` | `Void(Double, Double, Integer)` | Add screen-space ambient occlusion (radius in world units, 4–16 samples) |
+| `AddDof(focusDist, focalRange, blurRadius)` | `Void(Double, Double, Double)` | Add depth of field |
 | `AddMotionBlur(strength, samples)` | `Void(Double, Integer)` | Add motion blur |
-| `AddTAA(blend)` | `Void(Double)` | Add temporal anti-aliasing. `blend` is the history weight (0.5–0.98; typical 0.9) |
+| `AddTaa(blend)` | `Void(Double)` | Add temporal anti-aliasing. `blend` is the history weight (0.5–0.98; typical 0.9) |
 | `Clear()` | `Void()` | Remove all effects from the chain |
 
 Bloom runs as a progressive downsample/upsample mip chain: the scene is thresholded
@@ -1042,7 +1045,7 @@ bind Viper.Graphics3D.PostFX3D as PostFX3D;
 var fx = PostFX3D.New();
 fx.AddBloom(0.8, 1.2, 4);
 fx.AddTonemap(2, 1.0);
-fx.AddTAA(0.9);
+fx.AddTaa(0.9);
 fx.Enabled = true;
 ```
 
@@ -1113,8 +1116,7 @@ glTF cameras are imported as standalone `Camera3D` handles with the node's world
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `FindNode(name)` | `SceneNode(String)` | Find a template node by name, or `null` |
-| `FindNodeOption(name)` | `Option[SceneNode](String)` | Find a template node as `Some(node)`, or `None` |
+| `FindNode(name)` | `Option[SceneNode](String)` | Find a template node as `Some(node)`, or `None` |
 | `Instantiate()` | `SceneNode()` | Clone the template hierarchy into a fresh node subtree |
 | `InstantiateScene()` | `SceneGraph()` | Clone the default scene as a standalone scene graph |
 | `InstantiateSceneAt(index)` | `SceneGraph(Integer)` | Clone an immutable scene by index |
@@ -1122,9 +1124,8 @@ glTF cameras are imported as standalone `Camera3D` handles with the node's world
 | `ApplyVariant(target, index)` | `Integer(Object, Integer)` | Apply a material variant to every mapped node under `target` (a `SceneNode` from `Instantiate()` or a `SceneGraph`); returns the node count updated. Variants a primitive does not map restore its default material, so switching is reversible |
 | `GenerateLODs(levels, ratio)` | `Integer(Integer, Float)` | Generate 1..4 LOD levels (~`ratio^k` triangles, QEM decimation) for every template/scene mesh node and enable auto screen-error selection; each unique mesh is decimated once, nodes that already carry chains are skipped, and later `Instantiate()` clones inherit the chains. Returns the node count chained |
 
-Prefer `FindNodeOption()` for new code. `FindNode()` remains available for
-compatibility with existing `null` checks. Mutating an instantiated node does not
-mutate the immutable template node returned by either lookup API.
+Mutating an instantiated node does not mutate the immutable template node
+returned by `FindNode()`.
 
 ---
 
@@ -1496,6 +1497,7 @@ mutating the emitter's live particle order.
 |------------|---------|--------|-------------|
 | `Count`    | Integer | Read   | Currently active particle count |
 | `Emitting` | Boolean | Read   | True while the emitter is running |
+| `Seed`     | Integer | Read/Write | Deterministic RNG seed for this emitter's spawn stream. Emitters no longer share a process-global sequence, so setting an explicit seed makes an effect bit-identical across runs regardless of construction order |
 
 #### Methods
 
@@ -1567,7 +1569,7 @@ Time-limited projected decal placed in a 3D scene (bullet holes, blood splats, s
 
 SpatialAudio3D is part of the audio runtime, not the renderer. See
 [Audio: Spatial Audio](../audio.md#spatial-audio) for the canonical
-`Viper.Sound.SpatialAudio3D` API and [Audio: Mix Group Effects](../audio.md#mix-group-effects)
+`Viper.Audio.SpatialAudio3D` API and [Audio: Mix Group Effects](../audio.md#mix-group-effects)
 for group-level filters, delay, and reverb.
 
 ### Viper.Graphics3D.SoundListener3D
@@ -1641,8 +1643,8 @@ from its own line-of-sight raycasts).
 ```rust
 bind Viper.Graphics3D.SoundSource3D as SoundSource3D;
 bind Viper.Graphics3D.SoundListener3D as SoundListener3D;
-bind Viper.Sound.SpatialAudio3D as SpatialAudio3D;
-bind Viper.Sound.Sound as Sound;
+bind Viper.Audio.SpatialAudio3D as SpatialAudio3D;
+bind Viper.Audio.Sound as Sound;
 
 var listener = SoundListener3D.New();
 listener.IsActive = true;
@@ -1880,6 +1882,12 @@ Animated water plane with wave simulation, reflections, and normal mapping.
 
 **Type:** Instance (obj)
 **Constructor:** `Water3D.New(scene)`
+
+#### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `SimDistance` | Number | Read/Write | Camera distance beyond which the per-frame CPU wave rebuild is skipped (the last simulated surface keeps rendering). `0` (default) always simulates. Large or many water bodies should set this to their visible range — a 256-resolution surface rebuilds ~66K vertices per frame otherwise |
 
 #### Methods
 

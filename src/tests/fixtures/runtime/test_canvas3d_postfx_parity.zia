@@ -60,23 +60,23 @@ func start() {
                     new Vec3(0.0, 2.0, 6.0),
                     new Vec3(0.0, 0.0, -4.0),
                     new Vec3(0.0, 1.0, 0.0));
-    var floor = Mesh3D.NewPlane(30.0, 30.0);
-    var wall = Mesh3D.NewBox(30.0, 4.0, 0.5);
-    var mat = Material3D.NewColor(0.8, 0.8, 0.8);
+    var floor = Mesh3D.Plane(30.0, 30.0);
+    var wall = Mesh3D.Box(30.0, 4.0, 0.5);
+    var mat = Material3D.FromColor(0.8, 0.8, 0.8);
     Material3D.SetUnlit(mat, true);
 
     // --- Bind acceptance: the full 10-effect chain attaches on software ------
     var full = PostFX3D.New();
     PostFX3D.AddBloom(full, 0.8, 0.5, 2);
     PostFX3D.AddTonemap(full, 1, 1.0);
-    PostFX3D.AddFXAA(full);
+    PostFX3D.AddFxaa(full);
     PostFX3D.AddColorGrade(full, 0.0, 1.0, 1.0);
     PostFX3D.AddVignette(full, 0.8, 0.5);
-    PostFX3D.AddSSAO(full, 0.6, 1.0, 8);
-    PostFX3D.AddDOF(full, 2.0, 3.0, 1.0);
+    PostFX3D.AddSsao(full, 0.6, 1.0, 8);
+    PostFX3D.AddDof(full, 2.0, 3.0, 1.0);
     PostFX3D.AddMotionBlur(full, 1.0, 4);
-    PostFX3D.AddTAA(full, 0.5);
-    PostFX3D.AddSSR(full, 0.6, 0.8);
+    PostFX3D.AddTaa(full, 0.5);
+    PostFX3D.AddSsr(full, 0.6, 0.8);
     Canvas3D.SetPostFX(canvas, full);
     if (full.LastError != "") {
         Say("FAIL: full chain should attach on the software backend");
@@ -102,7 +102,7 @@ func start() {
     var plainSum = sumRegion(plain, 8, 24, 88, 48);
 
     var ssaoChain = PostFX3D.New();
-    PostFX3D.AddSSAO(ssaoChain, 1.2, 1.5, 8);
+    PostFX3D.AddSsao(ssaoChain, 1.2, 1.5, 8);
     Canvas3D.SetPostFX(canvas, ssaoChain);
     drawScene(canvas, cam, floor, wall, mat);
     var ssaoShot = Canvas3D.ScreenshotFinal(canvas);
@@ -142,7 +142,7 @@ func start() {
     var sharpContrast = contrast(sharp, 24, 16, 72, 40);
 
     var dofChain = PostFX3D.New();
-    PostFX3D.AddDOF(dofChain, 1.0, 1.5, 1.0); // focus at 1.0, wall ~10 away
+    PostFX3D.AddDof(dofChain, 1.0, 1.5, 1.0); // focus at 1.0, wall ~10 away
     Canvas3D.SetPostFX(canvas, dofChain);
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, cam);

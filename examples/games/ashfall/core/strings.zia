@@ -13,7 +13,7 @@ bind Viper.Math;
 bind "./mathutil" as M;
 
 func intStr(i: Integer) -> String {
-    return Convert.ToString_Int(i);
+    return Convert.ToStringInt(i);
 }
 
 // Round a float to the nearest integer (banker-free, ties away from zero

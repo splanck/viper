@@ -4,10 +4,10 @@ s = Viper.Collections.Seq.New()
 s.Push("name")
 s.Push("age")
 s.Push("city")
-PRINT "csv formatline: "; Viper.Text.Csv.FormatLine(s)
+PRINT "csv formatline: "; Viper.Data.Csv.FormatLine(s)
 
 DIM parsed AS OBJECT
-parsed = Viper.Text.Csv.ParseLine("alice,30,nyc")
+parsed = Viper.Data.Csv.ParseLine("alice,30,nyc")
 PRINT "csv parseline done"
 
 PRINT "html escape: "; Viper.Text.Html.Escape("<b>hello</b>")
@@ -19,7 +19,7 @@ PRINT "md totext: "; Viper.Text.Markdown.ToText("# Hello")
 PRINT "md tohtml: "; Viper.Text.Markdown.ToHtml("**bold**")
 
 ' NOTE: TOML.IsValid fails in BASIC due to escaped quote parsing (BUG-016)
-' PRINT "toml valid: "; Viper.Text.Toml.IsValid("[section]...")
+' PRINT "toml valid: "; Viper.Data.Toml.IsValid("[section]...")
 
 PRINT "done"
 END

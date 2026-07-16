@@ -16,7 +16,8 @@
 //
 // Ownership/Lifetime:
 //   - FrozenMap retains its keys and values; source collections are not consumed.
-//   - FrozenMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - FrozenMap objects are GC-managed (rt_obj_new_i64) with a runtime finalizer;
+//     callers must not free them directly.
 //
 // Links: src/runtime/collections/rt_frozenmap.c (implementation), src/runtime/core/rt_string.h
 //

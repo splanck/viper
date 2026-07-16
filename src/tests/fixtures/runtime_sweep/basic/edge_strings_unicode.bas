@@ -17,13 +17,13 @@ PRINT "ToUpper: "; result
 result = Viper.String.ToLower(unicodeStr)
 PRINT "ToLower: "; result
 
-result = Viper.String.Flip(unicodeStr)
+result = Viper.String.Reverse(unicodeStr)
 PRINT "Flip: "; result
 
 num = Viper.String.IndexOf(unicodeStr, "世界")
 PRINT "IndexOf('世界'): "; num
 
-num = Viper.String.Has(unicodeStr, "🌍")
+num = Viper.String.Contains(unicodeStr, "🌍")
 PRINT "Has('🌍'): "; num
 
 result = Viper.String.Replace(unicodeStr, "世界", "Earth")

@@ -37,8 +37,8 @@ RT_FUNC(Transform3DLookAt,       rt_transform3d_look_at,      "Viper.Graphics3D.
 /// @details
 /// Create `Viper.Graphics3D.Transform3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetEuler`, `SetScale`,
-/// `Translate`.
+/// `Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetEuler`,
+/// `SetScale`, `Translate`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Transform3D", Transform3D, "obj", Transform3DNew)
     RT_PROP("Position", "obj<Viper.Math.Vec3>", Transform3DGetPosition, none)
     RT_PROP("Rotation", "obj<Viper.Math.Quat>", Transform3DGetRotation, Transform3DSetRotation)
@@ -68,9 +68,9 @@ RT_FUNC(Path3DClear,            rt_path3d_clear,            "Viper.Graphics3D.Pa
 /// @summary Provides Path 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Path3D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Length`,
-/// `PointCount`, `Looping` and operations including `AddPoint`, `GetPositionAt`, `GetDirectionAt`,
-/// `Clear`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Length`, `PointCount`, `Looping` and operations including `AddPoint`, `GetPositionAt`,
+/// `GetDirectionAt`, `Clear`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Path3D", Path3D, "obj", Path3DNew)
     RT_PROP("Length", "f64", Path3DGetLength, none)
     RT_PROP("PointCount", "i64", Path3DGetPointCount, none)
@@ -97,7 +97,7 @@ RT_FUNC(Canvas3DDrawInstancedSkinned, rt_canvas3d_draw_instanced_skinned, "Viper
 /// @summary Provides Instance Batch 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.InstanceBatch3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `Add`, `Remove`, `Set`, `Clear`.
 RT_CLASS_BEGIN("Viper.Graphics3D.InstanceBatch3D", InstanceBatch3D, "obj", InstBatch3DNew)
     RT_PROP("Count", "i64", InstBatch3DCount, none)
@@ -220,8 +220,8 @@ RT_FUNC(TimeOfDay3DAdvance,      rt_timeofday3d_advance,               "Viper.Gr
 /// @details
 /// Create `Viper.Graphics3D.TimeOfDay3D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Hours`, `DayLengthSeconds`, `LatitudeDegrees` and operations including `SetSunLight`, `SetSky`,
-/// `SetReflectionProbe`, `Advance`.
+/// `Hours`, `DayLengthSeconds`, `LatitudeDegrees` and operations including `SetSunLight`,
+/// `SetSky`, `SetReflectionProbe`, `Advance`.
 RT_CLASS_BEGIN("Viper.Graphics3D.TimeOfDay3D", TimeOfDay3D, "obj", TimeOfDay3DNew)
     RT_PROP("Hours", "f64", TimeOfDay3DGetHours, TimeOfDay3DSetHours)
     RT_PROP("DayLengthSeconds", "f64", TimeOfDay3DGetDayLength, TimeOfDay3DSetDayLength)
@@ -249,8 +249,9 @@ RT_FUNC(ReflProbe3DCapture,       rt_reflectionprobe3d_capture,            "Vipe
 /// @summary Provides Reflection Probe 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.ReflectionProbe3D` values through its registered constructor and use
-/// the returned object with the instance members below. Its public surface exposes properties such
-/// as `Position`, `InfluenceScale`, `Resolution` and operations including `Contains`, `Capture`.
+/// the returned object with the instance members below. Its public surface exposes properties
+/// such as `Position`, `InfluenceScale`, `Resolution` and operations including `Contains`,
+/// `Capture`.
 RT_CLASS_BEGIN("Viper.Graphics3D.ReflectionProbe3D", ReflectionProbe3D, "obj", ReflProbe3DNew)
     RT_PROP("Position", "obj<Viper.Math.Vec3>", ReflProbe3DGetPosition, none)
     RT_PROP("InfluenceScale", "f64", ReflProbe3DGetInfluence, ReflProbe3DSetInfluence)
@@ -264,7 +265,7 @@ RT_CLASS_END()
 /// @summary Provides Light Probe Grid 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.LightProbeGrid3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `ProbeCount` and operations including `Bake`, `Sample`, `Save`, `Load`.
 RT_CLASS_BEGIN("Viper.Graphics3D.LightProbeGrid3D", LightProbeGrid3D, "obj", LightProbeGrid3DNew)
     RT_PROP("ProbeCount", "i64", LightProbeGrid3DGetCount, none)
@@ -275,8 +276,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.LightProbeGrid3D", LightProbeGrid3D, "obj", Lig
 RT_CLASS_END()
 RT_FUNC(Terrain3DSetLayerTex,   rt_terrain3d_set_layer_texture,"Viper.Graphics3D.Terrain3D.SetLayerTexture","void(obj,i64,obj)")
 RT_FUNC(Terrain3DSetLayerScale, rt_terrain3d_set_layer_scale,  "Viper.Graphics3D.Terrain3D.SetLayerScale", "void(obj,i64,f64)")
-RT_FUNC(Terrain3DSetLODDist,   rt_terrain3d_set_lod_distances,"Viper.Graphics3D.Terrain3D.SetLODDistances","void(obj,f64,f64)")
-RT_FUNC(Terrain3DSetLODHysteresis, rt_terrain3d_set_lod_hysteresis, "Viper.Graphics3D.Terrain3D.SetLODHysteresis","void(obj,f64)")
+RT_FUNC(Terrain3DSetLODDist,   rt_terrain3d_set_lod_distances,"Viper.Graphics3D.Terrain3D.SetLodDistances","void(obj,f64,f64)")
+RT_FUNC(Terrain3DSetLODHysteresis, rt_terrain3d_set_lod_hysteresis, "Viper.Graphics3D.Terrain3D.SetLodHysteresis","void(obj,f64)")
 RT_FUNC(Terrain3DSetSkirt,     rt_terrain3d_set_skirt_depth,  "Viper.Graphics3D.Terrain3D.SetSkirtDepth", "void(obj,f64)")
 RT_FUNC(Terrain3DSetCpuOcclusion, rt_terrain3d_set_cpu_occlusion, "Viper.Graphics3D.Terrain3D.set_CpuOcclusion", "void(obj,i1)")
 RT_FUNC(Terrain3DGetCpuOcclusion, rt_terrain3d_get_cpu_occlusion, "Viper.Graphics3D.Terrain3D.get_CpuOcclusion", "i1(obj)")
@@ -313,8 +314,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Terrain3D", Terrain3D, "obj", Terrain3DNew)
     RT_METHOD("SetLayerScale", "void(i64,f64)", Terrain3DSetLayerScale)
     RT_METHOD("GetHeightAt", "f64(f64,f64)", Terrain3DGetHeightAt)
     RT_METHOD("GetNormalAt", "obj(f64,f64)", Terrain3DGetNormalAt)
-    RT_METHOD("SetLODDistances", "void(f64,f64)", Terrain3DSetLODDist)
-    RT_METHOD("SetLODHysteresis", "void(f64)", Terrain3DSetLODHysteresis)
+    RT_METHOD("SetLodDistances", "void(f64,f64)", Terrain3DSetLODDist)
+    RT_METHOD("SetLodHysteresis", "void(f64)", Terrain3DSetLODHysteresis)
     RT_METHOD("SetSkirtDepth", "void(f64)", Terrain3DSetSkirt)
     RT_PROP("CpuOcclusion", "i1", Terrain3DGetCpuOcclusion, Terrain3DSetCpuOcclusion)
     RT_PROP("LastChunkCount", "i64", Terrain3DGetLastChunkCount, none)
@@ -336,7 +337,6 @@ RT_FUNC(NavMesh3DBake,           rt_navmesh3d_bake,             "Viper.Graphics3
 RT_FUNC(NavMesh3DBakeTiled,      rt_navmesh3d_bake_tiled,       "Viper.Graphics3D.NavMesh3D.BakeTiled",      "obj(obj,f64,f64,f64,f64,f64)")
 RT_FUNC(NavMesh3DExport,         rt_navmesh3d_export,           "Viper.Graphics3D.NavMesh3D.Export",         "i1(obj,str)")
 RT_FUNC(NavMesh3DImport,         rt_navmesh3d_import,           "Viper.Graphics3D.NavMesh3D.Import",         "obj(str)")
-RT_FUNC(NavMesh3DFindPath,       rt_navmesh3d_find_path,        "Viper.Graphics3D.NavMesh3D.FindPath",       "obj(obj,obj,obj)")
 RT_FUNC(NavMesh3DFindPathOption, rt_navmesh3d_find_path_option, "Viper.Graphics3D.NavMesh3D.FindPathOption", "obj<Viper.Option>(obj,obj,obj)")
 RT_FUNC(NavMesh3DSamplePosition, rt_navmesh3d_sample_position,  "Viper.Graphics3D.NavMesh3D.SamplePosition", "obj(obj,obj)")
 RT_FUNC(NavMesh3DIsWalkable,     rt_navmesh3d_is_walkable,      "Viper.Graphics3D.NavMesh3D.IsWalkable",     "i1(obj,obj)")
@@ -364,15 +364,15 @@ RT_FUNC(NavMesh3DDebugDraw,      rt_navmesh3d_debug_draw,       "Viper.Graphics3
 
 /// @summary Provides Nav Mesh 3D constants and static operations for 3D rendering and scene applications.
 /// @details
-/// `Viper.Graphics3D.NavMesh3D` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `TriangleCount`, `OffMeshLinkCount`, `ObstacleCount`
-/// and operations including `FindPath`, `FindPathOption`, `SamplePosition`, `IsWalkable`.
+/// `Viper.Graphics3D.NavMesh3D` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `TriangleCount`, `OffMeshLinkCount`,
+/// `ObstacleCount` and operations including `FindPathOption`, `SamplePosition`, `IsWalkable`,
+/// `Build`.
 RT_CLASS_BEGIN("Viper.Graphics3D.NavMesh3D", NavMesh3D, "none", none)
     RT_PROP("TriangleCount", "i64", NavMesh3DTriCount, none)
     RT_PROP("OffMeshLinkCount", "i64", NavMesh3DOffMeshLinkCount, none)
     RT_PROP("ObstacleCount", "i64", NavMesh3DObstacleCount, none)
     RT_PROP("LastPathCost", "f64", NavMesh3DLastPathCost, none)
-    RT_METHOD("FindPath", "obj(obj,obj)", NavMesh3DFindPath)
     RT_METHOD("FindPathOption", "obj<Viper.Option>(obj,obj)", NavMesh3DFindPathOption)
     RT_METHOD("SamplePosition", "obj(obj)", NavMesh3DSamplePosition)
     RT_METHOD("IsWalkable", "i1(obj)", NavMesh3DIsWalkable)
@@ -476,7 +476,7 @@ RT_FUNC(Canvas3DDrawBlended,      rt_canvas3d_draw_mesh_blended,   "Viper.Graphi
 /// @summary Provides Anim Blend 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.AnimBlend3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `StateCount` and operations including `AddState`, `SetWeight`, `SetWeightByName`, `GetWeight`.
 RT_CLASS_BEGIN("Viper.Graphics3D.AnimBlend3D", AnimBlend3D, "obj", AnimBlend3DNew)
     RT_PROP("StateCount", "i64", AnimBlend3DStateCount, none)
@@ -566,8 +566,8 @@ RT_FUNC(AnimController3DStateTime,      rt_anim_controller3d_get_state_time,   "
 RT_FUNC(AnimController3DIsStatePlaying, rt_anim_controller3d_is_state_playing, "Viper.Graphics3D.AnimController3D.IsStatePlaying",  "i1(obj,str)")
 RT_FUNC(AnimController3DSetStateSpeed,  rt_anim_controller3d_set_state_speed,  "Viper.Graphics3D.AnimController3D.SetStateSpeed",   "void(obj,str,f64)")
 RT_FUNC(AnimController3DSetStateLooping,rt_anim_controller3d_set_state_looping,"Viper.Graphics3D.AnimController3D.SetStateLooping", "void(obj,str,i1)")
-RT_FUNC(AnimController3DSetAnimationLOD,rt_anim_controller3d_set_animation_lod,"Viper.Graphics3D.AnimController3D.SetAnimationLOD", "void(obj,f64,f64)")
-RT_FUNC(AnimController3DSetBoneLOD,     rt_anim_controller3d_set_bone_lod,     "Viper.Graphics3D.AnimController3D.SetBoneLOD",      "void(obj,i64)")
+RT_FUNC(AnimController3DSetAnimationLOD,rt_anim_controller3d_set_animation_lod,"Viper.Graphics3D.AnimController3D.SetAnimationLod", "void(obj,f64,f64)")
+RT_FUNC(AnimController3DSetBoneLOD,     rt_anim_controller3d_set_bone_lod,     "Viper.Graphics3D.AnimController3D.SetBoneLod",      "void(obj,i64)")
 RT_FUNC(AnimController3DSetBlendTree,   rt_anim_controller3d_set_blend_tree,   "Viper.Graphics3D.AnimController3D.SetBlendTree",    "i1(obj,obj)")
 RT_FUNC(AnimController3DSetIKSolver,    rt_anim_controller3d_set_ik_solver,    "Viper.Graphics3D.AnimController3D.SetIKSolver",     "i1(obj,obj)")
 RT_FUNC(AnimController3DAddEvent,       rt_anim_controller3d_add_event,        "Viper.Graphics3D.AnimController3D.AddEvent",        "void(obj,str,f64,str)")
@@ -606,8 +606,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.AnimController3D", AnimController3D, "obj", Ani
     RT_METHOD("IsStatePlaying", "i1(str)", AnimController3DIsStatePlaying)
     RT_METHOD("SetStateSpeed", "void(str,f64)", AnimController3DSetStateSpeed)
     RT_METHOD("SetStateLooping", "void(str,i1)", AnimController3DSetStateLooping)
-    RT_METHOD("SetAnimationLOD", "void(f64,f64)", AnimController3DSetAnimationLOD)
-    RT_METHOD("SetBoneLOD", "void(i64)", AnimController3DSetBoneLOD)
+    RT_METHOD("SetAnimationLod", "void(f64,f64)", AnimController3DSetAnimationLOD)
+    RT_METHOD("SetBoneLod", "void(i64)", AnimController3DSetBoneLOD)
     RT_METHOD("SetBlendTree", "i1(obj)", AnimController3DSetBlendTree)
     RT_METHOD("SetIKSolver", "i1(obj)", AnimController3DSetIKSolver)
     RT_METHOD("AddEvent", "void(str,f64,str)", AnimController3DAddEvent)
@@ -632,16 +632,16 @@ RT_FUNC(Decal3DNew,          rt_decal3d_new,          "Viper.Graphics3D.Decal3D.
 RT_FUNC(Decal3DSetLifetime,  rt_decal3d_set_lifetime,  "Viper.Graphics3D.Decal3D.SetLifetime",  "void(obj,f64)")
 RT_FUNC(Decal3DSetDepthBias, rt_decal3d_set_depth_bias, "Viper.Graphics3D.Decal3D.SetDepthBias", "void(obj,f64)")
 RT_FUNC(Decal3DUpdate,       rt_decal3d_update,        "Viper.Graphics3D.Decal3D.Update",       "void(obj,f64)")
-RT_FUNC(Decal3DIsExpired,    rt_decal3d_is_expired,    "Viper.Graphics3D.Decal3D.get_Expired",  "i1(obj)")
+RT_FUNC(Decal3DIsExpired,    rt_decal3d_is_expired,    "Viper.Graphics3D.Decal3D.get_IsExpired",  "i1(obj)")
 RT_FUNC(Canvas3DDrawDecal,   rt_canvas3d_draw_decal,   "Viper.Graphics3D.Canvas3D.DrawDecal",   "void(obj,obj)")
 
 /// @summary Provides Decal 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Decal3D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as `Expired`
-/// and operations including `SetLifetime`, `SetDepthBias`, `Update`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsExpired` and operations including `SetLifetime`, `SetDepthBias`, `Update`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Decal3D", Decal3D, "obj", Decal3DNew)
-    RT_PROP("Expired", "i1", Decal3DIsExpired, none)
+    RT_PROP("IsExpired", "i1", Decal3DIsExpired, none)
     RT_METHOD("SetLifetime", "void(f64)", Decal3DSetLifetime)
     RT_METHOD("SetDepthBias", "void(f64)", Decal3DSetDepthBias)
     RT_METHOD("Update", "void(f64)", Decal3DUpdate)
@@ -658,8 +658,8 @@ RT_FUNC(Canvas3DDrawLensFlare, rt_canvas3d_draw_lens_flare,"Viper.Graphics3D.Can
 /// @summary Provides Lens Flare 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.LensFlare3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `AddElement`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `AddElement`.
 RT_CLASS_BEGIN("Viper.Graphics3D.LensFlare3D", LensFlare3D, "obj", LensFlare3DNew)
     // Ghost chain along the light->screen-center axis; occlusion-aware.
     RT_METHOD("AddElement", "void(f64,f64,i64,f64)", LensFlare3DAddElement)
@@ -679,7 +679,7 @@ RT_FUNC(Canvas3DDrawSprite3D, rt_canvas3d_draw_sprite3d,"Viper.Graphics3D.Canvas
 /// @summary Provides Sprite 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Sprite3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Additive` and operations including `SetPosition`, `SetScale`, `SetAnchor`, `SetFrame`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Sprite3D", Sprite3D, "obj", Sprite3DNew)
     RT_METHOD("SetPosition", "void(f64,f64,f64)", Sprite3DSetPosition)
@@ -709,13 +709,16 @@ RT_FUNC(Water3DSetReflect,     rt_water3d_set_reflectivity,"Viper.Graphics3D.Wat
 RT_FUNC(Water3DSetResolution,  rt_water3d_set_resolution, "Viper.Graphics3D.Water3D.SetResolution",  "void(obj,i64)")
 RT_FUNC(Water3DAddWave,        rt_water3d_add_wave,       "Viper.Graphics3D.Water3D.AddWave",        "void(obj,f64,f64,f64,f64,f64)")
 RT_FUNC(Water3DClearWaves,     rt_water3d_clear_waves,    "Viper.Graphics3D.Water3D.ClearWaves",     "void(obj)")
+RT_FUNC(Water3DSetSimDistance, rt_water3d_set_sim_distance,"Viper.Graphics3D.Water3D.set_SimDistance","void(obj,f64)")
+RT_FUNC(Water3DGetSimDistance, rt_water3d_get_sim_distance,"Viper.Graphics3D.Water3D.get_SimDistance","f64(obj)")
 RT_FUNC(Canvas3DDrawWater,     rt_canvas3d_draw_water,    "Viper.Graphics3D.Canvas3D.DrawWater",     "void(obj,obj,obj)")
 
 /// @summary Provides Water 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Water3D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes operations including
-/// `SetHeight`, `SetPosition`, `SetWaveParams`, `SetColor`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `SimDistance` and operations including `SetHeight`, `SetPosition`, `SetWaveParams`,
+/// `SetColor`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Water3D", Water3D, "obj", Water3DNew)
     RT_METHOD("SetHeight", "void(f64)", Water3DSetHeight)
     RT_METHOD("SetPosition", "void(f64,f64,f64)", Water3DSetPosition)
@@ -729,18 +732,19 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Water3D", Water3D, "obj", Water3DNew)
     RT_METHOD("AddWave", "void(f64,f64,f64,f64,f64)", Water3DAddWave)
     RT_METHOD("ClearWaves", "void()", Water3DClearWaves)
     RT_METHOD("Update", "void(f64)", Water3DUpdate)
+    RT_PROP("SimDistance", "f64", Water3DGetSimDistance, Water3DSetSimDistance)
 RT_CLASS_END()
 
 // PostFX additions (F5-F7)
-RT_FUNC(PostFX3DAddSSAO,        rt_postfx3d_add_ssao,        "Viper.Graphics3D.PostFX3D.AddSSAO",        "void(obj,f64,f64,i64)")
-RT_FUNC(PostFX3DAddDOF,         rt_postfx3d_add_dof,         "Viper.Graphics3D.PostFX3D.AddDOF",         "void(obj,f64,f64,f64)")
+RT_FUNC(PostFX3DAddSSAO,        rt_postfx3d_add_ssao,        "Viper.Graphics3D.PostFX3D.AddSsao",        "void(obj,f64,f64,i64)")
+RT_FUNC(PostFX3DAddDOF,         rt_postfx3d_add_dof,         "Viper.Graphics3D.PostFX3D.AddDof",         "void(obj,f64,f64,f64)")
 RT_FUNC(PostFX3DSetDofFocus,    rt_postfx3d_set_dof_focus,   "Viper.Graphics3D.PostFX3D.SetDofFocus",    "i1(obj,f64)")
 RT_FUNC(PostFX3DAddMotionBlur,  rt_postfx3d_add_motion_blur, "Viper.Graphics3D.PostFX3D.AddMotionBlur",  "void(obj,f64,i64)")
-RT_FUNC(PostFX3DAddTAA,         rt_postfx3d_add_taa,         "Viper.Graphics3D.PostFX3D.AddTAA",         "void(obj,f64)")
-RT_FUNC(PostFX3DAddSSR,         rt_postfx3d_add_ssr,         "Viper.Graphics3D.PostFX3D.AddSSR",         "void(obj,f64,f64)")
+RT_FUNC(PostFX3DAddTAA,         rt_postfx3d_add_taa,         "Viper.Graphics3D.PostFX3D.AddTaa",         "void(obj,f64)")
+RT_FUNC(PostFX3DAddSSR,         rt_postfx3d_add_ssr,         "Viper.Graphics3D.PostFX3D.AddSsr",         "void(obj,f64,f64)")
 RT_FUNC(PostFX3DAddAutoExposure, rt_postfx3d_add_auto_exposure, "Viper.Graphics3D.PostFX3D.AddAutoExposure", "void(obj,f64,f64,f64)")
-RT_FUNC(PostFX3DAddColorLUT,     rt_postfx3d_add_color_lut,     "Viper.Graphics3D.PostFX3D.AddColorLUT",     "void(obj,obj,f64)")
-RT_FUNC(PostFX3DMakeIdentityLUT, rt_postfx3d_make_identity_lut, "Viper.Graphics3D.PostFX3D.MakeIdentityLUT", "obj()")
+RT_FUNC(PostFX3DAddColorLUT,     rt_postfx3d_add_color_lut,     "Viper.Graphics3D.PostFX3D.AddColorLut",     "void(obj,obj,f64)")
+RT_FUNC(PostFX3DMakeIdentityLUT, rt_postfx3d_make_identity_lut, "Viper.Graphics3D.PostFX3D.MakeIdentityLut", "obj()")
 RT_FUNC(PostFX3DAddSunShafts,    rt_postfx3d_add_sun_shafts,    "Viper.Graphics3D.PostFX3D.AddSunShafts",    "void(obj,f64,f64,i64)")
 RT_FUNC(PostFX3DGetLastError,   rt_postfx3d_get_last_error,  "Viper.Graphics3D.PostFX3D.get_LastError",  "str(obj)")
 
@@ -751,7 +755,7 @@ RT_FUNC(PostFX3DGetLastError,   rt_postfx3d_get_last_error,  "Viper.Graphics3D.P
 RT_FUNC(Veg3DNew,            rt_vegetation3d_new,            "Viper.Graphics3D.Vegetation3D.New",            "obj(obj)")
 RT_FUNC(Veg3DSetDensityMap,  rt_vegetation3d_set_density_map,"Viper.Graphics3D.Vegetation3D.SetDensityMap",  "void(obj,obj)")
 RT_FUNC(Veg3DSetWind,        rt_vegetation3d_set_wind_params,"Viper.Graphics3D.Vegetation3D.SetWindParams",  "void(obj,f64,f64,f64)")
-RT_FUNC(Veg3DSetLOD,         rt_vegetation3d_set_lod_distances,"Viper.Graphics3D.Vegetation3D.SetLODDistances","void(obj,f64,f64)")
+RT_FUNC(Veg3DSetLOD,         rt_vegetation3d_set_lod_distances,"Viper.Graphics3D.Vegetation3D.SetLodDistances","void(obj,f64,f64)")
 RT_FUNC(Veg3DSetBlade,       rt_vegetation3d_set_blade_size, "Viper.Graphics3D.Vegetation3D.SetBladeSize",   "void(obj,f64,f64,f64)")
 RT_FUNC(Veg3DSetSeed,        rt_vegetation3d_set_seed,       "Viper.Graphics3D.Vegetation3D.SetSeed",        "void(obj,i64)")
 RT_FUNC(Veg3DPopulate,       rt_vegetation3d_populate,       "Viper.Graphics3D.Vegetation3D.Populate",       "void(obj,obj,i64)")
@@ -761,12 +765,12 @@ RT_FUNC(Canvas3DDrawVeg,     rt_canvas3d_draw_vegetation,    "Viper.Graphics3D.C
 /// @summary Provides Vegetation 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.Vegetation3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetDensityMap`, `SetWindParams`, `SetLODDistances`, `SetBladeSize`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetDensityMap`, `SetWindParams`, `SetLodDistances`, `SetBladeSize`.
 RT_CLASS_BEGIN("Viper.Graphics3D.Vegetation3D", Vegetation3D, "obj", Veg3DNew)
     RT_METHOD("SetDensityMap", "void(obj)", Veg3DSetDensityMap)
     RT_METHOD("SetWindParams", "void(f64,f64,f64)", Veg3DSetWind)
-    RT_METHOD("SetLODDistances", "void(f64,f64)", Veg3DSetLOD)
+    RT_METHOD("SetLodDistances", "void(f64,f64)", Veg3DSetLOD)
     RT_METHOD("SetBladeSize", "void(f64,f64,f64)", Veg3DSetBlade)
     RT_METHOD("SetSeed", "void(i64)", Veg3DSetSeed)
     RT_METHOD("Populate", "void(obj,i64)", Veg3DPopulate)
@@ -877,8 +881,8 @@ RT_FUNC(TexAtlas3DGetTexture,rt_texatlas3d_get_texture, "Viper.Graphics3D.Textur
 /// @summary Provides Texture Atlas 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Viper.Graphics3D.TextureAtlas3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `Add`, `GetTexture`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `Add`, `GetTexture`.
 RT_CLASS_BEGIN("Viper.Graphics3D.TextureAtlas3D", TextureAtlas3D, "obj", TexAtlas3DNew)
     RT_METHOD("Add", "i64(obj)", TexAtlas3DAdd)
     RT_METHOD("GetTexture", "obj()", TexAtlas3DGetTexture)

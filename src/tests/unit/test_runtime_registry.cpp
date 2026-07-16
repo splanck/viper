@@ -106,9 +106,9 @@ int main() {
     assert(strEqDescriptor->signature.paramTypes[1].kind == il::core::Type::Kind::Str &&
            "string equality runtime descriptor second parameter mismatch");
 
-    const auto *randomNext = il::runtime::findRuntimeDescriptor("Viper.Math.Random.Next");
-    assert(randomNext && "static Random.Next descriptor missing");
-    assert(randomNext->publicSurface && "static Random.Next should remain public");
+    const auto *randomNext = il::runtime::findRuntimeDescriptor("Viper.Math.Random.NextDouble");
+    assert(randomNext && "static Random.NextDouble descriptor missing");
+    assert(randomNext->publicSurface && "static Random.NextDouble should remain public");
 
     const auto *randomInstNext = il::runtime::findRuntimeDescriptor("Viper.Math.Random.inst_Next");
     assert(randomInstNext && "Random.Next instance target descriptor missing");

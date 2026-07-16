@@ -162,7 +162,7 @@ class AssetRegistry {
             failedCount = failedCount + 1;
             return null;
         }
-        var a = G3D.SceneAsset.Load(path);
+        var a = G3D.SceneAsset.LoadResult(path);
         if a == null {
             failedCount = failedCount + 1;
             return null;

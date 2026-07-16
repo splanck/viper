@@ -265,7 +265,7 @@ class RidgeboundWorldSim {
                 new Vec3(b.x, b.y + 2.4, b.z),
                 1.0, 0.80, 0.34, config.BEACON_LIGHT_RANGE);
             Light3D.SetIntensity(pl, 0.0);
-            Light3D.set_Enabled(pl, false);
+            Light3D.set_IsEnabled(pl, false);
             world.AddLight(config.BEACON_LIGHT_SLOT + i, pl);
             b.light = pl;
         }
@@ -286,7 +286,7 @@ class RidgeboundWorldSim {
             b.litProgress = 0.0;
             if (b.light != null) {
                 Light3D.SetIntensity(b.light, 0.0);
-                Light3D.set_Enabled(b.light, false);
+                Light3D.set_IsEnabled(b.light, false);
             }
         }
     }
@@ -703,7 +703,7 @@ class RidgeboundWorldSim {
         if (b.light != null) {
             // Enable at zero and let updateBeacons ramp the intensity in, so the
             // beacon glows on smoothly instead of popping to full brightness.
-            Light3D.set_Enabled(b.light, true);
+            Light3D.set_IsEnabled(b.light, true);
             Light3D.SetIntensity(b.light, 0.0);
         }
         effectsObj.stampScorch(b.x, b.y, b.z);

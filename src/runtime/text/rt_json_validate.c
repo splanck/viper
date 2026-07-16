@@ -102,6 +102,16 @@ static int validate_value(json_parser *p) {
                 return 1;
             if (ch < 0x20)
                 return 0;
+            if (ch >= 0x80) {
+                // Match the parser: raw non-ASCII bytes must form valid UTF-8,
+                // so IsValid never accepts text the trapping parser rejects.
+                size_t extra = 0;
+                if (!json_raw_utf8_sequence_valid(
+                        ch, p->input + p->pos, p->len - p->pos, &extra))
+                    return 0;
+                p->pos += extra;
+                continue;
+            }
             if (ch == '\\') {
                 if (parser_eof(p))
                     return 0;

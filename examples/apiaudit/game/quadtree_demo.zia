@@ -31,7 +31,7 @@ func start() {
 
     // --- QueryRectResult (x, y, w, h) -> QueryResult ---
     Say("--- QueryRectResult ---");
-    var result = qt.QueryRectResult(0, 0, 200, 200);
+    var result = qt.QueryRect(0, 0, 200, 200);
     SayInt(result.Count);       // 3 (all items in range)
     SayBool(result.Contains(1));
     var r0 = result.GetId(0);
@@ -40,12 +40,12 @@ func start() {
 
     // --- QueryRectResult (narrow region) ---
     Say("--- QueryRectResult narrow ---");
-    var result2 = qt.QueryRectResult(0, 0, 40, 40);
+    var result2 = qt.QueryRect(0, 0, 40, 40);
     SayInt(result2.Count);      // 1 (only item 1 at 10,10,20,20)
 
     // --- QueryPointResult (x, y, radius) ---
     Say("--- QueryPointResult ---");
-    var pFound = qt.QueryPointResult(15, 15, 10);
+    var pFound = qt.QueryPoint(15, 15, 10);
     SayInt(pFound.Count);
     // Should find item 1 near point (15,15)
 
@@ -57,10 +57,10 @@ func start() {
 
     // --- QueryRect after move ---
     Say("--- QueryRect after move ---");
-    var found3 = qt.QueryRectResult(0, 0, 40, 40);
+    var found3 = qt.QueryRect(0, 0, 40, 40);
     SayInt(found3.Count);       // 0 (item 1 moved away)
 
-    var found4 = qt.QueryRectResult(390, 390, 30, 30);
+    var found4 = qt.QueryRect(390, 390, 30, 30);
     SayInt(found4.Count);       // 1 (item 1 now here)
 
     // --- Remove ---
@@ -94,7 +94,7 @@ func start() {
     Say("--- Clear ---");
     qt.Clear();
     SayInt(qt.ItemCount);       // 0
-    var found5 = qt.QueryRectResult(0, 0, 800, 600);
+    var found5 = qt.QueryRect(0, 0, 800, 600);
     SayInt(found5.Count);       // 0
 
     Say("=== Quadtree audit complete ===");

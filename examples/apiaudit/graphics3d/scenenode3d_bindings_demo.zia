@@ -10,7 +10,7 @@ func start() {
     var scene = SceneGraph.New();
     var parent = SceneNode.New();
     var child = SceneNode.New();
-    var body = Physics3DBody.NewSphere(0.5, 1.0);
+    var body = PhysicsBody3D.Sphere(0.5, 1.0);
 
     SceneNode.SetPosition(parent, 5.0, 0.0, 0.0);
     SceneNode.AddChild(parent, child);
@@ -18,7 +18,7 @@ func start() {
 
     SceneNode.BindBody(child, body);
     SceneNode.set_SyncMode(child, 0);
-    Physics3DBody.SetPosition(body, 6.0, 1.5, -2.0);
+    PhysicsBody3D.SetPosition(body, 6.0, 1.5, -2.0);
     SceneGraph.SyncBindings(scene, 0.016);
 
     var childPos = SceneNode.get_Position(child);

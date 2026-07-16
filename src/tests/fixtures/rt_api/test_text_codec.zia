@@ -6,16 +6,16 @@ bind Viper.Text.Codec;
 bind Viper.Text.Pattern;
 
 func start() {
-    Say(Base64Enc("hello world"));
-    Say(Base64Dec("aGVsbG8gd29ybGQ="));
-    Say(HexEnc("AB"));
-    Say(HexDec("4142"));
+    Say(Base64Encode("hello world"));
+    Say(Base64Decode("aGVsbG8gd29ybGQ="));
+    Say(HexEncode("AB"));
+    Say(HexDecode("4142"));
     Say(UrlEncode("hello world&foo=bar"));
     Say(UrlDecode("hello%20world%26foo%3Dbar"));
 
     SayBool(IsMatch("[0-9]+", "abc123def"));
     Say(Find("[0-9]+", "abc123def"));
-    SayInt(FindPos("[0-9]+", "abc123def"));
+    SayInt(FindPos("[0-9]+", "abc123def").UnwrapOrI64(0 - 1));
     Say(Replace("[0-9]+", "abc123def456", "NUM"));
     Say(ReplaceFirst("[0-9]+", "abc123def456", "NUM"));
     Say(Escape("a.b+c"));

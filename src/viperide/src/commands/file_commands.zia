@@ -849,7 +849,7 @@ func SaveDirtyDocumentsUnderPath(shell: app_shell.AppShell,
 func DocumentIsUnderPath(doc: document.Document, path: String) -> Boolean {
     if doc == null or path == "" or doc.filePath == "" { return false; }
     if doc.filePath == path { return true; }
-    return Str.StartsWith(doc.filePath, path + Path.Sep());
+    return Str.StartsWith(doc.filePath, path + Path.Separator());
 }
 
 func confirmOverwriteExternal(shell: app_shell.AppShell,

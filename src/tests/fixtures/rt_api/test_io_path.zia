@@ -6,23 +6,23 @@ bind Viper.Terminal;
 
 func start() {
     Say(Join("a", "b"));
-    Say(Ext("file.txt"));
+    Say(Extension("file.txt"));
     Say(Name("dir/file.txt"));
     Say(Stem("dir/file.txt"));
-    Say(Dir("dir/file.txt"));
-    SayBool(Ext("file.txt") != "");
-    SayBool(Ext("file") != "");
-    Say(WithExt("file.txt", ".md"));
-    SayBool(IsAbs("C:\\foo"));
-    SayBool(IsAbs("foo"));
-    Say(Norm("a/b/../c"));
+    Say(Directory("dir/file.txt"));
+    SayBool(Extension("file.txt") != "");
+    SayBool(Extension("file") != "");
+    Say(WithExtension("file.txt", ".md"));
+    SayBool(IsAbsolute("C:\\foo"));
+    SayBool(IsAbsolute("foo"));
+    Say(Normalize("a/b/../c"));
 
     // File write/read round-trip
     var tmp = "_rt_api_test_tmp.txt";
     WriteAllText(tmp, "hello from viper");
     SayBool(Exists(tmp));
     Say(ReadAllText(tmp));
-    SayInt(Size(tmp));
+    SayInt(SizeBytes(tmp));
     Append(tmp, "!");
     Say(ReadAllText(tmp));
     Delete(tmp);

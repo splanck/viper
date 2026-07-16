@@ -21,7 +21,7 @@ bind "../core/rng" as rng;
 bind "./targets" as targets;
 
 class Ballistics {
-    hide G3D.Physics3DWorld phys;
+    hide G3D.PhysicsWorld3D phys;
     hide events.EventBus bus;
     hide targets.TargetRegistry reg;
     hide rng.RngStream spreadRng;
@@ -58,7 +58,7 @@ class Ballistics {
     expose func ricochetYat(i: Integer) -> Float { return ricoY[i]; }
     expose func ricochetZat(i: Integer) -> Float { return ricoZ[i]; }
 
-    expose func setup(p: G3D.Physics3DWorld, b: events.EventBus,
+    expose func setup(p: G3D.PhysicsWorld3D, b: events.EventBus,
                       r: targets.TargetRegistry, sr: rng.RngStream) {
         phys = p; bus = b; reg = r; spreadRng = sr;
     }

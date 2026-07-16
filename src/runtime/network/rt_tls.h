@@ -13,8 +13,12 @@
 // Key invariants:
 //   - Implements TLS 1.3 handshake with X25519 key exchange and X25519 HelloRetryRequest retry.
 //   - Supports AES-128-GCM-SHA256 (0x1301) and ChaCha20-Poly1305-SHA256 (0x1303).
-//   - Certificate verification is performed against the system trust store using the
-//     server-supplied certificate chain and hostname/IP SAN verification.
+//   - Certificate verification uses the configured/system trust source, the
+//     server-supplied chain, and hostname/IP SAN verification.
+//   - `verify_cert=0` skips trust-chain and hostname policy only; TLS 1.3
+//     CertificateVerify proof-of-key-possession is always checked.
+//   - Session record buffers, keys, and sequence state are mutable and unprotected;
+//     callers must serialize operations on one session.
 //   - The public low-level API remains client-oriented; server-side TLS is consumed
 //     internally by `Viper.Network.HttpsServer` / `Viper.Network.WssServer`.
 //
@@ -46,7 +50,7 @@ typedef enum {
     RT_TLS_ERROR_HANDSHAKE = -3,   ///< TLS 1.3 handshake violated the protocol.
     RT_TLS_ERROR_CERTIFICATE = -4, ///< Peer certificate failed chain or name verification.
     RT_TLS_ERROR_CLOSED = -5,      ///< Peer issued a clean close_notify.
-    RT_TLS_ERROR_TIMEOUT = -6,     ///< Configured handshake / I/O deadline expired.
+    RT_TLS_ERROR_TIMEOUT = -6,     ///< A configured per-operation timeout expired.
     RT_TLS_ERROR_MEMORY = -7,      ///< Allocation failed inside the TLS state machine.
     RT_TLS_ERROR_INVALID_ARG = -8, ///< Caller supplied NULL or out-of-range arguments.
 } rt_tls_status_t;
@@ -60,8 +64,8 @@ typedef struct rt_tls_config {
     const char
         *alpn_protocol;  ///< Optional comma-separated ALPN preference list (e.g. "h2,http/1.1").
     const char *ca_file; ///< Optional PEM bundle override for trust anchors.
-    int verify_cert;     ///< 1 = verify certificate (default), 0 = skip verification.
-    int timeout_ms;      ///< Connection timeout in ms (0 = default 30 s).
+    int verify_cert;     ///< 1 = verify trust/name policy; 0 = skip those checks.
+    int timeout_ms;      ///< Per-address/per-I/O timeout in ms (nonpositive = default 30 s).
 } rt_tls_config_t;
 
 /// @brief Initialize default TLS configuration.
@@ -135,7 +139,7 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 ///          connection or handshake failures.
 /// @param host Hostname to connect to.
 /// @param port TCP port number.
-/// @param timeout_ms Timeout in milliseconds; 0 uses the runtime default.
+/// @param timeout_ms Per-address/per-I/O timeout; nonpositive uses the runtime default.
 /// @return Opaque Viper.Result object containing a TLS handle or error string.
 void *rt_viper_tls_connect_for_result(rt_string host, int64_t port, int64_t timeout_ms);
 
@@ -155,8 +159,8 @@ void *rt_viper_tls_connect_options(rt_string host,
 /// @param port TCP port number.
 /// @param ca_file Optional PEM bundle path, or empty for the system trust source.
 /// @param alpn Optional comma-separated ALPN preference list.
-/// @param verify_cert 1 to verify certificates, 0 to skip verification.
-/// @param timeout_ms Timeout in milliseconds; 0 uses the runtime default.
+/// @param verify_cert 1 to verify trust/name policy, 0 to skip those checks.
+/// @param timeout_ms Per-address/per-I/O timeout; nonpositive uses the runtime default.
 /// @return Opaque Viper.Result object containing a TLS handle or error string.
 void *rt_viper_tls_connect_options_result(rt_string host,
                                           int64_t port,

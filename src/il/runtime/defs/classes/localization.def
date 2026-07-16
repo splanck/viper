@@ -25,15 +25,14 @@ RT_FUNC(LocMsgBundleLoadJson,      rt_message_bundle_load_from_json,       "Vipe
 RT_FUNC(LocMsgBundleLoadAsset,     rt_message_bundle_load_from_asset,      "Viper.Localization.MessageBundle.LoadFromAsset",  "obj(obj,str)")
 RT_FUNC(LocMsgBundleFromMap,       rt_message_bundle_from_map,             "Viper.Localization.MessageBundle.FromMap",        "obj(obj,obj)")
 RT_FUNC(LocMsgBundleGet,           rt_message_bundle_get,                  "Viper.Localization.MessageBundle.Get",            "str(obj,str)")
-RT_FUNC(LocMsgBundleTryGet,        rt_message_bundle_try_get,              "Viper.Localization.MessageBundle.TryGet",         "str(obj,str)")
 RT_FUNC(LocMsgBundleGetOr,         rt_message_bundle_get_or,               "Viper.Localization.MessageBundle.GetOr",          "str(obj,str,str)")
-RT_FUNC(LocMsgBundleTryGetOption,  rt_message_bundle_try_get_option,       "Viper.Localization.MessageBundle.TryGetOption",   "obj<Viper.Option>(obj,str)")
+RT_FUNC(LocMsgBundleTryGetOption,  rt_message_bundle_try_get_option,       "Viper.Localization.MessageBundle.TryGet",   "obj<Viper.Option>(obj,str)")
 RT_FUNC(LocMsgBundleHas,           rt_message_bundle_has,                  "Viper.Localization.MessageBundle.Has",            "i1(obj,str)")
 RT_FUNC(LocMsgBundleFormat,        rt_message_bundle_format,               "Viper.Localization.MessageBundle.Format",         "str(obj,str,obj)")
 RT_FUNC(LocMsgBundleFormatWith,    rt_message_bundle_format_with,          "Viper.Localization.MessageBundle.FormatWith",     "str(obj,str,obj)")
 RT_FUNC(LocMsgBundlePlural,        rt_message_bundle_plural,               "Viper.Localization.MessageBundle.Plural",         "str(obj,str,i64,obj)")
 RT_FUNC(LocMsgBundleSetFallback,   rt_message_bundle_set_fallback,         "Viper.Localization.MessageBundle.Fallback",       "obj(obj,obj)")
-RT_FUNC(LocMsgBundleKeys,          rt_message_bundle_keys,                 "Viper.Localization.MessageBundle.Keys",           "obj(obj)")
+RT_FUNC(LocMsgBundleKeys,          rt_message_bundle_keys,                 "Viper.Localization.MessageBundle.Keys",           "obj<Viper.Collections.List>(obj)")
 RT_FUNC(LocMsgBundleGetLocale,     rt_message_bundle_get_locale,           "Viper.Localization.MessageBundle.get_Locale",     "obj(obj)")
 RT_FUNC(LocMsgBundleGetCount,      rt_message_bundle_get_count,            "Viper.Localization.MessageBundle.get_Count",      "i64(obj)")
 
@@ -47,8 +46,8 @@ RT_FUNC(LocListFmtGetLocale,       rt_list_format_get_locale,               "Vip
 
 RT_FUNC(LocTextDirOfLocale,        rt_text_direction_of_locale,             "Viper.Localization.TextDirection.OfLocale",       "str(obj)")
 RT_FUNC(LocTextDirDetect,          rt_text_direction_detect,                "Viper.Localization.TextDirection.Detect",         "str(str)")
-RT_FUNC(LocTextDirIsRTL,           rt_text_direction_is_rtl,                "Viper.Localization.TextDirection.IsRTL",          "i1(str)")
-RT_FUNC(LocTextDirIsLTR,           rt_text_direction_is_ltr,                "Viper.Localization.TextDirection.IsLTR",          "i1(str)")
+RT_FUNC(LocTextDirIsRTL,           rt_text_direction_is_rtl,                "Viper.Localization.TextDirection.IsRtl",          "i1(str)")
+RT_FUNC(LocTextDirIsLTR,           rt_text_direction_is_ltr,                "Viper.Localization.TextDirection.IsLtr",          "i1(str)")
 RT_FUNC(LocTextDirFirstStrong,     rt_text_direction_first_strong,          "Viper.Localization.TextDirection.FirstStrong",    "str(str)")
 RT_FUNC(LocTextDirBidi,            rt_text_direction_bidi,                  "Viper.Localization.TextDirection.Bidi",           "str(str)")
 
@@ -84,7 +83,7 @@ RT_FUNC(LocPluralRulesForLocale, rt_plural_rules_for_locale,    "Viper.Localizat
 RT_FUNC(LocPluralRulesCardinal,  rt_plural_rules_cardinal,       "Viper.Localization.PluralRules.Cardinal",   "str(obj,f64)")
 RT_FUNC(LocPluralRulesCardinalInt,rt_plural_rules_cardinal_int,  "Viper.Localization.PluralRules.CardinalInt","str(obj,i64)")
 RT_FUNC(LocPluralRulesOrdinal,   rt_plural_rules_ordinal,        "Viper.Localization.PluralRules.Ordinal",    "str(obj,i64)")
-RT_FUNC(LocPluralRulesCategories,rt_plural_rules_categories,     "Viper.Localization.PluralRules.Categories", "obj(obj)")
+RT_FUNC(LocPluralRulesCategories,rt_plural_rules_categories,     "Viper.Localization.PluralRules.Categories", "obj<Viper.Collections.List>(obj)")
 
 RT_FUNC(LocNumFmtNew,            rt_numformat_new,               "Viper.Localization.NumberFormat.New",            "obj()")
 RT_FUNC(LocNumFmtForLocale,      rt_numformat_for_locale,        "Viper.Localization.NumberFormat.ForLocale",      "obj(obj)")
@@ -116,12 +115,11 @@ RT_FUNC(LocNumFmtSetRounding,    rt_numformat_set_rounding,      "Viper.Localiza
 
 RT_FUNC(LocaleNew,         rt_locale_new,              "Viper.Localization.Locale.New",           "obj()")
 RT_FUNC(LocaleParse,       rt_locale_parse,            "Viper.Localization.Locale.Parse",         "obj(str)")
-RT_FUNC(LocaleTryParse,    rt_locale_try_parse,        "Viper.Localization.Locale.TryParse",      "obj(str)")
-RT_FUNC(LocaleTryParseOption, rt_locale_try_parse_option, "Viper.Localization.Locale.TryParseOption", "obj<Viper.Option>(str)")
+RT_FUNC(LocaleTryParseOption, rt_locale_try_parse_option, "Viper.Localization.Locale.TryParse", "obj<Viper.Option>(str)")
 RT_FUNC(LocaleFromParts,   rt_locale_from_parts,       "Viper.Localization.Locale.FromParts",     "obj(str,str,str)")
 RT_FUNC(LocaleInvariant,   rt_locale_invariant,        "Viper.Localization.Locale.Invariant",     "obj()")
 RT_FUNC(LocaleEquals,      rt_locale_equals,           "Viper.Localization.Locale.Equals",        "i1(obj,obj)")
-RT_FUNC(LocaleFallbacks,   rt_locale_fallbacks,        "Viper.Localization.Locale.Fallbacks",     "obj(obj)")
+RT_FUNC(LocaleFallbacks,   rt_locale_fallbacks,        "Viper.Localization.Locale.Fallbacks",     "obj<Viper.Collections.List>(obj)")
 RT_FUNC(LocaleToString,    rt_locale_to_string,        "Viper.Localization.Locale.ToString",      "str(obj)")
 RT_FUNC(LocaleLanguage,    rt_locale_language,         "Viper.Localization.Locale.get_Language",  "str(obj)")
 RT_FUNC(LocaleScript,      rt_locale_script,           "Viper.Localization.Locale.get_Script",    "str(obj)")
@@ -140,7 +138,7 @@ RT_FUNC(LocInfoCurrency,       rt_locale_info_currency,            "Viper.Locali
 RT_FUNC(LocMgrCurrent,          rt_locale_manager_current,              "Viper.Localization.LocaleManager.Current",          "obj()")
 RT_FUNC(LocMgrSetCurrent,       rt_locale_manager_set_current,          "Viper.Localization.LocaleManager.SetCurrent",       "void(obj)")
 RT_FUNC(LocMgrSystem,           rt_locale_manager_system,               "Viper.Localization.LocaleManager.System",           "obj()")
-RT_FUNC(LocMgrAvailable,        rt_locale_manager_available,            "Viper.Localization.LocaleManager.Available",        "obj()")
+RT_FUNC(LocMgrAvailable,        rt_locale_manager_available,            "Viper.Localization.LocaleManager.Available",        "obj<Viper.Collections.List>()")
 RT_FUNC(LocMgrIsLoaded,         rt_locale_manager_is_loaded,            "Viper.Localization.LocaleManager.IsLoaded",         "i1(obj)")
 RT_FUNC(LocMgrLoadFromJson,     rt_locale_manager_load_from_json,       "Viper.Localization.LocaleManager.LoadFromJson",     "void(str)")
 RT_FUNC(LocMgrTryLoadFromJson,  rt_locale_manager_try_load_from_json,   "Viper.Localization.LocaleManager.TryLoadFromJson",  "i1(str)")
@@ -153,21 +151,20 @@ RT_FUNC(LocMgrAddSearchPath,    rt_locale_manager_add_search_path,      "Viper.L
 RT_FUNC(LocMgrUnload,           rt_locale_manager_unload,               "Viper.Localization.LocaleManager.Unload",           "i1(obj)")
 RT_FUNC(LocMgrReset,            rt_locale_manager_reset,                "Viper.Localization.LocaleManager.Reset",            "void()")
 
-// Viper.Localization.Locale - immutable BCP-47 language tag handle
-/// @summary Provides immutable BCP-47 language tag handle.
+// Viper.Localization.Locale - immutable canonical locale-tag handle
+/// @summary Provides an immutable canonical locale-tag handle.
 /// @details
 /// Create `Viper.Localization.Locale` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Language`, `Script`, `Region` and operations including `Parse`, `TryParse`, `TryParseOption`,
-/// `FromParts`.
+/// `Language`, `Script`, `Region` and operations including `Parse`, `TryParse`, `FromParts`,
+/// `Invariant`.
 RT_CLASS_BEGIN("Viper.Localization.Locale", Locale, "obj", LocaleNew)
     RT_METHOD("Parse",     "obj(str)",         LocaleParse)
-    RT_METHOD("TryParse",  "obj(str)",         LocaleTryParse)
-    RT_METHOD("TryParseOption", "obj<Viper.Option>(str)", LocaleTryParseOption)
+    RT_METHOD("TryParse", "obj<Viper.Option>(str)", LocaleTryParseOption)
     RT_METHOD("FromParts", "obj(str,str,str)", LocaleFromParts)
     RT_METHOD("Invariant", "obj()",            LocaleInvariant)
     RT_METHOD("Equals",    "i1(obj)",          LocaleEquals)
-    RT_METHOD("Fallbacks", "obj()",            LocaleFallbacks)
+    RT_METHOD("Fallbacks", "obj<Viper.Collections.List>()",            LocaleFallbacks)
     RT_METHOD("ToString",  "str()",            LocaleToString)
     RT_PROP("Language", "str", LocaleLanguage, none)
     RT_PROP("Script",   "str", LocaleScript,   none)
@@ -203,15 +200,14 @@ RT_CLASS_BEGIN("Viper.Localization.MessageBundle", LocMessageBundle, "obj", LocM
     RT_METHOD("LoadFromAsset", "obj(obj,str)",       LocMsgBundleLoadAsset)
     RT_METHOD("FromMap",       "obj(obj,obj)",       LocMsgBundleFromMap)
     RT_METHOD("Get",           "str(str)",           LocMsgBundleGet)
-    RT_METHOD("TryGet",        "str(str)",           LocMsgBundleTryGet)
     RT_METHOD("GetOr",         "str(str,str)",       LocMsgBundleGetOr)
-    RT_METHOD("TryGetOption",  "obj<Viper.Option>(str)", LocMsgBundleTryGetOption)
+    RT_METHOD("TryGet",  "obj<Viper.Option>(str)", LocMsgBundleTryGetOption)
     RT_METHOD("Has",           "i1(str)",            LocMsgBundleHas)
     RT_METHOD("Format",        "str(str,obj)",       LocMsgBundleFormat)
     RT_METHOD("FormatWith",    "str(str,obj)",       LocMsgBundleFormatWith)
     RT_METHOD("Plural",        "str(str,i64,obj)",   LocMsgBundlePlural)
     RT_METHOD("Fallback",      "obj(obj)",           LocMsgBundleSetFallback)
-    RT_METHOD("Keys",          "obj()",              LocMsgBundleKeys)
+    RT_METHOD("Keys",          "obj<Viper.Collections.List>()",              LocMsgBundleKeys)
     RT_PROP("Locale", "obj", LocMsgBundleGetLocale, none)
     RT_PROP("Count",  "i64", LocMsgBundleGetCount,  none)
 RT_CLASS_END()
@@ -220,7 +216,7 @@ RT_CLASS_END()
 /// @summary Provides locale-aware list joining.
 /// @details
 /// Create `Viper.Localization.ListFormat` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Locale` and operations including `ForLocale`, `And`, `Or`, `Unit`.
 RT_CLASS_BEGIN("Viper.Localization.ListFormat", LocListFormat, "obj", LocListFmtNew)
     RT_METHOD("ForLocale", "obj(obj)", LocListFmtForLocale)
@@ -235,12 +231,12 @@ RT_CLASS_END()
 /// @summary Provides bidi detection utilities.
 /// @details
 /// `Viper.Localization.TextDirection` is a static runtime surface and does not require an instance.
-/// Its public surface exposes operations including `OfLocale`, `Detect`, `IsRTL`, `IsLTR`.
+/// Its public surface exposes operations including `OfLocale`, `Detect`, `IsRtl`, `IsLtr`.
 RT_CLASS_BEGIN("Viper.Localization.TextDirection", LocTextDirection, "none", none)
     RT_METHOD("OfLocale",    "str(obj)", LocTextDirOfLocale)
     RT_METHOD("Detect",      "str(str)", LocTextDirDetect)
-    RT_METHOD("IsRTL",       "i1(str)",  LocTextDirIsRTL)
-    RT_METHOD("IsLTR",       "i1(str)",  LocTextDirIsLTR)
+    RT_METHOD("IsRtl",       "i1(str)",  LocTextDirIsRTL)
+    RT_METHOD("IsLtr",       "i1(str)",  LocTextDirIsLTR)
     RT_METHOD("FirstStrong", "str(str)", LocTextDirFirstStrong)
     RT_METHOD("Bidi",        "str(str)", LocTextDirBidi)
 RT_CLASS_END()
@@ -249,7 +245,7 @@ RT_CLASS_END()
 /// @summary Provides locale-aware date/time formatting.
 /// @details
 /// Create `Viper.Localization.DateFormat` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Locale` and operations including `ForLocale`, `Short`, `Medium`, `Long`.
 RT_CLASS_BEGIN("Viper.Localization.DateFormat", LocDateFormat, "obj", LocDateFmtNew)
     RT_METHOD("ForLocale",        "obj(obj)",         LocDateFmtForLocale)
@@ -273,8 +269,9 @@ RT_CLASS_END()
 /// @summary Provides locale-aware relative-time strings.
 /// @details
 /// Create `Viper.Localization.RelativeTimeFormat` values through its registered constructor and use
-/// the returned object with the instance members below. Its public surface exposes properties such
-/// as `Locale`, `Style` and operations including `ForLocale`, `Format`, `FormatFrom`, `Short`.
+/// the returned object with the instance members below. Its public surface exposes properties
+/// such as `Locale`, `Style` and operations including `ForLocale`, `Format`, `FormatFrom`,
+/// `Short`.
 RT_CLASS_BEGIN("Viper.Localization.RelativeTimeFormat", LocRelTimeFormat, "obj", LocRelTimeFmtNew)
     RT_METHOD("ForLocale",  "obj(obj)",       LocRelTimeFmtForLocale)
     RT_METHOD("Format",     "str(i64)",       LocRelTimeFmtFormat)
@@ -287,7 +284,7 @@ RT_CLASS_BEGIN("Viper.Localization.RelativeTimeFormat", LocRelTimeFormat, "obj",
 RT_CLASS_END()
 
 // Viper.Localization.PluralRules - CLDR plural category selection
-/// @summary Provides cLDR plural category selection.
+/// @summary Provides CLDR-style plural category selection.
 /// @details
 /// `Viper.Localization.PluralRules` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes operations including
@@ -297,7 +294,7 @@ RT_CLASS_BEGIN("Viper.Localization.PluralRules", LocPluralRules, "obj", none)
     RT_METHOD("Cardinal",    "str(f64)",   LocPluralRulesCardinal)
     RT_METHOD("CardinalInt", "str(i64)",   LocPluralRulesCardinalInt)
     RT_METHOD("Ordinal",     "str(i64)",   LocPluralRulesOrdinal)
-    RT_METHOD("Categories",  "obj()",      LocPluralRulesCategories)
+    RT_METHOD("Categories",  "obj<Viper.Collections.List>()",      LocPluralRulesCategories)
 RT_CLASS_END()
 
 // Viper.Localization.NumberFormat - locale-aware number formatting + parsing
@@ -335,12 +332,13 @@ RT_CLASS_END()
 /// @summary Provides process-global locale registry.
 /// @details
 /// `Viper.Localization.LocaleManager` is a static runtime surface and does not require an instance.
-/// Its public surface exposes operations including `Current`, `SetCurrent`, `System`, `Available`.
+/// Its public surface exposes operations including `Current`, `SetCurrent`, `System`,
+/// `Available`.
 RT_CLASS_BEGIN("Viper.Localization.LocaleManager", LocaleManager, "none", none)
     RT_METHOD("Current",           "obj()",      LocMgrCurrent)
     RT_METHOD("SetCurrent",        "void(obj)",  LocMgrSetCurrent)
     RT_METHOD("System",            "obj()",      LocMgrSystem)
-    RT_METHOD("Available",         "obj()",      LocMgrAvailable)
+    RT_METHOD("Available",         "obj<Viper.Collections.List>()",      LocMgrAvailable)
     RT_METHOD("IsLoaded",          "i1(obj)",    LocMgrIsLoaded)
     RT_METHOD("LoadFromJson",      "void(str)",  LocMgrLoadFromJson)
     RT_METHOD("TryLoadFromJson",   "i1(str)",    LocMgrTryLoadFromJson)
@@ -355,12 +353,10 @@ RT_CLASS_BEGIN("Viper.Localization.LocaleManager", LocaleManager, "none", none)
 RT_CLASS_END()
 
 // Viper.Diagnostics.Stopwatch - high-precision timing
-/// @summary Provides Stopwatch functionality for time and scheduling workflows.
-/// @details
-/// Create `Viper.Time.Stopwatch` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as
-/// `ElapsedMs`, `ElapsedNs`, `ElapsedUs` and operations including `Reset`, `Restart`, `Start`,
-/// `Stop`.
+/// @summary Accumulates elapsed time across start/stop intervals.
+/// @details `New` starts stopped and `StartNew` starts immediately. Elapsed properties truncate
+/// the internal nanosecond count to the requested unit. Instances are not thread-safe; POSIX can
+/// fall back to the adjustable realtime clock when its monotonic query fails.
 RT_CLASS_BEGIN("Viper.Time.Stopwatch", Stopwatch, "obj", StopwatchNew)
     RT_PROP("ElapsedMs", "i64", StopwatchElapsedMs, none)
     RT_PROP("ElapsedNs", "i64", StopwatchElapsedNs, none)
@@ -376,7 +372,7 @@ RT_CLASS_END()
 /// @summary Provides pub/sub message bus.
 /// @details
 /// Create `Viper.Core.MessageBus` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as
+/// object with the instance members below. Its public surface exposes properties such as
 /// `TotalSubscriptions` and operations including `Callback`, `Clear`, `ClearTopic`, `Publish`.
 RT_CLASS_BEGIN("Viper.Core.MessageBus", MessageBus, "obj", MsgBusNew)
     RT_PROP("TotalSubscriptions", "i64", MsgBusTotalSubs, none)
@@ -386,7 +382,7 @@ RT_CLASS_BEGIN("Viper.Core.MessageBus", MessageBus, "obj", MsgBusNew)
     RT_METHOD("Publish", "i64(str,obj)", MsgBusPublish)
     RT_METHOD("Subscribe", "i64(str,obj)", MsgBusSubscribe)
     RT_METHOD("SubscriberCount", "i64(str)", MsgBusSubscriberCount)
-    RT_METHOD("Topics", "obj()", MsgBusTopics)
+    RT_METHOD("Topics", "seq<str>()", MsgBusTopics)
     RT_METHOD("Unsubscribe", "i1(i64)", MsgBusUnsubscribe)
 RT_CLASS_END()
 
@@ -394,30 +390,24 @@ RT_CLASS_END()
 /// @summary Provides Environment functionality for host-system integration.
 /// @details
 /// `Viper.System.Environment` exposes a registry-backed runtime surface without requiring callers
-/// to construct the class directly. Its public surface exposes operations including `EndProgram`,
+/// to construct the class directly. Its public surface exposes operations including `Exit`,
 /// `GetArgument`, `GetArgumentCount`, `GetCommandLine`.
 RT_CLASS_BEGIN("Viper.System.Environment", Environment, "obj", none)
-    RT_METHOD("EndProgram", "void(i64)", EnvExit)
+    RT_METHOD("Exit", "void(i64)", EnvExit)
     RT_METHOD("GetArgument", "str(i64)", EnvArgGet)
     RT_METHOD("GetArgumentCount", "i64()", EnvArgCount)
     RT_METHOD("GetCommandLine", "str()", EnvCmdLine)
     RT_METHOD("GetVariable", "str(str)", EnvGetVar)
     RT_METHOD("HasVariable", "i1(str)", EnvHasVar)
-    RT_METHOD("Platform", "str()", MachineOS)
-    RT_METHOD("PlatformVersion", "str()", MachineOSVer)
-    RT_METHOD("UserName", "str()", MachineUser)
-    RT_METHOD("HomeDir", "str()", MachineHome)
-    RT_METHOD("CpuCount", "i64()", MachineCores)
-    RT_METHOD("Cwd", "str()", DirCurrent)
     RT_METHOD("IsNative", "i1()", EnvIsNative)
     RT_METHOD("SetVariable", "void(str,str)", EnvSetVar)
 RT_CLASS_END()
 
 // Viper.System.Clipboard - UTF-8 system clipboard
-/// @summary Provides uTF-8 system clipboard.
+/// @summary Provides UTF-8 system clipboard.
 /// @details
-/// `Viper.System.Clipboard` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `Get`, `Set`, `HasText`.
+/// `Viper.System.Clipboard` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `Get`, `Set`, `HasText`.
 RT_CLASS_BEGIN("Viper.System.Clipboard", SystemClipboard, "none", none)
     RT_METHOD("Get",     "str()",     SystemClipboardGet)
     RT_METHOD("Set",     "void(str)", SystemClipboardSet)
@@ -437,9 +427,7 @@ RT_CLASS_BEGIN("Viper.System.Exec", Exec, "obj", none)
     RT_METHOD("RunArgs", "i64(str,obj)", ExecRunArgs)
     RT_METHOD("Shell", "i64(str)", ExecShell)
     RT_METHOD("ShellCapture", "str(str)", ExecShellCapture)
-    RT_METHOD("ShellFull", "str(str)", ExecShellFull)
     RT_METHOD("ShellResult", "obj<Viper.System.CommandResult>(str)", ExecShellResult)
-    RT_METHOD("LastExitCode", "i64()", ExecLastExitCode)
 RT_CLASS_END()
 
 // Viper.System.CommandResult - immutable shell command result snapshot
@@ -447,11 +435,11 @@ RT_CLASS_END()
 /// @details
 /// `Viper.System.CommandResult` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes properties such as `Output`,
-/// `ExitCode`, `Succeeded`.
+/// `ExitCode`, `IsSuccess`.
 RT_CLASS_BEGIN("Viper.System.CommandResult", CommandResult, "obj", none)
     RT_PROP("Output", "str", ExecCommandResultOutput, none)
     RT_PROP("ExitCode", "i64", ExecCommandResultExitCode, none)
-    RT_PROP("Succeeded", "i1", ExecCommandResultSucceeded, none)
+    RT_PROP("IsSuccess", "i1", ExecCommandResultSucceeded, none)
 RT_CLASS_END()
 
 // Viper.System.Process - streaming external process handles
@@ -491,12 +479,11 @@ RT_CLASS_END()
 /// @details
 /// `Viper.System.Pty` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Open`,
-/// `OpenResult`, `IsSupported`, `LastError`.
+/// `OpenResult`, `IsSupported`.
 RT_CLASS_BEGIN("Viper.System.Pty", Pty, "obj", none)
     RT_METHOD("Open", "obj<Viper.System.Pty.PtySession>(str,obj,str,obj,i64,i64)", PtyOpen)
     RT_METHOD("OpenResult", "obj<Viper.Result>(str,obj,str,obj,i64,i64)", PtyOpenResult)
     RT_METHOD("IsSupported", "i1()", PtyIsSupported)
-    RT_METHOD("LastError", "str()", PtyLastError)
 RT_CLASS_END()
 
 /// @summary Provides Pty Session functionality for host-system integration.
@@ -522,15 +509,15 @@ RT_CLASS_END()
 /// @summary Provides poll-based graceful shutdown requests.
 /// @details
 /// `Viper.System.Shutdown` is a static runtime surface and does not require an instance. Its public
-/// surface exposes properties such as `None`, `Interrupt`, `Terminate` and operations including
-/// `Request`, `Poll`, `Pending`, `Clear`.
+/// Its public surface exposes properties such as `None`, `Interrupt`, `Terminate` and operations
+/// including `Request`, `Poll`, `IsPending`, `Clear`.
 RT_CLASS_BEGIN("Viper.System.Shutdown", Shutdown, "none", none)
     RT_PROP("None", "i64", ShutdownNone, none)
     RT_PROP("Interrupt", "i64", ShutdownInterrupt, none)
     RT_PROP("Terminate", "i64", ShutdownTerminate, none)
     RT_METHOD("Request", "void(i64)", ShutdownRequest)
     RT_METHOD("Poll", "i64()", ShutdownPoll)
-    RT_METHOD("Pending", "i1()", ShutdownPending)
+    RT_METHOD("IsPending", "i1()", ShutdownPending)
     RT_METHOD("Clear", "void()", ShutdownClear)
 RT_CLASS_END()
 
@@ -539,11 +526,10 @@ RT_CLASS_END()
 /// @details
 /// `Viper.Text.Fmt` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Bin`, `Bool`,
-/// `BoolYN`, `YesNo`.
+/// `YesNo`, `Hex`.
 RT_CLASS_BEGIN("Viper.Text.Fmt", Fmt, "obj", none)
     RT_METHOD("Bin", "str(i64)", FmtBin)
     RT_METHOD("Bool", "str(i1)", FmtBool)
-    RT_METHOD("BoolYN", "str(i1)", FmtBoolYN)
     RT_METHOD("YesNo", "str(i1)", FmtYesNo)
     RT_METHOD("Hex", "str(i64)", FmtHex)
     RT_METHOD("HexPad", "str(i64,i64)", FmtHexPad)
@@ -552,12 +538,10 @@ RT_CLASS_BEGIN("Viper.Text.Fmt", Fmt, "obj", none)
     RT_METHOD("IntRadix", "str(i64,i64)", FmtIntRadix)
     RT_METHOD("Num", "str(f64)", FmtNum)
     RT_METHOD("NumFixed", "str(f64,i64)", FmtNumFixed)
-    RT_METHOD("NumPct", "str(f64,i64)", FmtNumPct)
-    RT_METHOD("NumSci", "str(f64,i64)", FmtNumSci)
     RT_METHOD("Percent", "str(f64,i64)", FmtPercent)
     RT_METHOD("Scientific", "str(f64,i64)", FmtScientific)
     RT_METHOD("Oct", "str(i64)", FmtOct)
-    RT_METHOD("Size", "str(i64)", FmtSize)
+    RT_METHOD("SizeBytes", "str(i64)", FmtSize)
     RT_METHOD("IntGrouped", "str(i64,str)", FmtIntGrouped)
     RT_METHOD("Currency", "str(f64,i64,str)", FmtCurrency)
     RT_METHOD("ToWords", "str(i64)", FmtToWords)
@@ -620,7 +604,6 @@ RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
     RT_METHOD("SetPosition",    "void(i64,i64)",  CanvasSetPosition)
     RT_METHOD("GetFps",         "i64()",          CanvasGetFps)
     RT_METHOD("SetFps",         "void(i64)",      CanvasSetFps)
-    RT_METHOD("SetDTMax",       "void(i64)",      CanvasSetDTMax)
     RT_METHOD("SetMaxDeltaTime","void(i64)",      CanvasSetMaxDeltaTime)
     RT_METHOD("BeginFrame",     "i64()",          CanvasBeginFrame)
     RT_METHOD("IsMaximized",    "i1()",           CanvasIsMaximized)
@@ -664,43 +647,28 @@ RT_CLASS_END()
 // Viper.Graphics.BitmapFont - custom bitmap font (BDF/PSF)
 /// @summary Provides custom bitmap font (BDF/PSF).
 /// @details
-/// `Viper.Graphics.BitmapFont` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `CharWidth`, `CharHeight`, `GlyphCount` and operations
-/// including `LoadBDF`, `LoadPSF`, `TextWidth`.
+/// `Viper.Graphics.BitmapFont` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `CharWidth`, `CharHeight`, `GlyphCount` and
+/// operations including `LoadBdf`, `LoadPsf`, `TextWidth`.
 RT_CLASS_BEGIN("Viper.Graphics.BitmapFont", BitmapFont, "none", none)
     RT_PROP("CharWidth", "i64", BitmapFontCharWidth, none)
     RT_PROP("CharHeight", "i64", BitmapFontCharHeight, none)
     RT_PROP("GlyphCount", "i64", BitmapFontGlyphCount, none)
     RT_PROP("IsMonospace", "i1", BitmapFontIsMonospace, none)
     RT_PROP("TextHeight", "i64", BitmapFontTextHeight, none)
-    RT_METHOD("LoadBDF", "obj<Viper.Graphics.BitmapFont>(str)", BitmapFontLoadBDF)
-    RT_METHOD("LoadPSF", "obj<Viper.Graphics.BitmapFont>(str)", BitmapFontLoadPSF)
+    RT_METHOD("LoadBdf", "obj<Viper.Graphics.BitmapFont>(str)", BitmapFontLoadBDF)
+    RT_METHOD("LoadPsf", "obj<Viper.Graphics.BitmapFont>(str)", BitmapFontLoadPSF)
     RT_METHOD("TextWidth", "i64(str)", BitmapFontTextWidth)
 RT_CLASS_END()
 
 // Viper.Graphics.SpriteFont - game-facing alias for BitmapFont
-/// @summary Provides game-facing alias for BitmapFont.
-/// @details
-/// `Viper.Graphics.SpriteFont` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `CharWidth`, `CharHeight`, `GlyphCount` and operations
-/// including `LoadBDF`, `LoadPSF`, `TextWidth`.
-RT_CLASS_BEGIN("Viper.Graphics.SpriteFont", SpriteFont, "none", none)
-    RT_PROP("CharWidth", "i64", BitmapFontCharWidth, none)
-    RT_PROP("CharHeight", "i64", BitmapFontCharHeight, none)
-    RT_PROP("GlyphCount", "i64", BitmapFontGlyphCount, none)
-    RT_PROP("IsMonospace", "i1", BitmapFontIsMonospace, none)
-    RT_PROP("TextHeight", "i64", BitmapFontTextHeight, none)
-    RT_METHOD("LoadBDF", "obj<Viper.Graphics.SpriteFont>(str)", SpriteFontLoadBDF)
-    RT_METHOD("LoadPSF", "obj<Viper.Graphics.SpriteFont>(str)", SpriteFontLoadPSF)
-    RT_METHOD("TextWidth", "i64(str)", BitmapFontTextWidth)
-RT_CLASS_END()
 
 // Viper.Graphics.Color - color utilities
 /// @summary Provides color utilities.
 /// @details
 /// `Viper.Graphics.Color` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Red`, `Green`,
-/// `Blue` and operations including `RGB`, `RGBA`, `FromHSL`, `GetR`.
+/// `Blue` and operations including `Rgb`, `Rgba`, `FromHsl`, `GetRed`.
 RT_CLASS_BEGIN("Viper.Graphics.Color", Color, "obj", none)
     RT_PROP("Red",     "i64", ColorRed,     none)
     RT_PROP("Green",   "i64", ColorGreen,   none)
@@ -712,13 +680,13 @@ RT_CLASS_BEGIN("Viper.Graphics.Color", Color, "obj", none)
     RT_PROP("Magenta", "i64", ColorMagenta, none)
     RT_PROP("Gray",    "i64", ColorGray,    none)
     RT_PROP("Orange",  "i64", ColorOrange,  none)
-    RT_METHOD("RGB", "i64(i64,i64,i64)", ColorRGB)
-    RT_METHOD("RGBA", "i64(i64,i64,i64,i64)", ColorRGBA)
-    RT_METHOD("FromHSL", "i64(i64,i64,i64)", ColorFromHSL)
-    RT_METHOD("GetR", "i64(i64)", ColorGetR)
-    RT_METHOD("GetG", "i64(i64)", ColorGetG)
-    RT_METHOD("GetB", "i64(i64)", ColorGetB)
-    RT_METHOD("GetA", "i64(i64)", ColorGetA)
+    RT_METHOD("Rgb", "i64(i64,i64,i64)", ColorRGB)
+    RT_METHOD("Rgba", "i64(i64,i64,i64,i64)", ColorRGBA)
+    RT_METHOD("FromHsl", "i64(i64,i64,i64)", ColorFromHSL)
+    RT_METHOD("GetRed", "i64(i64)", ColorGetR)
+    RT_METHOD("GetGreen", "i64(i64)", ColorGetG)
+    RT_METHOD("GetBlue", "i64(i64)", ColorGetB)
+    RT_METHOD("GetAlpha", "i64(i64)", ColorGetA)
     RT_METHOD("Lerp", "i64(i64,i64,i64)", ColorLerp)
     RT_METHOD("Brighten", "i64(i64,i64)", ColorBrighten)
     RT_METHOD("Darken", "i64(i64,i64)", ColorDarken)
@@ -729,9 +697,9 @@ RT_CLASS_BEGIN("Viper.Graphics.Color", Color, "obj", none)
     RT_METHOD("Complement", "i64(i64)", ColorComplement)
     RT_METHOD("Grayscale", "i64(i64)", ColorGrayscale)
     RT_METHOD("Invert", "i64(i64)", ColorInvert)
-    RT_METHOD("GetH", "i64(i64)", ColorGetH)
-    RT_METHOD("GetS", "i64(i64)", ColorGetS)
-    RT_METHOD("GetL", "i64(i64)", ColorGetL)
+    RT_METHOD("GetHue", "i64(i64)", ColorGetH)
+    RT_METHOD("GetSaturation", "i64(i64)", ColorGetS)
+    RT_METHOD("GetLightness", "i64(i64)", ColorGetL)
 RT_CLASS_END()
 
 // Viper.Graphics.Pixels - software image buffer
@@ -739,18 +707,18 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Graphics.Pixels` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Width`,
-/// `Height` and operations including `Get`, `GetRGBA`, `GetColor`, `Set`.
+/// `Height` and operations including `Get`, `GetRgba`, `GetColor`, `Set`.
 RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_PROP("Width", "i64", PixelsWidth, none)
     RT_PROP("Height", "i64", PixelsHeight, none)
     RT_METHOD("Get", "i64(i64,i64)", PixelsGet)
-    RT_METHOD("GetRGBA", "i64(i64,i64)", PixelsGetRGBA)
+    RT_METHOD("GetRgba", "i64(i64,i64)", PixelsGetRGBA)
     RT_METHOD("GetColor", "i64(i64,i64)", PixelsGetColor)
     RT_METHOD("Set", "void(i64,i64,i64)", PixelsSet)
-    RT_METHOD("SetRGBA", "void(i64,i64,i64)", PixelsSetRGBA)
+    RT_METHOD("SetRgba", "void(i64,i64,i64)", PixelsSetRGBA)
     RT_METHOD("SetColor", "void(i64,i64,i64)", PixelsSetColor)
     RT_METHOD("Fill", "void(i64)", PixelsFill)
-    RT_METHOD("FillRGBA", "void(i64)", PixelsFillRGBA)
+    RT_METHOD("FillRgba", "void(i64)", PixelsFillRGBA)
     RT_METHOD("FillColor", "void(i64)", PixelsFillColor)
     RT_METHOD("Clear", "void()", PixelsClear)
     RT_METHOD("Copy", "void(i64,i64,obj,i64,i64,i64,i64)", PixelsCopy)
@@ -761,8 +729,8 @@ RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_METHOD("SavePng", "i64(str)", PixelsSavePng)
     RT_METHOD("FlipH", "obj()", PixelsFlipH)
     RT_METHOD("FlipV", "obj()", PixelsFlipV)
-    RT_METHOD("RotateCW", "obj()", PixelsRotateCW)
-    RT_METHOD("RotateCCW", "obj()", PixelsRotateCCW)
+    RT_METHOD("RotateClockwise", "obj()", PixelsRotateCW)
+    RT_METHOD("RotateCounterClockwise", "obj()", PixelsRotateCCW)
     RT_METHOD("Rotate180", "obj()", PixelsRotate180)
     RT_METHOD("Rotate", "obj(f64)", PixelsRotate)
     RT_METHOD("Scale", "obj(i64,i64)", PixelsScale)
@@ -772,8 +740,8 @@ RT_CLASS_BEGIN("Viper.Graphics.Pixels", Pixels, "obj", PixelsNew)
     RT_METHOD("Blur", "obj(i64)", PixelsBlur)
     RT_METHOD("Resize", "obj(i64,i64)", PixelsResize)
     // Drawing primitives — accept Canvas RGB and tagged Color.RGBA values.
-    RT_METHOD("SetRGB",           "void(i64,i64,i64)",                PixelsSetRGB)
-    RT_METHOD("GetRGB",           "i64(i64,i64)",                     PixelsGetRGB)
+    RT_METHOD("SetRgb",           "void(i64,i64,i64)",                PixelsSetRGB)
+    RT_METHOD("GetRgb",           "i64(i64,i64)",                     PixelsGetRGB)
     RT_METHOD("DrawLine",         "void(i64,i64,i64,i64,i64)",        PixelsDrawLine)
     RT_METHOD("DrawBox",          "void(i64,i64,i64,i64,i64)",        PixelsDrawBox)
     RT_METHOD("DrawFrame",        "void(i64,i64,i64,i64,i64)",        PixelsDrawFrame)
@@ -807,8 +775,8 @@ RT_CLASS_END()
 /// @summary Provides animated sprite.
 /// @details
 /// Create `Viper.Graphics.Sprite` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-/// `Width` and operations including `FromFile`, `Draw`, `SetOrigin`, `AddFrame`.
+/// object with the instance members below. Its public surface exposes properties such as `X`,
+/// `Y`, `Width` and operations including `FromFile`, `Draw`, `SetOrigin`, `AddFrame`.
 RT_CLASS_BEGIN("Viper.Graphics.Sprite", Sprite, "obj", SpriteNew)
     RT_PROP("X", "i64", SpriteGetX, SpriteSetX)
     RT_PROP("Y", "i64", SpriteGetY, SpriteSetY)
@@ -922,8 +890,8 @@ RT_CLASS_END()
 /// @summary Provides 2D camera view.
 /// @details
 /// Create `Viper.Graphics.Camera` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-/// `Zoom` and operations including `SetCenter`, `Follow`, `ToScreenX`, `ToScreenY`.
+/// object with the instance members below. Its public surface exposes properties such as `X`,
+/// `Y`, `Zoom` and operations including `SetCenter`, `Follow`, `ToScreenX`, `ToScreenY`.
 RT_CLASS_BEGIN("Viper.Graphics.Camera", Camera, "obj", CameraNew)
     RT_PROP("X", "i64", CameraGetX, CameraSetX)
     RT_PROP("Y", "i64", CameraGetY, CameraSetY)
@@ -956,7 +924,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Graphics2D.SceneNode` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `X`, `Y`, `WorldX` and operations including `FromSprite`, `AddChild`, `RemoveChild`, `GetChild`.
+/// `X`, `Y`, `WorldX` and operations including `FromSprite`, `AddChild`, `RemoveChild`,
+/// `GetChild`.
 RT_CLASS_BEGIN("Viper.Graphics2D.SceneNode", SceneNode, "obj", SceneNodeNew)
     RT_PROP("X", "i64", SceneNodeGetX, SceneNodeSetX)
     RT_PROP("Y", "i64", SceneNodeGetY, SceneNodeSetY)
@@ -978,8 +947,7 @@ RT_CLASS_BEGIN("Viper.Graphics2D.SceneNode", SceneNode, "obj", SceneNodeNew)
     RT_METHOD("AddChild", "void(obj)", SceneNodeAddChild)
     RT_METHOD("RemoveChild", "void(obj)", SceneNodeRemoveChild)
     RT_METHOD("GetChild", "obj(i64)", SceneNodeGetChild)
-    RT_METHOD("Find", "obj(str)", SceneNodeFind)
-    RT_METHOD("FindOption", "obj<Viper.Option>(str)", SceneNodeFindOption)
+    RT_METHOD("Find", "obj<Viper.Option>(str)", SceneNodeFindOption)
     RT_METHOD("Detach", "void()", SceneNodeDetach)
     RT_METHOD("Draw", "void(obj)", SceneNodeDraw)
     RT_METHOD("DrawWithCamera", "void(obj,obj)", SceneNodeDrawWithCamera)
@@ -994,14 +962,13 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Graphics2D.SceneGraph` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Root`, `NodeCount` and operations including `Add`, `Remove`, `Find`, `FindOption`.
+/// `Root`, `NodeCount` and operations including `Add`, `Remove`, `Find`, `Draw`.
 RT_CLASS_BEGIN("Viper.Graphics2D.SceneGraph", SceneGraph, "obj", SceneNew)
     RT_PROP("Root", "obj", SceneGetRoot, none)
     RT_PROP("NodeCount", "i64", SceneNodeCount, none)
     RT_METHOD("Add", "void(obj)", SceneAdd)
     RT_METHOD("Remove", "void(obj)", SceneRemove)
-    RT_METHOD("Find", "obj(str)", SceneFind)
-    RT_METHOD("FindOption", "obj<Viper.Option>(str)", SceneFindOption)
+    RT_METHOD("Find", "obj<Viper.Option>(str)", SceneFindOption)
     RT_METHOD("Draw", "void(obj)", SceneDraw)
     RT_METHOD("DrawWithCamera", "void(obj,obj)", SceneDrawWithCamera)
     RT_METHOD("Update", "void()", SceneUpdate)
@@ -1022,7 +989,7 @@ RT_CLASS_BEGIN("Viper.Graphics.SpriteBatch", SpriteBatch, "obj", SpriteBatchNew)
     RT_METHOD("End", "void(obj)", SpriteBatchEnd)
     RT_METHOD("Draw", "void(obj,i64,i64)", SpriteBatchDraw)
     RT_METHOD("DrawScaled", "void(obj,i64,i64,i64)", SpriteBatchDrawScaled)
-    RT_METHOD("DrawEx", "void(obj,i64,i64,i64,i64,i64)", SpriteBatchDrawEx)
+    RT_METHOD("Draw", "void(obj,i64,i64,i64,i64,i64)", SpriteBatchDrawEx)
     RT_METHOD("DrawPixels", "void(obj,i64,i64)", SpriteBatchDrawPixels)
     RT_METHOD("DrawRegion", "void(obj,i64,i64,i64,i64,i64,i64)", SpriteBatchDrawRegion)
     RT_METHOD("SetSortByDepth", "void(i1)", SpriteBatchSetSortDepth)
@@ -1031,7 +998,7 @@ RT_CLASS_BEGIN("Viper.Graphics.SpriteBatch", SpriteBatch, "obj", SpriteBatchNew)
     RT_METHOD("ResetSettings", "void()", SpriteBatchResetSettings)
     RT_METHOD("DrawAtlas", "void(obj,str,i64,i64)", SpriteBatchDrawAtlas)
     RT_METHOD("DrawAtlasScaled", "void(obj,str,i64,i64,i64)", SpriteBatchDrawAtlasScaled)
-    RT_METHOD("DrawAtlasEx", "void(obj,str,i64,i64,i64,i64,i64)", SpriteBatchDrawAtlasEx)
+    RT_METHOD("DrawAtlas", "void(obj,str,i64,i64,i64,i64,i64)", SpriteBatchDrawAtlasEx)
 RT_CLASS_END()
 
 // Viper.Graphics.TextureAtlas - named-region sprite sheet atlas
@@ -1053,7 +1020,7 @@ RT_CLASS_BEGIN("Viper.Graphics.TextureAtlas", TextureAtlas2D, "obj", TexAtlasNew
 RT_CLASS_END()
 
 // Viper.Graphics.RenderTarget2D - CPU-backed offscreen surface
-/// @summary Provides cPU-backed offscreen surface.
+/// @summary Provides CPU-backed offscreen surface.
 /// @details
 /// Create `Viper.Graphics.RenderTarget2D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
@@ -1069,20 +1036,6 @@ RT_CLASS_BEGIN("Viper.Graphics.RenderTarget2D", RenderTarget2D, "obj", RenderTar
     RT_METHOD("DrawRegion", "void(i64,i64,obj,i64,i64,i64,i64)", RenderTarget2DDrawRegion)
 RT_CLASS_END()
 
-/// @summary Provides Surface 2D functionality for 2D graphics and media applications.
-/// @details
-/// Create `Viper.Graphics.Surface2D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Width`,
-/// `Height`, `Pixels` and operations including `Clear`, `Resize`, `DrawPixels`, `DrawRegion`.
-RT_CLASS_BEGIN("Viper.Graphics.Surface2D", Surface2D, "obj", Surface2DNew)
-    RT_PROP("Width", "i64", RenderTarget2DWidth, none)
-    RT_PROP("Height", "i64", RenderTarget2DHeight, none)
-    RT_PROP("Pixels", "obj", RenderTarget2DGetPixels, none)
-    RT_METHOD("Clear", "void(i64)", RenderTarget2DClear)
-    RT_METHOD("Resize", "void(i64,i64)", RenderTarget2DResize)
-    RT_METHOD("DrawPixels", "void(i64,i64,obj)", RenderTarget2DDrawPixels)
-    RT_METHOD("DrawRegion", "void(i64,i64,obj,i64,i64,i64,i64)", RenderTarget2DDrawRegion)
-RT_CLASS_END()
 
 // Viper.Graphics.Texture2D - retained pixel texture handle
 /// @summary Provides retained pixel texture handle.
@@ -1119,7 +1072,7 @@ RT_CLASS_END()
 /// @summary Provides retained draw command stream.
 /// @details
 /// Create `Viper.Graphics.Renderer2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `Begin`, `Clear`, `SetTint`, `SetAlpha`.
 RT_CLASS_BEGIN("Viper.Graphics.Renderer2D", Renderer2D, "obj", Renderer2DNew)
     RT_PROP("Count", "i64", Renderer2DCount, none)
@@ -1154,8 +1107,8 @@ RT_CLASS_END()
 /// @summary Provides Shader 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.Shader2D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Effect`,
-/// `Amount`, `Color` and operations including `Apply`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Effect`, `Amount`, `Color` and operations including `Apply`.
 RT_CLASS_BEGIN("Viper.Graphics.Shader2D", Shader2D, "obj", Shader2DNew)
     RT_PROP("Effect", "i64", Shader2DGetEffect, Shader2DSetEffect)
     RT_PROP("Amount", "i64", Shader2DGetAmount, Shader2DSetAmount)
@@ -1166,8 +1119,8 @@ RT_CLASS_END()
 /// @summary Provides Post Process 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.PostProcess2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetEffect`, `SetAmount`, `SetColor`, `Apply`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetEffect`, `SetAmount`, `SetColor`, `Apply`.
 RT_CLASS_BEGIN("Viper.Graphics.PostProcess2D", PostProcess2D, "obj", PostProcess2DNew)
     RT_METHOD("SetEffect", "void(i64)", PostProcess2DSetEffect)
     RT_METHOD("SetAmount", "void(i64)", PostProcess2DSetAmount)
@@ -1194,30 +1147,12 @@ RT_CLASS_BEGIN("Viper.Graphics.Viewport2D", Viewport2D, "obj", Viewport2DNew)
     RT_METHOD("ScreenToWorldY", "i64(i64)", Viewport2DScreenToWorldY)
 RT_CLASS_END()
 
-/// @summary Provides Screen Scaler functionality for 2D graphics and media applications.
-/// @details
-/// Create `Viper.Graphics.ScreenScaler` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes properties such as
-/// `Scale`, `OffsetX`, `OffsetY` and operations including `SetVirtualSize`, `SetScreenSize`,
-/// `SetIntegerScaling`, `WorldToScreenX`.
-RT_CLASS_BEGIN("Viper.Graphics.ScreenScaler", ScreenScaler, "obj", ScreenScalerNew)
-    RT_PROP("Scale", "i64", Viewport2DGetScale, none)
-    RT_PROP("OffsetX", "i64", Viewport2DGetOffsetX, none)
-    RT_PROP("OffsetY", "i64", Viewport2DGetOffsetY, none)
-    RT_METHOD("SetVirtualSize", "void(i64,i64)", Viewport2DSetVirtualSize)
-    RT_METHOD("SetScreenSize", "void(i64,i64)", Viewport2DSetScreenSize)
-    RT_METHOD("SetIntegerScaling", "void(i1)", Viewport2DSetIntegerScaling)
-    RT_METHOD("WorldToScreenX", "i64(i64)", Viewport2DWorldToScreenX)
-    RT_METHOD("WorldToScreenY", "i64(i64)", Viewport2DWorldToScreenY)
-    RT_METHOD("ScreenToWorldX", "i64(i64)", Viewport2DScreenToWorldX)
-    RT_METHOD("ScreenToWorldY", "i64(i64)", Viewport2DScreenToWorldY)
-RT_CLASS_END()
 
 /// @summary Provides Tile Set 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.TileSet2D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Columns`,
-/// `Rows`, `TileCount` and operations including `GetTilePixels`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Columns`, `Rows`, `TileCount` and operations including `GetTilePixels`.
 RT_CLASS_BEGIN("Viper.Graphics.TileSet2D", TileSet2D, "obj", TileSet2DNew)
     RT_PROP("Columns", "i64", TileSet2DColumns, none)
     RT_PROP("Rows", "i64", TileSet2DRows, none)
@@ -1244,7 +1179,7 @@ RT_CLASS_END()
 /// @summary Provides Object Layer 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.ObjectLayer2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `AddRect`, `Clear`, `GetX`, `GetY`.
 RT_CLASS_BEGIN("Viper.Graphics.ObjectLayer2D", ObjectLayer2D, "obj", ObjectLayer2DNew)
     RT_PROP("Count", "i64", ObjectLayer2DCount, none)
@@ -1260,8 +1195,8 @@ RT_CLASS_END()
 /// @summary Provides Auto Tile 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.AutoTile2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetVariant`, `Resolve`, `Apply`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetVariant`, `Resolve`, `Apply`.
 RT_CLASS_BEGIN("Viper.Graphics.AutoTile2D", AutoTile2D, "obj", AutoTile2DNew)
     RT_METHOD("SetVariant", "void(i64,i64)", AutoTile2DSetVariant)
     RT_METHOD("Resolve", "i64(i64)", AutoTile2DResolve)
@@ -1271,7 +1206,7 @@ RT_CLASS_END()
 /// @summary Provides Path 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.Path2D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as `Count`
+/// object with the instance members below. Its public surface exposes properties such as `Count`
 /// and operations including `Clear`, `MoveTo`, `LineTo`, `GetX`.
 RT_CLASS_BEGIN("Viper.Graphics.Path2D", Path2D, "obj", Path2DNew)
     RT_PROP("Count", "i64", Path2DCount, none)
@@ -1286,8 +1221,8 @@ RT_CLASS_END()
 /// @summary Provides Shape Renderer 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.ShapeRenderer2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetStroke`, `SetFill`, `Line`, `Rect`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetStroke`, `SetFill`, `Line`, `Rect`.
 RT_CLASS_BEGIN("Viper.Graphics.ShapeRenderer2D", ShapeRenderer2D, "obj", ShapeRenderer2DNew)
     RT_METHOD("SetStroke", "void(i64)", ShapeRenderer2DSetStroke)
     RT_METHOD("SetFill", "void(i64)", ShapeRenderer2DSetFill)
@@ -1300,8 +1235,8 @@ RT_CLASS_END()
 /// @summary Provides Text Renderer 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.TextRenderer2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetFont`, `SetScale`, `SetColor`, `MeasureWidth`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetFont`, `SetScale`, `SetColor`, `MeasureWidth`.
 RT_CLASS_BEGIN("Viper.Graphics.TextRenderer2D", TextRenderer2D, "obj", TextRenderer2DNew)
     RT_METHOD("SetFont", "void(obj)", TextRenderer2DSetFont)
     RT_METHOD("SetScale", "void(i64)", TextRenderer2DSetScale)
@@ -1324,8 +1259,8 @@ RT_CLASS_END()
 /// @summary Provides Nine Slice 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.NineSlice2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `DrawToPixels`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `DrawToPixels`.
 RT_CLASS_BEGIN("Viper.Graphics.NineSlice2D", NineSlice2D, "obj", NineSlice2DNew)
     RT_METHOD("DrawToPixels", "void(obj,i64,i64,i64,i64)", NineSlice2DDrawToPixels)
 RT_CLASS_END()
@@ -1333,7 +1268,7 @@ RT_CLASS_END()
 /// @summary Provides Debug Draw 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.DebugDraw2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `Clear`, `Line`, `Rect`, `Circle`.
 RT_CLASS_BEGIN("Viper.Graphics.DebugDraw2D", DebugDraw2D, "obj", DebugDraw2DNew)
     RT_PROP("Count", "i64", DebugDraw2DCount, none)
@@ -1348,7 +1283,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Graphics.Transform2D` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `X`, `Y`, `ScaleX` and operations including `SetPosition`, `SetScale`, `SetOrigin`, `Translate`.
+/// `X`, `Y`, `ScaleX` and operations including `SetPosition`, `SetScale`, `SetOrigin`,
+/// `Translate`.
 RT_CLASS_BEGIN("Viper.Graphics.Transform2D", Transform2D, "obj", Transform2DNew)
     RT_PROP("X", "i64", Transform2DGetX, Transform2DSetX)
     RT_PROP("Y", "i64", Transform2DGetY, Transform2DSetY)
@@ -1366,8 +1302,8 @@ RT_CLASS_END()
 /// @summary Provides Sampler 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.Sampler2D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Filter`,
-/// `Wrap` and operations including `ApplyToTexture`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Filter`, `Wrap` and operations including `ApplyToTexture`.
 RT_CLASS_BEGIN("Viper.Graphics.Sampler2D", Sampler2D, "obj", Sampler2DNew)
     RT_PROP("Filter", "i64", Sampler2DGetFilter, Sampler2DSetFilter)
     RT_PROP("Wrap", "i64", Sampler2DGetWrap, Sampler2DSetWrap)
@@ -1389,8 +1325,8 @@ RT_CLASS_END()
 /// @summary Provides Sprite Renderer 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.SpriteRenderer2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetMaterial`, `SetSampler`, `SetBlendState`, `DrawPixels`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetMaterial`, `SetSampler`, `SetBlendState`, `DrawPixels`.
 RT_CLASS_BEGIN("Viper.Graphics.SpriteRenderer2D", SpriteRenderer2D, "obj", SpriteRenderer2DNew)
     RT_METHOD("SetMaterial", "void(obj)", SpriteRenderer2DSetMaterial)
     RT_METHOD("SetSampler", "void(obj)", SpriteRenderer2DSetSampler)
@@ -1415,8 +1351,8 @@ RT_CLASS_END()
 /// @summary Provides Tilemap Renderer 2D functionality for retained 2D graphics applications.
 /// @details
 /// Create `Viper.Graphics2D.TilemapRenderer2D` values through its registered constructor and use
-/// the returned object with the instance members below. Its public surface exposes a property such
-/// as `DrawCount` and operations including `SetChunkCache`, `Draw`, `DrawRegion`.
+/// the returned object with the instance members below. Its public surface exposes properties
+/// such as `DrawCount` and operations including `SetChunkCache`, `Draw`, `DrawRegion`.
 RT_CLASS_BEGIN("Viper.Graphics2D.TilemapRenderer2D", TilemapRenderer2D, "obj", TilemapRenderer2DNew)
     RT_PROP("DrawCount", "i64", TilemapRenderer2DDrawCount, none)
     RT_METHOD("SetChunkCache", "void(obj)", TilemapRenderer2DSetChunkCache)
@@ -1453,8 +1389,8 @@ RT_CLASS_END()
 /// @summary Provides Text Layout 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.TextLayout2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetFont`, `SetScale`, `SetWrapWidth`, `SetAlignment`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetFont`, `SetScale`, `SetWrapWidth`, `SetAlignment`.
 RT_CLASS_BEGIN("Viper.Graphics.TextLayout2D", TextLayout2D, "obj", TextLayout2DNew)
     RT_METHOD("SetFont", "void(obj)", TextLayout2DSetFont)
     RT_METHOD("SetScale", "void(i64)", TextLayout2DSetScale)
@@ -1468,10 +1404,10 @@ RT_CLASS_END()
 /// @summary Provides Render Pass 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.RenderPass2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
-/// `Enabled` and operations including `SetSource`, `SetTarget`, `SetShader`, `Execute`.
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `IsEnabled` and operations including `SetSource`, `SetTarget`, `SetShader`, `Execute`.
 RT_CLASS_BEGIN("Viper.Graphics.RenderPass2D", RenderPass2D, "obj", RenderPass2DNew)
-    RT_PROP("Enabled", "i1", RenderPass2DGetEnabled, RenderPass2DSetEnabled)
+    RT_PROP("IsEnabled", "i1", RenderPass2DGetEnabled, RenderPass2DSetEnabled)
     RT_METHOD("SetSource", "void(obj)", RenderPass2DSetSource)
     RT_METHOD("SetTarget", "void(obj)", RenderPass2DSetTarget)
     RT_METHOD("SetShader", "void(obj)", RenderPass2DSetShader)
@@ -1481,7 +1417,7 @@ RT_CLASS_END()
 /// @summary Provides Render Graph 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.RenderGraph2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `AddPass`, `Clear`, `Execute`.
 RT_CLASS_BEGIN("Viper.Graphics.RenderGraph2D", RenderGraph2D, "obj", RenderGraph2DNew)
     RT_PROP("Count", "i64", RenderGraph2DCount, none)
@@ -1507,8 +1443,8 @@ RT_CLASS_END()
 /// @summary Provides Hitbox 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.Hitbox2D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-/// `Width` and operations including `Set`, `Contains`, `Intersects`.
+/// object with the instance members below. Its public surface exposes properties such as `X`,
+/// `Y`, `Width` and operations including `Set`, `Contains`, `Intersects`.
 RT_CLASS_BEGIN("Viper.Graphics.Hitbox2D", Hitbox2D, "obj", Hitbox2DNew)
     RT_PROP("X", "i64", Hitbox2DGetX, none)
     RT_PROP("Y", "i64", Hitbox2DGetY, none)
@@ -1522,13 +1458,13 @@ RT_CLASS_END()
 /// @summary Provides Palette 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.Palette2D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as `Count`
-/// and operations including `SetColor`, `GetColor`, `GetRGBA`, `Apply`.
+/// object with the instance members below. Its public surface exposes properties such as `Count`
+/// and operations including `SetColor`, `GetColor`, `GetRgba`, `Apply`.
 RT_CLASS_BEGIN("Viper.Graphics.Palette2D", Palette2D, "obj", Palette2DNew)
     RT_PROP("Count", "i64", Palette2DCount, none)
     RT_METHOD("SetColor", "void(i64,i64)", Palette2DSetColor)
     RT_METHOD("GetColor", "i64(i64)", Palette2DGetColor)
-    RT_METHOD("GetRGBA", "i64(i64)", Palette2DGetRGBA)
+    RT_METHOD("GetRgba", "i64(i64)", Palette2DGetRGBA)
     RT_METHOD("Apply", "obj(obj)", Palette2DApply)
     RT_METHOD("ApplyLegacy", "obj(obj)", Palette2DApplyLegacy)
 RT_CLASS_END()
@@ -1536,15 +1472,15 @@ RT_CLASS_END()
 /// @summary Provides Gradient 2D functionality for 2D graphics and media applications.
 /// @details
 /// Create `Viper.Graphics.Gradient2D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetColors`, `SetSteps`, `Sample`, `SampleRGBA`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetColors`, `SetSteps`, `Sample`, `SampleRgba`.
 RT_CLASS_BEGIN("Viper.Graphics.Gradient2D", Gradient2D, "obj", Gradient2DNew)
     RT_METHOD("SetColors", "void(i64,i64)", Gradient2DSetColors)
     RT_METHOD("SetSteps", "void(i64)", Gradient2DSetSteps)
     RT_METHOD("Sample", "i64(f64)", Gradient2DSample)
-    RT_METHOD("SampleRGBA", "i64(f64)", Gradient2DSampleRGBA)
-    RT_METHOD("SamplePct", "i64(i64)", Gradient2DSamplePct)
-    RT_METHOD("SampleRGBAPct", "i64(i64)", Gradient2DSampleRGBAPct)
+    RT_METHOD("SampleRgba", "i64(f64)", Gradient2DSampleRGBA)
+    RT_METHOD("SamplePercent", "i64(i64)", Gradient2DSamplePct)
+    RT_METHOD("SampleRgbaPercent", "i64(i64)", Gradient2DSampleRGBAPct)
     RT_METHOD("FillHorizontal", "void(obj)", Gradient2DFillHorizontal)
     RT_METHOD("FillVertical", "void(obj)", Gradient2DFillVertical)
 RT_CLASS_END()

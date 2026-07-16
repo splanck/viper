@@ -13,18 +13,18 @@ func start() {
     Say("--- Abs/Sign ---");
     SayNum(Abs(-5.0));
     SayInt(AbsInt(-42));
-    SayNum(Sgn(-3.0));
-    SayNum(Sgn(0.0));
-    SayNum(Sgn(7.0));
-    SayInt(SgnInt(-3));
-    SayInt(SgnInt(0));
-    SayInt(SgnInt(3));
+    SayNum(Sign(-3.0));
+    SayNum(Sign(0.0));
+    SayNum(Sign(7.0));
+    SayInt(SignInt(-3));
+    SayInt(SignInt(0));
+    SayInt(SignInt(3));
 
     Say("--- Rounding ---");
     SayNum(Floor(3.7));
     SayNum(Ceil(3.2));
     SayNum(Round(3.5));
-    SayNum(Trunc(3.9));
+    SayNum(Truncate(3.9));
 
     Say("--- Min/Max/Clamp ---");
     SayNum(Min(3.0, 7.0));
@@ -61,8 +61,8 @@ func start() {
     SayNum(Hypot(3.0, 4.0));
     SayNum(FMod(7.0, 3.0));
     SayNum(Lerp(0.0, 10.0, 0.5));
-    SayNum(Deg(3.14159265358979));
-    SayNum(Rad(180.0));
+    SayNum(ToDegrees(3.14159265358979));
+    SayNum(ToRadians(180.0));
     SayNum(Wrap(5.0, 0.0, 3.0));
     SayInt(WrapInt(5, 0, 3));
 

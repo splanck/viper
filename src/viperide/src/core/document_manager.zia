@@ -115,7 +115,7 @@ class DocumentManager {
         doc.isModified = false;
         if IO.File.Exists(path) {
             doc.lastModifiedOnDisk = IO.File.Modified(path);
-            doc.lastSizeOnDisk = IO.File.Size(path);
+            doc.lastSizeOnDisk = IO.File.SizeBytes(path);
         }
         ClearExternalState(doc);
 
@@ -216,7 +216,7 @@ class DocumentManager {
     /// @return true when the runtime reports a successful replacement.
     hide func WriteExistingTextAtomically(path: String, content: String) -> Boolean {
         if path == "" or IO.File.Exists(path) == false { return false; }
-        var root = Path.Dir(path);
+        var root = Path.Directory(path);
         if root == "" { return false; }
         var existingText = IO.File.ReadAllText(path);
 
@@ -228,7 +228,7 @@ class DocumentManager {
         Map.SetInt(edit, "endColumn", EndColumnForText(existingText));
         Map.SetStr(edit, "newText", content);
         Map.SetInt(edit, "expectedMtime", IO.File.Modified(path));
-        Map.SetInt(edit, "expectedSize", IO.File.Size(path));
+        Map.SetInt(edit, "expectedSize", IO.File.SizeBytes(path));
 
         var edits = Seq.New();
         Seq.Push(edits, edit);
@@ -249,7 +249,7 @@ class DocumentManager {
         if IO.File.Exists(path) {
             return WriteExistingTextAtomically(path, content);
         }
-        var dir = Path.Dir(path);
+        var dir = Path.Directory(path);
         if dir == "" { return false; }
         var tempPath = SaveAsTempPath(dir, Path.Name(path));
         if tempPath == "" { return false; }
@@ -277,7 +277,7 @@ class DocumentManager {
     /// @return Temporary path, or an empty string when no free candidate exists.
     hide func SaveAsTempPath(dir: String, name: String) -> String {
         if dir == "" or name == "" { return ""; }
-        var base = Path.Join(dir, "." + name + ".viperide-tmp-" + Viper.Time.Clock.Ticks());
+        var base = Path.Join(dir, "." + name + ".viperide-tmp-" + Viper.Time.Clock.NowMs());
         var attempt = 0;
         while attempt < 128 {
             var candidate = base;
@@ -301,7 +301,7 @@ class DocumentManager {
             return;
         }
         doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
-        doc.lastSizeOnDisk = IO.File.Size(doc.filePath);
+        doc.lastSizeOnDisk = IO.File.SizeBytes(doc.filePath);
     }
 
     /// @brief Clear all remembered external-disk conflict state for @p doc.
@@ -372,7 +372,7 @@ class DocumentManager {
         }
         if doc.lastModifiedOnDisk > 0 {
             var current = IO.File.Modified(doc.filePath);
-            var currentSize = IO.File.Size(doc.filePath);
+            var currentSize = IO.File.SizeBytes(doc.filePath);
             if current != doc.lastModifiedOnDisk or currentSize != doc.lastSizeOnDisk {
                 return document.EXTERNAL_STATE_CHANGED;
             }
@@ -464,7 +464,7 @@ class DocumentManager {
     /// @return true when the editor should show preview text and block saves.
     hide func IsReadOnlyPreviewPath(path: String, kind: Integer) -> Boolean {
         if kind == file_utils.DOC_KIND_BINARY_UNSUPPORTED { return true; }
-        return IO.File.Size(path) > MAX_TEXT_OPEN_BYTES;
+        return IO.File.SizeBytes(path) > MAX_TEXT_OPEN_BYTES;
     }
 
     /// @brief Return editor-safe text for a file path without loading unsupported payloads.
@@ -482,7 +482,7 @@ class DocumentManager {
                 + "Path: " + path + "\n";
         }
 
-        var size = IO.File.Size(path);
+        var size = IO.File.SizeBytes(path);
         if size > MAX_TEXT_OPEN_BYTES {
             return "This file is too large to open in the text editor.\n\n"
                 + "Path: " + path + "\n"
@@ -505,7 +505,7 @@ class DocumentManager {
     expose func UpdatePathPrefix(oldPrefix: String, newPrefix: String) -> Integer {
         if oldPrefix == "" or newPrefix == "" { return 0; }
         var changed = 0;
-        var prefix = oldPrefix + Path.Sep();
+        var prefix = oldPrefix + Path.Separator();
         var i = 0;
         while i < documents.count() {
             var doc = documents.get(i);
@@ -525,7 +525,7 @@ class DocumentManager {
     expose func ForgetPathsUnder(path: String) -> Integer {
         if path == "" { return 0; }
         var removed = 0;
-        var prefix = path + Path.Sep();
+        var prefix = path + Path.Separator();
         var i = 0;
         while i < recentlyClosedPaths.count() {
             var recent = Obj.ToString(recentlyClosedPaths.get(i));
@@ -608,7 +608,7 @@ class DocumentManager {
     /// @return Absolute normalized path or an empty string.
     hide func NormalizeDocumentPath(path: String) -> String {
         if path == "" { return ""; }
-        return Path.Norm(Path.Abs(path));
+        return Path.Normalize(Path.Absolute(path));
     }
 
     /// @brief Number of open documents.
@@ -678,7 +678,7 @@ class DocumentManager {
 
     hide func UpdateRecentlyClosedPrefix(oldPrefix: String, newPrefix: String) -> Integer {
         var changed = 0;
-        var prefix = oldPrefix + Path.Sep();
+        var prefix = oldPrefix + Path.Separator();
         var i = 0;
         while i < recentlyClosedPaths.count() {
             var recent = Obj.ToString(recentlyClosedPaths.get(i));

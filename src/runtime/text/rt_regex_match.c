@@ -62,6 +62,8 @@ typedef struct {
 static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos);
 static bool match_concat_from(
     match_context *ctx, re_node **children, int count, int index, int pos, int *end_pos);
+static int collect_node_positions(
+    match_context *ctx, re_node *n, int pos, int *positions, int max_positions);
 
 /// @brief Enumerate the end positions reachable by repeating a quantifier.
 ///
@@ -134,6 +136,120 @@ static int *alloc_match_positions(int text_len, int pos, int *capacity_out) {
     if (capacity_out)
         *capacity_out = (int)capacity;
     return positions;
+}
+
+/// @brief Enumerate every end position reachable by matching `n` at `pos`.
+///
+/// Generalizes `collect_quant_positions` so concat-level backtracking can
+/// see through groups (VDOC-056): a quantifier inside `(...)` must be able
+/// to give bytes back to the syntax that follows the group. Alternations
+/// and nested concats are enumerated with a dedup bitmap and emitted in
+/// ascending order, matching the quantifier enumerator's convention
+/// (greedy callers walk the list backwards). Falls back to a single
+/// `match_node` attempt for simple nodes.
+static int collect_node_positions(
+    match_context *ctx, re_node *n, int pos, int *positions, int max_positions) {
+    if (!positions || max_positions <= 0)
+        return 0;
+
+    switch (n->type) {
+        case RE_QUANT:
+            return collect_quant_positions(ctx, n, pos, positions, max_positions);
+
+        case RE_GROUP:
+            if (n->data.children.count > 0)
+                return collect_node_positions(
+                    ctx, n->data.children.children[0], pos, positions, max_positions);
+            positions[0] = pos;
+            return 1;
+
+        case RE_ALT: {
+            unsigned char *seen = (unsigned char *)calloc((size_t)ctx->text_len + 1, 1);
+            if (!seen) {
+                rt_trap("Pattern: memory allocation failed");
+                return 0;
+            }
+            for (int i = 0; i < n->data.children.count; i++) {
+                int cap = 0;
+                int *tmp = alloc_match_positions(ctx->text_len, pos, &cap);
+                if (!tmp) {
+                    free(seen);
+                    return 0;
+                }
+                int cnt =
+                    collect_node_positions(ctx, n->data.children.children[i], pos, tmp, cap);
+                for (int j = 0; j < cnt; j++)
+                    if (tmp[j] >= pos && tmp[j] <= ctx->text_len)
+                        seen[tmp[j]] = 1;
+                free(tmp);
+            }
+            int num = 0;
+            for (int e = pos; e <= ctx->text_len && num < max_positions; e++)
+                if (seen[e])
+                    positions[num++] = e;
+            free(seen);
+            return num;
+        }
+
+        case RE_CONCAT: {
+            size_t set_len = (size_t)ctx->text_len + 1;
+            unsigned char *cur = (unsigned char *)calloc(set_len, 1);
+            unsigned char *nxt = (unsigned char *)calloc(set_len, 1);
+            if (!cur || !nxt) {
+                free(cur);
+                free(nxt);
+                rt_trap("Pattern: memory allocation failed");
+                return 0;
+            }
+            cur[pos] = 1;
+            bool any = true;
+            for (int i = 0; i < n->data.children.count && any; i++) {
+                memset(nxt, 0, set_len);
+                any = false;
+                for (int e = pos; e <= ctx->text_len; e++) {
+                    if (!cur[e])
+                        continue;
+                    int cap = 0;
+                    int *tmp = alloc_match_positions(ctx->text_len, e, &cap);
+                    if (!tmp) {
+                        free(cur);
+                        free(nxt);
+                        return 0;
+                    }
+                    int cnt =
+                        collect_node_positions(ctx, n->data.children.children[i], e, tmp, cap);
+                    for (int j = 0; j < cnt; j++) {
+                        if (tmp[j] >= pos && tmp[j] <= ctx->text_len) {
+                            nxt[tmp[j]] = 1;
+                            any = true;
+                        }
+                    }
+                    free(tmp);
+                }
+                unsigned char *swap = cur;
+                cur = nxt;
+                nxt = swap;
+            }
+            int num = 0;
+            if (any) {
+                for (int e = pos; e <= ctx->text_len && num < max_positions; e++)
+                    if (cur[e])
+                        positions[num++] = e;
+            }
+            free(cur);
+            free(nxt);
+            return num;
+        }
+
+        default: {
+            int end;
+            if (match_node(ctx, n, pos, &end)) {
+                positions[0] = end;
+                return 1;
+            }
+            return 0;
+        }
+    }
 }
 
 /// @brief Match a quantifier node when it has no following continuation.
@@ -274,14 +390,16 @@ static bool match_concat_from(
 
     re_node *child = children[index];
 
-    if (child->type == RE_QUANT) {
-        bool greedy = child->data.quant.greedy;
+    if (child->type == RE_QUANT || child->type == RE_GROUP) {
+        // Groups are enumerated like quantifiers so a quantifier inside
+        // parentheses can backtrack against the following syntax (VDOC-056).
+        bool greedy = child->type == RE_QUANT ? child->data.quant.greedy : true;
 
     int capacity = 0;
     int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
     if (!positions)
         return false;
-    int num = collect_quant_positions(ctx, child, pos, positions, capacity);
+    int num = collect_node_positions(ctx, child, pos, positions, capacity);
 
         bool found = false;
         if (greedy) {
@@ -355,12 +473,15 @@ bool re_find_match(re_compiled_pattern *cp,
 // Capture Group Support
 //-----------------------------------------------------------------------------
 
+/* Depth cap for the recursive capture matcher (bounds C stack usage). */
+#define RE_MAX_CAPTURE_DEPTH 4096
+
 /// @brief Match context augmented with capture-group tracking arrays.
 ///
-/// Pairs the standard text/length/start with caller-provided arrays
-/// for group start/end positions. `next_group` is bumped each time a
-/// `RE_GROUP` is entered so groups get the same index they would in
-/// PCRE-style pattern numbering.
+/// Pairs the standard text/length/start with caller-provided arrays for
+/// group start/end positions (indexed by the lexical `group_index`
+/// assigned at parse time). `accept_end` receives the overall match end
+/// when the accept continuation fires.
 typedef struct {
     const char *text;
     int text_len;
@@ -368,22 +489,99 @@ typedef struct {
     int *group_starts;
     int *group_ends;
     int max_groups;
-    int next_group;
     int steps;
     int max_steps;
+    int depth;
+    int accept_end;
 } match_context_groups;
 
-// Forward declarations for group-capturing versions
-static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos);
-
-/// @brief Match a quantifier node carrying capture-group state.
+/// @brief Continuation frame for the capture matcher.
 ///
-/// Same logic as `match_quant` but uses the group-aware match recursion
-/// so any captures inside the quantified subexpression are recorded.
-/// Note: this version doesn't backtrack against the continuation —
-/// capture groups inside `+`/`*` are best-effort (last successful match
-/// wins) rather than fully PCRE-compliant.
-static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
+/// The capture matcher is continuation-passing so every construct —
+/// including groups — backtracks against the syntax that follows it,
+/// giving it the same match language as the plain matcher (VDOC-056/057).
+/// One frame type serves all constructs; the meaning of the int fields
+/// depends on `fn` (seq: children/count/index; quant: count=iterations,
+/// index=previous position; group: aux=group start).
+typedef struct gcont gcont;
+struct gcont {
+    bool (*fn)(match_context_groups *ctx, int pos, const gcont *self);
+    const gcont *next;
+    re_node **children;
+    int count;
+    int index;
+    re_node *node;
+    int aux;
+};
+
+static bool match_node_g(match_context_groups *ctx, re_node *n, int pos, const gcont *k);
+static bool match_quant_g(
+    match_context_groups *ctx, re_node *n, int matched, int pos, const gcont *k);
+
+static bool gapply(match_context_groups *ctx, int pos, const gcont *k) {
+    return k->fn(ctx, pos, k);
+}
+
+/// @brief Terminal continuation: the whole pattern matched ending at `pos`.
+static bool gc_accept(match_context_groups *ctx, int pos, const gcont *self) {
+    (void)self;
+    ctx->accept_end = pos;
+    return true;
+}
+
+static bool match_seq_g(
+    match_context_groups *ctx, re_node **children, int count, int index, int pos, const gcont *k);
+
+static bool gc_seq(match_context_groups *ctx, int pos, const gcont *self) {
+    return match_seq_g(ctx, self->children, self->count, self->index, pos, self->next);
+}
+
+static bool match_seq_g(
+    match_context_groups *ctx, re_node **children, int count, int index, int pos, const gcont *k) {
+    if (index >= count)
+        return gapply(ctx, pos, k);
+    gcont kk = {gc_seq, k, children, count, index + 1, NULL, 0};
+    return match_node_g(ctx, children[index], pos, &kk);
+}
+
+/// @brief Continuation after one quantifier child match: iterate or stop.
+static bool gc_quant(match_context_groups *ctx, int pos, const gcont *self) {
+    if (pos == self->index) {
+        // Zero-width child match: no progress; stop iterating.
+        return gapply(ctx, pos, self->next);
+    }
+    return match_quant_g(ctx, self->node, self->count, pos, self->next);
+}
+
+/// @brief True for quantifier children that always consume exactly one byte.
+static bool quant_child_simple(const re_node *child) {
+    return child->type == RE_LITERAL || child->type == RE_CLASS || child->type == RE_DOT;
+}
+
+static bool simple_match_at(const match_context_groups *ctx, const re_node *child, int pos) {
+    if (pos >= ctx->text_len)
+        return false;
+    unsigned char ch = (unsigned char)ctx->text[pos];
+    switch (child->type) {
+        case RE_LITERAL:
+            return (char)ch == child->data.literal;
+        case RE_DOT:
+            return ch != '\n';
+        case RE_CLASS:
+            return class_test(&child->data.char_class, ch);
+        default:
+            return false;
+    }
+}
+
+/// @brief Quantifier matching with full backtracking against the continuation.
+///
+/// Single-byte children (literal/class/dot — no captures inside) use an
+/// iterative run-length fast path so `(\d+)`-style patterns never deepen
+/// the C stack per repetition. Complex children recurse through `gc_quant`
+/// frames, bounded by RE_MAX_CAPTURE_DEPTH.
+static bool match_quant_g(
+    match_context_groups *ctx, re_node *n, int matched, int pos, const gcont *k) {
     re_node *child = n->data.quant.child;
     re_quant_type qtype = n->data.quant.qtype;
     bool greedy = n->data.quant.greedy;
@@ -391,166 +589,134 @@ static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, i
     int min_count = (qtype == QUANT_PLUS) ? 1 : 0;
     int max_count = (qtype == QUANT_QUEST) ? 1 : INT32_MAX;
 
-    int capacity = 0;
-    int *match_ends = alloc_match_positions(ctx->text_len, pos, &capacity);
-    if (!match_ends)
-        return false;
-
-    int num_matches = 0;
-    int cur_pos = pos;
-
-    if (num_matches < capacity)
-        match_ends[num_matches++] = pos;
-
-    while (num_matches < capacity && num_matches - 1 < max_count) {
-        int child_end;
-        if (match_node_groups(ctx, child, cur_pos, &child_end)) {
-            if (child_end == cur_pos)
-                break;
-            cur_pos = child_end;
-            match_ends[num_matches++] = cur_pos;
+    if (quant_child_simple(child)) {
+        int extra = 0;
+        while (matched + extra < max_count && simple_match_at(ctx, child, pos + extra))
+            extra++;
+        if (greedy) {
+            for (int e = extra; e >= 0; e--) {
+                if (matched + e < min_count)
+                    break;
+                if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps)
+                    return false;
+                if (gapply(ctx, pos + e, k))
+                    return true;
+            }
         } else {
-            break;
-        }
-    }
-
-    bool found = false;
-    if (greedy) {
-        for (int i = num_matches - 1; i >= 0; i--) {
-            if (i >= min_count) {
-                *end_pos = match_ends[i];
-                found = true;
-                break;
+            for (int e = 0; e <= extra; e++) {
+                if (matched + e < min_count)
+                    continue;
+                if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps)
+                    return false;
+                if (gapply(ctx, pos + e, k))
+                    return true;
             }
         }
-    } else {
-        for (int i = 0; i < num_matches; i++) {
-            if (i >= min_count) {
-                *end_pos = match_ends[i];
-                found = true;
-                break;
-            }
-        }
+        return false;
     }
 
-    free(match_ends);
-    return found;
+    if (matched < max_count) {
+        gcont kk = {gc_quant, k, NULL, matched + 1, pos, n, 0};
+        if (greedy) {
+            if (match_node_g(ctx, child, pos, &kk))
+                return true;
+            return matched >= min_count ? gapply(ctx, pos, k) : false;
+        }
+        if (matched >= min_count && gapply(ctx, pos, k))
+            return true;
+        return match_node_g(ctx, child, pos, &kk);
+    }
+    return matched >= min_count ? gapply(ctx, pos, k) : false;
 }
 
-/// @brief Group-tracking variant of `match_node`.
-///
-/// Same dispatch table as the non-group matcher, but the `RE_GROUP`
-/// branch records `[start, end)` into `ctx->group_starts/ends` on
-/// success. If a group fails to match, the `next_group` counter is
-/// decremented so subsequent groups get the right index. Uses the same
-/// per-attempt ReDoS step cap as the non-capturing matcher.
-static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
-    if (!ctx || !end_pos || pos < 0 || pos > ctx->text_len)
-        return false;
-    if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps) {
-        *end_pos = pos;
+/// @brief Continuation closing a capture group: record the span, restore on
+///        backtrack so failed branches leave no stale captures.
+static bool gc_group_end(match_context_groups *ctx, int pos, const gcont *self) {
+    int idx = self->node->group_index;
+    if (idx >= 0 && idx < ctx->max_groups) {
+        int saved_start = ctx->group_starts[idx];
+        int saved_end = ctx->group_ends[idx];
+        ctx->group_starts[idx] = self->aux;
+        ctx->group_ends[idx] = pos;
+        if (gapply(ctx, pos, self->next))
+            return true;
+        ctx->group_starts[idx] = saved_start;
+        ctx->group_ends[idx] = saved_end;
         return false;
     }
-    if (!n) {
-        *end_pos = pos;
-        return true;
-    }
+    return gapply(ctx, pos, self->next);
+}
 
+static bool match_node_g_inner(match_context_groups *ctx, re_node *n, int pos, const gcont *k) {
     switch (n->type) {
         case RE_LITERAL:
-            if (pos < ctx->text_len && ctx->text[pos] == n->data.literal) {
-                *end_pos = pos + 1;
-                return true;
-            }
+            if (pos < ctx->text_len && ctx->text[pos] == n->data.literal)
+                return gapply(ctx, pos + 1, k);
             return false;
 
         case RE_DOT:
-            if (pos < ctx->text_len && ctx->text[pos] != '\n') {
-                *end_pos = pos + 1;
-                return true;
-            }
+            if (pos < ctx->text_len && ctx->text[pos] != '\n')
+                return gapply(ctx, pos + 1, k);
             return false;
 
         case RE_ANCHOR_START:
-            if (pos == 0) {
-                *end_pos = pos;
-                return true;
-            }
-            return false;
+            return pos == 0 && gapply(ctx, pos, k);
 
         case RE_ANCHOR_END:
-            if (pos == ctx->text_len) {
-                *end_pos = pos;
-                return true;
-            }
-            return false;
+            return pos == ctx->text_len && gapply(ctx, pos, k);
 
         case RE_CLASS:
             if (pos < ctx->text_len &&
-                class_test(&n->data.char_class, (unsigned char)ctx->text[pos])) {
-                *end_pos = pos + 1;
-                return true;
-            }
+                class_test(&n->data.char_class, (unsigned char)ctx->text[pos]))
+                return gapply(ctx, pos + 1, k);
             return false;
 
-        case RE_CONCAT: {
-            int cur_pos = pos;
-            for (int i = 0; i < n->data.children.count; i++) {
-                int child_end;
-                if (!match_node_groups(ctx, n->data.children.children[i], cur_pos, &child_end)) {
-                    return false;
-                }
-                cur_pos = child_end;
-            }
-            *end_pos = cur_pos;
-            return true;
-        }
+        case RE_CONCAT:
+            return match_seq_g(ctx, n->data.children.children, n->data.children.count, 0, pos, k);
 
         case RE_ALT:
             for (int i = 0; i < n->data.children.count; i++) {
-                int child_end;
-                if (match_node_groups(ctx, n->data.children.children[i], pos, &child_end)) {
-                    *end_pos = child_end;
+                if (match_node_g(ctx, n->data.children.children[i], pos, k))
                     return true;
-                }
             }
             return false;
 
         case RE_GROUP: {
-            int group_idx = ctx->next_group++;
-            int child_end = pos;
-            bool matched = true;
-
-            if (n->data.children.count > 0) {
-                matched = match_node_groups(ctx, n->data.children.children[0], pos, &child_end);
-            }
-
-            if (matched && group_idx < ctx->max_groups) {
-                ctx->group_starts[group_idx] = pos;
-                ctx->group_ends[group_idx] = child_end;
-            }
-
-            if (matched) {
-                *end_pos = child_end;
-            } else {
-                ctx->next_group--; // Revert group index
-            }
-            return matched;
+            gcont kk = {gc_group_end, k, NULL, 0, 0, n, pos};
+            if (n->data.children.count > 0)
+                return match_node_g(ctx, n->data.children.children[0], pos, &kk);
+            return gc_group_end(ctx, pos, &kk);
         }
 
         case RE_QUANT:
-            return match_quant_groups(ctx, n, pos, end_pos);
+            return match_quant_g(ctx, n, 0, pos, k);
     }
-
     return false;
+}
+
+/// @brief Capture-tracking matcher entry: guards, then dispatch.
+static bool match_node_g(match_context_groups *ctx, re_node *n, int pos, const gcont *k) {
+    if (!ctx || pos < 0 || pos > ctx->text_len)
+        return false;
+    if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps)
+        return false;
+    if (ctx->depth >= RE_MAX_CAPTURE_DEPTH)
+        return false;
+    if (!n)
+        return gapply(ctx, pos, k);
+    ctx->depth++;
+    bool ok = match_node_g_inner(ctx, n, pos, k);
+    ctx->depth--;
+    return ok;
 }
 
 /// @brief Group-tracking version of `find_match`.
 ///
-/// Same scan loop, but uses `match_node_groups` so capture-group
-/// positions land in the caller-provided arrays. `*num_groups` is
-/// set to the number of groups actually captured (may be less than
-/// `max_groups` when the pattern doesn't reach all of them).
+/// Same scan loop as the plain matcher, but runs the CPS capture matcher
+/// so groups backtrack exactly like ordinary syntax and capture indexes
+/// follow lexical (opening-parenthesis) numbering. On success,
+/// `*num_groups` is the pattern's group count (clamped to `max_groups`);
+/// groups that did not participate in the match report start/end -1.
 static bool find_match_groups(compiled_pattern *cp,
                               const char *text,
                               int text_len,
@@ -562,16 +728,20 @@ static bool find_match_groups(compiled_pattern *cp,
                               int max_groups,
                               int *num_groups) {
     match_context_groups ctx = {
-        text, text_len, 0, group_starts, group_ends, max_groups, 0, 0, RE_MAX_STEPS};
+        text, text_len, 0, group_starts, group_ends, max_groups, 0, RE_MAX_STEPS, 0, 0};
+    int report_groups = cp->group_count < max_groups ? cp->group_count : max_groups;
 
     for (int i = start_from; i <= text_len; i++) {
+        for (int g = 0; g < max_groups; g++) {
+            group_starts[g] = -1;
+            group_ends[g] = -1;
+        }
         ctx.start_pos = i;
-        ctx.next_group = 0;
-        int end_pos;
-        if (match_node_groups(&ctx, cp->root, i, &end_pos)) {
+        gcont accept = {gc_accept, NULL, NULL, 0, 0, NULL, 0};
+        if (match_node_g(&ctx, cp->root, i, &accept)) {
             *match_start = i;
-            *match_end = end_pos;
-            *num_groups = ctx.next_group;
+            *match_end = ctx.accept_end;
+            *num_groups = report_groups;
             return true;
         }
     }

@@ -273,6 +273,11 @@ static const char *json_string_cstr(void *obj, int *ok) {
     const char *s = rt_string_cstr((rt_string)obj);
     if (!s)
         return NULL;
+    // Locale JSON values are validated and consumed as C strings downstream;
+    // an embedded NUL (e.g. "zz\u0000-garbage") would silently truncate and
+    // let hidden content evade tag/digit/pattern checks (VDOC-068).
+    if (strlen(s) != (size_t)rt_str_len((rt_string)obj))
+        return NULL;
     if (ok)
         *ok = 1;
     return s;
@@ -286,16 +291,37 @@ static const char *json_string_cstr(void *obj, int *ok) {
 static size_t loc_utf8_cp_len(const char *s) {
     if (!s || !*s)
         return 0;
-    unsigned char c = (unsigned char)s[0];
-    if (c < 0x80)
+    unsigned char lead = (unsigned char)s[0];
+    if (lead < 0x80)
         return 1;
-    if ((c & 0xE0) == 0xC0 && s[1])
-        return 2;
-    if ((c & 0xF0) == 0xE0 && s[1] && s[2])
-        return 3;
-    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3])
-        return 4;
-    return 0;
+    // Strict decode (VDOC-069): require continuation-byte shapes and reject
+    // overlong encodings, UTF-16 surrogates, and code points above U+10FFFF
+    // so malformed bytes cannot register as digit glyphs.
+    size_t extra;
+    uint32_t cp;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        extra = 1;
+        cp = lead & 0x1Fu;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+        extra = 2;
+        cp = lead & 0x0Fu;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+        extra = 3;
+        cp = lead & 0x07u;
+    } else {
+        return 0;
+    }
+    for (size_t k = 1; k <= extra; ++k) {
+        unsigned char ch = (unsigned char)s[k];
+        if ((ch & 0xC0u) != 0x80u)
+            return 0;
+        cp = (cp << 6) | (uint32_t)(ch & 0x3Fu);
+    }
+    if ((extra == 2 && cp < 0x800u) || (extra == 3 && cp < 0x10000u))
+        return 0;
+    if ((cp >= 0xD800u && cp <= 0xDFFFu) || cp > 0x10FFFFu)
+        return 0;
+    return extra + 1;
 }
 
 /// @brief Validate that @p digits is a UTF-8 string of exactly 10 code-points.
@@ -340,10 +366,10 @@ static int loc_currency_pattern_valid(const char *pattern) {
     for (const char *p = pattern; *p; ++p) {
         if (p[0] == '{') {
             if (p[1] == 'n' && p[2] == '}') {
-                saw_n = 1;
+                saw_n++;
                 p += 2;
             } else if (p[1] == 's' && p[2] == '}') {
-                saw_s = 1;
+                saw_s++;
                 p += 2;
             } else {
                 return 0;
@@ -352,7 +378,67 @@ static int loc_currency_pattern_valid(const char *pattern) {
             return 0;
         }
     }
-    return saw_n && saw_s;
+    // Exactly one of each: duplicated placeholders emit output that
+    // TryParseCurrency cannot round-trip (VDOC-070).
+    return saw_n == 1 && saw_s == 1;
+}
+
+/// @brief Validate a date/time pattern at load time against the letters the
+///        formatter supports, so accepted locale data never traps later in
+///        DateFormat (VDOC-070). Mirrors the formatter's scan: quoted
+///        literals with '' escapes must be terminated, and letter runs are
+///        restricted to y M d E H h m s a.
+static int loc_date_pattern_valid(const char *pattern) {
+    if (!pattern)
+        return 1; // absent patterns fall back to defaults
+    size_t i = 0;
+    size_t len = strlen(pattern);
+    while (i < len) {
+        char ch = pattern[i];
+        if (ch == '\'') {
+            ++i;
+            if (i < len && pattern[i] == '\'') {
+                ++i;
+                continue;
+            }
+            int closed = 0;
+            while (i < len) {
+                if (pattern[i] == '\'') {
+                    if (i + 1 < len && pattern[i + 1] == '\'') {
+                        i += 2;
+                        continue;
+                    }
+                    ++i;
+                    closed = 1;
+                    break;
+                }
+                ++i;
+            }
+            if (!closed)
+                return 0;
+            continue;
+        }
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+            if (ch != 'y' && ch != 'M' && ch != 'd' && ch != 'E' && ch != 'H' && ch != 'h' &&
+                ch != 'm' && ch != 's' && ch != 'a')
+                return 0;
+            while (i < len && pattern[i] == ch)
+                ++i;
+            continue;
+        }
+        ++i;
+    }
+    return 1;
+}
+
+/// @brief True when @p tmpl contains the "{n}" count placeholder.
+static int loc_template_has_n(const char *tmpl) {
+    return tmpl && strstr(tmpl, "{n}") != NULL;
+}
+
+/// @brief True when @p tmpl contains both "{0}" and "{1}" placeholders.
+static int loc_list_template_valid(const char *tmpl) {
+    return tmpl && strstr(tmpl, "{0}") != NULL && strstr(tmpl, "{1}") != NULL;
 }
 
 /// @brief Fetch and arena-duplicate a string field from a JSON map.
@@ -648,6 +734,14 @@ static int load_list_style(loc_arena_t *arena,
     out->start = json_dup_string(arena, style, "start", fallback->start, 0, trap_on_error, &ok);
     out->middle = json_dup_string(arena, style, "middle", fallback->middle, 0, trap_on_error, &ok);
     out->end = json_dup_string(arena, style, "end", fallback->end, 0, trap_on_error, &ok);
+    if (!ok)
+        return 0;
+    // Every list template joins two operands; a missing positional
+    // placeholder would silently drop list items (VDOC-070).
+    if (!loc_list_template_valid(out->pair) || !loc_list_template_valid(out->start) ||
+        !loc_list_template_valid(out->middle) || !loc_list_template_valid(out->end))
+        return loc_fail(trap_on_error,
+                        "Viper.Localization.LocaleManager: list template missing {0}/{1}");
     return ok;
 }
 
@@ -771,7 +865,10 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             data->numbers.secondary_group_size < 0 || data->numbers.secondary_group_size > 9 ||
             !data->numbers.decimal_sep || !*data->numbers.decimal_sep || !data->numbers.minus ||
             !*data->numbers.minus || !data->numbers.plus || !*data->numbers.plus ||
-            !loc_digits_are_valid(data->numbers.digits)) {
+            !loc_digits_are_valid(data->numbers.digits) ||
+            // Equal separators make formatted numbers ambiguous to parse.
+            (data->numbers.group_sep && *data->numbers.group_sep &&
+             strcmp(data->numbers.decimal_sep, data->numbers.group_sep) == 0)) {
             loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid numbers schema");
             loc_arena_free(arena);
             return NULL;
@@ -901,6 +998,19 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
                                 0,
                                 trap_on_error,
                                 &ok);
+            if (!loc_date_pattern_valid(data->dates.patterns.short_p) ||
+                !loc_date_pattern_valid(data->dates.patterns.medium_p) ||
+                !loc_date_pattern_valid(data->dates.patterns.long_p) ||
+                !loc_date_pattern_valid(data->dates.patterns.full_p) ||
+                !loc_date_pattern_valid(data->dates.patterns.time_short) ||
+                !loc_date_pattern_valid(data->dates.patterns.time_medium) ||
+                !loc_date_pattern_valid(data->dates.patterns.datetime_short) ||
+                !loc_date_pattern_valid(data->dates.patterns.datetime_medium)) {
+                loc_fail(trap_on_error,
+                         "Viper.Localization.LocaleManager: unsupported date pattern letter");
+                loc_arena_free(arena);
+                return NULL;
+            }
         }
     }
 
@@ -922,6 +1032,14 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             arena, rt, "short_past", data->reltime.short_past, 0, trap_on_error, &ok);
         data->reltime.short_future = json_dup_string(
             arena, rt, "short_future", data->reltime.short_future, 0, trap_on_error, &ok);
+        if (!loc_template_has_n(data->reltime.past) || !loc_template_has_n(data->reltime.future) ||
+            !loc_template_has_n(data->reltime.short_past) ||
+            !loc_template_has_n(data->reltime.short_future)) {
+            loc_fail(trap_on_error,
+                     "Viper.Localization.LocaleManager: relative_time template missing {n}");
+            loc_arena_free(arena);
+            return NULL;
+        }
         void *units = json_get(rt, "units");
         static const char *const unit_names[7] = {
             "second", "minute", "hour", "day", "week", "month", "year"};
@@ -1035,7 +1153,10 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         }
         data->collation.strength =
             json_get_i32(collation, "strength", data->collation.strength, 0, trap_on_error, &ok);
-        if (data->collation.strength < 1 || data->collation.strength > 4) {
+        // The collator implements strengths 1..3 only (quaternary is
+        // unsupported and would be silently clamped); reject 4 at load time
+        // so accepted settings always take effect (VDOC-082).
+        if (data->collation.strength < 1 || data->collation.strength > 3) {
             loc_fail(trap_on_error,
                      "Viper.Localization.LocaleManager: collation.strength out of range");
             loc_arena_free(arena);

@@ -419,7 +419,112 @@ static void test_try_parse_returns_null() {
 // Main
 //=============================================================================
 
+static void test_bcp47_conformance() {
+    printf("Testing BCP-47 conformance (VDOC-065):\n");
+
+    // Valid forms previously rejected.
+    {
+        rt_string in = S("x-private");
+        void *loc = rt_locale_parse(in);
+        rt_string_unref(in);
+        test_result("Parse(\"x-private\") accepted", tag_eq(loc, "x-private"));
+    }
+    {
+        rt_string in = S("zh-cmn-Hans-CN");
+        void *loc = rt_locale_parse(in);
+        rt_string_unref(in);
+        test_result("Parse(\"zh-cmn-Hans-CN\") extlang accepted",
+                    tag_eq(loc, "zh-cmn-Hans-CN"));
+    }
+    {
+        // Tags longer than the old 39-byte canonical cap.
+        rt_string in = S("en-US-u-ca-gregory-nu-latn-x-one-two-three-four");
+        void *loc = rt_locale_parse(in);
+        rt_string_unref(in);
+        test_result("Parse of >39-byte tag accepted",
+                    tag_eq(loc, "en-US-u-ca-gregory-nu-latn-x-one-two-three-four"));
+    }
+
+    // Malformed forms previously accepted.
+    const char *bad[] = {
+        "en-a-b-foo",     // empty 'a' extension
+        "en-a-x-foo",     // extension with no subtag before private-use
+        "en-abcde-Latn",  // script after variant
+        "en-abcde-US",    // region after variant
+        "sl-rozaj-rozaj", // duplicate variant
+    };
+    for (int i = 0; i < 5; i++) {
+        rt_string in = S(bad[i]);
+        EXPECT_TRAP(rt_locale_parse(in));
+        rt_string_unref(in);
+        test_result(bad[i], true);
+    }
+    printf("\n");
+}
+
+static void test_from_parts_single_subtags() {
+    printf("Testing FromParts single-subtag enforcement (VDOC-066):\n");
+
+    {
+        rt_string lang = S("en");
+        rt_string script = S("Latn");
+        rt_string region = S("US");
+        void *loc = rt_locale_from_parts(lang, script, region);
+        rt_string_unref(lang);
+        rt_string_unref(script);
+        rt_string_unref(region);
+        test_result("FromParts(en, Latn, US) -> en-Latn-US", tag_eq(loc, "en-Latn-US"));
+    }
+    {
+        // Multi-subtag values in any field are rejected.
+        rt_string lang = S("en-US");
+        rt_string empty = S("");
+        EXPECT_TRAP(rt_locale_from_parts(lang, empty, empty));
+        rt_string_unref(lang);
+        rt_string_unref(empty);
+        test_result("FromParts(\"en-US\", , ) traps", true);
+    }
+    {
+        rt_string lang = S("en");
+        rt_string script = S("Latn-US");
+        rt_string empty = S("");
+        EXPECT_TRAP(rt_locale_from_parts(lang, script, empty));
+        rt_string_unref(lang);
+        rt_string_unref(script);
+        rt_string_unref(empty);
+        test_result("FromParts(en, \"Latn-US\", ) traps", true);
+    }
+    {
+        // A region shape passed as script must not silently remap.
+        rt_string lang = S("en");
+        rt_string script = S("US");
+        rt_string empty = S("");
+        EXPECT_TRAP(rt_locale_from_parts(lang, script, empty));
+        rt_string_unref(lang);
+        rt_string_unref(script);
+        rt_string_unref(empty);
+        test_result("FromParts(en, \"US\", ) traps", true);
+    }
+    printf("\n");
+}
+
+static void test_null_equals_invariant() {
+    printf("Testing null-handle equality (VDOC-067):\n");
+    void *inv = rt_locale_invariant();
+    test_result("Equals(null, Invariant()) is true", rt_locale_equals(NULL, inv) == 1);
+    test_result("Equals(Invariant(), null) is true", rt_locale_equals(inv, NULL) == 1);
+    test_result("Equals(null, null) is true", rt_locale_equals(NULL, NULL) == 1);
+    rt_string in = S("en-US");
+    void *en = rt_locale_parse(in);
+    rt_string_unref(in);
+    test_result("Equals(null, en-US) is false", rt_locale_equals(NULL, en) == 0);
+    printf("\n");
+}
+
 int main() {
+    test_bcp47_conformance();
+    test_from_parts_single_subtags();
+    test_null_equals_invariant();
     printf("=== RT Locale Tests ===\n\n");
     test_parse_basic_tags();
     test_parse_canonicalization();

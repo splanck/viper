@@ -12,7 +12,7 @@ text2 = "line1" + CHR(10) + "modified" + CHR(10) + "line3" + CHR(10) + "line5"
 PRINT "--- Lines ---"
 DIM changes AS OBJECT
 changes = Viper.Text.Diff.Lines(text1, text2)
-PRINT Viper.Text.Json.Format(changes)
+PRINT Viper.Data.Json.Format(changes)
 
 ' --- Unified ---
 PRINT "--- Unified ---"

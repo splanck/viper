@@ -40,7 +40,7 @@ func start() {
     var result = Exec.ShellResult("echo result_output");
     Say(result.Output);
     SayInt(result.ExitCode);
-    SayBool(result.Succeeded);
+    SayBool(result.IsSuccess);
 
     // Test with a command that uses shell features
     Say("--- ShellCapture with pipe ---");

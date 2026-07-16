@@ -286,7 +286,7 @@ Viper includes a **Synth** module for procedural sound — no audio files needed
 Add these imports and lines to the previous example:
 
 ```zia
-bind Viper.Sound;
+bind Viper.Audio;
 
 // In start(), before the game loop:
 Audio.Init();
@@ -304,16 +304,16 @@ miss.Play();
 
 ```basic
 ' Before the game loop:
-Viper.Sound.Audio.Init()
+Viper.Audio.Mixer.Init()
 
 ' Where the paddle bounce happens:
-DIM bounce AS Viper.Sound.Sound
-bounce = Viper.Sound.Synth.Sfx(1) ' coin
+DIM bounce AS Viper.Audio.Sound
+bounce = Viper.Audio.Synth.Sfx(1) ' coin
 bounce.Play()
 
 ' Where the ball resets:
-DIM miss AS Viper.Sound.Sound
-miss = Viper.Sound.Synth.Sfx(2) ' hit
+DIM miss AS Viper.Audio.Sound
+miss = Viper.Audio.Synth.Sfx(2) ' hit
 miss.Play()
 ```
 

@@ -636,6 +636,53 @@ rt_string rt_message_bundle_format_with(void *self, rt_string key, void *values)
 // Plural
 //===----------------------------------------------------------------------===//
 
+/// @brief Render an ASCII digit string with the locale's digit glyphs.
+/// @details Walks the locale's 10-code-point digit string (already validated
+///          at load time) and substitutes each ASCII digit; the '-' sign and
+///          any non-digit bytes pass through unchanged (VDOC-078).
+static rt_string bundle_localize_digits(const rt_locale_data_t *data, const char *num, size_t len) {
+    const char *digits = data ? data->numbers.digits : NULL;
+    if (!digits || strcmp(digits, "0123456789") == 0)
+        return rt_string_from_bytes(num, len);
+
+    const char *ptr[10];
+    size_t dlen[10];
+    const char *p = digits;
+    for (int i = 0; i < 10; ++i) {
+        size_t n_cp = 1;
+        unsigned char lead = (unsigned char)*p;
+        if (!lead)
+            return rt_string_from_bytes(num, len);
+        if (lead >= 0xF0)
+            n_cp = 4;
+        else if (lead >= 0xE0)
+            n_cp = 3;
+        else if (lead >= 0xC0)
+            n_cp = 2;
+        ptr[i] = p;
+        dlen[i] = n_cp;
+        p += n_cp;
+    }
+
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char c = (unsigned char)num[i];
+        rt_sb_status_t st;
+        if (c >= '0' && c <= '9')
+            st = rt_sb_append_bytes(&sb, ptr[c - '0'], dlen[c - '0']);
+        else
+            st = rt_sb_append_bytes(&sb, num + i, 1);
+        if (st != RT_SB_OK) {
+            rt_sb_free(&sb);
+            return rt_string_from_bytes(num, len);
+        }
+    }
+    rt_string out = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return out;
+}
+
 rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *vars) {
     if (!self || !key) {
         rt_trap("Viper.Localization.MessageBundle: Plural requires a non-null key");
@@ -709,12 +756,14 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
     }
 
     // Seed `{n}` into the vars map so it's available to the substitutor.
+    // Digits are rendered with the bundle locale's digit set so Plural
+    // agrees with the other formatters bound to the same locale (VDOC-078).
     void *effective_vars = vars ? rt_map_clone(vars) : rt_map_new();
     char num_buf[32];
     int nlen = snprintf(num_buf, sizeof(num_buf), "%lld", (long long)n);
     if (nlen > 0) {
         rt_string n_key = rt_string_from_bytes("n", 1);
-        rt_string n_val = rt_string_from_bytes(num_buf, (size_t)nlen);
+        rt_string n_val = bundle_localize_digits(bundle->data, num_buf, (size_t)nlen);
         rt_map_set_str(effective_vars, n_key, n_val);
         rt_string_unref(n_key);
         rt_string_unref(n_val);
@@ -734,16 +783,28 @@ void *rt_message_bundle_set_fallback(void *self, void *fallback) {
     if (!self)
         return NULL;
     rt_message_bundle_t *bundle = as_bundle(self);
-    // Cycle detection: walk the proposed chain and make sure we don't see self.
-    void *cur = fallback;
-    int depth = 0;
-    while (cur && depth < RT_MSG_BUNDLE_MAX_DEPTH) {
-        if (cur == self) {
+    // Cycle detection: walk the WHOLE proposed chain (no depth cutoff — a
+    // cycle beyond a fixed cap would be retained forever, VDOC-079). Floyd's
+    // two-pointer walk also terminates if the chain somehow already cycles.
+    void *slow = fallback;
+    void *fast = fallback;
+    while (fast) {
+        if (slow == self || fast == self) {
             rt_trap("Viper.Localization.MessageBundle: Fallback would create a cycle");
             return NULL;
         }
-        cur = as_bundle(cur)->fallback;
-        ++depth;
+        fast = as_bundle(fast)->fallback;
+        if (fast == self) {
+            rt_trap("Viper.Localization.MessageBundle: Fallback would create a cycle");
+            return NULL;
+        }
+        if (fast)
+            fast = as_bundle(fast)->fallback;
+        slow = as_bundle(slow)->fallback;
+        if (fast && fast == slow) {
+            rt_trap("Viper.Localization.MessageBundle: Fallback chain already contains a cycle");
+            return NULL;
+        }
     }
     if (bundle->fallback == fallback)
         return self;

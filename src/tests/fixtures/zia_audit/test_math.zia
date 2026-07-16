@@ -85,9 +85,9 @@ func start() {
     checkNum("Clamp above", Viper.Math.Clamp(15.0, 0.0, 10.0), 10.0, 0.001);
 
     // Sign (Sgn returns Number, SgnInt returns Integer)
-    check("SgnInt positive", Viper.Math.SgnInt(42), 1);
-    check("SgnInt negative", Viper.Math.SgnInt(-42), -1);
-    check("SgnInt zero", Viper.Math.SgnInt(0), 0);
+    check("SgnInt positive", Viper.Math.SignInt(42), 1);
+    check("SgnInt negative", Viper.Math.SignInt(-42), -1);
+    check("SgnInt zero", Viper.Math.SignInt(0), 0);
 
     // Logarithms
     checkNum("Log e", Viper.Math.Log(Viper.Math.get_Euler()), 1.0, 0.001);

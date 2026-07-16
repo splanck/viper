@@ -661,12 +661,13 @@ void rt_sound3d_set_listener(void *position, void *forward) {
 /// @param position     Vec3 world-space position of the sound source.
 /// @param max_distance Distance at which the sound becomes inaudible (0 = infinite range).
 /// @param volume       Base volume before attenuation [0–100].
-/// @return Voice ID for subsequent updates, or 0 on failure.
+/// @return Voice ID for subsequent updates, or -1 on failure (the same
+///         sentinel every Sound.Play* variant uses — VDOC-120).
 int64_t rt_sound3d_play_at(void *sound, void *position, double max_distance, int64_t volume) {
     rt_sound3d_listener_state listener;
     double source_pos[3];
     if (!sound || !position)
-        return 0;
+        return -1;
 
     volume = clamp_i64(volume, 0, 100);
     sound3d_vec_from_obj(position, source_pos);
@@ -677,7 +678,7 @@ int64_t rt_sound3d_play_at(void *sound, void *position, double max_distance, int
     int64_t voice = rt_sound_play_ex(sound, vol, pan);
     if (voice > 0)
         rt_sound3d_register_voice(voice, max_distance, volume);
-    return voice > 0 ? voice : 0;
+    return voice > 0 ? voice : -1;
 }
 
 /// @brief Update a playing voice's volume and pan based on its current 3D position.

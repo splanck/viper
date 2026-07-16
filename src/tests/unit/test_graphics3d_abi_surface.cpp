@@ -348,11 +348,11 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAssetAsync\""),
                  "Assets3D.LoadEntityAssetAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAsync\""),
-                 "Assets3D.LoadTemplateAsync must use Game3D PascalCase factory naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAsync\""),
+                 "Assets3D.LoadEntityAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAssetAsync\""),
-                 "Assets3D.LoadTemplateAssetAsync must use Game3D PascalCase factory naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadEntityAssetAsync\""),
+                 "Assets3D.LoadEntityAssetAsync must use Game3D PascalCase factory naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.Load\""),
                  "Prefab.Load canonical loader missing") &&
@@ -365,18 +365,6 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.LoadAssetAsync\""),
                  "Prefab.LoadAssetAsync canonical loader missing") &&
-         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefab\""),
-                 "Assets3D.LoadPrefab compatibility loader missing") &&
-         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefabAsset\""),
-                 "Assets3D.LoadPrefabAsset compatibility loader missing") &&
-         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefabAsync\""),
-                 "Assets3D.LoadPrefabAsync compatibility loader missing") &&
-         ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadPrefabAssetAsync\""),
-                 "Assets3D.LoadPrefabAssetAsync compatibility loader missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.SceneTemplate.get_SceneCount\""),
                  "SceneTemplate.SceneCount getter must use Game3D PascalCase naming") &&
@@ -411,8 +399,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.Evict\""),
                  "Assets3D.Evict must use Game3D PascalCase method naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_Ready\""),
-                 "AssetHandle3D.Ready getter must use Game3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_IsReady\""),
+                 "AssetHandle3D.IsReady getter must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.get_Progress\""),
                  "AssetHandle3D.Progress getter must use Game3D PascalCase naming") &&
@@ -426,8 +414,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetEntity\""),
                  "AssetHandle3D.GetEntity must use Game3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetTemplate\""),
-                 "AssetHandle3D.GetTemplate must use Game3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetPrefab\""),
+                 "AssetHandle3D.GetPrefab must use Game3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.AssetHandle3D.GetPrefab\""),
                  "AssetHandle3D.GetPrefab canonical loader result missing") &&
@@ -435,14 +423,11 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.AssetHandle3D\""),
                  "AssetHandle3D class missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"Ready\""),
-                 "AssetHandle3D.Ready property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"IsReady\""),
+                 "AssetHandle3D.IsReady property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"LoadEntityAsync\""),
                  "Assets3D.LoadEntityAsync method missing") &&
-         ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"LoadPrefabAssetAsync\""),
-                 "Assets3D.LoadPrefabAssetAsync method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"GetPrefab\""),
                  "AssetHandle3D.GetPrefab method missing") &&
@@ -680,8 +665,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.GetNodeAnimation\""),
                  "SceneAsset.GetNodeAnimation must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.LoadNodeAnimation\""),
-                 "SceneAsset.LoadNodeAnimation must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneAsset.LoadNodeAnimationResult\""),
+                 "SceneAsset.LoadNodeAnimationResult must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SceneCount\""),
                  "SceneAsset.SceneCount property missing") &&
@@ -731,11 +716,11 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"ClipCount\""),
                  "NodeAnimator3D.ClipCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.LoadKTX2\""),
-                 "TextureAsset3D.LoadKTX2 must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.LoadKtx2\""),
+                 "TextureAsset3D.LoadKtx2 must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.LoadKTX2Asset\""),
-                 "TextureAsset3D.LoadKTX2Asset must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.LoadKtx2Asset\""),
+                 "TextureAsset3D.LoadKtx2Asset must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.get_Width\""),
                  "TextureAsset3D.Width getter must use Graphics3D PascalCase naming") &&
@@ -821,8 +806,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"ResidentBytes\""),
                  "TextureAsset3D.ResidentBytes property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"LoadKTX2Asset\""),
-                 "TextureAsset3D.LoadKTX2Asset method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"LoadKtx2Asset\""),
+                 "TextureAsset3D.LoadKtx2Asset method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetResidentMipRange\""),
                  "TextureAsset3D.SetResidentMipRange method missing") &&
@@ -1036,65 +1021,65 @@ bool check_runtime_surface_names() {
     ok = require(contains(canvas_overlay, "strcmp(name, \"anisotropy\")"),
                  "Canvas3D.BackendSupports missing anisotropy capability name") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_SolverIterations\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_SolverIterations\""),
                  "Physics3DWorld.SolverIterations getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_SolverIterations\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_SolverIterations\""),
                  "Physics3DWorld.SolverIterations setter must use get_/set_ property naming") &&
          ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_PositionIterations\""),
+        require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_PositionIterations\""),
                 "Physics3DWorld.PositionIterations getter must use Graphics3D PascalCase "
                 "naming") &&
         ok;
     ok =
-        require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_PositionIterations\""),
+        require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_PositionIterations\""),
                 "Physics3DWorld.PositionIterations setter must use get_/set_ property naming") &&
         ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_ContactBeta\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_ContactBeta\""),
                  "Physics3DWorld.ContactBeta getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_ContactBeta\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_ContactBeta\""),
                  "Physics3DWorld.ContactBeta setter must use get_/set_ property naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_RestitutionThreshold\""),
+             contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_RestitutionThreshold\""),
              "Physics3DWorld.RestitutionThreshold getter must use Graphics3D PascalCase "
              "naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_RestitutionThreshold\""),
+             contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.set_RestitutionThreshold\""),
              "Physics3DWorld.RestitutionThreshold setter must use get_/set_ property "
              "naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.StepFixed\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.StepFixed\""),
                  "Physics3DWorld.StepFixed must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_FixedStepAlpha\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_FixedStepAlpha\""),
                  "Physics3DWorld.FixedStepAlpha getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_DroppedFixedSteps\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_DroppedFixedSteps\""),
                  "Physics3DWorld.DroppedFixedSteps getter must use Graphics3D PascalCase "
                  "naming") &&
          ok;
     ok = require(
-             contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverIslandCount\""),
+             contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_LastSolverIslandCount\""),
              "Physics3DWorld.LastSolverIslandCount getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def,
-                          "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverActiveBodyCount\""),
+                          "\"Viper.Graphics3D.PhysicsWorld3D.get_LastSolverActiveBodyCount\""),
                  "Physics3DWorld.LastSolverActiveBodyCount getter must use Graphics3D PascalCase "
                  "naming") &&
          ok;
     ok =
         require(
-            contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverContactCount\""),
+            contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.get_LastSolverContactCount\""),
             "Physics3DWorld.LastSolverContactCount getter must use Graphics3D PascalCase naming") &&
         ok;
-    ok = require(!contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.SetSolverIterations\""),
+    ok = require(!contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations duplicate method must stay removed") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.RebaseOrigin\""),
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.PhysicsWorld3D.RebaseOrigin\""),
                  "Physics3DWorld.RebaseOrigin must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Particles3D.RebaseOrigin\""),
@@ -1128,8 +1113,8 @@ bool check_runtime_surface_names() {
              contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.CrossfadeLayerAdditive\""),
              "AnimController3D.CrossfadeLayerAdditive must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.SetAnimationLOD\""),
-                 "AnimController3D.SetAnimationLOD must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.SetAnimationLod\""),
+                 "AnimController3D.SetAnimationLod must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.SetBlendTree\""),
                  "AnimController3D.SetBlendTree must use Graphics3D PascalCase naming") &&
@@ -1209,8 +1194,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"CrossfadeLayerAdditive\""),
                  "AnimController3D.CrossfadeLayerAdditive method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"SetAnimationLOD\""),
-                 "AnimController3D.SetAnimationLOD method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetAnimationLod\""),
+                 "AnimController3D.SetAnimationLod method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetBlendTree\""),
                  "AnimController3D.SetBlendTree method missing") &&
@@ -1260,8 +1245,8 @@ bool check_runtime_surface_names() {
     ok = require(!contains(runtime_def, "RT_METHOD(\"SetCastsShadows\""),
                  "Light3D.SetCastsShadows duplicate method must stay removed") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_Enabled\""),
-                 "Light3D.Enabled property setter missing") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_IsEnabled\""),
+                 "Light3D.IsEnabled property setter missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.set_CastsShadows\""),
                  "Light3D.CastsShadows property setter missing") &&
@@ -1401,8 +1386,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneGraph.get_PvsCulledCount\""),
                  "SceneGraph.PvsCulledCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetAutoLOD\""),
-                 "SceneNode.SetAutoLOD must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetAutoLod\""),
+                 "SceneNode.SetAutoLod must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetImpostor\""),
                  "SceneNode.SetImpostor must use Graphics3D PascalCase naming") &&
@@ -1461,8 +1446,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"PvsCulledCount\""),
                  "SceneGraph.PvsCulledCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"SetAutoLOD\""),
-                 "SceneNode.SetAutoLOD method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetAutoLod\""),
+                 "SceneNode.SetAutoLod method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetImpostor\""),
                  "SceneNode.SetImpostor method missing") &&
@@ -1555,23 +1540,23 @@ bool check_runtime_surface_names() {
         "Viper.Game3D.WorldStream3D.get_terrain_tile_heightmap",
         "Viper.Game3D.WorldStream3D.getTerrainTileMaterial",
         "Viper.Game3D.WorldStream3D.get_terrain_tile_material",
-        "Viper.Graphics3D.Physics3DWorld.get_solverIterations",
-        "Viper.Graphics3D.Physics3DWorld.get_lastSolverIslandCount",
-        "Viper.Graphics3D.Physics3DWorld.get_last_solver_island_count",
-        "Viper.Graphics3D.Physics3DWorld.get_lastSolverActiveBodyCount",
-        "Viper.Graphics3D.Physics3DWorld.get_last_solver_active_body_count",
-        "Viper.Graphics3D.Physics3DWorld.get_lastSolverContactCount",
-        "Viper.Graphics3D.Physics3DWorld.get_last_solver_contact_count",
-        "Viper.Graphics3D.Physics3DWorld.setSolverIterations",
-        "Viper.Graphics3D.Physics3DWorld.get_positionIterations",
-        "Viper.Graphics3D.Physics3DWorld.setPositionIterations",
-        "Viper.Graphics3D.Physics3DWorld.get_contactBeta",
-        "Viper.Graphics3D.Physics3DWorld.setContactBeta",
-        "Viper.Graphics3D.Physics3DWorld.get_restitutionThreshold",
-        "Viper.Graphics3D.Physics3DWorld.setRestitutionThreshold",
-        "Viper.Graphics3D.Physics3DWorld.stepFixed",
-        "Viper.Graphics3D.Physics3DWorld.get_fixedStepAlpha",
-        "Viper.Graphics3D.Physics3DWorld.get_droppedFixedSteps",
+        "Viper.Graphics3D.PhysicsWorld3D.get_solverIterations",
+        "Viper.Graphics3D.PhysicsWorld3D.get_lastSolverIslandCount",
+        "Viper.Graphics3D.PhysicsWorld3D.get_last_solver_island_count",
+        "Viper.Graphics3D.PhysicsWorld3D.get_lastSolverActiveBodyCount",
+        "Viper.Graphics3D.PhysicsWorld3D.get_last_solver_active_body_count",
+        "Viper.Graphics3D.PhysicsWorld3D.get_lastSolverContactCount",
+        "Viper.Graphics3D.PhysicsWorld3D.get_last_solver_contact_count",
+        "Viper.Graphics3D.PhysicsWorld3D.setSolverIterations",
+        "Viper.Graphics3D.PhysicsWorld3D.get_positionIterations",
+        "Viper.Graphics3D.PhysicsWorld3D.setPositionIterations",
+        "Viper.Graphics3D.PhysicsWorld3D.get_contactBeta",
+        "Viper.Graphics3D.PhysicsWorld3D.setContactBeta",
+        "Viper.Graphics3D.PhysicsWorld3D.get_restitutionThreshold",
+        "Viper.Graphics3D.PhysicsWorld3D.setRestitutionThreshold",
+        "Viper.Graphics3D.PhysicsWorld3D.stepFixed",
+        "Viper.Graphics3D.PhysicsWorld3D.get_fixedStepAlpha",
+        "Viper.Graphics3D.PhysicsWorld3D.get_droppedFixedSteps",
         "Viper.Graphics3D.HingeJoint3D.new",
         "Viper.Graphics3D.RopeJoint3D.get_maxLength",
         "Viper.Graphics3D.SixDofJoint3D.setLinearLimits",
@@ -1583,7 +1568,7 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.AnimController3D.CrossfadelayerAdditive",
         "Viper.Graphics3D.AnimController3D.CrossfadeLayeradditive",
         "Viper.Graphics3D.AnimController3D.setAnimationLOD",
-        "Viper.Graphics3D.AnimController3D.SetAnimationLod",
+        "Viper.Graphics3D.AnimController3D.SetAnimationLOD",
         "Viper.Graphics3D.AnimController3D.SetAnimLOD",
         "Viper.Graphics3D.AnimController3D.setBlendTree",
         "Viper.Graphics3D.AnimController3D.SetBlendtree",

@@ -698,6 +698,6 @@ hide func contextDirForSelectedProjectPath(projMgr: project_manager.ProjectManag
     var selected = projMgr.SelectedPath();
     if selected == "" { return ""; }
     if Dir.Exists(selected) { return selected; }
-    if IO.File.Exists(selected) { return Path.Dir(selected); }
+    if IO.File.Exists(selected) { return Path.Directory(selected); }
     return "";
 }

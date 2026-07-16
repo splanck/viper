@@ -218,8 +218,11 @@ int8_t rt_action_released(rt_string action);
 int8_t rt_action_held(rt_string action);
 
 /// @brief Get the "strength" of a button action.
+/// @details Digital-only: button actions have no trigger-axis binding, so the
+///          result is always 1.0 while held and 0.0 otherwise. Use axis actions
+///          for analog input.
 /// @param action Action name.
-/// @return 1.0 if held (or trigger value for gamepad triggers), 0.0 otherwise.
+/// @return 1.0 if held, 0.0 otherwise.
 double rt_action_strength(rt_string action);
 
 //=========================================================================
@@ -318,7 +321,7 @@ int64_t rt_action_chord_count(rt_string action);
 
 /// @brief Load a predefined set of actions with standard bindings.
 /// @param preset_name Preset name: "standard_movement", "menu_navigation",
-///                    "platformer", or "topdown".
+///                    "platformer", "topdown", or "fps3d".
 /// @return 1 on success, 0 if preset name not recognized.
 int8_t rt_action_load_preset(rt_string preset_name);
 

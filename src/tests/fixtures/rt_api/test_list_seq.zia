@@ -34,7 +34,7 @@ func start() {
     Say(s.First());
     Say(s.Last());
     Say(s.Peek());
-    SayInt(s.Find("y"));
+    SayInt(s.FindOption("y").UnwrapOrI64(0 - 1));
     SayBool(s.Has("y"));
     s.Reverse();
     Say(s.Get(0));

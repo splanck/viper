@@ -22,7 +22,7 @@ func start() {
     var testfile = Viper.IO.TempFile.PathWithExt("vtest_io", ".txt");
     Viper.IO.File.WriteAllText(testfile, "hello world");
     SayBool(Viper.IO.File.Exists(testfile));
-    SayInt(Viper.IO.File.Size(testfile));
+    SayInt(Viper.IO.File.SizeBytes(testfile));
     Say(Viper.IO.File.ReadAllText(testfile));
 
     // --- File: append ---

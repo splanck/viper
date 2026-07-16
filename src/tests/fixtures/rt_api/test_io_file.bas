@@ -24,7 +24,7 @@ testfile = Viper.IO.TempFile.PathWithExt("vtest_io", ".txt")
 
 Viper.IO.File.WriteAllText(testfile, "hello world")
 PRINT "file exists: "; Viper.IO.File.Exists(testfile)
-PRINT "file size: "; Viper.IO.File.Size(testfile)
+PRINT "file size: "; Viper.IO.File.SizeBytes(testfile)
 
 DIM content AS STRING
 content = Viper.IO.File.ReadAllText(testfile)

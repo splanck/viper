@@ -1548,8 +1548,11 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "float3 applyVignette(float2 uv, float3 color) {\n"
     "    if (vignetteEnabled == 0)\n"
     "        return color;\n"
-    "    float2 centered = uv - 0.5;\n"
-    "    float dist = length(centered) * 1.41421356;\n"
+    /* Pixel-space distance over the half-diagonal so the falloff is radial at
+     * any aspect ratio (matches the CPU reference). */
+    "    float2 vres = 1.0 / max(invResolution, float2(0.000001, 0.000001));\n"
+    "    float2 centered = (uv - 0.5) * vres;\n"
+    "    float dist = length(centered) / max(0.5 * length(vres), 0.000001);\n"
     "    float vig = 1.0;\n"
     "    if (dist > vignetteRadius)\n"
     "        vig = 1.0 - saturate((dist - vignetteRadius) / max(vignetteSoftness, 0.000001));\n"

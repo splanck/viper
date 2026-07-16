@@ -42,10 +42,9 @@ operations including `Some`, `SomeStr`, `SomeI64`, `SomeI1`.
 | <a id="viper-option-unwrapori64"></a>`UnwrapOrI64` | `i64(i64)` | `Viper.Option.UnwrapOrI64` |
 | <a id="viper-option-unwrapori1"></a>`UnwrapOrI1` | `i1(i1)` | `Viper.Option.UnwrapOrI1` |
 | <a id="viper-option-unwraporf64"></a>`UnwrapOrF64` | `f64(f64)` | `Viper.Option.UnwrapOrF64` |
-| <a id="viper-option-value"></a>`Value` | `obj()` | `Viper.Option.Value` |
 | <a id="viper-option-expect"></a>`Expect` | `obj(str)` | `Viper.Option.Expect` |
-| <a id="viper-option-okor"></a>`OkOr` | `obj(obj)` | `Viper.Option.OkOr` |
-| <a id="viper-option-okorstr"></a>`OkOrStr` | `obj(str)` | `Viper.Option.OkOrStr` |
+| <a id="viper-option-okor"></a>`OkOr` | `obj<Viper.Result>(obj)` | `Viper.Option.OkOr` |
+| <a id="viper-option-okorstr"></a>`OkOrStr` | `obj<Viper.Result>(str)` | `Viper.Option.OkOrStr` |
 | <a id="viper-option-tostring"></a>`ToString` | `str()` | `Viper.Option.ToString` |
 | <a id="viper-option-equals"></a>`Equals` | `i1(obj)` | `Viper.Option.Equals` |
 | <a id="viper-option-map"></a>`Map` | `obj(obj)` | `Viper.Option.Map` |
@@ -75,10 +74,9 @@ operations including `Some`, `SomeStr`, `SomeI64`, `SomeI1`.
 | `Viper.Option.UnwrapOrI64` | `i64(obj,i64)` | `rt_option_unwrap_or_i64` |
 | `Viper.Option.UnwrapOrI1` | `i1(obj,i1)` | `rt_option_unwrap_or_i1` |
 | `Viper.Option.UnwrapOrF64` | `f64(obj,f64)` | `rt_option_unwrap_or_f64` |
-| `Viper.Option.Value` | `obj(obj)` | `rt_option_value` |
 | `Viper.Option.Expect` | `obj(obj,str)` | `rt_option_expect` |
-| `Viper.Option.OkOr` | `obj(obj,obj)` | `rt_option_ok_or` |
-| `Viper.Option.OkOrStr` | `obj(obj,str)` | `rt_option_ok_or_str` |
+| `Viper.Option.OkOr` | `obj<Viper.Result>(obj,obj)` | `rt_option_ok_or` |
+| `Viper.Option.OkOrStr` | `obj<Viper.Result>(obj,str)` | `rt_option_ok_or_str` |
 | `Viper.Option.ToString` | `str(obj)` | `rt_option_to_string` |
 | `Viper.Option.Equals` | `i1(obj,obj)` | `rt_option_equals` |
 | `Viper.Option.Map` | `obj(obj,obj)` | `rt_option_map_wrapper` |

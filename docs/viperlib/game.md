@@ -197,7 +197,7 @@ immutable result objects that can be stored safely even after the quadtree is qu
 again:
 
 ```rust
-var result = tree.QueryRectResult(x, y, w, h);
+var result = tree.QueryRect(x, y, w, h);
 if result.Truncated {
     // Handle allocation pressure: results are incomplete.
 }
@@ -454,7 +454,7 @@ can be selected at a time. Button IDs are arbitrary integers, including `-1`; us
 | `ClearChangedFlag()` | `none()` | Reset the changed flag (call each frame) |
 | `GetAt(index)` | `Integer(Integer)` | Button ID at position `index` |
 | `SelectNext()` | `Integer()` | Advance selection forward (wraps) |
-| `SelectPrev()` | `Integer()` | Advance selection backward (wraps) |
+| `SelectPrevious()` | `Integer()` | Advance selection backward (wraps) |
 
 ### Current Limits
 
@@ -462,7 +462,7 @@ can be selected at a time. Button IDs are arbitrary integers, including `-1`; us
 |---|---|---|
 | `RT_BUTTONGROUP_MAX` | 256 | Maximum buttons per group. Traps if exceeded |
 
-**Reference implementation:** [Crackman](../../examples/games/crackman/game.zia) — uses ButtonGroup for menu navigation with `SelectNext()`/`SelectPrev()` wraparound.
+**Reference implementation:** [Crackman](../../examples/games/crackman/game.zia) — uses ButtonGroup for menu navigation with `SelectNext()`/`SelectPrevious()` wraparound.
 
 ---
 

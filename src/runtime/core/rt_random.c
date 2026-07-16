@@ -13,8 +13,8 @@
 //          maintain independent, isolated sequences.
 //
 // Key invariants:
-//   - The LCG uses multiplier 6364136223846793005 and increment 1 (Numerical
-//     Recipes constants); the same seed always produces the same sequence.
+//   - The LCG uses the MMIX multiplier 6364136223846793005 and increment 1;
+//     the same seed always produces the same sequence.
 //   - rt_rnd returns values in the half-open interval [0.0, 1.0) by extracting
 //     the top 53 bits of state and scaling to IEEE 754 double range.
 //   - State is stored per-RtContext; rt_get_current_context() is consulted
@@ -64,9 +64,10 @@ static RtContext *rt_random_context(void) {
 
 /// @brief Validate a `void *` handle as a `Random` instance.
 /// @details Checks the class ID and traps on mismatch so a wrong-type handle
-///          surfaces as a real error instead of corrupted RNG state.
+///          surfaces as a real error. The implementation assumes the configured
+///          trap handler does not return; a recoverable handler can fall through.
 /// @param self Caller-supplied handle expected to be a `Random` object.
-/// @return Validated typed pointer; traps on mismatch.
+/// @return Cast typed pointer; traps on mismatch before returning it.
 static rt_random_impl *as_random(void *self) {
     if (!rt_obj_is_instance(self, RT_RANDOM_CLASS_ID, sizeof(rt_random_impl)))
         rt_trap("Random: invalid Random object");
@@ -155,7 +156,7 @@ void rt_randomize_i64(long long seed) {
 
 /// @brief Produce a pseudo-random double in the half-open interval [0, 1).
 /// @details Advances the linear congruential generator in the current VM's
-///          context using the Numerical Recipes multiplier and increment,
+///          context using the MMIX multiplier and increment,
 ///          extracts the top 53 bits, and scales them into IEEE 754 double
 ///          range.  The algorithm mirrors the VM implementation so identical
 ///          seeds yield identical sequences across VM instances.
@@ -164,9 +165,8 @@ double rt_rnd(void) {
 }
 
 /// @brief Generate a random integer in the half-open interval [0, max).
-/// @details Advances the linear congruential generator and returns the result
-///          modulo max to produce an integer in the range [0, max).  When max
-///          is non-positive, returns 0.
+/// @details Advances the linear congruential generator and uses rejection
+///          sampling to avoid modulo bias. When max is non-positive, returns 0.
 long long rt_rand_int(long long max) {
     if (max <= 0)
         return 0;
@@ -260,7 +260,7 @@ int8_t rt_rand_chance_bool(double probability) {
 
 /// @brief Create a Random object with independent RNG state.
 /// @details This enables `new Viper.Math.Random(seed)` without mutating the
-///          VM/global RNG used by static Viper.Math.Random functions.
+///          active runtime context's RNG used by static Viper.Math.Random functions.
 void *rt_random_new(long long seed) {
     rt_random_impl *rng =
         (rt_random_impl *)rt_obj_new_i64(RT_RANDOM_CLASS_ID, (int64_t)sizeof(rt_random_impl));
@@ -286,7 +286,7 @@ long long rt_rand_int_method(void *self, long long max) {
     return (long long)rt_random_bounded_u64_from_state(&rng->state, (uint64_t)max);
 }
 
-/// @brief Instance method for Random.Range(min, max) / NextInt(min, max).
+/// @brief Instance method for Random.Range(min, max).
 long long rt_rand_range_method(void *self, long long min, long long max) {
     rt_random_impl *rng = as_random(self);
     if (min > max) {

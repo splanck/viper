@@ -46,8 +46,8 @@ RT_FUNC(ClipboardClear,    rt_clipboard_clear,     "Viper.GUI.ClipboardText.Clea
 
 /// @summary Provides Clipboard Text constants and static operations for graphical user interfaces.
 /// @details
-/// `Viper.GUI.ClipboardText` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `SetText`, `GetText`, `HasText`, `Clear`.
+/// `Viper.GUI.ClipboardText` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `SetText`, `GetText`, `HasText`, `Clear`.
 RT_CLASS_BEGIN("Viper.GUI.ClipboardText", GuiClipboardText, "none", none)
     RT_METHOD("SetText", "void(str)", ClipboardSetText)
     RT_METHOD("GetText", "str()",     ClipboardGetText)
@@ -72,7 +72,8 @@ RT_FUNC(ShortcutsGetTriggered,     rt_shortcuts_get_triggered,     "Viper.GUI.Sh
 /// @summary Provides Shortcuts constants and static operations for graphical user interfaces.
 /// @details
 /// `Viper.GUI.Shortcuts` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `Register`, `Unregister`, `Clear`, `IsEnabled`.
+/// Its public surface exposes operations including `Register`, `Unregister`, `Clear`,
+/// `IsEnabled`.
 RT_CLASS_BEGIN("Viper.GUI.Shortcuts", GuiShortcuts, "none", none)
     RT_METHOD("Register",          "void(str,str,str)", ShortcutsRegister)
     RT_METHOD("Unregister",        "void(str)",         ShortcutsUnregister)
@@ -96,7 +97,7 @@ RT_FUNC(CursorSetVisible, rt_cursor_set_visible, "Viper.GUI.Cursor.SetVisible", 
 /// @summary Provides Cursor constants and static operations for graphical user interfaces.
 /// @details
 /// `Viper.GUI.Cursor` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `Set`, `Reset`, `SetVisible`.
+/// Its public surface exposes operations including `Set`, `Reset`, `SetVisible`.
 RT_CLASS_BEGIN("Viper.GUI.Cursor", GuiCursor, "none", none)
     RT_METHOD("Set",        "void(i64)", CursorSet)
     RT_METHOD("Reset",      "void()",    CursorReset)
@@ -376,8 +377,7 @@ RT_FUNC(ZiaCompletionBeginSymbolsForFile, rt_zia_completion_begin_symbols_for_fi
 RT_FUNC(ZiaCompletionBeginTokensForFile, rt_zia_completion_begin_tokens_for_file, "Viper.Zia.Completion.BeginTokensForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)")
 RT_FUNC(ZiaSemanticJobIsDone,         rt_zia_semantic_job_is_done,       "Viper.Zia.SemanticJob.IsDone", "i1(obj)")
 RT_FUNC(ZiaSemanticJobIsError,        rt_zia_semantic_job_is_error,      "Viper.Zia.SemanticJob.IsError", "i1(obj)")
-RT_FUNC(ZiaSemanticJobError,          rt_zia_semantic_job_error,         "Viper.Zia.SemanticJob.Error", "str(obj)")
-RT_FUNC(ZiaSemanticJobErrorOption,    rt_zia_semantic_job_error_option,  "Viper.Zia.SemanticJob.ErrorOption", "obj<Viper.Option>(obj)")
+RT_FUNC(ZiaSemanticJobErrorOption,    rt_zia_semantic_job_error_option,  "Viper.Zia.SemanticJob.Error", "obj<Viper.Option>(obj)")
 RT_FUNC(ZiaSemanticJobKind,           rt_zia_semantic_job_kind,          "Viper.Zia.SemanticJob.Kind", "i64(obj)")
 RT_FUNC(ZiaSemanticJobCancel,         rt_zia_semantic_job_cancel,        "Viper.Zia.SemanticJob.Cancel", "void(obj)")
 RT_FUNC(ZiaSemanticJobCompletionItems, rt_zia_semantic_job_completion_items, "Viper.Zia.SemanticJob.CompletionItems", "obj<Viper.Collections.Seq>(obj)")
@@ -400,6 +400,8 @@ RT_FUNC(ZiaDocSyncFull,     rt_zia_doc_sync_full,          "Viper.Zia.Document.S
 RT_FUNC(ZiaDocSyncDelta,    rt_zia_doc_sync_delta,         "Viper.Zia.Document.SyncDelta",    "i1(str,str,i64)")
 RT_FUNC(ZiaDocClose,        rt_zia_doc_close,              "Viper.Zia.Document.Close",        "void(str)")
 RT_FUNC(ZiaDocText,         rt_zia_doc_text,               "Viper.Zia.Document.Text",         "str(str)")
+RT_FUNC(ZiaDocHas,          rt_zia_doc_has,                "Viper.Zia.Document.Has",          "i1(str)")
+RT_FUNC(ZiaServiceAvailable, rt_zia_service_available,     "Viper.Zia.Completion.IsAvailable", "i1()")
 RT_FUNC(ZiaDocCheckForFile, rt_zia_check_for_file_mirror,  "Viper.Zia.Document.CheckForFile", "str(str)")
 RT_FUNC(ZiaDocBeginCheckForFile, rt_zia_doc_begin_check_for_file, "Viper.Zia.Document.BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)")
 
@@ -455,8 +457,8 @@ RT_FUNC(MessageBoxDestroyDialog, rt_messagebox_destroy, "Viper.GUI.MessageBox.De
 /// @summary Provides Message Box functionality for graphical user interfaces.
 /// @details
 /// Create `Viper.GUI.MessageBox` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes operations including `Info`,
-/// `Warning`, `Error`, `Question`.
+/// object with the instance members below. Its public surface exposes operations including
+/// `Info`, `Warning`, `Error`, `Question`.
 RT_CLASS_BEGIN("Viper.GUI.MessageBox", GuiMessageBox, "obj", MessageBoxNew)
     RT_METHOD("Info",     "i64(str,str)",  MessageBoxInfo)
     RT_METHOD("Warning",  "i64(str,str)",  MessageBoxWarning)
@@ -504,7 +506,7 @@ RT_FUNC(FileDialogDestroyDialog, rt_filedialog_destroy,      "Viper.GUI.FileDial
 /// @summary Provides File Dialog functionality for graphical user interfaces.
 /// @details
 /// Create `Viper.GUI.FileDialog` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as
+/// object with the instance members below. Its public surface exposes properties such as
 /// `PathCount` and operations including `Open`, `OpenMultiple`, `PathListCount`, `PathListGet`.
 RT_CLASS_BEGIN("Viper.GUI.FileDialog", GuiFileDialog, "obj", FileDialogNew)
     RT_METHOD("Open",          "str(str,str,str)",     FileDialogOpen)
@@ -550,10 +552,8 @@ RT_FUNC(FindBarSetReplaceMode,  rt_findbar_set_replace_mode, "Viper.GUI.FindBar.
 RT_FUNC(FindBarIsReplaceMode,   rt_findbar_is_replace_mode,  "Viper.GUI.FindBar.IsReplaceMode",   "i1(obj)")
 RT_FUNC(FindBarSetVisible,      rt_findbar_set_visible,      "Viper.GUI.FindBar.SetVisible",      "void(obj,i1)")
 RT_FUNC(FindBarIsVisible,       rt_findbar_is_visible,       "Viper.GUI.FindBar.IsVisible",       "i1(obj)")
-RT_FUNC(FindBarFindNext,        rt_findbar_find_next,        "Viper.GUI.FindBar.FindNext",        "i64(obj)")
-RT_FUNC(FindBarFindNextOption,  rt_findbar_find_next_option, "Viper.GUI.FindBar.FindNextOption",  "obj<Viper.Option>(obj)")
-RT_FUNC(FindBarFindPrev,        rt_findbar_find_previous,    "Viper.GUI.FindBar.FindPrev",        "i64(obj)")
-RT_FUNC(FindBarFindPrevOption,  rt_findbar_find_previous_option, "Viper.GUI.FindBar.FindPrevOption", "obj<Viper.Option>(obj)")
+RT_FUNC(FindBarFindNextOption,  rt_findbar_find_next_option, "Viper.GUI.FindBar.FindNext",  "obj<Viper.Option>(obj)")
+RT_FUNC(FindBarFindPrevOption,  rt_findbar_find_previous_option, "Viper.GUI.FindBar.FindPrevious", "obj<Viper.Option>(obj)")
 RT_FUNC(FindBarReplace,         rt_findbar_replace,          "Viper.GUI.FindBar.Replace",         "i64(obj)")
 RT_FUNC(FindBarReplaceAll,      rt_findbar_replace_all,      "Viper.GUI.FindBar.ReplaceAll",      "i64(obj)")
 RT_FUNC(FindBarGetMatchCount,   rt_findbar_get_match_count,  "Viper.GUI.FindBar.GetMatchCount",   "i64(obj)")
@@ -587,12 +587,9 @@ RT_FUNC(GuiTestHarnessNew,            rt_gui_test_harness_new,             "Vipe
 RT_FUNC(GuiTestHarnessClear,          rt_gui_test_harness_clear,           "Viper.GUI.TestHarness.Clear", "void(obj)")
 RT_FUNC(GuiTestHarnessTick,           rt_gui_test_harness_tick,            "Viper.GUI.TestHarness.Tick", "i64(obj,i64)")
 RT_FUNC(GuiTestHarnessRegisterWidget, rt_gui_test_harness_register_widget, "Viper.GUI.TestHarness.RegisterWidget", "void(obj,str,str,str,i64,i64,i64,i64)")
-RT_FUNC(GuiTestHarnessFindById,       rt_gui_test_harness_find_by_id,      "Viper.GUI.TestHarness.FindById", "obj<Viper.Collections.Map>(obj,str)")
-RT_FUNC(GuiTestHarnessFindByIdOption, rt_gui_test_harness_find_by_id_option, "Viper.GUI.TestHarness.FindByIdOption", "obj<Viper.Option>(obj,str)")
-RT_FUNC(GuiTestHarnessFindByName,     rt_gui_test_harness_find_by_name,    "Viper.GUI.TestHarness.FindByName", "obj<Viper.Collections.Map>(obj,str)")
-RT_FUNC(GuiTestHarnessFindByNameOption, rt_gui_test_harness_find_by_name_option, "Viper.GUI.TestHarness.FindByNameOption", "obj<Viper.Option>(obj,str)")
-RT_FUNC(GuiTestHarnessFindByType,     rt_gui_test_harness_find_by_type,    "Viper.GUI.TestHarness.FindByType", "obj<Viper.Collections.Map>(obj,str)")
-RT_FUNC(GuiTestHarnessFindByTypeOption, rt_gui_test_harness_find_by_type_option, "Viper.GUI.TestHarness.FindByTypeOption", "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByIdOption, rt_gui_test_harness_find_by_id_option, "Viper.GUI.TestHarness.FindById", "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByNameOption, rt_gui_test_harness_find_by_name_option, "Viper.GUI.TestHarness.FindByName", "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByTypeOption, rt_gui_test_harness_find_by_type_option, "Viper.GUI.TestHarness.FindByType", "obj<Viper.Option>(obj,str)")
 RT_FUNC(GuiTestHarnessSendKey,        rt_gui_test_harness_send_key,        "Viper.GUI.TestHarness.SendKey", "void(obj,str,i64)")
 RT_FUNC(GuiTestHarnessSendMouse,      rt_gui_test_harness_send_mouse,      "Viper.GUI.TestHarness.SendMouse", "void(obj,str,i64,i64,i64)")
 RT_FUNC(GuiTestHarnessGetFocus,       rt_gui_test_harness_get_focus,       "Viper.GUI.TestHarness.GetFocus", "str(obj)")
@@ -645,8 +642,7 @@ RT_FUNC(GuiCommandSnapshot,        rt_command_snapshot,         "Viper.GUI.Comma
 RT_FUNC(GuiCommandRegistryNew,         rt_command_registry_new,          "Viper.GUI.CommandRegistry.New",         "obj<Viper.GUI.CommandRegistry>()")
 RT_FUNC(GuiCommandRegistryAdd,         rt_command_registry_add,          "Viper.GUI.CommandRegistry.Add",         "void(obj,obj)")
 RT_FUNC(GuiCommandRegistryCount,       rt_command_registry_count,        "Viper.GUI.CommandRegistry.Count",       "i64(obj)")
-RT_FUNC(GuiCommandRegistryFind,        rt_command_registry_find,         "Viper.GUI.CommandRegistry.Find",        "obj<Viper.GUI.Command>(obj,str)")
-RT_FUNC(GuiCommandRegistryFindOption,  rt_command_registry_find_option,  "Viper.GUI.CommandRegistry.FindOption",  "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiCommandRegistryFindOption,  rt_command_registry_find_option,  "Viper.GUI.CommandRegistry.Find",  "obj<Viper.Option>(obj,str)")
 RT_FUNC(GuiCommandRegistryBindPalette, rt_command_registry_bind_palette, "Viper.GUI.CommandRegistry.BindPalette", "void(obj,obj)")
 RT_FUNC(GuiCommandRegistryPoll,        rt_command_registry_poll,         "Viper.GUI.CommandRegistry.Poll",        "str(obj)")
 RT_FUNC(GuiCommandRegistryClear,       rt_command_registry_clear,        "Viper.GUI.CommandRegistry.Clear",       "void(obj)")
@@ -681,18 +677,15 @@ RT_CLASS_END()
 /// @summary Provides Test Harness functionality for graphical user interfaces.
 /// @details
 /// Create `Viper.GUI.TestHarness` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes operations including `Clear`,
-/// `Tick`, `RegisterWidget`, `FindById`.
+/// object with the instance members below. Its public surface exposes operations including
+/// `Clear`, `Tick`, `RegisterWidget`, `FindById`.
 RT_CLASS_BEGIN("Viper.GUI.TestHarness", GuiTestHarness, "obj", GuiTestHarnessNew)
     RT_METHOD("Clear",          "void()",                          GuiTestHarnessClear)
     RT_METHOD("Tick",           "i64(i64)",                        GuiTestHarnessTick)
     RT_METHOD("RegisterWidget", "void(str,str,str,i64,i64,i64,i64)", GuiTestHarnessRegisterWidget)
-    RT_METHOD("FindById",       "obj<Viper.Collections.Map>(str)", GuiTestHarnessFindById)
-    RT_METHOD("FindByIdOption", "obj<Viper.Option>(str)", GuiTestHarnessFindByIdOption)
-    RT_METHOD("FindByName",     "obj<Viper.Collections.Map>(str)", GuiTestHarnessFindByName)
-    RT_METHOD("FindByNameOption", "obj<Viper.Option>(str)", GuiTestHarnessFindByNameOption)
-    RT_METHOD("FindByType",     "obj<Viper.Collections.Map>(str)", GuiTestHarnessFindByType)
-    RT_METHOD("FindByTypeOption", "obj<Viper.Option>(str)", GuiTestHarnessFindByTypeOption)
+    RT_METHOD("FindById", "obj<Viper.Option>(str)", GuiTestHarnessFindByIdOption)
+    RT_METHOD("FindByName", "obj<Viper.Option>(str)", GuiTestHarnessFindByNameOption)
+    RT_METHOD("FindByType", "obj<Viper.Option>(str)", GuiTestHarnessFindByTypeOption)
     RT_METHOD("SendKey",        "void(str,i64)",                   GuiTestHarnessSendKey)
     RT_METHOD("SendMouse",      "void(str,i64,i64,i64)",           GuiTestHarnessSendMouse)
     RT_METHOD("GetFocus",       "str()",                           GuiTestHarnessGetFocus)
@@ -770,13 +763,12 @@ RT_CLASS_END()
 /// @summary Provides Command Registry functionality for graphical user interfaces.
 /// @details
 /// Create `Viper.GUI.CommandRegistry` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `Add`, `Count`, `Find`, `FindOption`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `Add`, `Count`, `Find`, `BindPalette`.
 RT_CLASS_BEGIN("Viper.GUI.CommandRegistry", GuiCommandRegistry, "obj", GuiCommandRegistryNew)
     RT_METHOD("Add",         "void(obj)",                   GuiCommandRegistryAdd)
     RT_METHOD("Count",       "i64()",                       GuiCommandRegistryCount)
-    RT_METHOD("Find",        "obj<Viper.GUI.Command>(str)", GuiCommandRegistryFind)
-    RT_METHOD("FindOption",  "obj<Viper.Option>(str)",      GuiCommandRegistryFindOption)
+    RT_METHOD("Find",  "obj<Viper.Option>(str)",      GuiCommandRegistryFindOption)
     RT_METHOD("BindPalette", "void(obj)",                   GuiCommandRegistryBindPalette)
     RT_METHOD("Poll",        "str()",                       GuiCommandRegistryPoll)
     RT_METHOD("Clear",       "void()",                      GuiCommandRegistryClear)
@@ -784,8 +776,8 @@ RT_CLASS_END()
 
 /// @summary Provides Accessibility constants and static operations for graphical user interfaces.
 /// @details
-/// `Viper.GUI.Accessibility` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `ContrastRatio`, `MeetsContrast`,
+/// `Viper.GUI.Accessibility` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `ContrastRatio`, `MeetsContrast`,
 /// `HighContrastTokens`.
 RT_CLASS_BEGIN("Viper.GUI.Accessibility", GuiAccessibility, "none", none)
     RT_METHOD("ContrastRatio",      "f64(i64,i64)",                 GuiAccessibilityContrastRatio)
@@ -805,7 +797,7 @@ RT_FUNC(TooltipSetDelay,      rt_tooltip_set_delay,      "Viper.GUI.Tooltip.SetD
 /// @summary Provides Tooltip constants and static operations for graphical user interfaces.
 /// @details
 /// `Viper.GUI.Tooltip` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `Show`, `ShowRich`, `Hide`, `SetDelay`.
+/// Its public surface exposes operations including `Show`, `ShowRich`, `Hide`, `SetDelay`.
 RT_CLASS_BEGIN("Viper.GUI.Tooltip", GuiTooltip, "none", none)
     RT_METHOD("Show",     "void(str,i64,i64)",   TooltipShow)
     RT_METHOD("ShowRich", "void(str,str,i64,i64)",TooltipShowRich)
@@ -837,8 +829,8 @@ RT_FUNC(ToastDismissAll,      rt_toast_dismiss_all,      "Viper.GUI.Toast.Dismis
 /// @summary Provides Toast functionality for graphical user interfaces.
 /// @details
 /// Create `Viper.GUI.Toast` values through its registered constructor and use the returned object
-/// with the instance members below. Its public surface exposes operations including `Info`,
-/// `Success`, `Warning`, `Error`.
+/// with the instance members below. Its public surface exposes operations including `New`,
+/// `Info`, `Success`, `Warning`.
 RT_CLASS_BEGIN("Viper.GUI.Toast", GuiToast, "obj", ToastNew)
     RT_METHOD("New",              "obj(str,i64,i64)", ToastNew)
     RT_METHOD("Info",             "void(str)",  ToastInfo)

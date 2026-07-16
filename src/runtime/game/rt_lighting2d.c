@@ -6,8 +6,9 @@
 // File: src/runtime/game/rt_lighting2d.c
 // Purpose: 2D darkness overlay with pulsing player light and pooled dynamic
 //   lights. Renders a full-screen tinted overlay at configurable alpha, then
-//   punches "holes" via concentric DiscAlpha rings for the player light, tile
-//   lights, and time-limited dynamic lights (explosions, bullets, pickups).
+//   source-over blends concentric DiscAlpha glow rings for the player light,
+//   tile lights, and time-limited dynamic lights (explosions, bullets,
+//   pickups). These rings do not subtract the darkness overlay.
 //
 // Key invariants:
 //   - Max dynamic lights set at construction; excess lights are silently dropped.
@@ -258,7 +259,7 @@ void rt_lighting2d_update(rt_lighting2d lit) {
 /// @brief Composite the lighting onto a canvas in three passes:
 ///   1. Full-screen tinted darkness overlay at `darkness` alpha.
 ///   2. Player light at `(player_sx, player_sy)` — outer glow + 6 concentric rings + bright core,
-///      with radius modulated by an integer triangle wave (±10 px over 120 frames).
+///      with radius modulated by an integer triangle wave (+0..10 px over 120 frames).
 ///   3. Dynamic lights, world-space positions converted to screen via `(cam_x, cam_y)`, with
 ///      alpha proportional to remaining lifetime so they fade gracefully.
 /// Early-outs when darkness is zero (lighting effectively disabled).

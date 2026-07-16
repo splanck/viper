@@ -34,6 +34,7 @@
 #include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 
@@ -43,10 +44,18 @@
 
 typedef enum { VALUE_PTR = 0, VALUE_STR = 1, VALUE_I64 = 2 } ValueType;
 
+/// How the pending computation is represented. SUPPLIER_FN is a directly
+/// callable C function pointer (native codegen). SUPPLIER_HANDLE is an opaque
+/// managed-function handle owned by a VM bridge, which must complete the Lazy
+/// via rt_lazy_complete_obj() before any C-side evaluation is attempted.
+typedef enum { SUPPLIER_NONE = 0, SUPPLIER_FN = 1, SUPPLIER_HANDLE = 2 } SupplierKind;
+
 typedef struct {
     int evaluated; /* widened from int8_t for MSVC _Generic atomic compat */
     ValueType value_type;
+    SupplierKind supplier_kind;
     void *(*supplier)(void);
+    void *supplier_handle;
 
     union {
         void *ptr;
@@ -87,10 +96,54 @@ void *rt_lazy_new(void *(*supplier)(void)) {
 
     l->evaluated = 0;
     l->value_type = VALUE_PTR;
+    l->supplier_kind = SUPPLIER_FN;
     l->supplier = supplier;
+    l->supplier_handle = NULL;
     l->value.ptr = NULL;
     rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
+}
+
+/// @brief Construct a deferred Lazy whose supplier is an opaque managed-function handle.
+/// Used by VM bridges: the handle is not C-callable, so the owning bridge must intercept
+/// accessors, execute the handle itself, and publish the result via `rt_lazy_complete_obj`.
+void *rt_lazy_new_handle(void *handle) {
+    Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
+
+    l->evaluated = 0;
+    l->value_type = VALUE_PTR;
+    l->supplier_kind = SUPPLIER_HANDLE;
+    l->supplier = NULL;
+    l->supplier_handle = handle;
+    l->value.ptr = NULL;
+    rt_obj_set_finalizer(l, lazy_finalizer);
+    return l;
+}
+
+/// @brief Return the pending managed-function handle, or NULL when the Lazy is already
+/// evaluated or was not created via `rt_lazy_new_handle`.
+void *rt_lazy_pending_handle(void *obj) {
+    if (!obj)
+        return NULL;
+    Lazy *l = (Lazy *)obj;
+    if (l->supplier_kind != SUPPLIER_HANDLE)
+        return NULL;
+    if (__atomic_load_n(&l->evaluated, __ATOMIC_ACQUIRE))
+        return NULL;
+    return l->supplier_handle;
+}
+
+/// @brief Publish the computed object payload for a handle-kind Lazy and mark it evaluated.
+/// Mirrors `evaluate()`'s release-store so readers on other threads observe the cached value.
+void rt_lazy_complete_obj(void *obj, void *value) {
+    if (!obj)
+        return;
+    Lazy *l = (Lazy *)obj;
+    if (__atomic_load_n(&l->evaluated, __ATOMIC_ACQUIRE))
+        return;
+    l->value_type = VALUE_PTR;
+    l->value.ptr = value;
+    __atomic_store_n(&l->evaluated, 1, __ATOMIC_RELEASE);
 }
 
 /// @brief Construct a pre-evaluated Lazy<Ptr> wrapping `value`. Useful when interop expects a
@@ -100,7 +153,9 @@ void *rt_lazy_of(void *value) {
 
     l->evaluated = 1;
     l->value_type = VALUE_PTR;
+    l->supplier_kind = SUPPLIER_NONE;
     l->supplier = NULL;
+    l->supplier_handle = NULL;
     l->value.ptr = value;
     rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
@@ -112,7 +167,9 @@ void *rt_lazy_of_str(rt_string value) {
 
     l->evaluated = 1;
     l->value_type = VALUE_STR;
+    l->supplier_kind = SUPPLIER_NONE;
     l->supplier = NULL;
+    l->supplier_handle = NULL;
     l->value.str = value;
     rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
@@ -124,7 +181,9 @@ void *rt_lazy_of_i64(int64_t value) {
 
     l->evaluated = 1;
     l->value_type = VALUE_I64;
+    l->supplier_kind = SUPPLIER_NONE;
     l->supplier = NULL;
+    l->supplier_handle = NULL;
     l->value.i64 = value;
     rt_obj_set_finalizer(l, lazy_finalizer);
     return l;
@@ -144,6 +203,13 @@ static void evaluate(Lazy *l) {
     // Double evaluation is possible but benign (Lazy contract assumes pure suppliers).
     if (__atomic_load_n(&l->evaluated, __ATOMIC_ACQUIRE))
         return;
+
+    if (l->supplier_kind == SUPPLIER_HANDLE) {
+        // A managed-function handle is not C-callable; the owning VM bridge must have
+        // completed this Lazy via rt_lazy_complete_obj() before C-side evaluation runs.
+        rt_trap("Lazy: deferred supplier requires the VM bridge; value accessed outside it");
+        return;
+    }
 
     if (l->supplier) {
         l->value.ptr = l->supplier();
@@ -252,6 +318,13 @@ void *rt_lazy_flat_map(void *obj, void *(*fn)(void *)) {
 
     // Return the new lazy (which will be evaluated when needed)
     return new_lazy;
+}
+
+/// @brief IL trampoline for `rt_lazy_new`. Registered as `Viper.Functional.Lazy.New`, the only
+/// public factory that defers evaluation: `supplier` is invoked once on first access instead of
+/// at construction time (the `Of*` factories all wrap already-computed values).
+void *rt_lazy_new_wrapper(void *supplier) {
+    return rt_lazy_new((void *(*)(void))supplier);
 }
 
 /// @brief IL trampoline for `rt_lazy_map`.

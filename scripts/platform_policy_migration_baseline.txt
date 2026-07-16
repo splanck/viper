@@ -6,6 +6,7 @@
 examples/games/xenoscape/gen_sounds.c 1
 src/codegen/aarch64/TargetAArch64.hpp 2
 src/codegen/aarch64/peephole/StrengthReduce.cpp 3
+src/codegen/common/MagicDivision.hpp 2
 src/codegen/common/linker/ExeWriterUtil.hpp 1
 src/codegen/common/linker/MachOCodeSign.cpp 2
 src/codegen/common/objfile/ObjectFileWriter.hpp 2
@@ -95,7 +96,7 @@ src/runtime/io/rt_path_exe.c 6
 src/runtime/io/rt_savedata.c 10
 src/runtime/io/rt_tempfile.c 7
 src/runtime/io/rt_vpa_reader.c 5
-src/runtime/localization/rt_numformat.c 3
+src/runtime/localization/rt_numformat.c 4
 src/runtime/localization/rt_plural_rules.c 1
 src/runtime/network/rt_async_socket.c 3
 src/runtime/network/rt_connpool.c 2
@@ -207,6 +208,7 @@ src/tests/unit/codegen/test_codegen_arm64_call_stack_args.cpp 1
 src/tests/unit/codegen/test_codegen_arm64_call_temp_args.cpp 1
 src/tests/unit/codegen/test_codegen_arm64_callee_saved.cpp 1
 src/tests/unit/codegen/test_codegen_arm64_casts.cpp 1
+src/tests/unit/codegen/test_codegen_arm64_cf_loop_phi.cpp 1
 src/tests/unit/codegen/test_codegen_arm64_division.cpp 1
 src/tests/unit/codegen/test_codegen_arm64_exception_handling.cpp 1
 src/tests/unit/codegen/test_codegen_arm64_fp.cpp 1
@@ -221,7 +223,8 @@ src/tests/unit/codegen/test_codegen_env_is_native.cpp 1
 src/tests/unit/codegen/test_codegen_review_x64_frame.cpp 3
 src/tests/unit/codegen/test_cross_platform_abi.cpp 2
 src/tests/unit/codegen/test_diff_vm_native_property.cpp 2
-src/tests/unit/codegen/test_x86_backend_regressions.cpp 5
+src/tests/unit/codegen/test_x86_backend_regressions.cpp 6
+src/tests/unit/codegen/test_x86_global_ra.cpp 1
 src/tests/unit/runtime/TestPathExeDir.cpp 1
 src/tests/unit/runtime/TestVpaFormat.cpp 2
 src/tests/unit/test_bytecode_vm.cpp 1

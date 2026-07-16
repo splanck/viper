@@ -267,6 +267,9 @@ static void *zia_stub_completion_items_unavailable(void) {
     zia_stub_map_set_int(item, "replacementStartColumn", 0);
     zia_stub_map_set_int(item, "replacementEndLine", 1);
     zia_stub_map_set_int(item, "replacementEndColumn", 0);
+    // Schema parity with the full service (VDOC-112): every item carries a
+    // cursorOffset, -1 when the item does not reposition the cursor.
+    zia_stub_map_set_int(item, "cursorOffset", -1);
     rt_seq_push(seq, item);
     if (item && rt_obj_release_check0(item))
         rt_obj_free(item);
@@ -317,6 +320,12 @@ static void *zia_stub_signature_unavailable_map(void) {
     zia_stub_map_set_obj(result, "parameters", params);
     if (params && rt_obj_release_check0(params))
         rt_obj_free(params);
+    // Schema parity with the full service (VDOC-112): an overloads Seq is
+    // always present, empty on a miss.
+    void *overloads = rt_seq_new_owned();
+    zia_stub_map_set_obj(result, "overloads", overloads);
+    if (overloads && rt_obj_release_check0(overloads))
+        rt_obj_free(overloads);
     return result;
 }
 
@@ -536,8 +545,22 @@ RT_WEAK void *rt_zia_completion_begin_tokens_for_file(rt_string source, rt_strin
 
 /// @brief Weak stub: null async jobs are treated as already done.
 RT_WEAK int8_t rt_zia_semantic_job_is_done(void *handle) {
+    // Match the strong editor-service semantics (VDOC-108): null/invalid
+    // handles are never "done". The weak Begin* stubs return null, so
+    // callers must check the Begin result rather than polling IsDone.
     (void)handle;
-    return 1;
+    return 0;
+}
+
+/// @brief Weak stub: the full editor-service bridge is not linked.
+RT_WEAK int8_t rt_zia_service_available(void) {
+    return 0;
+}
+
+/// @brief Weak stub: no mirrors exist without the editor service.
+RT_WEAK int8_t rt_zia_doc_has(rt_string path) {
+    (void)path;
+    return 0;
 }
 
 /// @brief Weak stub: null async jobs have no error.

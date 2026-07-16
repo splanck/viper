@@ -38,57 +38,57 @@ func start() {
 
     // --- GetR ---
     Say("--- GetR ---");
-    Say("GetR(red): " + Fmt.Int(Color.GetR(red)));
-    Say("GetR(green): " + Fmt.Int(Color.GetR(green)));
-    Say("GetR(white): " + Fmt.Int(Color.GetR(white)));
+    Say("GetR(red): " + Fmt.Int(Color.GetRed(red)));
+    Say("GetR(green): " + Fmt.Int(Color.GetRed(green)));
+    Say("GetR(white): " + Fmt.Int(Color.GetRed(white)));
 
     // --- GetG ---
     Say("--- GetG ---");
-    Say("GetG(red): " + Fmt.Int(Color.GetG(red)));
-    Say("GetG(green): " + Fmt.Int(Color.GetG(green)));
-    Say("GetG(white): " + Fmt.Int(Color.GetG(white)));
+    Say("GetG(red): " + Fmt.Int(Color.GetGreen(red)));
+    Say("GetG(green): " + Fmt.Int(Color.GetGreen(green)));
+    Say("GetG(white): " + Fmt.Int(Color.GetGreen(white)));
 
     // --- GetB ---
     Say("--- GetB ---");
-    Say("GetB(red): " + Fmt.Int(Color.GetB(red)));
-    Say("GetB(blue): " + Fmt.Int(Color.GetB(blue)));
-    Say("GetB(white): " + Fmt.Int(Color.GetB(white)));
+    Say("GetB(red): " + Fmt.Int(Color.GetBlue(red)));
+    Say("GetB(blue): " + Fmt.Int(Color.GetBlue(blue)));
+    Say("GetB(white): " + Fmt.Int(Color.GetBlue(white)));
 
     // --- GetA ---
     Say("--- GetA ---");
-    Say("GetA(semiRed): " + Fmt.Int(Color.GetA(semiRed)));
-    Say("GetA(opaqueBlue): " + Fmt.Int(Color.GetA(opaqueBlue)));
-    Say("GetA(transparent): " + Fmt.Int(Color.GetA(transparent)));
+    Say("GetA(semiRed): " + Fmt.Int(Color.GetAlpha(semiRed)));
+    Say("GetA(opaqueBlue): " + Fmt.Int(Color.GetAlpha(opaqueBlue)));
+    Say("GetA(transparent): " + Fmt.Int(Color.GetAlpha(transparent)));
 
     // --- FromHSL ---
     Say("--- FromHSL ---");
-    var hslRed = Color.FromHSL(0, 100, 50);
+    var hslRed = Color.FromHsl(0, 100, 50);
     Say("FromHSL(0, 100, 50): " + Fmt.Int(hslRed));
-    var hslGreen = Color.FromHSL(120, 100, 50);
+    var hslGreen = Color.FromHsl(120, 100, 50);
     Say("FromHSL(120, 100, 50): " + Fmt.Int(hslGreen));
-    var hslBlue = Color.FromHSL(240, 100, 50);
+    var hslBlue = Color.FromHsl(240, 100, 50);
     Say("FromHSL(240, 100, 50): " + Fmt.Int(hslBlue));
-    var hslWhite = Color.FromHSL(0, 0, 100);
+    var hslWhite = Color.FromHsl(0, 0, 100);
     Say("FromHSL(0, 0, 100): " + Fmt.Int(hslWhite));
-    var hslBlack = Color.FromHSL(0, 0, 0);
+    var hslBlack = Color.FromHsl(0, 0, 0);
     Say("FromHSL(0, 0, 0): " + Fmt.Int(hslBlack));
 
     // --- GetH ---
     Say("--- GetH ---");
-    Say("GetH(red): " + Fmt.Int(Color.GetH(red)));
-    Say("GetH(green): " + Fmt.Int(Color.GetH(green)));
-    Say("GetH(blue): " + Fmt.Int(Color.GetH(blue)));
+    Say("GetH(red): " + Fmt.Int(Color.GetHue(red)));
+    Say("GetH(green): " + Fmt.Int(Color.GetHue(green)));
+    Say("GetH(blue): " + Fmt.Int(Color.GetHue(blue)));
 
     // --- GetS ---
     Say("--- GetS ---");
-    Say("GetS(red): " + Fmt.Int(Color.GetS(red)));
-    Say("GetS(white): " + Fmt.Int(Color.GetS(white)));
+    Say("GetS(red): " + Fmt.Int(Color.GetSaturation(red)));
+    Say("GetS(white): " + Fmt.Int(Color.GetSaturation(white)));
 
     // --- GetL ---
     Say("--- GetL ---");
-    Say("GetL(red): " + Fmt.Int(Color.GetL(red)));
-    Say("GetL(white): " + Fmt.Int(Color.GetL(white)));
-    Say("GetL(black): " + Fmt.Int(Color.GetL(black)));
+    Say("GetL(red): " + Fmt.Int(Color.GetLightness(red)));
+    Say("GetL(white): " + Fmt.Int(Color.GetLightness(white)));
+    Say("GetL(black): " + Fmt.Int(Color.GetLightness(black)));
 
     // --- Lerp ---
     Say("--- Lerp ---");
@@ -98,8 +98,8 @@ func start() {
     Say("Lerp(red, blue, 50): " + Fmt.Int(lerp50));
     var lerp100 = Color.Lerp(red, blue, 100);
     Say("Lerp(red, blue, 100): " + Fmt.Int(lerp100));
-    Say("Lerp R at 50%: " + Fmt.Int(Color.GetR(lerp50)));
-    Say("Lerp B at 50%: " + Fmt.Int(Color.GetB(lerp50)));
+    Say("Lerp R at 50%: " + Fmt.Int(Color.GetRed(lerp50)));
+    Say("Lerp B at 50%: " + Fmt.Int(Color.GetBlue(lerp50)));
 
     // --- Brighten ---
     Say("--- Brighten ---");
@@ -147,9 +147,9 @@ func start() {
     Say("--- Complement ---");
     var compRed = Color.Complement(red);
     Say("Complement(red): " + Fmt.Int(compRed));
-    Say("Complement R: " + Fmt.Int(Color.GetR(compRed)));
-    Say("Complement G: " + Fmt.Int(Color.GetG(compRed)));
-    Say("Complement B: " + Fmt.Int(Color.GetB(compRed)));
+    Say("Complement R: " + Fmt.Int(Color.GetRed(compRed)));
+    Say("Complement G: " + Fmt.Int(Color.GetGreen(compRed)));
+    Say("Complement B: " + Fmt.Int(Color.GetBlue(compRed)));
 
     // --- Grayscale ---
     Say("--- Grayscale ---");
@@ -164,9 +164,9 @@ func start() {
     Say("--- Invert ---");
     var invRed = Color.Invert(red);
     Say("Invert(red): " + Fmt.Int(invRed));
-    Say("Invert R: " + Fmt.Int(Color.GetR(invRed)));
-    Say("Invert G: " + Fmt.Int(Color.GetG(invRed)));
-    Say("Invert B: " + Fmt.Int(Color.GetB(invRed)));
+    Say("Invert R: " + Fmt.Int(Color.GetRed(invRed)));
+    Say("Invert G: " + Fmt.Int(Color.GetGreen(invRed)));
+    Say("Invert B: " + Fmt.Int(Color.GetBlue(invRed)));
     var invBlack = Color.Invert(black);
     Say("Invert(black): " + Fmt.Int(invBlack));
     var invWhite = Color.Invert(white);

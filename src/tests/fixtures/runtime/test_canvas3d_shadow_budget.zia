@@ -13,7 +13,7 @@ bind Viper.Terminal;
 func spot(x: Float) -> Light3D {
     var pos = new Vec3(x, 6.0, 0.0);
     var dir = new Vec3(0.0, -1.0, 0.0);
-    var l = Light3D.NewSpot(pos, dir, 1.0, 1.0, 1.0, 1.0, 20.0, 35.0);
+    var l = Light3D.Spot(pos, dir, 1.0, 1.0, 1.0, 1.0, 20.0, 35.0);
     l.CastsShadows = true;
     return l;
 }
@@ -38,15 +38,15 @@ func start() {
                     new Vec3(0.0, 10.0, 24.0),
                     new Vec3(0.0, 0.0, 0.0),
                     new Vec3(0.0, 1.0, 0.0));
-    var ground = Mesh3D.NewPlane(60.0, 60.0);
-    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var mat = Material3D.NewColor(0.7, 0.7, 0.7);
+    var ground = Mesh3D.Plane(60.0, 60.0);
+    var box = Mesh3D.Box(1.0, 1.0, 1.0);
+    var mat = Material3D.FromColor(0.7, 0.7, 0.7);
 
     Canvas3D.EnableShadows(canvas, 256);
     Canvas3D.SetShadowCascades(canvas, 3);
 
     var sunDir = new Vec3(-0.4, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sunDir, 1.0, 1.0, 0.95);
+    var sun = Light3D.Directional(sunDir, 1.0, 1.0, 0.95);
     sun.CastsShadows = true;
     Canvas3D.SetLight(canvas, 0, sun);
     var i = 0;
@@ -82,7 +82,7 @@ func start() {
     // (a straight-down spot hides its shadow under the box).
     var probePos = new Vec3(7.0, 5.0, 3.0);
     var probeDir = new Vec3(3.0, -4.5, -3.0);
-    var probeSpot = Light3D.NewSpot(probePos, probeDir, 1.0, 1.0, 1.0, 0.0, 25.0, 45.0);
+    var probeSpot = Light3D.Spot(probePos, probeDir, 1.0, 1.0, 1.0, 0.0, 25.0, 45.0);
     probeSpot.CastsShadows = true;
     Canvas3D.SetLight(canvas, 6, probeSpot);
     drawScene(canvas, cam, ground, box, mat);

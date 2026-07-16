@@ -19,16 +19,22 @@ static int test_aabb_aabb(const rt_body3d *a, const rt_body3d *b, double *normal
     double oz = (amx[2] < bmx[2] ? amx[2] - bmn[2] : bmx[2] - amn[2]);
     if (ox <= 0 || oy <= 0 || oz <= 0)
         return 0;
+    /* Sign the normal from the overlapping boxes' face midpoints, not the body
+     * origins: colliders can be offset from the body center, and origins can
+     * tie exactly. AABB centers describe the actual overlap geometry. */
+    double acx = (amn[0] + amx[0]) * 0.5, bcx = (bmn[0] + bmx[0]) * 0.5;
+    double acy = (amn[1] + amx[1]) * 0.5, bcy = (bmn[1] + bmx[1]) * 0.5;
+    double acz = (amn[2] + amx[2]) * 0.5, bcz = (bmn[2] + bmx[2]) * 0.5;
     normal[0] = normal[1] = normal[2] = 0;
     if (ox <= oy && ox <= oz) {
         *depth = ox;
-        normal[0] = (a->position[0] < b->position[0]) ? 1.0 : -1.0;
+        normal[0] = (acx <= bcx) ? 1.0 : -1.0;
     } else if (oy <= oz) {
         *depth = oy;
-        normal[1] = (a->position[1] < b->position[1]) ? 1.0 : -1.0;
+        normal[1] = (acy <= bcy) ? 1.0 : -1.0;
     } else {
         *depth = oz;
-        normal[2] = (a->position[2] < b->position[2]) ? 1.0 : -1.0;
+        normal[2] = (acz <= bcz) ? 1.0 : -1.0;
     }
     return 1;
 }

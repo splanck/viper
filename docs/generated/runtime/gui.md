@@ -27,8 +27,8 @@ construct the class directly. Its public surface exposes operations including `S
 
 Provides Clipboard Text constants and static operations for graphical user interfaces.
 
-`Viper.GUI.ClipboardText` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `SetText`, `GetText`, `HasText`, `Clear`.
+`Viper.GUI.ClipboardText` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `SetText`, `GetText`, `HasText`, `Clear`.
 
 #### Methods
 
@@ -45,7 +45,8 @@ public surface exposes operations including `SetText`, `GetText`, `HasText`, `Cl
 Provides Shortcuts constants and static operations for graphical user interfaces.
 
 `Viper.GUI.Shortcuts` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Register`, `Unregister`, `Clear`, `IsEnabled`.
+Its public surface exposes operations including `Register`, `Unregister`, `Clear`,
+`IsEnabled`.
 
 #### Methods
 
@@ -67,7 +68,7 @@ surface exposes operations including `Register`, `Unregister`, `Clear`, `IsEnabl
 Provides Cursor constants and static operations for graphical user interfaces.
 
 `Viper.GUI.Cursor` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Set`, `Reset`, `SetVisible`.
+Its public surface exposes operations including `Set`, `Reset`, `SetVisible`.
 
 #### Methods
 
@@ -83,8 +84,8 @@ surface exposes operations including `Set`, `Reset`, `SetVisible`.
 Provides Message Box functionality for graphical user interfaces.
 
 Create `Viper.GUI.MessageBox` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes operations including `Info`,
-`Warning`, `Error`, `Question`.
+object with the instance members below. Its public surface exposes operations including
+`Info`, `Warning`, `Error`, `Question`.
 
 Constructor: `Viper.GUI.MessageBox.New`
 
@@ -114,7 +115,7 @@ Constructor: `Viper.GUI.MessageBox.New`
 Provides File Dialog functionality for graphical user interfaces.
 
 Create `Viper.GUI.FileDialog` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as
+object with the instance members below. Its public surface exposes properties such as
 `PathCount` and operations including `Open`, `OpenMultiple`, `PathListCount`, `PathListGet`.
 
 Constructor: `Viper.GUI.FileDialog.New`
@@ -188,8 +189,8 @@ Constructor: `Viper.GUI.CommandPalette.New`
 Provides Test Harness functionality for graphical user interfaces.
 
 Create `Viper.GUI.TestHarness` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes operations including `Clear`,
-`Tick`, `RegisterWidget`, `FindById`.
+object with the instance members below. Its public surface exposes operations including
+`Clear`, `Tick`, `RegisterWidget`, `FindById`.
 
 Constructor: `Viper.GUI.TestHarness.New`
 
@@ -200,12 +201,9 @@ Constructor: `Viper.GUI.TestHarness.New`
 | <a id="viper-gui-testharness-clear"></a>`Clear` | `void()` | `Viper.GUI.TestHarness.Clear` |
 | <a id="viper-gui-testharness-tick"></a>`Tick` | `i64(i64)` | `Viper.GUI.TestHarness.Tick` |
 | <a id="viper-gui-testharness-registerwidget"></a>`RegisterWidget` | `void(str,str,str,i64,i64,i64,i64)` | `Viper.GUI.TestHarness.RegisterWidget` |
-| <a id="viper-gui-testharness-findbyid"></a>`FindById` | `obj<Viper.Collections.Map>(str)` | `Viper.GUI.TestHarness.FindById` |
-| <a id="viper-gui-testharness-findbyidoption"></a>`FindByIdOption` | `obj<Viper.Option>(str)` | `Viper.GUI.TestHarness.FindByIdOption` |
-| <a id="viper-gui-testharness-findbyname"></a>`FindByName` | `obj<Viper.Collections.Map>(str)` | `Viper.GUI.TestHarness.FindByName` |
-| <a id="viper-gui-testharness-findbynameoption"></a>`FindByNameOption` | `obj<Viper.Option>(str)` | `Viper.GUI.TestHarness.FindByNameOption` |
-| <a id="viper-gui-testharness-findbytype"></a>`FindByType` | `obj<Viper.Collections.Map>(str)` | `Viper.GUI.TestHarness.FindByType` |
-| <a id="viper-gui-testharness-findbytypeoption"></a>`FindByTypeOption` | `obj<Viper.Option>(str)` | `Viper.GUI.TestHarness.FindByTypeOption` |
+| <a id="viper-gui-testharness-findbyid"></a>`FindById` | `obj<Viper.Option>(str)` | `Viper.GUI.TestHarness.FindById` |
+| <a id="viper-gui-testharness-findbyname"></a>`FindByName` | `obj<Viper.Option>(str)` | `Viper.GUI.TestHarness.FindByName` |
+| <a id="viper-gui-testharness-findbytype"></a>`FindByType` | `obj<Viper.Option>(str)` | `Viper.GUI.TestHarness.FindByType` |
 | <a id="viper-gui-testharness-sendkey"></a>`SendKey` | `void(str,i64)` | `Viper.GUI.TestHarness.SendKey` |
 | <a id="viper-gui-testharness-sendmouse"></a>`SendMouse` | `void(str,i64,i64,i64)` | `Viper.GUI.TestHarness.SendMouse` |
 | <a id="viper-gui-testharness-getfocus"></a>`GetFocus` | `str()` | `Viper.GUI.TestHarness.GetFocus` |
@@ -322,8 +320,8 @@ Constructor: `Viper.GUI.Command.New`
 Provides Command Registry functionality for graphical user interfaces.
 
 Create `Viper.GUI.CommandRegistry` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`Add`, `Count`, `Find`, `FindOption`.
+returned object with the instance members below. Its public surface exposes operations
+including `Add`, `Count`, `Find`, `BindPalette`.
 
 Constructor: `Viper.GUI.CommandRegistry.New`
 
@@ -333,8 +331,7 @@ Constructor: `Viper.GUI.CommandRegistry.New`
 |---|---|---|
 | <a id="viper-gui-commandregistry-add"></a>`Add` | `void(obj)` | `Viper.GUI.CommandRegistry.Add` |
 | <a id="viper-gui-commandregistry-count"></a>`Count` | `i64()` | `Viper.GUI.CommandRegistry.Count` |
-| <a id="viper-gui-commandregistry-find"></a>`Find` | `obj<Viper.GUI.Command>(str)` | `Viper.GUI.CommandRegistry.Find` |
-| <a id="viper-gui-commandregistry-findoption"></a>`FindOption` | `obj<Viper.Option>(str)` | `Viper.GUI.CommandRegistry.FindOption` |
+| <a id="viper-gui-commandregistry-find"></a>`Find` | `obj<Viper.Option>(str)` | `Viper.GUI.CommandRegistry.Find` |
 | <a id="viper-gui-commandregistry-bindpalette"></a>`BindPalette` | `void(obj)` | `Viper.GUI.CommandRegistry.BindPalette` |
 | <a id="viper-gui-commandregistry-poll"></a>`Poll` | `str()` | `Viper.GUI.CommandRegistry.Poll` |
 | <a id="viper-gui-commandregistry-clear"></a>`Clear` | `void()` | `Viper.GUI.CommandRegistry.Clear` |
@@ -345,8 +342,8 @@ Constructor: `Viper.GUI.CommandRegistry.New`
 
 Provides Accessibility constants and static operations for graphical user interfaces.
 
-`Viper.GUI.Accessibility` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `ContrastRatio`, `MeetsContrast`,
+`Viper.GUI.Accessibility` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `ContrastRatio`, `MeetsContrast`,
 `HighContrastTokens`.
 
 #### Methods
@@ -363,7 +360,7 @@ public surface exposes operations including `ContrastRatio`, `MeetsContrast`,
 Provides Tooltip constants and static operations for graphical user interfaces.
 
 `Viper.GUI.Tooltip` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Show`, `ShowRich`, `Hide`, `SetDelay`.
+Its public surface exposes operations including `Show`, `ShowRich`, `Hide`, `SetDelay`.
 
 #### Methods
 
@@ -380,8 +377,8 @@ surface exposes operations including `Show`, `ShowRich`, `Hide`, `SetDelay`.
 Provides Toast functionality for graphical user interfaces.
 
 Create `Viper.GUI.Toast` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes operations including `Info`,
-`Success`, `Warning`, `Error`.
+with the instance members below. Its public surface exposes operations including `New`,
+`Info`, `Success`, `Warning`.
 
 Constructor: `Viper.GUI.Toast.New`
 
@@ -535,7 +532,8 @@ Constructor: `Viper.GUI.App.New`
 Provides font loading.
 
 `Viper.GUI.Font` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Load`, `Destroy`.
+construct the class directly. Its public surface exposes operations including `Load`,
+`Destroy`.
 
 #### Methods
 
@@ -644,8 +642,8 @@ Constructor: `Viper.GUI.Button.New`
 Provides text input field widget.
 
 Create `Viper.GUI.TextInput` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Text` and
-operations including `SetText`, `SetPlaceholder`, `SetFont`.
+object with the instance members below. Its public surface exposes properties such as `Text`
+and operations including `SetText`, `SetPlaceholder`, `SetFont`.
 
 Constructor: `Viper.GUI.TextInput.New`
 
@@ -765,7 +763,7 @@ construct the class directly. Its public surface exposes operations including `G
 Provides tab bar widget.
 
 Create `Viper.GUI.TabBar` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes a property such as `TabCount` and
+with the instance members below. Its public surface exposes properties such as `TabCount` and
 operations including `AddTab`, `RemoveTab`, `PruneRetiredTabs`, `SetActive`.
 
 Constructor: `Viper.GUI.TabBar.New`
@@ -1021,7 +1019,7 @@ Constructor: `Viper.GUI.Dropdown.New`
 Provides slider widget.
 
 Create `Viper.GUI.Slider` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes a property such as `Value` and
+with the instance members below. Its public surface exposes properties such as `Value` and
 operations including `SetValue`, `SetRange`, `SetStep`.
 
 Constructor: `Viper.GUI.Slider.New`
@@ -1047,7 +1045,7 @@ Constructor: `Viper.GUI.Slider.New`
 Provides progress bar widget.
 
 Create `Viper.GUI.ProgressBar` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Value`
+object with the instance members below. Its public surface exposes properties such as `Value`
 and operations including `SetValue`, `SetStyle`, `ShowPercentage`.
 
 Constructor: `Viper.GUI.ProgressBar.New`
@@ -1114,7 +1112,7 @@ Constructor: `Viper.GUI.ListBox.New`
 Provides append-only styled console/output pane.
 
 Create `Viper.GUI.OutputPane` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as
+object with the instance members below. Its public surface exposes properties such as
 `LineCount` and operations including `Append`, `AppendLine`, `AppendStyled`, `Clear`.
 
 Constructor: `Viper.GUI.OutputPane.New`
@@ -1186,7 +1184,7 @@ Constructor: `Viper.GUI.Grid.New`
 Provides Popup List functionality for graphical user interfaces.
 
 Create `Viper.GUI.PopupList` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as
+object with the instance members below. Its public surface exposes properties such as
 `VisibleCount` and operations including `AddItem`, `Clear`, `SetFilter`, `NavigateUp`.
 
 Constructor: `Viper.GUI.PopupList.New`
@@ -1262,7 +1260,7 @@ Constructor: `Viper.GUI.RadioButton.New`
 Provides numeric spinner widget.
 
 Create `Viper.GUI.Spinner` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes a property such as `Value` and
+with the instance members below. Its public surface exposes properties such as `Value` and
 operations including `SetValue`, `SetRange`, `SetStep`, `SetDecimals`.
 
 Constructor: `Viper.GUI.Spinner.New`
@@ -1311,7 +1309,7 @@ Constructor: `Viper.GUI.Image.New`
 Provides theme control.
 
 `Viper.GUI.Theme` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `SetDark`, `SetLight`, `GetName`.
+Its public surface exposes operations including `SetDark`, `SetLight`, `GetName`.
 
 #### Methods
 
@@ -1441,8 +1439,8 @@ construct the class directly. Its public surface exposes operations including `S
 Provides application toolbar.
 
 Create `Viper.GUI.Toolbar` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes operations including `NewVertical`,
-`AddButton`, `AddButtonWithText`, `AddNamedButton`.
+with the instance members below. Its public surface exposes operations including
+`NewVertical`, `AddButton`, `AddButtonWithText`, `AddNamedButton`.
 
 Constructor: `Viper.GUI.Toolbar.New`
 
@@ -1556,8 +1554,8 @@ construct the class directly. Its public surface exposes operations including `S
 Provides search and replace bar widget.
 
 Create `Viper.GUI.FindBar` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes operations including `SetFindText`,
-`GetFindText`, `SetReplaceText`, `GetReplaceText`.
+with the instance members below. Its public surface exposes operations including
+`SetFindText`, `GetFindText`, `SetReplaceText`, `GetReplaceText`.
 
 Constructor: `Viper.GUI.FindBar.New`
 
@@ -1579,10 +1577,8 @@ Constructor: `Viper.GUI.FindBar.New`
 | <a id="viper-gui-findbar-isreplacemode"></a>`IsReplaceMode` | `i1()` | `Viper.GUI.FindBar.IsReplaceMode` |
 | <a id="viper-gui-findbar-setvisible"></a>`SetVisible` | `void(i1)` | `Viper.GUI.FindBar.SetVisible` |
 | <a id="viper-gui-findbar-isvisible"></a>`IsVisible` | `i1()` | `Viper.GUI.FindBar.IsVisible` |
-| <a id="viper-gui-findbar-findnext"></a>`FindNext` | `i64()` | `Viper.GUI.FindBar.FindNext` |
-| <a id="viper-gui-findbar-findnextoption"></a>`FindNextOption` | `obj<Viper.Option>()` | `Viper.GUI.FindBar.FindNextOption` |
-| <a id="viper-gui-findbar-findprev"></a>`FindPrev` | `i64()` | `Viper.GUI.FindBar.FindPrev` |
-| <a id="viper-gui-findbar-findprevoption"></a>`FindPrevOption` | `obj<Viper.Option>()` | `Viper.GUI.FindBar.FindPrevOption` |
+| <a id="viper-gui-findbar-findnext"></a>`FindNext` | `obj<Viper.Option>()` | `Viper.GUI.FindBar.FindNext` |
+| <a id="viper-gui-findbar-findprevious"></a>`FindPrevious` | `obj<Viper.Option>()` | `Viper.GUI.FindBar.FindPrevious` |
 | <a id="viper-gui-findbar-replace"></a>`Replace` | `i64()` | `Viper.GUI.FindBar.Replace` |
 | <a id="viper-gui-findbar-replaceall"></a>`ReplaceAll` | `i64()` | `Viper.GUI.FindBar.ReplaceAll` |
 | <a id="viper-gui-findbar-getmatchcount"></a>`GetMatchCount` | `i64()` | `Viper.GUI.FindBar.GetMatchCount` |
@@ -2246,10 +2242,8 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.FindBar.IsReplaceMode` | `i1(obj)` | `rt_findbar_is_replace_mode` |
 | `Viper.GUI.FindBar.SetVisible` | `void(obj,i1)` | `rt_findbar_set_visible` |
 | `Viper.GUI.FindBar.IsVisible` | `i1(obj)` | `rt_findbar_is_visible` |
-| `Viper.GUI.FindBar.FindNext` | `i64(obj)` | `rt_findbar_find_next` |
-| `Viper.GUI.FindBar.FindNextOption` | `obj<Viper.Option>(obj)` | `rt_findbar_find_next_option` |
-| `Viper.GUI.FindBar.FindPrev` | `i64(obj)` | `rt_findbar_find_previous` |
-| `Viper.GUI.FindBar.FindPrevOption` | `obj<Viper.Option>(obj)` | `rt_findbar_find_previous_option` |
+| `Viper.GUI.FindBar.FindNext` | `obj<Viper.Option>(obj)` | `rt_findbar_find_next_option` |
+| `Viper.GUI.FindBar.FindPrevious` | `obj<Viper.Option>(obj)` | `rt_findbar_find_previous_option` |
 | `Viper.GUI.FindBar.Replace` | `i64(obj)` | `rt_findbar_replace` |
 | `Viper.GUI.FindBar.ReplaceAll` | `i64(obj)` | `rt_findbar_replace_all` |
 | `Viper.GUI.FindBar.GetMatchCount` | `i64(obj)` | `rt_findbar_get_match_count` |
@@ -2277,12 +2271,9 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.TestHarness.Clear` | `void(obj)` | `rt_gui_test_harness_clear` |
 | `Viper.GUI.TestHarness.Tick` | `i64(obj,i64)` | `rt_gui_test_harness_tick` |
 | `Viper.GUI.TestHarness.RegisterWidget` | `void(obj,str,str,str,i64,i64,i64,i64)` | `rt_gui_test_harness_register_widget` |
-| `Viper.GUI.TestHarness.FindById` | `obj<Viper.Collections.Map>(obj,str)` | `rt_gui_test_harness_find_by_id` |
-| `Viper.GUI.TestHarness.FindByIdOption` | `obj<Viper.Option>(obj,str)` | `rt_gui_test_harness_find_by_id_option` |
-| `Viper.GUI.TestHarness.FindByName` | `obj<Viper.Collections.Map>(obj,str)` | `rt_gui_test_harness_find_by_name` |
-| `Viper.GUI.TestHarness.FindByNameOption` | `obj<Viper.Option>(obj,str)` | `rt_gui_test_harness_find_by_name_option` |
-| `Viper.GUI.TestHarness.FindByType` | `obj<Viper.Collections.Map>(obj,str)` | `rt_gui_test_harness_find_by_type` |
-| `Viper.GUI.TestHarness.FindByTypeOption` | `obj<Viper.Option>(obj,str)` | `rt_gui_test_harness_find_by_type_option` |
+| `Viper.GUI.TestHarness.FindById` | `obj<Viper.Option>(obj,str)` | `rt_gui_test_harness_find_by_id_option` |
+| `Viper.GUI.TestHarness.FindByName` | `obj<Viper.Option>(obj,str)` | `rt_gui_test_harness_find_by_name_option` |
+| `Viper.GUI.TestHarness.FindByType` | `obj<Viper.Option>(obj,str)` | `rt_gui_test_harness_find_by_type_option` |
 | `Viper.GUI.TestHarness.SendKey` | `void(obj,str,i64)` | `rt_gui_test_harness_send_key` |
 | `Viper.GUI.TestHarness.SendMouse` | `void(obj,str,i64,i64,i64)` | `rt_gui_test_harness_send_mouse` |
 | `Viper.GUI.TestHarness.GetFocus` | `str(obj)` | `rt_gui_test_harness_get_focus` |
@@ -2330,8 +2321,7 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.CommandRegistry.New` | `obj<Viper.GUI.CommandRegistry>()` | `rt_command_registry_new` |
 | `Viper.GUI.CommandRegistry.Add` | `void(obj,obj)` | `rt_command_registry_add` |
 | `Viper.GUI.CommandRegistry.Count` | `i64(obj)` | `rt_command_registry_count` |
-| `Viper.GUI.CommandRegistry.Find` | `obj<Viper.GUI.Command>(obj,str)` | `rt_command_registry_find` |
-| `Viper.GUI.CommandRegistry.FindOption` | `obj<Viper.Option>(obj,str)` | `rt_command_registry_find_option` |
+| `Viper.GUI.CommandRegistry.Find` | `obj<Viper.Option>(obj,str)` | `rt_command_registry_find_option` |
 | `Viper.GUI.CommandRegistry.BindPalette` | `void(obj,obj)` | `rt_command_registry_bind_palette` |
 | `Viper.GUI.CommandRegistry.Poll` | `str(obj)` | `rt_command_registry_poll` |
 | `Viper.GUI.CommandRegistry.Clear` | `void(obj)` | `rt_command_registry_clear` |

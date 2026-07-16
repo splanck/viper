@@ -360,6 +360,15 @@ static int game3d_hitbox_world_pose(rt_game3d_hitbox *hitbox,
 
 /// @brief True when the hitbox is live this step (manual switch or any
 ///   animation window matching the owner's animator base state/time).
+/// @details Window liveness tests the CROSSING of [prev_sample, now] against
+///   [t0, t1], not instantaneous membership: a coarse fixed step or a high
+///   animation-speed multiplier can advance state_time straight over a narrow
+///   authored window, which would silently whiff the attack frame-rate-
+///   dependently. Loop wrap (now < prev) checks both tail [prev, end] and head
+///   [0, now] spans. A window whose state was not playing at the previous
+///   sample uses instantaneous membership (the prev sample belonged to another
+///   state, so the crossing interval would be meaningless). Called once per
+///   hitbox per combat step — it advances the stored sample.
 static int game3d_hitbox_is_live(rt_game3d_hitbox *hitbox) {
     if (hitbox->active)
         return 1;
@@ -368,17 +377,33 @@ static int game3d_hitbox_is_live(rt_game3d_hitbox *hitbox) {
     rt_game3d_entity *entity = hitbox->entity;
     void *animator = entity ? game3d_entity_anim_ref(entity) : NULL;
     void *controller = animator ? rt_game3d_animator_get_controller(animator) : NULL;
-    if (!controller)
+    if (!controller) {
+        hitbox->window_prev_valid = 0;
         return 0;
+    }
     double state_time = rt_anim_controller3d_get_state_time(controller);
+    double prev_time = hitbox->window_prev_valid ? hitbox->window_prev_time : state_time;
+    int live = 0;
     for (int32_t i = 0; i < hitbox->window_count; ++i) {
         rt_game3d_hitbox_window *window = &hitbox->windows[i];
-        if (state_time < window->t0 || state_time > window->t1)
-            continue;
-        if (rt_anim_controller3d_is_state_playing_cstr(controller, window->state))
-            return 1;
+        int playing = rt_anim_controller3d_is_state_playing_cstr(controller, window->state) ? 1 : 0;
+        if (playing && !live) {
+            double lo = (hitbox->window_prev_valid && hitbox->window_prev_playing[i]) ? prev_time
+                                                                                      : state_time;
+            if (lo <= state_time) {
+                if (window->t1 >= lo && window->t0 <= state_time)
+                    live = 1;
+            } else {
+                /* Clip looped between samples: [lo, clip_end] ∪ [0, state_time]. */
+                if (window->t1 >= lo || window->t0 <= state_time)
+                    live = 1;
+            }
+        }
+        hitbox->window_prev_playing[i] = (int8_t)playing;
     }
-    return 0;
+    hitbox->window_prev_time = state_time;
+    hitbox->window_prev_valid = 1;
+    return live;
 }
 
 /// @brief True when @p victim was already reported for the current activation.

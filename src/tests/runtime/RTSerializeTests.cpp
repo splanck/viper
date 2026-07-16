@@ -117,6 +117,12 @@ static void test_format_from_name() {
     ASSERT(rt_serialize_format_from_name(make_str("csv")) == RT_FORMAT_CSV, "csv -> CSV");
     ASSERT(rt_serialize_format_from_name(make_str("binary")) == -1, "binary -> unknown");
     ASSERT(rt_serialize_format_from_name(NULL) == -1, "null -> unknown");
+
+    // VDOC-043: a name whose bytes continue past an embedded NUL must not
+    // alias the shorter C-string prefix.
+    rt_string sneaky = rt_string_from_bytes("json\0suffix", 11);
+    ASSERT(rt_serialize_format_from_name(sneaky) == -1, "json\\0suffix -> unknown");
+    rt_string_unref(sneaky);
 }
 
 //=============================================================================

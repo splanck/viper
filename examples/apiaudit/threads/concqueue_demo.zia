@@ -28,9 +28,9 @@ func start() {
 
     // --- Enqueue ---
     Say("--- Enqueue ---");
-    q.Enqueue(Box.Str("alpha"));
-    q.Enqueue(Box.Str("beta"));
-    q.Enqueue(Box.Str("gamma"));
+    q.Push(Box.Str("alpha"));
+    q.Push(Box.Str("beta"));
+    q.Push(Box.Str("gamma"));
     Say("Enqueued 3 items");
 
     // --- Len (after enqueue) ---
@@ -48,31 +48,31 @@ func start() {
 
     // --- TryDequeueOption ---
     Say("--- TryDequeueOption ---");
-    var item1 = q.TryDequeueOption();
+    var item1 = q.TryPop();
     Say("TryDequeueOption: " + Box.ToStr(item1.Unwrap()));
     Say("Len after TryDequeueOption: " + Fmt.Int(q.get_Count()));
 
     // --- Dequeue (blocking, but queue has items) ---
     Say("--- Dequeue ---");
-    var item2 = q.Dequeue();
+    var item2 = q.Pop();
     Say("Dequeue: " + Box.ToStr(item2));
     Say("Len after Dequeue: " + Fmt.Int(q.get_Count()));
 
     // --- TryDequeueOption remaining ---
     Say("--- TryDequeueOption remaining ---");
-    var item3 = q.TryDequeueOption();
+    var item3 = q.TryPop();
     Say("TryDequeueOption: " + Box.ToStr(item3.Unwrap()));
 
     // --- TryDequeueOption on empty ---
     Say("--- TryDequeueOption on empty ---");
-    var item4 = q.TryDequeueOption();
+    var item4 = q.TryPop();
     Say("TryDequeueOption (empty): " + Fmt.Bool(item4.IsNone));
 
     // --- Enqueue more and Clear ---
     Say("--- Clear ---");
-    q.Enqueue(Box.I64(10));
-    q.Enqueue(Box.I64(20));
-    q.Enqueue(Box.I64(30));
+    q.Push(Box.I64(10));
+    q.Push(Box.I64(20));
+    q.Push(Box.I64(30));
     Say("Len before Clear: " + Fmt.Int(q.get_Count()));
     q.Clear();
     Say("Len after Clear: " + Fmt.Int(q.get_Count()));

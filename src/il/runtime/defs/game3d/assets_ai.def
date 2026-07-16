@@ -96,8 +96,8 @@ RT_FUNC(Game3DCollisionEventOther,    rt_game3d_collision_event_other,     "Vipe
 /// @summary Provides Collision 3D Event functionality for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.Collision3DEvent` exposes a registry-backed runtime surface without requiring
-/// callers to construct the class directly. Its public surface exposes properties such as `Phase`,
-/// `EntityA`, `EntityB` and operations including `Point`, `Normal`, `ContactPoint`,
+/// callers to construct the class directly. Its public surface exposes properties such as
+/// `Phase`, `EntityA`, `EntityB` and operations including `Point`, `Normal`, `ContactPoint`,
 /// `ContactNormal`.
 RT_CLASS_BEGIN("Viper.Game3D.Collision3DEvent", Game3DCollision3DEvent, "obj", none)
     RT_PROP("Phase", "i64", Game3DCollisionEventGetPhase, none)
@@ -122,16 +122,8 @@ RT_FUNC(Game3DAssetsLoadAnimation,          rt_game3d_assets_load_animation,    
 RT_FUNC(Game3DAssetsLoadAnimationAsset,     rt_game3d_assets_load_animation_asset,      "Viper.Game3D.Assets3D.LoadAnimationAsset",     "obj<Viper.Graphics3D.Animation3D>(str,i64)")
 RT_FUNC(Game3DAssetsLoadNodeAnimation,      rt_game3d_assets_load_node_animation,       "Viper.Game3D.Assets3D.LoadNodeAnimation",      "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
 RT_FUNC(Game3DAssetsLoadNodeAnimationAsset, rt_game3d_assets_load_node_animation_asset, "Viper.Game3D.Assets3D.LoadNodeAnimationAsset", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
-RT_FUNC(Game3DAssetsLoadModelTemplate,      rt_game3d_assets_load_model_template,       "Viper.Game3D.Assets3D.LoadTemplate",      "obj(str)")
-RT_FUNC(Game3DAssetsLoadModelTemplateAsset, rt_game3d_assets_load_model_template_asset, "Viper.Game3D.Assets3D.LoadTemplateAsset", "obj(str)")
-RT_FUNC(Game3DAssetsLoadPrefab,             rt_game3d_assets_load_model_template,       "Viper.Game3D.Assets3D.LoadPrefab",      "obj<Viper.Game3D.SceneTemplate>(str)")
-RT_FUNC(Game3DAssetsLoadPrefabAsset,        rt_game3d_assets_load_model_template_asset, "Viper.Game3D.Assets3D.LoadPrefabAsset", "obj<Viper.Game3D.SceneTemplate>(str)")
 RT_FUNC(Game3DAssetsLoadModelAsync,              rt_game3d_assets_load_model_async,                "Viper.Game3D.Assets3D.LoadEntityAsync",              "obj<Viper.Game3D.AssetHandle3D>(str)")
 RT_FUNC(Game3DAssetsLoadModelAssetAsync,         rt_game3d_assets_load_model_asset_async,          "Viper.Game3D.Assets3D.LoadEntityAssetAsync",         "obj<Viper.Game3D.AssetHandle3D>(str)")
-RT_FUNC(Game3DAssetsLoadModelTemplateAsync,      rt_game3d_assets_load_model_template_async,       "Viper.Game3D.Assets3D.LoadTemplateAsync",      "obj<Viper.Game3D.AssetHandle3D>(str)")
-RT_FUNC(Game3DAssetsLoadModelTemplateAssetAsync, rt_game3d_assets_load_model_template_asset_async, "Viper.Game3D.Assets3D.LoadTemplateAssetAsync", "obj<Viper.Game3D.AssetHandle3D>(str)")
-RT_FUNC(Game3DAssetsLoadPrefabAsync,             rt_game3d_assets_load_model_template_async,       "Viper.Game3D.Assets3D.LoadPrefabAsync",      "obj<Viper.Game3D.AssetHandle3D>(str)")
-RT_FUNC(Game3DAssetsLoadPrefabAssetAsync,        rt_game3d_assets_load_model_template_asset_async, "Viper.Game3D.Assets3D.LoadPrefabAssetAsync", "obj<Viper.Game3D.AssetHandle3D>(str)")
 RT_FUNC(Game3DAssetsSetResidencyBudget,          rt_game3d_assets_set_residency_budget,            "Viper.Game3D.Assets3D.SetResidencyBudget",          "void(i64)")
 RT_FUNC(Game3DAssetsGetResidentBytes,            rt_game3d_assets_get_resident_bytes,              "Viper.Game3D.Assets3D.GetResidentBytes",            "i64()")
 RT_FUNC(Game3DAssetsSetResidencyHint,            rt_game3d_assets_set_residency_hint,              "Viper.Game3D.Assets3D.SetResidencyHint",            "void(obj,f64,f64)")
@@ -140,19 +132,18 @@ RT_FUNC(Game3DAssetsEvict,                       rt_game3d_assets_evict,        
 RT_FUNC(Game3DAssetsPreload,                rt_game3d_assets_preload,                   "Viper.Game3D.Assets3D.Preload",                "void(str)")
 RT_FUNC(Game3DAssetsPreloadAsset,           rt_game3d_assets_preload_asset,             "Viper.Game3D.Assets3D.PreloadAsset",           "void(str)")
 RT_FUNC(Game3DAssetsClearCache,             rt_game3d_assets_clear_cache,               "Viper.Game3D.Assets3D.ClearCache",             "void()")
-RT_FUNC(Game3DAssetHandleGetReady,    rt_game3d_asset_handle_get_ready,    "Viper.Game3D.AssetHandle3D.get_Ready",    "i1(obj)")
+RT_FUNC(Game3DAssetHandleGetReady,    rt_game3d_asset_handle_get_ready,    "Viper.Game3D.AssetHandle3D.get_IsReady",    "i1(obj)")
 RT_FUNC(Game3DAssetHandleGetProgress, rt_game3d_asset_handle_get_progress, "Viper.Game3D.AssetHandle3D.get_Progress", "f64(obj)")
 RT_FUNC(Game3DAssetHandleGetError,    rt_game3d_asset_handle_get_error,    "Viper.Game3D.AssetHandle3D.get_Error",    "str(obj)")
 RT_FUNC(Game3DAssetHandleCancel,      rt_game3d_asset_handle_cancel,       "Viper.Game3D.AssetHandle3D.Cancel",       "void(obj)")
 RT_FUNC(Game3DAssetHandleGetEntity,   rt_game3d_asset_handle_get_entity,   "Viper.Game3D.AssetHandle3D.GetEntity",    "obj<Viper.Game3D.Entity3D>(obj)")
-RT_FUNC(Game3DAssetHandleGetTemplate, rt_game3d_asset_handle_get_template, "Viper.Game3D.AssetHandle3D.GetTemplate",  "obj<Viper.Game3D.SceneTemplate>(obj)")
 RT_FUNC(Game3DAssetHandleGetPrefab,   rt_game3d_asset_handle_get_template, "Viper.Game3D.AssetHandle3D.GetPrefab",    "obj<Viper.Game3D.SceneTemplate>(obj)")
 
 /// @summary Provides Assets 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.Assets3D` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `LoadEntity`, `LoadEntityAsset`, `LoadAnimation`,
-/// `LoadAnimationAsset`.
+/// Its public surface exposes operations including `LoadEntity`, `LoadEntityAsset`,
+/// `LoadAnimation`, `LoadAnimationAsset`.
 RT_CLASS_BEGIN("Viper.Game3D.Assets3D", Game3DAssets3D, "none", none)
     RT_METHOD("LoadEntity", "obj(str)", Game3DAssetsLoadModel)
     RT_METHOD("LoadEntityAsset", "obj(str)", Game3DAssetsLoadModelAsset)
@@ -160,16 +151,8 @@ RT_CLASS_BEGIN("Viper.Game3D.Assets3D", Game3DAssets3D, "none", none)
     RT_METHOD("LoadAnimationAsset", "obj<Viper.Graphics3D.Animation3D>(str,i64)", Game3DAssetsLoadAnimationAsset)
     RT_METHOD("LoadNodeAnimation", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)", Game3DAssetsLoadNodeAnimation)
     RT_METHOD("LoadNodeAnimationAsset", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)", Game3DAssetsLoadNodeAnimationAsset)
-    RT_METHOD("LoadTemplate", "obj(str)", Game3DAssetsLoadModelTemplate)
-    RT_METHOD("LoadTemplateAsset", "obj(str)", Game3DAssetsLoadModelTemplateAsset)
-    RT_METHOD("LoadPrefab", "obj(str)", Game3DAssetsLoadPrefab)
-    RT_METHOD("LoadPrefabAsset", "obj(str)", Game3DAssetsLoadPrefabAsset)
     RT_METHOD("LoadEntityAsync", "obj(str)", Game3DAssetsLoadModelAsync)
     RT_METHOD("LoadEntityAssetAsync", "obj(str)", Game3DAssetsLoadModelAssetAsync)
-    RT_METHOD("LoadTemplateAsync", "obj(str)", Game3DAssetsLoadModelTemplateAsync)
-    RT_METHOD("LoadTemplateAssetAsync", "obj(str)", Game3DAssetsLoadModelTemplateAssetAsync)
-    RT_METHOD("LoadPrefabAsync", "obj(str)", Game3DAssetsLoadPrefabAsync)
-    RT_METHOD("LoadPrefabAssetAsync", "obj(str)", Game3DAssetsLoadPrefabAssetAsync)
     RT_METHOD("SetResidencyBudget", "void(i64)", Game3DAssetsSetResidencyBudget)
     RT_METHOD("GetResidentBytes", "i64()", Game3DAssetsGetResidentBytes)
     RT_METHOD("SetResidencyHint", "void(obj,f64,f64)", Game3DAssetsSetResidencyHint)
@@ -183,15 +166,14 @@ RT_CLASS_END()
 /// @summary Provides Asset Handle 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.AssetHandle3D` exposes a registry-backed runtime surface without requiring callers
-/// to construct the class directly. Its public surface exposes properties such as `Ready`,
-/// `Progress`, `Error` and operations including `Cancel`, `GetEntity`, `GetTemplate`, `GetPrefab`.
+/// to construct the class directly. Its public surface exposes properties such as `IsReady`,
+/// `Progress`, `Error` and operations including `Cancel`, `GetEntity`, `GetPrefab`.
 RT_CLASS_BEGIN("Viper.Game3D.AssetHandle3D", Game3DAssetHandle3D, "obj", none)
-    RT_PROP("Ready", "i1", Game3DAssetHandleGetReady, none)
+    RT_PROP("IsReady", "i1", Game3DAssetHandleGetReady, none)
     RT_PROP("Progress", "f64", Game3DAssetHandleGetProgress, none)
     RT_PROP("Error", "str", Game3DAssetHandleGetError, none)
     RT_METHOD("Cancel", "void()", Game3DAssetHandleCancel)
     RT_METHOD("GetEntity", "obj<Viper.Game3D.Entity3D>()", Game3DAssetHandleGetEntity)
-    RT_METHOD("GetTemplate", "obj()", Game3DAssetHandleGetTemplate)
     RT_METHOD("GetPrefab", "obj()", Game3DAssetHandleGetPrefab)
 RT_CLASS_END()
 
@@ -208,8 +190,9 @@ RT_FUNC(Game3DModelTemplateInstantiateSceneAt, rt_game3d_model_template_instanti
 /// @summary Provides Scene Template functionality for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.SceneTemplate` exposes a registry-backed runtime surface without requiring callers
-/// to construct the class directly. Its public surface exposes properties such as `Model`, `Path`,
-/// `IsAsset` and operations including `GetSceneName`, `GetCameraCount`, `GetCamera`, `Instantiate`.
+/// to construct the class directly. Its public surface exposes properties such as `Model`,
+/// `Path`, `IsAsset` and operations including `GetSceneName`, `GetCameraCount`, `GetCamera`,
+/// `Instantiate`.
 RT_CLASS_BEGIN("Viper.Game3D.SceneTemplate", Game3DModelTemplate, "obj", none)
     RT_PROP("Model", "obj<Viper.Graphics3D.SceneAsset>", Game3DModelTemplateGetModel, none)
     RT_PROP("Path", "str", Game3DModelTemplateGetPath, none)
@@ -261,8 +244,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Game3D.Animator3D` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `Controller`, `NodeAnimator` and operations including `Play`, `Crossfade`, `PlayLayerAdditive`,
-/// `CrossfadeLayerAdditive`.
+/// `Controller`, `NodeAnimator` and operations including `Play`, `Crossfade`,
+/// `PlayLayerAdditive`, `CrossfadeLayerAdditive`.
 RT_CLASS_BEGIN("Viper.Game3D.Animator3D", Game3DAnimator3D, "obj", Game3DAnimatorNew)
     RT_PROP("Controller", "obj<Viper.Graphics3D.AnimController3D>", Game3DAnimatorGetController, none)
     RT_PROP("NodeAnimator", "obj<Viper.Graphics3D.NodeAnimator3D>", Game3DAnimatorGetNodeAnimator, none)
@@ -289,8 +272,8 @@ RT_FUNC(Game3DEnvironmentNight,    rt_game3d_environment_night,    "Viper.Game3D
 
 /// @summary Provides Environment 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Environment3D` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `Outdoor`, `Sunset`, `Overcast`, `Night`.
+/// `Viper.Game3D.Environment3D` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `Outdoor`, `Sunset`, `Overcast`, `Night`.
 RT_CLASS_BEGIN("Viper.Game3D.Environment3D", Game3DEnvironment3D, "none", none)
     RT_METHOD("Outdoor", "obj(obj)", Game3DEnvironmentOutdoor)
     RT_METHOD("Sunset", "obj(obj)", Game3DEnvironmentSunset)
@@ -324,7 +307,8 @@ RT_FUNC(Game3DDebugDrawCapabilities, rt_game3d_debug_draw_capabilities, "Viper.G
 /// @summary Provides Debug 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.Debug3D` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `ShowOverlay`, `DrawAxes`, `DrawPhysics`, `DrawCameraInfo`.
+/// Its public surface exposes operations including `ShowOverlay`, `DrawAxes`, `DrawPhysics`,
+/// `DrawCameraInfo`.
 RT_CLASS_BEGIN("Viper.Game3D.Debug3D", Game3DDebug3D, "none", none)
     RT_METHOD("ShowOverlay", "void(obj,i1)", Game3DDebugShowOverlay)
     RT_METHOD("DrawAxes", "void(obj,obj,f64)", Game3DDebugDrawAxes)
@@ -362,8 +346,8 @@ RT_FUNC(Game3DSurfaceTableClipCount, rt_game3d_surface_table_clip_count,  "Viper
 /// @summary Provides Surface Table 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.SurfaceTable3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `AddClip`, `SetLoudness`, `ClipCount`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `AddClip`, `SetLoudness`, `ClipCount`.
 RT_CLASS_BEGIN("Viper.Game3D.SurfaceTable3D", Game3DSurfaceTable3D, "obj", Game3DSurfaceTableNew)
     RT_METHOD("AddClip", "obj(i64,obj)", Game3DSurfaceTableAddClip)
     RT_METHOD("SetLoudness", "obj(i64,f64)", Game3DSurfaceTableLoudness)
@@ -387,8 +371,8 @@ RT_FUNC(Game3DWorldReportSound,     rt_game3d_world_report_sound,          "Vipe
 /// @summary Provides Perception 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.Perception3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `SetSight`, `SetHearing`, `SetTargetMask`, `SetLosMask`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `SetSight`, `SetHearing`, `SetTargetMask`, `SetLosMask`.
 RT_CLASS_BEGIN("Viper.Game3D.Perception3D", Game3DPerception3D, "obj", Game3DPerceptionNew)
     RT_METHOD("SetSight", "void(f64,f64,f64)", Game3DPerceptionSetSight)
     RT_METHOD("SetHearing", "void(f64)", Game3DPerceptionSetHearing)
@@ -418,8 +402,8 @@ RT_FUNC(Game3DBTreeSetRoot,    rt_game3d_btree_set_root,          "Viper.Game3D.
 /// @summary Provides Behavior Tree 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.BehaviorTree3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes operations including
-/// `Sequence`, `Selector`, `Inverter`, `TargetVisible`.
+/// returned object with the instance members below. Its public surface exposes operations
+/// including `Sequence`, `Selector`, `Inverter`, `TargetVisible`.
 RT_CLASS_BEGIN("Viper.Game3D.BehaviorTree3D", Game3DBehaviorTree3D, "obj", Game3DBTreeNew)
     RT_METHOD("Sequence", "i64()", Game3DBTreeSequence)
     RT_METHOD("Selector", "i64()", Game3DBTreeSelector)
@@ -441,8 +425,8 @@ RT_FUNC(Game3DBTInstanceResolve, rt_game3d_bt_instance_resolve,        "Viper.Ga
 /// @summary Provides Behavior Tree Instance 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.BehaviorTreeInstance3D` values through its registered constructor and use
-/// the returned object with the instance members below. Its public surface exposes a property such
-/// as `PendingCustom` and operations including `SetTarget`, `Resolve`.
+/// the returned object with the instance members below. Its public surface exposes properties
+/// such as `PendingCustom` and operations including `SetTarget`, `Resolve`.
 RT_CLASS_BEGIN("Viper.Game3D.BehaviorTreeInstance3D", Game3DBehaviorTreeInstance3D, "obj", Game3DBTInstanceNew)
     RT_METHOD("SetTarget", "void(obj)", Game3DBTInstanceTarget)
     RT_PROP("PendingCustom", "i64", Game3DBTInstancePending, none)
@@ -456,8 +440,8 @@ RT_FUNC(Game3DInteractableKind,      rt_game3d_interactable_with_kind,        "V
 RT_FUNC(Game3DInteractableGetKind,   rt_game3d_interactable_get_kind,         "Viper.Game3D.Interactable3D.get_Kind",          "i64(obj)")
 RT_FUNC(Game3DInteractableRadius,    rt_game3d_interactable_with_radius,      "Viper.Game3D.Interactable3D.WithRadius",        "obj(obj,f64)")
 RT_FUNC(Game3DInteractableGetRadius, rt_game3d_interactable_get_radius,       "Viper.Game3D.Interactable3D.get_Radius",        "f64(obj)")
-RT_FUNC(Game3DInteractableSetEnabled, rt_game3d_interactable_set_enabled,     "Viper.Game3D.Interactable3D.set_Enabled",       "void(obj,i1)")
-RT_FUNC(Game3DInteractableGetEnabled, rt_game3d_interactable_get_enabled,     "Viper.Game3D.Interactable3D.get_Enabled",       "i1(obj)")
+RT_FUNC(Game3DInteractableSetEnabled, rt_game3d_interactable_set_enabled,     "Viper.Game3D.Interactable3D.set_IsEnabled",       "void(obj,i1)")
+RT_FUNC(Game3DInteractableGetEnabled, rt_game3d_interactable_get_enabled,     "Viper.Game3D.Interactable3D.get_IsEnabled",       "i1(obj)")
 RT_FUNC(Game3DInteractableSetPriority, rt_game3d_interactable_set_focus_priority, "Viper.Game3D.Interactable3D.set_FocusPriority", "void(obj,f64)")
 RT_FUNC(Game3DInteractableGetPriority, rt_game3d_interactable_get_focus_priority, "Viper.Game3D.Interactable3D.get_FocusPriority", "f64(obj)")
 
@@ -470,7 +454,7 @@ RT_CLASS_BEGIN("Viper.Game3D.Interactable3D", Game3DInteractable3D, "obj", Game3
     RT_PROP("Prompt", "str", Game3DInteractableGetPrompt, none)
     RT_PROP("Kind", "i64", Game3DInteractableGetKind, none)
     RT_PROP("Radius", "f64", Game3DInteractableGetRadius, none)
-    RT_PROP("Enabled", "i1", Game3DInteractableGetEnabled, Game3DInteractableSetEnabled)
+    RT_PROP("IsEnabled", "i1", Game3DInteractableGetEnabled, Game3DInteractableSetEnabled)
     RT_PROP("FocusPriority", "f64", Game3DInteractableGetPriority, Game3DInteractableSetPriority)
     RT_METHOD("WithPrompt", "obj(str)", Game3DInteractablePrompt)
     RT_METHOD("WithKind", "obj(i64)", Game3DInteractableKind)
@@ -531,8 +515,8 @@ RT_CLASS_END()
 /// @summary Provides Surfaces constants and static operations for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.Surfaces` is a static runtime surface and does not require an instance. Its public
-/// surface exposes a property such as `Count` and operations including `Register`, `NameOf`,
-/// `IdOf`.
+/// Its public surface exposes properties such as `Count` and operations including `Register`,
+/// `NameOf`, `IdOf`.
 RT_CLASS_BEGIN("Viper.Game3D.Surfaces", Game3DSurfaces, "none", none)
     RT_METHOD("Register", "i64(str)", Game3DSurfacesRegister)
     RT_METHOD("NameOf", "str(i64)", Game3DSurfacesNameOf)
@@ -542,8 +526,8 @@ RT_CLASS_END()
 
 /// @summary Provides Diagnostics 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Diagnostics3D` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClampedFrames`,
+/// `Viper.Game3D.Diagnostics3D` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClampedFrames`,
 /// `CcdClampedBodies` and operations including `Reset`, `Summary`.
 RT_CLASS_BEGIN("Viper.Game3D.Diagnostics3D", Game3DDiagnostics3D, "none", none)
     RT_PROP("BroadphaseFallbackCount", "i64", Game3DDiagnosticsBroadphaseFallbackCount, none)

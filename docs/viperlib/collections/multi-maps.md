@@ -31,8 +31,8 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 | Method                 | Signature              | Description                                                       |
 |------------------------|------------------------|-------------------------------------------------------------------|
 | `Set(key, value)`      | `Void(String, String)` | Add or update a bidirectional mapping; removes any old mapping    |
-| `GetByKey(key)`        | `String(String)`       | Get the value associated with a key                               |
-| `GetByValue(value)`    | `String(String)`       | Get the key associated with a value (reverse lookup)              |
+| `GetByKey(key)`        | `String(String)`       | Get an owned value copy; empty string if the key is missing       |
+| `GetByValue(value)`    | `String(String)`       | Get an owned key copy; empty string if the value is missing       |
 | `HasKey(key)`          | `Boolean(String)`      | Check if a key exists                                             |
 | `HasValue(value)`      | `Boolean(String)`      | Check if a value exists                                           |
 | `Keys()`               | `Seq()`                | Get all keys as a Seq                                             |
@@ -44,12 +44,14 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 ### Notes
 
 - Maintains strict one-to-one relationships: updating a key to a new value removes the old value's reverse mapping
-- Both key-to-value and value-to-key lookups are O(1) average case
+- Both key-to-value and value-to-key lookups are O(1) average case and O(n) worst case
 - `Set` with an existing key replaces the old value and removes the old value's reverse entry
 - Keys and values are strings compared by full byte length; embedded NUL bytes are part of identity
 - `Set` prepares the replacement entry before removing conflicting mappings, so allocation failures do not drop the previous entry
 - `Put` remains available as a compatibility alias for `Set`.
-- `Keys()` and `Values()` return owning snapshots of copied strings
+- `Keys()` and `Values()` return owning snapshots of copied strings in matching forward
+  hash-table order. Corresponding indices form a pair; the order itself is unspecified.
+- The map is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -154,13 +156,18 @@ stores a list of values for each key.
 - `Count` is the *total* number of values across all keys, not the number of distinct keys
 - `KeyCount` gives the number of distinct keys
 - `Get` returns an empty Seq (not null) if the key does not exist
-- `Get` returns an owning snapshot Seq; values remain retained by the snapshot until it is released
+- Values for each key remain in addition order and duplicates are allowed.
+- `Get` returns an owning snapshot Seq that can be mutated independently; values remain retained
+  by the snapshot until it is released.
 - `GetFirst` returns an owned object reference for the first value, or null when the key has no values
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
+- `Keys()` returns an owning snapshot of copied keys in unspecified hash-table order.
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 - `Put` remains available as a compatibility alias for `Add`.
 - The current registry types `Get()` as `Any` even though the returned object is a `Seq`; in Zia,
-  use static `Seq` operations on that result rather than instance-property syntax.
+  either annotate a `Seq` local or use static `Seq` operations rather than chaining instance
+  properties directly.
+- The map is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -285,9 +292,9 @@ ranking operations for counting occurrences.
 |---------------------|-------------------------|---------------------------------------------------------------------|
 | `Inc(key)`          | `Integer(String)`       | Increment count for key by 1; returns new count                     |
 | `Dec(key)`          | `Integer(String)`       | Decrement count for key by 1; removes key if count reaches 0        |
-| `IncBy(key, n)`     | `Integer(String, Integer)` | Increment count for key by n; returns new count                  |
+| `IncrementBy(key, n)`     | `Integer(String, Integer)` | Add positive n; non-positive n returns 0 without changing the map|
 | `Get(key)`          | `Integer(String)`       | Get current count for key (0 if not present)                        |
-| `Set(key, count)`   | `Void(String, Integer)` | Set count for key directly                                          |
+| `Set(key, count)`   | `Void(String, Integer)` | Set a positive count; zero or negative removes the key               |
 | `Has(key)`          | `Boolean(String)`       | Check if key exists in the map                                      |
 | `Remove(key)`       | `Boolean(String)`       | Remove a key entirely; returns true if found                        |
 | `Keys()`            | `Seq()`                 | Get all keys as a Seq                                               |
@@ -296,12 +303,21 @@ ranking operations for counting occurrences.
 
 ### Notes
 
-- `Dec` automatically removes a key when its count reaches zero
+- `Dec` automatically removes a key when its count reaches zero and returns 0 for a missing key.
 - `Get` returns 0 for keys that have never been added (does not insert)
-- `MostCommon` returns keys ordered from highest count to lowest
+- `IncrementBy` returns the post-operation count. Zero is a lookup no-op (returns the current
+  count, or 0 for a missing key); a negative amount traps — use `Decrement` to count down.
+- `MostCommon(n)` returns copied key strings ordered from highest count to lowest, all keys when
+  `n` exceeds `Count`, and an empty Seq when `n <= 0`. Ties have unspecified order.
+- `Keys()` returns copied strings in unspecified hash-table order.
 - `Total` is the sum of all counts, not the number of distinct keys
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
-- Count and total overflow trap instead of wrapping
+- A null key passed through the runtime API is treated as the empty string key.
+- Count and total overflow trap instead of wrapping.
+- `MostCommon()` is registered with an unqualified object return even though it returns `Seq`.
+  In Zia, assign it to an explicitly typed `Seq` before accessing `Count`; a direct chain can call
+  `CountMap.Count` on the returned Seq and trap.
+- The map is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -326,7 +342,7 @@ func start() {
     SayInt(cm.Count);                // 3 (distinct keys)
 
     // Bulk increment
-    cm.IncBy("banana", 5);
+    cm.IncrementBy("banana", 5);
     SayInt(cm.Get("banana"));      // 6
 
     // Total across all keys
@@ -359,7 +375,7 @@ cm.Inc("cherry")
 PRINT cm.Count                ' 3 (distinct keys)
 
 ' Bulk increment
-cm.IncBy("banana", 5)
+cm.IncrementBy("banana", 5)
 PRINT cm.Get("banana")      ' 6
 
 ' Total of all counts
@@ -417,8 +433,8 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 | Method                        | Signature                  | Description                                                              |
 |-------------------------------|----------------------------|--------------------------------------------------------------------------|
 | `Set(key, value)`             | `Void(Integer, Object)`    | Add or update a key-value pair                                           |
-| `Get(key)`                    | `Object(Integer)`          | Get value for key (returns NULL if not found)                            |
-| `GetOr(key, default)`         | `Object(Integer, Object)`  | Get value for key, or return `default` if missing (does not insert)      |
+| `Get(key)`                    | `Object(Integer)`          | Get the borrowed value (NULL if missing)                                 |
+| `GetOr(key, default)`         | `Object(Integer, Object)`  | Get the borrowed value, or `default` if missing (does not insert)        |
 | `Has(key)`                    | `Boolean(Integer)`         | Check if key exists                                                      |
 | `Remove(key)`                 | `Boolean(Integer)`         | Remove key-value pair; returns true if found                             |
 | `Clear()`                     | `Void()`                   | Remove all entries                                                       |
@@ -428,8 +444,12 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 ### Notes
 
 - Keys are stored as signed 64-bit integers; no pointer casts are used for returned key snapshots.
-- `Keys()` returns an owning snapshot whose elements are boxed `i64` values.
+- `Get()` and `GetOr()` return borrowed references. A present key may store null: `Has()` remains
+  true and `GetOr()` returns null rather than its default.
+- `Keys()` and `Values()` return retained snapshots in matching, unspecified hash-table order.
+  Key elements are boxed `i64` values; corresponding indices identify the same entry.
 - Values are retained while stored and released on overwrite, removal, clear, or finalization.
+- The map is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -515,31 +535,37 @@ value specified at construction time via `Viper.Core.Box`.
 
 ### Properties
 
-| Property | Type    | Description                        |
-|----------|---------|------------------------------------|
-| `Count`     | Integer | Number of key-value pairs in the map |
+| Property  | Type    | Description                          |
+|-----------|---------|--------------------------------------|
+| `Count`   | Integer | Number of key-value pairs in the map |
+| `IsEmpty` | Boolean | True if the map has no entries       |
 
 ### Methods
 
 | Method            | Signature              | Description                                                   |
 |-------------------|------------------------|---------------------------------------------------------------|
-| `Get(key)`        | `Object(String)`       | Get value for key, or the default value if key is missing     |
+| `Get(key)`        | `Object(String)`       | Get a borrowed value, or the borrowed default when missing    |
 | `Set(key, value)` | `Void(String, Object)` | Set a key-value pair                                          |
 | `Has(key)`        | `Boolean(String)`      | Check if a key exists (Get does not insert missing keys)      |
-| `Remove(key)`     | `Integer(String)`      | Remove a key-value pair; returns 1 if found, 0 if not        |
+| `Remove(key)`     | `Boolean(String)`      | Remove a key-value pair; true if found                        |
 | `Keys()`          | `Seq()`                | Get all keys as a Seq                                         |
-| `GetDefault()`    | `Object()`             | Get the default value configured at construction              |
+| `GetDefault()`    | `Object()`             | Get the borrowed default configured at construction           |
 | `Clear()`         | `Void()`               | Remove all entries                                            |
 
 ### Notes
 
-- `Get` for a missing key returns the default value but does *not* insert the key into the map
-- The default value is set at construction time and cannot be changed
+- `Get` for a missing key returns the same default object but does *not* insert the key into the map.
+- The default reference is set at construction time and cannot be replaced. The referenced object
+  is not cloned or frozen and may itself still be mutable. Null is permitted as the default.
+- `Get()` and `GetDefault()` return borrowed references. A present key with a null value overrides
+  a non-null default; use `Has()` to distinguish it from a missing key.
 - Passing a null key through the runtime API is treated as the empty string key
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Values and the configured default value are retained while stored
+- `Keys()` returns an owning snapshot of copied strings in unspecified keyed-hash order.
 - Values are boxed objects; use `Viper.Core.Box` to create and unwrap values
 - In BASIC, string values are automatically boxed when passed to `Set`
+- The map is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -647,9 +673,9 @@ Negative capacities trap.
 | Method              | Signature              | Description                                                            |
 |---------------------|------------------------|------------------------------------------------------------------------|
 | `Set(key, value)`   | `Void(String, Object)` | Add or update an entry; evicts LRU entry if at capacity                |
-| `Get(key)`          | `Object(String)`       | Get value for key and promote to most recently used; null if not found |
+| `Get(key)`          | `Object(String)`       | Borrow value and promote to most recently used; null if not found     |
 | `Has(key)`          | `Boolean(String)`      | Check if key exists in the cache                                       |
-| `Peek(key)`         | `Object(String)`       | Get value for key without promoting (does not affect LRU order)        |
+| `Peek(key)`         | `Object(String)`       | Borrow value without promoting (does not affect LRU order)             |
 | `Remove(key)`       | `Boolean(String)`      | Remove an entry; returns true if found                                 |
 | `RemoveOldest()`    | `Boolean()`            | Remove the least recently used entry; returns true if cache was non-empty |
 | `Keys()`            | `Seq()`                | Get all keys as a Seq (MRU to LRU order)                              |
@@ -659,14 +685,19 @@ Negative capacities trap.
 ### Notes
 
 - `Get` promotes the accessed entry to most recently used; `Peek` does not
+- `Has` also leaves recency unchanged.
 - When `Set` is called at capacity, the least recently used entry is automatically evicted
 - A capacity of `0` disables automatic eviction; entries remain until removed or cleared
 - Updating an existing key with `Set` promotes it to most recently used without eviction
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Cached values are retained while stored and released on overwrite, eviction, remove, clear, or finalization
+- `Get()` and `Peek()` return borrowed references. A present null value is distinguishable from a
+  miss with `Has()`.
+- `Keys()` and `Values()` return retained snapshots in matching MRU-to-LRU order. Keys are copied;
+  values are shared, not deep-cloned.
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
-- `Cap` remains available as a compatibility alias for `Capacity`.
 - `Put` remains available as a compatibility alias for `Set`.
+- A null runtime key is treated as the empty string key. The cache is not thread-safe.
 
 ### Zia Example
 
@@ -690,6 +721,7 @@ func start() {
 
     // Get promotes to MRU
     Say(Box.ToStr(cache.Get("a")));                // alpha
+    Say(Box.ToStr(cache.Get("b")));                // beta
 
     // Peek does not promote
     Say(Box.ToStr(cache.Peek("c")));               // gamma
@@ -798,7 +830,11 @@ A map with weak value references. Values may become NULL when their referent is 
 - **Stale entries:** After a value is collected, `Get()` returns NULL for that key. A live result is promoted to a retained strong reference for the caller. Use `Compact()` to clean up stale entries.
 - **String keys:** Keys are regular strong string references and are compared by full byte length; embedded NUL bytes are part of the key.
 - **Live views:** `Count`, `IsEmpty`, `Has`, and `Keys` expose live weak values only. `Compact()` removes the stale internal slots.
-- **Runtime values:** Values should be runtime-managed objects or strings so final release can zero the registered weak references.
+- **Snapshots:** `Keys()` returns an owning snapshot in unspecified hash-slot order.
+- **Runtime values:** Non-null values must be live runtime-managed objects or strings; another
+  pointer traps when the weak reference is created. Setting null creates a non-live entry that is
+  omitted from the live views and removable with `Compact()`.
+- **Concurrency:** WeakMap is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -897,7 +933,7 @@ for gaps. Only occupied indices consume storage.
 | Method             | Signature               | Description                                            |
 |--------------------|-------------------------|--------------------------------------------------------|
 | `Set(index, value)`| `Void(Integer, Object)` | Set value at the given index                           |
-| `Get(index)`       | `Object(Integer)`       | Get value at the given index (null if not set)         |
+| `Get(index)`       | `Object(Integer)`       | Get the borrowed value (null if not set)               |
 | `Has(index)`       | `Boolean(Integer)`      | Check if an index has a value                          |
 | `Remove(index)`    | `Boolean(Integer)`      | Remove value at index; returns true if found           |
 | `Indices()`        | `Seq()`                 | Get all occupied indices as boxed i64 values           |
@@ -909,8 +945,12 @@ for gaps. Only occupied indices consume storage.
 - Indices can be any integer, including negative numbers (e.g., -5, 0, 1000)
 - Only occupied indices consume memory; gaps between indices cost nothing
 - Setting an index to null removes that entry, matching `Remove(index)`
-- `Indices()` returns an owning snapshot of boxed `i64` values for every occupied index
+- `Indices()` and `Values()` return retained snapshots in matching, unspecified hash-slot order.
+  Indices are boxed `i64` values; corresponding indices identify the same entry.
+- `Get()` returns a borrowed value. Null cannot be stored because it removes the entry.
+- Stored values are retained until overwritten, removed, cleared, or finalized.
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
+- The array is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 

@@ -73,7 +73,10 @@ bool isObjectParamToken(std::string_view token) {
     token = trim(token);
     if (!token.empty() && token.back() == '?')
         token.remove_suffix(1);
-    return token == "obj" || token.rfind("obj<", 0) == 0;
+    // seq/list parameters are managed runtime sequence objects, not raw
+    // pointers, so they get the same safe-frontend treatment as obj.
+    return token == "obj" || token.rfind("obj<", 0) == 0 || token == "seq" ||
+           token.rfind("seq<", 0) == 0 || token == "list" || token.rfind("list<", 0) == 0;
 }
 
 } // namespace

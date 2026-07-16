@@ -11,11 +11,12 @@
 //   - Frame indices are bounded by the range set in rt_spriteanim_setup.
 //   - Frame duration must be >= 1 tick.
 //   - Speed multiplier scales how quickly the internal timer advances.
-//   - rt_spriteanim_update must be called once per frame with the delta tick.
+//   - rt_spriteanim_update takes no delta argument and advances its internal
+//     timing once per call.
 //
 // Ownership/Lifetime:
-//   - Caller owns the rt_spriteanim handle; destroy with rt_spriteanim_destroy.
-//   - No reference counting; explicit destruction is required.
+//   - SpriteAnimation handles are reference-counted GC objects.
+//     rt_spriteanim_destroy releases the caller's reference.
 //
 // Links: src/runtime/game/rt_spriteanim.c (implementation),
 // src/runtime/game/rt_tween.h
@@ -173,7 +174,8 @@ int64_t rt_spriteanim_progress(rt_spriteanim anim);
 /// @brief Sets the playback speed multiplier.
 /// @param anim The animation to modify.
 /// @param speed Speed multiplier applied to frame advancement. 1.0 is
-///   normal speed, 2.0 is double speed, 0.5 is half speed. Must be > 0.
+///   normal speed, 2.0 is double speed, and 0.5 is half speed. Values are
+///   clamped to [0, 10]; non-finite and negative values become zero.
 void rt_spriteanim_set_speed(rt_spriteanim anim, double speed);
 
 /// @brief Retrieves the current playback speed multiplier.

@@ -25,7 +25,7 @@ PRINT "Write('Hello ') done"
 
 ' --- WriteLn ---
 PRINT "--- WriteLn ---"
-Viper.IO.LineWriter.WriteLn(writer, "World")
+Viper.IO.LineWriter.WriteLine(writer, "World")
 PRINT "WriteLn('World') done"
 
 ' --- WriteChar ---
@@ -47,8 +47,8 @@ Viper.IO.LineWriter.set_NewLine(writer, CHR$(10))
 PRINT "Restored to LF"
 
 ' --- More writes + Flush ---
-Viper.IO.LineWriter.WriteLn(writer, "")
-Viper.IO.LineWriter.WriteLn(writer, "Final line")
+Viper.IO.LineWriter.WriteLine(writer, "")
+Viper.IO.LineWriter.WriteLine(writer, "Final line")
 
 PRINT "--- Flush ---"
 Viper.IO.LineWriter.Flush(writer)
@@ -67,7 +67,7 @@ PRINT "File content: "; Viper.IO.File.ReadAllText(testPath)
 PRINT "--- Append ---"
 DIM appWriter AS OBJECT
 appWriter = Viper.IO.LineWriter.Append(testPath)
-Viper.IO.LineWriter.WriteLn(appWriter, "Appended line")
+Viper.IO.LineWriter.WriteLine(appWriter, "Appended line")
 Viper.IO.LineWriter.Close(appWriter)
 PRINT "Append done"
 

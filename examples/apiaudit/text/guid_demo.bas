@@ -7,8 +7,8 @@ PRINT "=== Viper.Text.Uuid API Audit ==="
 PRINT "--- New ---"
 DIM id1 AS STRING
 DIM id2 AS STRING
-id1 = Viper.Text.Uuid.New()
-id2 = Viper.Text.Uuid.New()
+id1 = Viper.Text.Uuid.Generate()
+id2 = Viper.Text.Uuid.Generate()
 PRINT "UUID 1: "; id1
 PRINT "UUID 2: "; id2
 
@@ -28,7 +28,7 @@ PRINT "IsValid(rfc): "; Viper.Text.Uuid.IsValid("550e8400-e29b-41d4-a716-4466554
 ' --- ToBytes / FromBytes ---
 PRINT "--- ToBytes / FromBytes ---"
 DIM testId AS STRING
-testId = Viper.Text.Uuid.New()
+testId = Viper.Text.Uuid.Generate()
 PRINT "Original: "; testId
 DIM bytes AS OBJECT
 bytes = Viper.Text.Uuid.ToBytes(testId)

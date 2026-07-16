@@ -1,22 +1,22 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Text.Codec.Base64Dec
-' COVER: Viper.Text.Codec.Base64Enc
-' COVER: Viper.Text.Codec.HexDec
-' COVER: Viper.Text.Codec.HexEnc
+' COVER: Viper.Text.Codec.Base64Decode
+' COVER: Viper.Text.Codec.Base64Encode
+' COVER: Viper.Text.Codec.HexDecode
+' COVER: Viper.Text.Codec.HexEncode
 ' COVER: Viper.Text.Codec.UrlDecode
 ' COVER: Viper.Text.Codec.UrlEncode
-' COVER: Viper.Text.Csv.Format
-' COVER: Viper.Text.Csv.FormatLine
-' COVER: Viper.Text.Csv.FormatLineWith
-' COVER: Viper.Text.Csv.FormatWith
-' COVER: Viper.Text.Csv.Parse
-' COVER: Viper.Text.Csv.ParseLine
-' COVER: Viper.Text.Csv.ParseLineWith
-' COVER: Viper.Text.Csv.ParseWith
+' COVER: Viper.Data.Csv.Format
+' COVER: Viper.Data.Csv.FormatLine
+' COVER: Viper.Data.Csv.FormatLineWith
+' COVER: Viper.Data.Csv.FormatWith
+' COVER: Viper.Data.Csv.Parse
+' COVER: Viper.Data.Csv.ParseLine
+' COVER: Viper.Data.Csv.ParseLineWith
+' COVER: Viper.Data.Csv.ParseWith
 ' COVER: Viper.Text.Uuid.Empty
 ' COVER: Viper.Text.Uuid.FromBytes
 ' COVER: Viper.Text.Uuid.IsValid
-' COVER: Viper.Text.Uuid.New
+' COVER: Viper.Text.Uuid.Generate
 ' COVER: Viper.Text.Uuid.ToBytes
 ' COVER: Viper.Text.Pattern.Escape
 ' COVER: Viper.Text.Pattern.Find
@@ -42,58 +42,58 @@
 ' COVER: Viper.Text.Template.RenderWith
 
 DIM encoded AS STRING
-encoded = Viper.Text.Codec.Base64Enc("Hello")
+encoded = Viper.Text.Codec.Base64Encode("Hello")
 Viper.Core.Diagnostics.AssertEqStr(encoded, "SGVsbG8=", "codec.b64enc")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.Base64Dec(encoded), "Hello", "codec.b64dec")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.HexEnc("ABC"), "414243", "codec.hexenc")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.HexDec("414243"), "ABC", "codec.hexdec")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.Base64Decode(encoded), "Hello", "codec.b64dec")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.HexEncode("ABC"), "414243", "codec.hexenc")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.HexDecode("414243"), "ABC", "codec.hexdec")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.UrlEncode("hello world"), "hello%20world", "codec.urlenc")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Codec.UrlDecode("hello%20world"), "hello world", "codec.urldec")
 
 DIM fields AS Viper.Collections.Seq
-fields = Viper.Text.Csv.ParseLine("a,b,c")
+fields = Viper.Data.Csv.ParseLine("a,b,c")
 Viper.Core.Diagnostics.AssertEq(fields.Count, 3, "csv.parseline.len")
-Viper.Core.Diagnostics.AssertEqStr(fields.Get(1), "b", "csv.parseline.get")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Box.ToStr(fields.Get(1)), "b", "csv.parseline.get")
 
 DIM row AS Viper.Collections.Seq
-row = Viper.Text.Csv.ParseLine("\"He said \"\"Hi\"\"\"")
-Viper.Core.Diagnostics.AssertEqStr(row.Get(0), "He said \"Hi\"", "csv.quotes")
+row = Viper.Data.Csv.ParseLine("""He said ""Hi""""")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Box.ToStr(row.Get(0)), "He said ""Hi""", "csv.quotes")
 
 DIM rows AS Viper.Collections.Seq
-rows = Viper.Text.Csv.Parse("a,b" + Viper.String.Chr(10) + "c,d")
+rows = Viper.Data.Csv.Parse("a,b" + Viper.String.Chr(10) + "c,d")
 Viper.Core.Diagnostics.AssertEq(rows.Count, 2, "csv.parse.len")
 DIM row0 AS Viper.Collections.Seq
 row0 = rows.Get(0)
-Viper.Core.Diagnostics.AssertEqStr(row0.Get(0), "a", "csv.parse.row0")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Core.Box.ToStr(row0.Get(0)), "a", "csv.parse.row0")
 
 DIM line AS STRING
-line = Viper.Text.Csv.FormatLine(fields)
+line = Viper.Data.Csv.FormatLine(fields)
 Viper.Core.Diagnostics.Assert(line <> "", "csv.formatline")
 DIM line2 AS STRING
-line2 = Viper.Text.Csv.FormatLineWith(fields, "|")
+line2 = Viper.Data.Csv.FormatLineWith(fields, "|")
 Viper.Core.Diagnostics.Assert(line2 <> "", "csv.formatlinewith")
 
 DIM rowsOut AS STRING
-rowsOut = Viper.Text.Csv.Format(rows)
+rowsOut = Viper.Data.Csv.Format(rows)
 Viper.Core.Diagnostics.Assert(rowsOut <> "", "csv.format")
 DIM rowsOut2 AS STRING
-rowsOut2 = Viper.Text.Csv.FormatWith(rows, "|")
+rowsOut2 = Viper.Data.Csv.FormatWith(rows, "|")
 Viper.Core.Diagnostics.Assert(rowsOut2 <> "", "csv.formatwith")
 
 DIM fields2 AS Viper.Collections.Seq
-fields2 = Viper.Text.Csv.ParseLineWith("a|b|c", "|")
+fields2 = Viper.Data.Csv.ParseLineWith("a|b|c", "|")
 Viper.Core.Diagnostics.AssertEq(fields2.Count, 3, "csv.parselinewith")
 
 DIM rows2 AS Viper.Collections.Seq
-rows2 = Viper.Text.Csv.ParseWith("a|b" + Viper.String.Chr(10) + "c|d", "|")
+rows2 = Viper.Data.Csv.ParseWith("a|b" + Viper.String.Chr(10) + "c|d", "|")
 Viper.Core.Diagnostics.AssertEq(rows2.Count, 2, "csv.parsewith")
 
 DIM id AS STRING
-id = Viper.Text.Uuid.New()
+id = Viper.Text.Uuid.Generate()
 Viper.Core.Diagnostics.Assert(Viper.Text.Uuid.IsValid(id), "guid.valid")
 Viper.Core.Diagnostics.Assert(Viper.Text.Uuid.IsValid("not-a-guid") = FALSE, "guid.invalid")
 Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Uuid.Empty, "00000000-0000-0000-0000-000000000000", "guid.empty")
-DIM gidBytes AS Viper.Collections.Bytes
+DIM gidBytes AS Viper.IO.BinaryBuffer
 gidBytes = Viper.Text.Uuid.ToBytes(id)
 DIM id2 AS STRING
 id2 = Viper.Text.Uuid.FromBytes(gidBytes)
@@ -102,9 +102,9 @@ Viper.Core.Diagnostics.Assert(Viper.Text.Uuid.IsValid(id2), "guid.frombytes")
 DIM text AS STRING
 text = "abc123def456"
 Viper.Core.Diagnostics.Assert(Viper.Text.Pattern.IsMatch("\\d+", text), "pat.ismatch")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Pattern.Find("\\d+", text), "123", "pat.find")
-Viper.Core.Diagnostics.AssertEqStr(Viper.Text.Pattern.FindFrom("\\d+", text, 3), "123", "pat.findfrom")
-Viper.Core.Diagnostics.AssertEq(Viper.Text.Pattern.FindPos("World", "Hello World"), 6, "pat.findpos")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Option.UnwrapStr(Viper.Text.Pattern.Find("\\d+", text)), "123", "pat.find")
+Viper.Core.Diagnostics.AssertEqStr(Viper.Option.UnwrapStr(Viper.Text.Pattern.FindFrom("\\d+", text, 3)), "123", "pat.findfrom")
+Viper.Core.Diagnostics.AssertEq(Viper.Option.UnwrapOrI64(Viper.Text.Pattern.FindPos("World", "Hello World"), -1), 6, "pat.findpos")
 DIM matches AS Viper.Collections.Seq
 matches = Viper.Text.Pattern.FindAll("\\d+", text)
 Viper.Core.Diagnostics.AssertEq(matches.Count, 2, "pat.findall")
@@ -136,7 +136,7 @@ DIM renderedWith AS STRING
 renderedWith = Viper.Text.Template.RenderWith("Hello $name$!", values, "$", "$")
 Viper.Core.Diagnostics.AssertEqStr(renderedWith, "Hello Alice!", "tmpl.renderwith")
 Viper.Core.Diagnostics.Assert(Viper.Text.Template.Has(templ, "name"), "tmpl.has")
-DIM keys AS Viper.Collections.Bag
+DIM keys AS Viper.Collections.StringSet
 keys = Viper.Text.Template.Keys(templ)
 Viper.Core.Diagnostics.Assert(keys.Has("name"), "tmpl.keys")
 DIM escaped AS STRING

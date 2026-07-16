@@ -80,14 +80,14 @@ func runPackageSmoke() {
     var tuningPath = resolvePackageSmokePath("xenoscape.runtime.json");
     if !File.Exists(tuningPath) {
         Terminal.Say("RESULT: missing_runtime_json");
-        Env.EndProgram(2);
+        Env.Exit(2);
         return;
     }
 
     var jumpPath = resolvePackageSmokePath(Path.Join("sounds", "jump.wav"));
     if !File.Exists(jumpPath) {
         Terminal.Say("RESULT: missing_jump_wav");
-        Env.EndProgram(3);
+        Env.Exit(3);
         return;
     }
 
@@ -95,12 +95,12 @@ func runPackageSmoke() {
     if tuning.getInt("presentation.sceneTransitionMs", -1) != 350 or
        tuning.getBool("presentation.authoredArtEnabled", false) == false {
         Terminal.Say("RESULT: bad_runtime_json");
-        Env.EndProgram(4);
+        Env.Exit(4);
         return;
     }
 
     Terminal.Say("RESULT: package_smoke_ok");
-    Env.EndProgram(0);
+    Env.Exit(0);
 }
 
 /// @brief Program entry point.  Construct a Game and run it.

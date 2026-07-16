@@ -37,7 +37,7 @@ PRINT "Remaining: "; Viper.Time.Countdown.get_Remaining(cd)
 
 ' --- Expired ---
 PRINT "--- Expired ---"
-PRINT "Expired: "; Viper.Time.Countdown.get_Expired(cd)
+PRINT "Expired: "; Viper.Time.Countdown.get_IsExpired(cd)
 
 ' --- Stop ---
 PRINT "--- Stop ---"

@@ -41,7 +41,7 @@ class RidgeboundCritters {
         addCritterSegment(1.0, 2.0, 0.27, b1, 8);
         addCritterSegment(2.0, 2.9, 0.18, b2, 16);
         Mesh3D.SetSkeleton(critterMesh, critterSkel);
-        Mesh3D.RecalcNormals(critterMesh);
+        Mesh3D.RecalculateNormals(critterMesh);
 
         var idleAnim = Animation3D.New("idle", 2.4);
         Animation3D.set_Looping(idleAnim, true);

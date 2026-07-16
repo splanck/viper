@@ -16,5 +16,5 @@ func start() {
         sum = (sum + s) & 268435455;
         i = i + 1;
     }
-    Viper.System.Environment.EndProgram(sum);
+    Viper.System.Environment.Exit(sum);
 }

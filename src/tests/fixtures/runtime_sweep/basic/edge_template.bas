@@ -35,7 +35,7 @@ PRINT ""
 
 ' Get keys from template
 PRINT "=== Template Keys ==="
-DIM keys AS Viper.Collections.Bag
+DIM keys AS Viper.Collections.StringSet
 keys = Viper.Text.Template.Keys("Hello {{name}}, you are {{age}}")
 PRINT "Keys count: "; keys.Count
 

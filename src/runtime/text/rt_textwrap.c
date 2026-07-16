@@ -6,18 +6,17 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_textwrap.c
-// Purpose: Implements text word-wrapping utilities for the Viper.Text.TextWrap
-//          class. Wraps long lines at word boundaries within a specified column
-//          width, with options for initial indent, subsequent indent, and hard
-//          wrapping of words that exceed the width.
+// Purpose: Implements text word-wrapping and layout utilities for the
+//          Viper.Text.TextWrapper class: Wrap/WrapLines/Fill, Indent/Dedent/
+//          Hang, Truncate/TruncateWith/Shorten, AlignLeft/AlignRight/Center,
+//          and the LineCount/MaxLineLength measurements.
 //
 // Key invariants:
-//   - Wrapping occurs at whitespace boundaries; words are never split unless
-//     hard_wrap is enabled and the word itself exceeds the column width.
-//   - Initial indent is prepended to the first line only.
-//   - Subsequent indent is prepended to all continuation lines.
-//   - Tab characters are expanded to spaces based on a configurable tab width.
-//   - Empty input returns an empty string; a zero width disables wrapping.
+//   - Wrapping occurs at whitespace boundaries; a word longer than the width
+//     is split at the width (there is no configurable hard-wrap toggle, and
+//     no indentation or tab-expansion options are exposed).
+//   - Empty input returns an empty string; a non-positive width returns the
+//     input unchanged.
 //
 // Ownership/Lifetime:
 //   - The returned wrapped string is a fresh rt_string allocation owned by caller.
@@ -111,6 +110,20 @@ static char *alloc_spaces(int64_t count, const char *op) {
 ///          overflow point. Existing newlines in the input act as
 ///          paragraph boundaries (column resets, last-space cleared).
 ///          Widths less than or equal to zero disable wrapping.
+/// @brief Return 1 when src[idx] is a UTF-8 continuation byte (0b10xxxxxx).
+static int textwrap_is_continuation(const char *src, int64_t idx) {
+    return ((unsigned char)src[idx] & 0xC0) == 0x80;
+}
+
+/// @brief Back a byte index up to the nearest UTF-8 codepoint boundary at or
+///        before it, never moving below `floor_idx`. Splitting a multi-byte
+///        sequence would emit malformed UTF-8 on both sides (VDOC-046).
+static int64_t textwrap_boundary_at_or_before(const char *src, int64_t idx, int64_t floor_idx) {
+    while (idx > floor_idx && textwrap_is_continuation(src, idx))
+        idx--;
+    return idx;
+}
+
 rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     if (!text)
         return textwrap_empty_string();
@@ -165,12 +178,26 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
                 col = i - last_space;
                 last_space = -1;
             } else {
-                // No space found, force break
-                memcpy(result + result_pos, src + line_start, (size_t)(i - line_start));
-                result_pos += i - line_start;
-                result[result_pos++] = '\n';
-                line_start = i;
-                col = 1;
+                // No space found: force a break, but never inside a multi-byte
+                // UTF-8 sequence — back up to the codepoint boundary, or emit
+                // the whole codepoint when it alone exceeds the width.
+                int64_t brk = textwrap_boundary_at_or_before(src, i, line_start);
+                if (brk == line_start) {
+                    brk = i + 1;
+                    while (brk < src_len && textwrap_is_continuation(src, brk))
+                        brk++;
+                }
+                memcpy(result + result_pos, src + line_start, (size_t)(brk - line_start));
+                result_pos += brk - line_start;
+                if (brk < src_len)
+                    result[result_pos++] = '\n';
+                line_start = brk;
+                if (brk > i) {
+                    i = brk - 1; // loop increment lands on the next codepoint
+                    col = 0;
+                } else {
+                    col = i - brk + 1;
+                }
             }
         }
     }
@@ -477,13 +504,16 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
     }
 
     if (width <= suffix_len) {
-        rt_string result = rt_str_substr(suffix_eff, 0, width);
+        const char *sfx = rt_string_cstr(suffix_eff);
+        int64_t cut = textwrap_boundary_at_or_before(sfx, width, 0);
+        rt_string result = rt_str_substr(suffix_eff, 0, cut);
         if (release_suffix)
             rt_string_unref(suffix_eff);
         return result;
     }
 
     int64_t keep = width - suffix_len;
+    keep = textwrap_boundary_at_or_before(rt_string_cstr(text), keep, 0);
     rt_string kept = rt_str_substr(text, 0, keep);
     rt_string result = rt_str_concat(kept, rt_string_ref(suffix_eff));
     if (release_suffix)
@@ -508,14 +538,19 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
     if (text_len <= width)
         return rt_string_ref(text);
 
+    const char *src = rt_string_cstr(text);
     if (width < 5)
-        return rt_str_substr(text, 0, width);
+        return rt_str_substr(text, 0, textwrap_boundary_at_or_before(src, width, 0));
 
     int64_t left = (width - 3) / 2;
     int64_t right = width - 3 - left;
 
+    left = textwrap_boundary_at_or_before(src, left, 0);
+    int64_t right_start = text_len - right;
+    while (right_start < text_len && textwrap_is_continuation(src, right_start))
+        right_start++; // never begin the tail slice inside a codepoint
     rt_string left_part = rt_str_substr(text, 0, left);
-    rt_string right_part = rt_str_substr(text, text_len - right, right);
+    rt_string right_part = rt_str_substr(text, right_start, text_len - right_start);
 
     rt_string result = rt_str_concat(left_part, rt_const_cstr("..."));
     return rt_str_concat(result, right_part);

@@ -822,8 +822,8 @@ hide func IndentForDepth(depth: Integer) -> String {
 func SamePath(a: String, b: String) -> Boolean {
     if a == b { return true; }
     if a == "" or b == "" { return false; }
-    var na = Path.Norm(Path.Abs(a));
-    var nb = Path.Norm(Path.Abs(b));
+    var na = Path.Normalize(Path.Absolute(a));
+    var nb = Path.Normalize(Path.Absolute(b));
     return na == nb;
 }
 
@@ -878,21 +878,21 @@ func ClearDebugStopMarker(engine: editor_engine.EditorEngine) {
 func DebugStopIcon() -> Any {
     var px = Pixels.New(8, 8);
     px.Clear();
-    px.SetRGBA(2, 1, DEBUG_STOP_COLOR);
-    px.SetRGBA(2, 2, DEBUG_STOP_COLOR);
-    px.SetRGBA(3, 2, DEBUG_STOP_COLOR);
-    px.SetRGBA(2, 3, DEBUG_STOP_COLOR);
-    px.SetRGBA(3, 3, DEBUG_STOP_COLOR);
-    px.SetRGBA(4, 3, DEBUG_STOP_COLOR);
-    px.SetRGBA(2, 4, DEBUG_STOP_COLOR);
-    px.SetRGBA(3, 4, DEBUG_STOP_COLOR);
-    px.SetRGBA(4, 4, DEBUG_STOP_COLOR);
-    px.SetRGBA(5, 4, DEBUG_STOP_COLOR);
-    px.SetRGBA(2, 5, DEBUG_STOP_COLOR);
-    px.SetRGBA(3, 5, DEBUG_STOP_COLOR);
-    px.SetRGBA(4, 5, DEBUG_STOP_COLOR);
-    px.SetRGBA(2, 6, DEBUG_STOP_COLOR);
-    px.SetRGBA(3, 6, DEBUG_STOP_COLOR);
-    px.SetRGBA(2, 7, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 1, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 2, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 2, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 3, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 3, DEBUG_STOP_COLOR);
+    px.SetRgba(4, 3, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(4, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(5, 4, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 5, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 5, DEBUG_STOP_COLOR);
+    px.SetRgba(4, 5, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 6, DEBUG_STOP_COLOR);
+    px.SetRgba(3, 6, DEBUG_STOP_COLOR);
+    px.SetRgba(2, 7, DEBUG_STOP_COLOR);
     return px;
 }

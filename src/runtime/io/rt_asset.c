@@ -632,9 +632,9 @@ void rt_asset_init(const uint8_t *blob, uint64_t size) {
 // ─── rt_asset_load ──────────────────────────────────────────────────────────
 
 /// @brief Load an asset by name with automatic type dispatch based on file extension.
-/// @details Searches embedded blob → mounted packs (LIFO) → filesystem. For known
-///          extensions (.png, .wav, .json, etc.), decodes to the appropriate runtime
-///          type (Pixels, Sound, Map). Unknown extensions return raw Bytes.
+/// @details Searches embedded blob → mounted packs (LIFO) → filesystem. Recognized
+///          image and audio extensions are offered to their typed decoder. Unknown
+///          extensions, and recognized formats whose decoder fails, return raw Bytes.
 void *rt_asset_load(rt_string name) {
     if (!name)
         return NULL;
@@ -657,7 +657,7 @@ void *rt_asset_load(rt_string name) {
         return result;
     }
 
-    // Unknown extension: return as raw Bytes
+    // Unknown extension or failed typed decode: return as raw Bytes.
     result = rt_bytes_from_raw(data, data_size);
     free(data);
     return result;

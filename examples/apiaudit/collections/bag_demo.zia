@@ -1,4 +1,4 @@
-// bag_demo.zia - Comprehensive API audit for Viper.Collections.Bag
+// bag_demo.zia - Comprehensive API audit for Viper.Collections.StringSet
 // Tests: New, Put, Has, Drop, Len, IsEmpty, Items, Clear, Common, Diff, Merge
 
 module BagDemo;

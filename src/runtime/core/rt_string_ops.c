@@ -1081,7 +1081,7 @@ static int is_trim_ws(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }
 
-/// @brief Trim leading spaces and tabs from a string.
+/// @brief Trim leading ASCII whitespace from a string.
 /// @details Walks the leading whitespace and delegates to @ref rt_str_substr to
 ///          materialise the trimmed view.
 /// @param s Source string.
@@ -1098,7 +1098,7 @@ rt_string rt_str_ltrim(rt_string s) {
     return rt_str_substr(s, (int64_t)i, (int64_t)(slen - i));
 }
 
-/// @brief Trim trailing spaces and tabs from a string.
+/// @brief Trim trailing ASCII whitespace from a string.
 /// @details Scans from the end of the string and returns a substring covering
 ///          the retained prefix.
 /// @param s Source string.
@@ -1114,7 +1114,7 @@ rt_string rt_str_rtrim(rt_string s) {
     return rt_str_substr(s, 0, (int64_t)end);
 }
 
-/// @brief Trim both leading and trailing spaces and tabs from a string.
+/// @brief Trim both leading and trailing ASCII whitespace from a string.
 /// @details Calculates the slice indices in-place and delegates to
 ///          @ref rt_str_substr to allocate the final result.
 /// @param s Source string.
@@ -1146,11 +1146,9 @@ static unsigned char to_upper_latin1(unsigned char c) {
     return c;
 }
 
-/// @brief Convert letters in a string to upper case (ASCII + Latin-1).
-/// @details Allocates a new string and maps lowercase letters to uppercase.
-///          Handles ASCII (a-z) and Latin-1 Supplement characters (à-ÿ).
-///          UTF-8 multi-byte characters (Cyrillic, Greek, CJK, etc.) are
-///          passed through unchanged - full Unicode case mapping requires ICU.
+/// @brief Convert ASCII letters in a string to upper case.
+/// @details Allocates a new string, maps ASCII a-z, and leaves every non-ASCII
+///          byte unchanged; case mapping is ASCII-only by design.
 /// @param s Source string.
 /// @return Newly allocated uppercase string.
 rt_string rt_str_ucase(rt_string s) {
@@ -1188,11 +1186,9 @@ static unsigned char to_lower_latin1(unsigned char c) {
     return c;
 }
 
-/// @brief Convert letters in a string to lower case (ASCII + Latin-1).
-/// @details Allocates a new string and maps uppercase letters to lowercase.
-///          Handles ASCII (A-Z) and Latin-1 Supplement characters (À-Þ).
-///          UTF-8 multi-byte characters (Cyrillic, Greek, CJK, etc.) are
-///          passed through unchanged - full Unicode case mapping requires ICU.
+/// @brief Convert ASCII letters in a string to lower case.
+/// @details Allocates a new string, maps ASCII A-Z, and leaves every non-ASCII
+///          byte unchanged; case mapping is ASCII-only by design.
 /// @param s Source string.
 /// @return Newly allocated lowercase string.
 rt_string rt_str_lcase(rt_string s) {

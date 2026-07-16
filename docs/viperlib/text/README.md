@@ -22,6 +22,6 @@ last-verified: 2026-07-14
 
 ## See Also
 
-- [Collections](../collections/README.md) - `Seq`, `Map`, and `Bag` used with templates and CSV
+- [Collections](../collections/README.md) - `Seq`, `Map`, and `StringSet` used with templates and CSV
 - [Input/Output](../io/README.md) - `File` and `LineReader` for reading text files
 - [Cryptography](../crypto.md) - `Hash` for checksums and authentication of text data

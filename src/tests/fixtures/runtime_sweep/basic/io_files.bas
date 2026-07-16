@@ -1,13 +1,13 @@
 ' EXPECT_OUT: RESULT: ok
 ' COVER: Viper.IO.Dir.Current
 ' COVER: Viper.IO.Dir.Dirs
-' COVER: Viper.IO.Dir.DirsSeq
+' COVER: Viper.IO.Dir.Dirs
 ' COVER: Viper.IO.Dir.Entries
 ' COVER: Viper.IO.Dir.Exists
 ' COVER: Viper.IO.Dir.Files
-' COVER: Viper.IO.Dir.FilesSeq
+' COVER: Viper.IO.Dir.Files
 ' COVER: Viper.IO.Dir.List
-' COVER: Viper.IO.Dir.ListSeq
+' COVER: Viper.IO.Dir.List
 ' COVER: Viper.IO.Dir.Make
 ' COVER: Viper.IO.Dir.MakeAll
 ' COVER: Viper.IO.Dir.Move
@@ -24,24 +24,24 @@
 ' COVER: Viper.IO.File.ReadAllBytes
 ' COVER: Viper.IO.File.ReadAllLines
 ' COVER: Viper.IO.File.ReadAllText
-' COVER: Viper.IO.File.ReadBytes
-' COVER: Viper.IO.File.ReadLines
-' COVER: Viper.IO.File.Size
+' COVER: Viper.IO.File.ReadAllBytes
+' COVER: Viper.IO.File.ReadAllLines
+' COVER: Viper.IO.File.SizeBytes
 ' COVER: Viper.IO.File.Touch
 ' COVER: Viper.IO.File.WriteAllBytes
 ' COVER: Viper.IO.File.WriteAllText
-' COVER: Viper.IO.File.WriteBytes
-' COVER: Viper.IO.File.WriteLines
-' COVER: Viper.IO.Path.Abs
-' COVER: Viper.IO.Path.Dir
-' COVER: Viper.IO.Path.Ext
-' COVER: Viper.IO.Path.IsAbs
+' COVER: Viper.IO.File.WriteAllBytes
+' COVER: Viper.IO.File.WriteAllLines
+' COVER: Viper.IO.Path.Absolute
+' COVER: Viper.IO.Path.Directory
+' COVER: Viper.IO.Path.Extension
+' COVER: Viper.IO.Path.IsAbsolute
 ' COVER: Viper.IO.Path.Join
 ' COVER: Viper.IO.Path.Name
-' COVER: Viper.IO.Path.Norm
-' COVER: Viper.IO.Path.Sep
+' COVER: Viper.IO.Path.Normalize
+' COVER: Viper.IO.Path.Separator
 ' COVER: Viper.IO.Path.Stem
-' COVER: Viper.IO.Path.WithExt
+' COVER: Viper.IO.Path.WithExtension
 
 DIM cwd AS STRING
 cwd = Viper.IO.Dir.Current()
@@ -64,7 +64,7 @@ Viper.IO.File.Append(fileA, " two")
 Viper.IO.File.AppendLine(fileA, "three")
 DIM text AS STRING
 text = Viper.IO.File.ReadAllText(fileA)
-Viper.Core.Diagnostics.Assert(Viper.String.Has(text, "one"), "file.readalltext")
+Viper.Core.Diagnostics.Assert(Viper.String.Contains(text, "one"), "file.readalltext")
 
 DIM lines AS Viper.Collections.Seq
 lines = Viper.Collections.Seq.New()
@@ -72,31 +72,31 @@ lines.Push("L1")
 lines.Push("L2")
 DIM fileB AS STRING
 fileB = Viper.IO.Path.Join(base, "b.txt")
-Viper.IO.File.WriteLines(fileB, lines)
+Viper.IO.File.WriteAllLines(fileB, lines)
 DIM linesAll AS Viper.Collections.Seq
 linesAll = Viper.IO.File.ReadAllLines(fileB)
 Viper.Core.Diagnostics.AssertEq(linesAll.Count, 2, "file.readalllines")
 DIM linesSeq AS Viper.Collections.Seq
-linesSeq = Viper.IO.File.ReadLines(fileB)
+linesSeq = Viper.IO.File.ReadAllLines(fileB)
 Viper.Core.Diagnostics.AssertEq(linesSeq.Count, 2, "file.readlines")
 
-DIM bytes AS Viper.Collections.Bytes
-bytes = NEW Viper.Collections.Bytes(3)
-bytes.Set(0, 1)
-bytes.Set(1, 2)
-bytes.Set(2, 3)
+DIM bytes AS Viper.IO.BinaryBuffer
+bytes = Viper.IO.BinaryBuffer.NewCapacity(3)
+bytes.WriteByte(1)
+bytes.WriteByte(2)
+bytes.WriteByte(3)
 DIM fileBin AS STRING
 fileBin = Viper.IO.Path.Join(base, "c.bin")
 Viper.IO.File.WriteAllBytes(fileBin, bytes)
 DIM readAll AS Viper.Collections.Bytes
 readAll = Viper.IO.File.ReadAllBytes(fileBin)
-Viper.Core.Diagnostics.AssertEqStr(readAll.ToHex(), "010203", "file.readallbytes")
-Viper.IO.File.WriteBytes(fileBin, bytes)
+Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToHex(readAll), "010203", "file.readallbytes")
+Viper.IO.File.WriteAllBytes(fileBin, bytes)
 DIM readBytes AS Viper.Collections.Bytes
-readBytes = Viper.IO.File.ReadBytes(fileBin)
-Viper.Core.Diagnostics.AssertEqStr(readBytes.ToHex(), "010203", "file.readbytes")
+readBytes = Viper.IO.File.ReadAllBytes(fileBin)
+Viper.Core.Diagnostics.AssertEqStr(Viper.Collections.Bytes.ToHex(readBytes), "010203", "file.readbytes")
 
-Viper.Core.Diagnostics.AssertEq(Viper.IO.File.Size(fileBin), 3, "file.size")
+Viper.Core.Diagnostics.AssertEq(Viper.IO.File.SizeBytes(fileBin), 3, "file.size")
 DIM mod1 AS INTEGER
 mod1 = Viper.IO.File.Modified(fileBin)
 Viper.IO.File.Touch(fileBin)
@@ -120,15 +120,15 @@ entries = Viper.IO.Dir.Entries(base)
 DIM list1 AS Viper.Collections.Seq
 list1 = Viper.IO.Dir.List(base)
 DIM list2 AS Viper.Collections.Seq
-list2 = Viper.IO.Dir.ListSeq(base)
+list2 = Viper.IO.Dir.List(base)
 DIM files1 AS Viper.Collections.Seq
 files1 = Viper.IO.Dir.Files(base)
 DIM files2 AS Viper.Collections.Seq
-files2 = Viper.IO.Dir.FilesSeq(base)
+files2 = Viper.IO.Dir.Files(base)
 DIM dirs1 AS Viper.Collections.Seq
 dirs1 = Viper.IO.Dir.Dirs(base)
 DIM dirs2 AS Viper.Collections.Seq
-dirs2 = Viper.IO.Dir.DirsSeq(base)
+dirs2 = Viper.IO.Dir.Dirs(base)
 Viper.Core.Diagnostics.Assert(entries.Count >= 2, "dir.entries")
 Viper.Core.Diagnostics.Assert(list1.Count = list2.Count, "dir.list")
 Viper.Core.Diagnostics.Assert(files1.Count = files2.Count, "dir.files")
@@ -161,18 +161,18 @@ Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Dir.Current(), base, "dir.setcurrent
 Viper.IO.Dir.SetCurrent(cur)
 
 DIM absPath AS STRING
-absPath = Viper.IO.Path.Abs("tests")
-Viper.Core.Diagnostics.Assert(Viper.IO.Path.IsAbs(absPath), "path.abs")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Dir(fileA), base, "path.dir")
+absPath = Viper.IO.Path.Absolute("tests")
+Viper.Core.Diagnostics.Assert(Viper.IO.Path.IsAbsolute(absPath), "path.abs")
+Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Directory(fileA), base, "path.dir")
 Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Name(fileA), "a.txt", "path.name")
 Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Stem(fileA), "a", "path.stem")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Ext(fileA), ".txt", "path.ext")
+Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Extension(fileA), ".txt", "path.ext")
 DIM withExt AS STRING
-withExt = Viper.IO.Path.WithExt(fileA, ".md")
+withExt = Viper.IO.Path.WithExtension(fileA, ".md")
 Viper.Core.Diagnostics.AssertEqStr(withExt, Viper.IO.Path.Join(base, "a.md"), "path.withext")
-Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Norm("a/b/../c"), "a/c", "path.norm")
+Viper.Core.Diagnostics.AssertEqStr(Viper.IO.Path.Normalize("a/b/../c"), "a/c", "path.norm")
 DIM sep AS STRING
-sep = Viper.IO.Path.Sep()
+sep = Viper.IO.Path.Separator()
 Viper.Core.Diagnostics.Assert(sep <> "", "path.sep")
 
 IF Viper.IO.Dir.Exists(base) THEN

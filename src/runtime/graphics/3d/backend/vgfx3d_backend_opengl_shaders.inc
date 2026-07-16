@@ -102,7 +102,10 @@ static const char *const glsl_vertex_src[] = {
     "        if (bw > 0.0001) {\n"
     "            int b = min(gl_InstanceID * uInstanceBoneStride + int(aBoneIdx[i]), 255);\n"
     "            mat4 bm = uBonePalette[b];\n"
-    "            skinnedVector += safeNormalMatrix(mat3(bm)) * localVector * bw;\n"
+    /* Plain upper-3x3 like the D3D11 twin: exact for rigid/uniform-scale bones
+     * after the FS renormalizes; drops a per-influence transpose(inverse())
+     * from the vertex shader (the CPU path keeps exact inverse-transpose). */
+    "            skinnedVector += mat3(bm) * localVector * bw;\n"
     "            totalWeight += bw;\n"
     "        }\n"
     "    }\n"
@@ -134,6 +137,11 @@ static const char *const glsl_vertex_src[] = {
     "    vec4 wp = model * localPos;\n"
     "    vec4 prevWp = prevModel * prevLocalPos;\n"
     "    gl_Position = uViewProjection * wp;\n"
+    /* GL_ZERO_TO_ONE clip control: engine clip z is [-1,1]-convention, so
+     * remap to [0,1] exactly like the D3D11 clipZToBackend twin. */
+    "#ifdef VIPER_DEPTH_ZERO_TO_ONE\n"
+    "    gl_Position.z = gl_Position.z * 0.5 + gl_Position.w * 0.5;\n"
+    "#endif\n"
     "    vWorldPos = wp.xyz;\n"
     "    vNormal = normalMatrix * localNormal;\n"
     "    vTangent = vec4(normalMatrix * localTangent, aTangent.w);\n"
@@ -579,8 +587,14 @@ static const char *const glsl_fragment_src[] = {
     "1.0);\n"
     "            if (uFogEnabled == 0) fogFactor = 0.0;\n"
     "            if (uHeightFog.z > 0.0) {\n"
-    "                float hd = uHeightFog.z * exp(-(vWorldPos.y - uHeightFog.x) * uHeightFog.y);\n"
-    "                float hf = clamp(1.0 - exp(-hd * viewDistance), 0.0, 1.0);\n"
+    /* Clamps mirror the D3D11 twin: an unclamped exponent overflows exp() to
+     * Inf ~88 units below the fog base (step-function fog instead of a
+     * gradient) and Inf * 0 at zero view distance yields NaN fog. */
+    "                float fogExponent = clamp(-(vWorldPos.y - uHeightFog.x) * uHeightFog.y, "
+    "-80.0, 80.0);\n"
+    "                float hd = min(max(uHeightFog.z, 0.0) * exp(fogExponent), 1e20);\n"
+    "                float opticalDepth = min(hd * max(viewDistance, 0.0), 80.0);\n"
+    "                float hf = clamp(1.0 - exp(-opticalDepth), 0.0, 1.0);\n"
     "                fogFactor = 1.0 - (1.0 - fogFactor) * (1.0 - hf);\n"
     "            }\n"
     "            vec3 fogTint = uFogColor;\n"
@@ -933,6 +947,9 @@ static const char *glsl_shadow_vertex_src =
     "        localPos = totalWeight > 0.0001 ? skinnedPos / totalWeight : localPos;\n"
     "    }\n"
     "    gl_Position = uViewProjection * (uModelMatrix * localPos);\n"
+    "#ifdef VIPER_DEPTH_ZERO_TO_ONE\n"
+    "    gl_Position.z = gl_Position.z * 0.5 + gl_Position.w * 0.5;\n"
+    "#endif\n"
     "    vShadowUV = aUV;\n"
     "    vShadowUV1 = aUV1;\n"
     "    vShadowColor = aColor;\n"
@@ -1114,7 +1131,7 @@ static const char *const glsl_postfx_fragment_src[] = {
     "float sampleDepth(vec2 uv) { return texture(uSceneDepthTex, uv).r; }\n"
     "vec3 sampleMotion(vec2 uv) { return texture(uSceneMotionTex, uv).rgb; }\n"
     "vec3 reconstructWorld(vec2 uv, float depth) {\n"
-    "    vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
+    "    vec4 clip = vec4(uv * 2.0 - 1.0, VIPER_DEPTH_TO_NDC(depth), 1.0);\n"
     "    vec4 world = uInvViewProjection * clip;\n"
     "    return world.xyz / max(world.w, 0.0001);\n"
     "}\n"
@@ -1262,8 +1279,11 @@ static const char *const glsl_postfx_fragment_src[] = {
     "        color = clamp(color, 0.0, 1.0);\n"
     "    }\n"
     "    if (uVignetteEnabled != 0) {\n"
-    "        vec2 p = vUV - vec2(0.5);\n"
-    "        float dist = length(p) * 1.41421356;\n"
+    /* Pixel-space distance over the half-diagonal so the falloff is radial at
+     * any aspect ratio (matches the CPU reference). */
+    "        vec2 vres = vec2(1.0) / max(uInvResolution, vec2(0.000001));\n"
+    "        vec2 p = (vUV - vec2(0.5)) * vres;\n"
+    "        float dist = length(p) / max(0.5 * length(vres), 0.000001);\n"
     "        float vig = 1.0;\n"
     "        if (dist > uVignetteRadius) vig = 1.0 - clamp((dist - uVignetteRadius) / "
     "max(uVignetteSoftness, 0.000001), 0.0, 1.0);\n"
@@ -1369,7 +1389,7 @@ static const char *glsl_taa_fragment_src =
     "    vec2 velocity = motionSample.xy * 2.0 - 1.0;\n"
     "    if (motionSample.z < 0.5) {\n"
     "        float depth = texture(uDepthTex, vUV).r;\n"
-    "        vec4 clip = vec4(vUV * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
+    "        vec4 clip = vec4(vUV * 2.0 - 1.0, VIPER_DEPTH_TO_NDC(depth), 1.0);\n"
     "        vec4 world = uInvViewProjection * clip;\n"
     "        world.xyz /= max(abs(world.w), 0.0001) * (world.w < 0.0 ? -1.0 : 1.0);\n"
     "        vec4 prevClip = uPrevViewProjection * vec4(world.xyz, 1.0);\n"
@@ -1420,7 +1440,7 @@ static const char *glsl_ssr_fragment_src =
     "    return (len2 > 1e-12 && len2 < 1e20) ? v * inversesqrt(len2) : fallback;\n"
     "}\n"
     "vec3 ssrWorldAt(vec2 uv, float depth) {\n"
-    "    vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
+    "    vec4 clip = vec4(uv * 2.0 - 1.0, VIPER_DEPTH_TO_NDC(depth), 1.0);\n"
     "    vec4 world = uInvViewProjection * clip;\n"
     "    float w = (world.w < 0.0 ? -1.0 : 1.0) * max(abs(world.w), 0.0001);\n"
     "    return world.xyz / w;\n"

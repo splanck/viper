@@ -37,7 +37,7 @@ bind File = Viper.IO.File;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
-bind Ini = Viper.Text.Ini;
+bind Ini = Viper.Data.Ini;
 bind Codec = Viper.Text.Codec;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
@@ -326,7 +326,7 @@ func main() {
                   "session save records recent file history") == false { return; }
     if assertTrue(Ini.Get(savedIni, "session.file.0", "recoveryModified") == "1"
                   and Ini.Get(savedIni, "session.file.0", "recoveryEncoding") == "base64"
-                  and Str.IndexOf(Codec.Base64Dec(Ini.Get(savedIni, "session.file.0", "recovery")),
+                  and Str.IndexOf(Codec.Base64Decode(Ini.Get(savedIni, "session.file.0", "recovery")),
                                   "unsaved recovery edit") != 0,
                   "session save snapshots dirty existing files") == false { return; }
     sessionDocMgr.CloseDocument(0);

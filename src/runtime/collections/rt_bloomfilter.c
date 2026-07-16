@@ -208,7 +208,7 @@ void rt_bloomfilter_add(void *filter, rt_string item) {
 /// @brief Test whether an element might be in the Bloom filter.
 /// @details Returns true if all bits for the element's hashes are set.
 ///          May return false positives but never false negatives.
-int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
+int8_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
     if (!filter || !item)
         return 0;
     rt_bloomfilter_impl *bf =

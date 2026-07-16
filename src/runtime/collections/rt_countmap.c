@@ -234,8 +234,14 @@ int64_t rt_countmap_inc(void *obj, rt_string key) {
 /// @param n
 /// @return Result value.
 int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
-    if (!obj || n <= 0)
+    if (!obj)
         return 0;
+    // The return is always the post-operation count (VDOC-099): a negative
+    // amount traps (use Decrement to go down), and zero is a lookup no-op.
+    if (n < 0) {
+        rt_trap("CountMap.IncrementBy: amount must be >= 0");
+        return 0;
+    }
     rt_countmap_impl *cm = as_countmap(obj, "CountMap.IncBy: invalid CountMap object");
     if (!cm)
         return 0;
@@ -251,6 +257,8 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
+    if (n == 0)
+        return e ? e->count : 0;
     if (e) {
         if (n > INT64_MAX - e->count || n > INT64_MAX - cm->total) {
             rt_trap("CountMap: count overflow");

@@ -245,6 +245,31 @@ bool test_combat_window_activation() {
     PASS();
 }
 
+bool test_combat_window_survives_coarse_step() {
+    TEST("Narrow hitbox windows cannot be jumped over by a coarse step");
+    CombatFixture fx = combat_fixture_new("Combat WindowCoarse");
+    void *skeleton = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skeleton, rt_const_cstr("root"), -1, nullptr);
+    void *controller = rt_anim_controller3d_new(skeleton);
+    void *clip = rt_animation3d_new(rt_const_cstr("SwingClip"), 1.0);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("Swing"), clip);
+    rt_game3d_entity_attach_animator(fx.attacker, controller);
+    rt_anim_controller3d_play(controller, rt_const_cstr("Swing"));
+
+    /* A 50 ms window sampled at dt = 0.2 s never lands INSIDE [0.25, 0.30]
+     * (state times 0.2, 0.4, 0.6, 0.8); only [prev, now] crossing detection
+     * can fire it. */
+    rt_game3d_hitbox_bind_window(fx.hit, rt_const_cstr("Swing"), 0.25, 0.30);
+    int64_t hits_total = 0;
+    for (int i = 0; i < 4; ++i) {
+        rt_game3d_world_step_simulation(fx.world, 0.2);
+        hits_total += rt_game3d_world_hit_event_count(fx.world);
+    }
+    EXPECT_EQ_INT(hits_total, 1, "coarse step crosses the narrow window exactly once");
+    rt_game3d_world_destroy(fx.world);
+    PASS();
+}
+
 bool test_health_lifecycle_and_events() {
     TEST("Health3D damage/death lifecycle with damage events");
     CombatFixture fx = combat_fixture_new("Combat Health");
@@ -376,6 +401,7 @@ int main() {
     ok = test_combat_overlap_hit_and_rehit() && ok;
     ok = test_combat_filters() && ok;
     ok = test_combat_window_activation() && ok;
+    ok = test_combat_window_survives_coarse_step() && ok;
     ok = test_health_lifecycle_and_events() && ok;
     ok = test_health_iframes() && ok;
     ok = test_health_knockback() && ok;

@@ -28,8 +28,8 @@
 //     rt_tween.h. Unknown types fall back to linear.
 //   - Pause/Resume halt and resume update progression without resetting elapsed.
 //   - rt_tween_reset() rewinds to frame 0 and resumes from the original `from`.
-//   - rt_tween_value_i64() rounds to the nearest integer (round-half-up for
-//     positive values, round-half-down for negative) — suitable for pixel coords.
+//   - rt_tween_value_i64() rounds halves away from zero and saturates at the
+//     int64 limits — suitable for pixel coordinates within double precision.
 //
 // Ownership/Lifetime:
 //   - Tween objects are GC-managed (rt_obj_new_i64). rt_tween_destroy() calls

@@ -4,8 +4,10 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_json_stream.h
-// Purpose: SAX-style streaming JSON parser for large or incremental JSON data, providing a
-// pull-based token stream over a JSON string without building an in-memory tree.
+// Purpose: SAX-style pull parser over one complete in-memory JSON string. It
+// avoids building a value tree (lower allocation overhead than Json.Parse) but
+// is NOT incremental: the sole constructor retains the whole input string and
+// there is no feed/resume API for network or file chunks.
 //
 // Key invariants:
 //   - Stateful, pull-based: call rt_json_stream_next to advance to the next token.

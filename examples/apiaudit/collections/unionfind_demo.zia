@@ -20,10 +20,10 @@ func start() {
     Say("--- Find ---");
     SayInt(uf.Find(0));     // 0 (own representative)
     SayInt(uf.Find(3));     // 3 (own representative)
-    var root = uf.FindRootOption(0);
+    var root = uf.FindRoot(0);
     SayBool(root.IsSome);
     SayInt(root.UnwrapI64()); // 0
-    SayBool(uf.FindRootOption(99).IsNone);
+    SayBool(uf.FindRoot(99).IsNone);
 
     // --- Union ---
     Say("--- Union ---");
@@ -36,40 +36,40 @@ func start() {
 
     // --- Connected ---
     Say("--- Connected ---");
-    SayBool(uf.Connected(0, 1)); // 1
-    SayBool(uf.Connected(2, 3)); // 1
-    SayBool(uf.Connected(0, 2)); // 0 (different sets)
-    SayBool(uf.Connected(4, 5)); // 0
+    SayBool(uf.IsConnected(0, 1)); // 1
+    SayBool(uf.IsConnected(2, 3)); // 1
+    SayBool(uf.IsConnected(0, 2)); // 0 (different sets)
+    SayBool(uf.IsConnected(4, 5)); // 0
 
     // --- Union across groups ---
     Say("--- Union across groups ---");
     SayInt(uf.Union(1, 3));      // 1 (merge {0,1} and {2,3})
     SayInt(uf.Count);            // 3
-    SayBool(uf.Connected(0, 2)); // 1 (now connected)
-    SayBool(uf.Connected(0, 3)); // 1
+    SayBool(uf.IsConnected(0, 2)); // 1 (now connected)
+    SayBool(uf.IsConnected(0, 3)); // 1
 
     // --- SetSize ---
     Say("--- SetSize ---");
-    SayInt(uf.SetSize(0));       // 4 ({0,1,2,3})
-    SayInt(uf.SetSize(4));       // 1 ({4} alone)
-    SayInt(uf.SetSize(5));       // 1 ({5} alone)
+    SayInt(uf.ComponentSize(0));       // 4 ({0,1,2,3})
+    SayInt(uf.ComponentSize(4));       // 1 ({4} alone)
+    SayInt(uf.ComponentSize(5));       // 1 ({5} alone)
 
     // --- Union remaining ---
     Say("--- Union remaining ---");
     uf.Union(4, 5);
     SayInt(uf.Count);            // 2
-    SayInt(uf.SetSize(4));       // 2
+    SayInt(uf.ComponentSize(4));       // 2
 
     uf.Union(0, 4);
     SayInt(uf.Count);            // 1
-    SayInt(uf.SetSize(0));       // 6 (all connected)
+    SayInt(uf.ComponentSize(0));       // 6 (all connected)
 
     // --- Reset ---
     Say("--- Reset ---");
-    uf.Reset();
+    uf.Clear();
     SayInt(uf.Count);            // 6 (back to individual sets)
-    SayBool(uf.Connected(0, 1)); // 0
-    SayInt(uf.SetSize(0));       // 1
+    SayBool(uf.IsConnected(0, 1)); // 0
+    SayInt(uf.ComponentSize(0));       // 1
 
     Say("=== UnionFind audit complete ===");
 }

@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_yaml.h"
+#include "rt_format.h"
 
 #include "rt_box.h"
 #include "rt_internal.h"
@@ -37,6 +38,12 @@
 
 /// @brief Forward declaration: serialise any Viper value as YAML.
 static void format_value(void *obj, int indent, int level, char **buf, size_t *cap, size_t *len);
+
+/// Maximum block nesting the formatter will emit; matches the parser's
+/// YAML_MAX_DEPTH. Exceeding it (deeply nested or CYCLIC containers) aborts
+/// the format via this flag instead of recursing without bound.
+#define YAML_FORMAT_MAX_DEPTH 200
+static int g_yaml_format_depth_exceeded = 0;
 
 // ---------------------------------------------------------------------------
 // Output buffer helpers — append to a growing heap buffer that
@@ -85,6 +92,15 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     (*buf)[*len] = '\0';
 }
 
+/// @brief Append exactly `slen` bytes of `str` (embedded NUL bytes included).
+static void buf_append_bytes(char **buf, size_t *cap, size_t *len, const char *str, size_t slen) {
+    if (slen > SIZE_MAX - *len - 1u || !yaml_format_reserve(buf, cap, *len + slen))
+        return;
+    memcpy(*buf + *len, str, slen);
+    *len += slen;
+    (*buf)[*len] = '\0';
+}
+
 /// @brief Append a single byte (with realloc as needed).
 static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
     if (*len == SIZE_MAX || !yaml_format_reserve(buf, cap, *len + 1u))
@@ -107,13 +123,16 @@ static void buf_append_indent(char **buf, size_t *cap, size_t *len, int spaces) 
 /// `~`), or contain reserved indicator characters (`:`, `#`, `[`,
 /// `{`, `&`, `*`, etc.) or leading/trailing whitespace. In any of
 /// those cases we wrap them in double quotes for safe round-tripping.
-static bool needs_quoting(const char *str) {
-    if (!str || !*str)
+static bool needs_quoting(const char *str, size_t slen) {
+    if (!str || slen == 0)
         return true;
 
-    size_t slen = strlen(str);
+    // Embedded NUL bytes can never be a plain scalar; force quoting so the
+    // escape path preserves every byte.
+    if (memchr(str, '\0', slen))
+        return true;
 
-    if (strcmp(str, "---") == 0 || strcmp(str, "...") == 0)
+    if ((slen == 3 && memcmp(str, "---", 3) == 0) || (slen == 3 && memcmp(str, "...", 3) == 0))
         return true;
 
     void *parsed = parse_scalar(str, slen);
@@ -133,8 +152,8 @@ static bool needs_quoting(const char *str) {
         return true;
 
     // Check for special chars
-    for (const char *p = str; *p; p++) {
-        if (*p == '\n' || *p == '\r' || *p == ':' || *p == '#')
+    for (size_t i = 0; i < slen; i++) {
+        if (str[i] == '\n' || str[i] == '\r' || str[i] == ':' || str[i] == '#')
             return true;
     }
 
@@ -147,20 +166,21 @@ static bool needs_quoting(const char *str) {
 /// characters (`\n`, `\t`, etc.) so the output round-trips through
 /// `parse_quoted_string`.
 static void format_string(
-    const char *str, int indent, int level, char **buf, size_t *cap, size_t *len) {
-    if (!str || !*str) {
+    const char *str, size_t slen, int indent, int level, char **buf, size_t *cap, size_t *len) {
+    if (!str || slen == 0) {
         buf_append(buf, cap, len, "''");
         return;
     }
 
-    if (!needs_quoting(str)) {
-        buf_append(buf, cap, len, str);
+    if (!needs_quoting(str, slen)) {
+        buf_append_bytes(buf, cap, len, str, slen);
         return;
     }
 
     // Quote with double quotes
     buf_append_char(buf, cap, len, '"');
-    for (const char *p = str; *p; p++) {
+    for (size_t bi = 0; bi < slen; bi++) {
+        const char *p = str + bi;
         switch (*p) {
             case '"':
                 buf_append(buf, cap, len, "\\\"");
@@ -209,6 +229,10 @@ static void format_string(
 /// current nesting depth. Blocks emit a leading newline so they
 /// can sit after a `key:` or `-`.
 static void format_value(void *obj, int indent, int level, char **buf, size_t *cap, size_t *len) {
+    if (level > YAML_FORMAT_MAX_DEPTH) {
+        g_yaml_format_depth_exceeded = 1;
+        return;
+    }
     if (!obj) {
         buf_append(buf, cap, len, "null");
         return;
@@ -234,8 +258,9 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
             } else if (isnan(val)) {
                 buf_append(buf, cap, len, ".nan");
             } else {
+                // Locale-independent exact formatting (VDOC-041).
                 char num[64];
-                snprintf(num, sizeof(num), "%g", val);
+                rt_format_f64_roundtrip(val, num, sizeof(num));
                 buf_append(buf, cap, len, num);
             }
             return;
@@ -243,7 +268,8 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
         if (type_tag == RT_BOX_STR) {
             rt_string s = rt_unbox_str(obj);
             const char *str = rt_string_cstr(s);
-            format_string(str, indent, level, buf, cap, len);
+            int64_t str_len = rt_str_len(s);
+            format_string(str, str_len < 0 ? 0 : (size_t)str_len, indent, level, buf, cap, len);
             if (rt_obj_release_check0((void *)s))
                 rt_obj_free((void *)s);
             return;
@@ -253,7 +279,8 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
     // Check for string
     if (rt_string_is_handle(obj)) {
         const char *str = rt_string_cstr((rt_string)obj);
-        format_string(str, indent, level, buf, cap, len);
+        int64_t str_len = rt_str_len((rt_string)obj);
+        format_string(str, str_len < 0 ? 0 : (size_t)str_len, indent, level, buf, cap, len);
         return;
     }
 
@@ -296,10 +323,12 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
 
             void *key = rt_seq_get(keys, i);
             const char *key_str = rt_string_cstr((rt_string)key);
-            if (needs_quoting(key_str)) {
-                format_string(key_str, indent, level, buf, cap, len);
+            int64_t raw_key_len = rt_str_len((rt_string)key);
+            size_t key_len = raw_key_len < 0 ? 0 : (size_t)raw_key_len;
+            if (needs_quoting(key_str, key_len)) {
+                format_string(key_str, key_len, indent, level, buf, cap, len);
             } else {
-                buf_append(buf, cap, len, key_str);
+                buf_append_bytes(buf, cap, len, key_str, key_len);
             }
             buf_append(buf, cap, len, ": ");
 
@@ -319,7 +348,7 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
         return;
     }
 
-    // Unknown type - format as string
+    // Unrecognized runtime object: emit YAML null rather than guessing a scalar.
     buf_append(buf, cap, len, "null");
 }
 
@@ -345,7 +374,13 @@ rt_string rt_yaml_format_indent(void *obj, int64_t indent) {
     char *buf = NULL;
     size_t cap = 0, len = 0;
 
+    g_yaml_format_depth_exceeded = 0;
     format_value(obj, (int)indent, 0, &buf, &cap, &len);
+    if (g_yaml_format_depth_exceeded) {
+        // Cyclic or absurdly deep input: fail closed with an empty document.
+        free(buf);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_string result = rt_string_from_bytes(buf ? buf : "", (int64_t)len);
     free(buf);

@@ -14,6 +14,8 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_box.h"
+#include "rt_option.h"
 #include "rt_trie.h"
 
 #include <cassert>
@@ -401,7 +403,27 @@ static void test_null_safety() {
     rt_string_unref(k);
 }
 
+static void test_longest_prefix_option() {
+    // VDOC-103: the Option form distinguishes an empty-key match from no match.
+    void *trie = rt_trie_new();
+    rt_string empty = rt_string_from_bytes("", 0);
+    rt_string probe = rt_string_from_bytes("zzz", 3);
+
+    void *none = rt_trie_longest_prefix_option(trie, probe);
+    assert(rt_option_is_none(none) == 1);
+
+    rt_trie_set(trie, empty, rt_box_i64(1));
+    void *some = rt_trie_longest_prefix_option(trie, probe);
+    assert(rt_option_is_some(some) == 1);
+    rt_string match = rt_option_unwrap_str(some);
+    assert(rt_str_len(match) == 0);
+
+    rt_string_unref(empty);
+    rt_string_unref(probe);
+}
+
 int main() {
+    test_longest_prefix_option();
     test_new();
     test_put_and_get();
     test_has();

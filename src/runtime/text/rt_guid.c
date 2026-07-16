@@ -6,14 +6,17 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_guid.c
-// Purpose: Implements UUID version 4 (random) generation per RFC 4122 for the
-//          Viper.Text.Guid class. Generates 128-bit random identifiers formatted
-//          as xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (lowercase hex with dashes).
+// Purpose: Implements UUID version 4 (random) generation per RFC 9562 (which
+//          obsoletes RFC 4122) for the Viper.Text.Guid class. Generates 128-bit
+//          random identifiers formatted as xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+//          (lowercase hex with dashes).
 //
 // Key invariants:
 //   - Version bits (4) are always set at position 6 of byte 6.
-//   - Variant bits (10xx) are always set in byte 8 per RFC 4122.
-//   - Random bytes are sourced from /dev/urandom (Unix) or CryptGenRandom (Win32).
+//   - Variant bits (10xx) are always set in byte 8 per RFC 9562.
+//   - Random bytes come from the shared crypto RNG (rt_crypto_random_bytes:
+//     approved-mode DRBG, BCryptGenRandom on Windows, getrandom() with a
+//     fallback on Linux, arc4random_buf() on macOS).
 //   - Output format is always lowercase 36-character string with 4 dashes.
 //   - Parse accepts both uppercase and lowercase hex; validates format strictly.
 //   - All functions are thread-safe.
@@ -22,7 +25,7 @@
 //   - Generated UUID strings are fresh rt_string allocations owned by the caller.
 //
 // Links: src/runtime/text/rt_guid.h (public API),
-//        src/runtime/text/rt_rand.h (CSPRNG helper used for random bytes)
+//        src/runtime/network/rt_crypto.h (shared crypto RNG)
 //
 //===----------------------------------------------------------------------===//
 
@@ -53,12 +56,13 @@ static void get_random_bytes(uint8_t *buf, size_t len) {
 /// @brief Generates a new random UUID version 4.
 ///
 /// Creates a new UUID using cryptographically secure random numbers. The
-/// generated UUID conforms to RFC 4122 with version 4 (random) and the
-/// standard variant bits.
+/// generated UUID conforms to RFC 9562 (formerly RFC 4122) with version 4
+/// (random) and the standard variant bits.
 ///
 /// **UUID Properties:**
 /// - 122 bits of randomness (6 bits used for version and variant)
-/// - Probability of collision: ~1 in 5.3×10^36 for each pair
+/// - Probability of collision: ~1 in 5.3×10^36 for each pair (uniqueness is
+///   probabilistic, not guaranteed — astronomically unlikely to collide)
 /// - Output is always lowercase with dashes
 ///
 /// **Example output:**
@@ -77,15 +81,16 @@ static void get_random_bytes(uint8_t *buf, size_t len) {
 /// ' Multiple unique IDs
 /// Dim id1 = Guid.New()
 /// Dim id2 = Guid.New()
-/// ' id1 and id2 are guaranteed to be different
+/// ' id1 and id2 differ except with astronomically small probability
 /// ```
 ///
 /// @return A 36-character string in the format
 ///         `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`.
 ///
 /// @note O(1) time complexity.
-/// @note Uses /dev/urandom on Unix, CryptGenRandom on Windows.
-/// @note Each call generates a unique UUID.
+/// @note Randomness comes from the shared crypto RNG (rt_crypto_random_bytes):
+///       approved-mode DRBG, BCryptGenRandom on Windows, getrandom() with a
+///       fallback on Linux, arc4random_buf() on macOS.
 ///
 /// @see rt_guid_empty For the nil UUID constant
 /// @see rt_guid_is_valid For validating UUID strings
@@ -96,7 +101,7 @@ rt_string rt_guid_new(void) {
     // Set version 4 (random UUID) in byte 6: high nibble = 0100
     bytes[6] = (bytes[6] & 0x0F) | 0x40;
 
-    // Set variant (RFC 4122) in byte 8: high bits = 10
+    // Set variant (RFC 9562) in byte 8: high bits = 10
     bytes[8] = (bytes[8] & 0x3F) | 0x80;
 
     // Format as lowercase hex with dashes (36 chars + null)
@@ -127,7 +132,7 @@ rt_string rt_guid_new(void) {
 /// @brief Returns the nil UUID (all zeros).
 ///
 /// Returns the special "nil" UUID that consists of all zeros. The nil UUID
-/// is defined in RFC 4122 and is useful as a placeholder or default value.
+/// is defined in RFC 9562 and is useful as a placeholder or default value.
 ///
 /// **Nil UUID:** `00000000-0000-0000-0000-000000000000`
 ///
@@ -232,7 +237,7 @@ int8_t rt_guid_is_valid(rt_string str) {
 ///
 /// **Byte ordering:**
 /// The bytes are returned in network byte order (big-endian), which is the
-/// standard order defined by RFC 4122.
+/// standard order defined by RFC 9562.
 ///
 /// **Usage example:**
 /// ```

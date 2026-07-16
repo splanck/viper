@@ -1,14 +1,14 @@
 ' EXPECT_OUT: RESULT: ok
 ' EXPECT_TTY_INPUT: first\nsecond\nk\n
-' COVER: Viper.Terminal.Ask
+' COVER: Viper.Terminal.AskResult
 ' COVER: Viper.Terminal.BeginBatch
 ' COVER: Viper.Terminal.Bell
 ' COVER: Viper.Terminal.Clear
 ' COVER: Viper.Terminal.EndBatch
 ' COVER: Viper.Terminal.Flush
-' COVER: Viper.Terminal.GetKey
-' COVER: Viper.Terminal.GetKeyTimeout
-' COVER: Viper.Terminal.InKey
+' COVER: Viper.Terminal.ReadKey
+' COVER: Viper.Terminal.ReadKeyFor
+' COVER: Viper.Terminal.PollKey
 ' COVER: Viper.Terminal.Print
 ' COVER: Viper.Terminal.PrintInt
 ' COVER: Viper.Terminal.PrintNum
@@ -46,17 +46,17 @@ line1 = Viper.Terminal.ReadLine()
 Viper.Core.Diagnostics.AssertEqStr(line1, "first", "term.readline")
 
 DIM ans AS STRING
-ans = Viper.Terminal.Ask("prompt>")
+ans = Viper.Result.UnwrapStr(Viper.Terminal.AskResult("prompt>"))
 Viper.Core.Diagnostics.AssertEqStr(ans, "second", "term.ask")
 
 DIM key AS STRING
-key = Viper.Terminal.GetKey()
+key = Viper.Terminal.ReadKey()
 Viper.Core.Diagnostics.Assert(key <> "", "term.getkey")
 
 DIM key2 AS STRING
-key2 = Viper.Terminal.GetKeyTimeout(0)
+key2 = Viper.Terminal.ReadKeyFor(0)
 DIM key3 AS STRING
-key3 = Viper.Terminal.InKey()
+key3 = Viper.Terminal.PollKey()
 Viper.Core.Diagnostics.Assert(key2 = key2, "term.getkeytimeout")
 Viper.Core.Diagnostics.Assert(key3 = key3, "term.inkey")
 

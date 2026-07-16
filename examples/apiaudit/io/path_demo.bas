@@ -21,18 +21,18 @@ PRINT "Stem('archive.tar.gz'): "; Viper.IO.Path.Stem("archive.tar.gz")
 
 ' --- Dir ---
 PRINT "--- Dir ---"
-PRINT "Dir: "; Viper.IO.Path.Dir(testPath)
-PRINT "Dir('file.txt'): "; Viper.IO.Path.Dir("file.txt")
+PRINT "Dir: "; Viper.IO.Path.Directory(testPath)
+PRINT "Dir('file.txt'): "; Viper.IO.Path.Directory("file.txt")
 
 ' --- Ext ---
 PRINT "--- Ext ---"
-PRINT "Ext: "; Viper.IO.Path.Ext(testPath)
-PRINT "Ext('noext'): "; Viper.IO.Path.Ext("noext")
+PRINT "Ext: "; Viper.IO.Path.Extension(testPath)
+PRINT "Ext('noext'): "; Viper.IO.Path.Extension("noext")
 
 ' --- IsAbs ---
 PRINT "--- IsAbs ---"
-PRINT "IsAbs('/home/user'): "; Viper.IO.Path.IsAbs("/home/user")
-PRINT "IsAbs('relative'): "; Viper.IO.Path.IsAbs("relative/path")
+PRINT "IsAbs('/home/user'): "; Viper.IO.Path.IsAbsolute("/home/user")
+PRINT "IsAbs('relative'): "; Viper.IO.Path.IsAbsolute("relative/path")
 
 ' --- Join ---
 PRINT "--- Join ---"
@@ -41,21 +41,21 @@ PRINT "Join('a', 'b'): "; Viper.IO.Path.Join("a", "b")
 
 ' --- Abs ---
 PRINT "--- Abs ---"
-PRINT "Abs('.'): "; Viper.IO.Path.Abs(".")
+PRINT "Abs('.'): "; Viper.IO.Path.Absolute(".")
 
 ' --- Norm ---
 PRINT "--- Norm ---"
-PRINT "Norm('/home/user/../user/./docs'): "; Viper.IO.Path.Norm("/home/user/../user/./docs")
-PRINT "Norm('/a/b/c/../../d'): "; Viper.IO.Path.Norm("/a/b/c/../../d")
+PRINT "Norm('/home/user/../user/./docs'): "; Viper.IO.Path.Normalize("/home/user/../user/./docs")
+PRINT "Norm('/a/b/c/../../d'): "; Viper.IO.Path.Normalize("/a/b/c/../../d")
 
 ' --- Sep ---
 PRINT "--- Sep ---"
-PRINT "Sep: "; Viper.IO.Path.Sep()
+PRINT "Sep: "; Viper.IO.Path.Separator()
 
 ' --- WithExt ---
 PRINT "--- WithExt ---"
-PRINT "WithExt('file.txt', '.md'): "; Viper.IO.Path.WithExt("file.txt", ".md")
-PRINT "WithExt('noext', '.txt'): "; Viper.IO.Path.WithExt("noext", ".txt")
+PRINT "WithExt('file.txt', '.md'): "; Viper.IO.Path.WithExtension("file.txt", ".md")
+PRINT "WithExt('noext', '.txt'): "; Viper.IO.Path.WithExtension("noext", ".txt")
 
 PRINT "=== Path Demo Complete ==="
 END

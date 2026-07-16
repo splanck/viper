@@ -9,7 +9,7 @@
 // Purpose: Implements the Viper.Crypto.Aes runtime — AES-128 and AES-256 block
 //          cipher in CBC mode with PKCS7 padding (FIPS-197), plus AES-GCM
 //          authenticated encryption (Aes.EncryptAuth / DecryptAuth) wrapping
-//          the GCM ciphertext in a 16-byte magic header so plain-CBC and
+//          the GCM ciphertext in a 16-byte magic-plus-nonce header so plain-CBC and
 //          authenticated-GCM payloads cannot be confused at the API level.
 //          Pure C implementation with no external dependencies.
 //
@@ -18,8 +18,8 @@
 //   - CBC mode: IV is 16 bytes (one AES block); callers must supply a unique
 //     random IV. PKCS7 padding is applied during encryption and stripped on
 //     decryption. Ciphertext length is always a multiple of 16 bytes.
-//   - GCM mode: prepended with the AES_AUTH_HEADER ('V', 'A', 'K', '1' magic +
-//     version/flag bytes, 16 bytes total) so an unmodified decrypt path
+//   - GCM mode: prepended with a 4-byte `VAK1` magic and 12-byte random nonce
+//     (16 bytes total) so an unmodified decrypt path
 //     refuses ciphertexts that lack the header. The header is folded into
 //     the GCM AAD, so altering it invalidates the tag.
 //   - aes_combine_aad composes the application-provided AAD with the magic
@@ -34,7 +34,7 @@
 //     the call.
 //
 // Links: src/runtime/text/rt_aes.h (public API),
-//        src/runtime/text/rt_cipher.h (ChaCha20-Poly1305 cipher, preferred),
+//        src/runtime/text/rt_cipher.h (high-level mode-selecting AEAD facade),
 //        src/runtime/text/rt_rand.h (IV / nonce generation),
 //        src/runtime/text/rt_keyderive_internal.h (HMAC helpers used by GCM)
 //
@@ -1571,12 +1571,13 @@ void *rt_aes_try_decrypt_auth(void *data, void *key, void *aad) {
 /// For production-grade security, use PBKDF2-HMAC-SHA256 with a random salt.
 #define DERIVE_KEY_ROUNDS 10000
 
-/// @brief Legacy v0/v1 key derivation — single-pass SHA-256 of the password.
+/// @brief Legacy v0/v1 key derivation — fixed-domain iterated SHA-256.
 ///
 /// Kept for backward-compatibility decryption only; new encryptions
-/// must use `derive_key_pbkdf2`. Insecure (no salt, single iteration)
-/// and only retained to read existing ciphertexts created with the
-/// pre-v2 format.
+/// must use `derive_key_pbkdf2`. It hashes a fixed domain separator, a
+/// one-byte capped length, and at most the first 256 password bytes, then
+/// performs 10,000 SHA-256 rounds. It has no per-payload salt and is retained
+/// only to read existing ciphertexts created with the legacy format.
 static void derive_key_legacy(const uint8_t *password, size_t pass_len, uint8_t key[32]) {
     /* Fixed application-level domain separator (S-06) */
     static const uint8_t kSalt[16] = {0x56,
@@ -1622,7 +1623,7 @@ static void derive_key_legacy(const uint8_t *password, size_t pass_len, uint8_t 
 
 #undef DERIVE_KEY_ROUNDS
 
-/// @brief Modern PBKDF2-HMAC-SHA256 key derivation — used by all v2+ encryptions.
+/// @brief Current PBKDF2-HMAC-SHA256 key derivation for authenticated string encryption.
 ///
 /// `AES_STR_PBKDF2_ITERATIONS` iterations of HMAC-SHA256
 /// over `(password, salt)` produce the 32-byte AES key. The high
@@ -1642,16 +1643,17 @@ static void derive_key_pbkdf2(const uint8_t *password,
                                    16);
 }
 
-/// @brief Fill `buf` with `len` cryptographically secure random bytes (delegates to the OS RNG).
+/// @brief Fill `buf` with cryptographically secure bytes from the active module RNG.
 static void generate_random_bytes(uint8_t *buf, size_t len) {
     rt_crypto_random_bytes(buf, len);
 }
 
-/// @brief Detect whether a raw byte stream looks like a v2+ GCM-string-format payload.
+/// @brief Detect whether a raw byte stream has the current GCM-string-format prefix.
 ///
-/// Checks the 4-byte magic prefix that distinguishes the new
+/// Checks the 4-byte magic prefix that distinguishes the current
 /// PBKDF2+GCM format from the legacy CBC format, so the decryptor
-/// can dispatch to the right routine.
+/// can dispatch to the intended routine. A legacy random IV that happens to
+/// equal the magic is therefore ambiguous and is classified as current.
 static int aes_is_gcm_string_payload(const uint8_t *data, size_t len) {
     return len >= AES_STR_HEADER_LEN && data[0] == AES_STR_MAGIC0 && data[1] == AES_STR_MAGIC1 &&
            data[2] == AES_STR_MAGIC2 && data[3] == AES_STR_MAGIC3;

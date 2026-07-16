@@ -14,14 +14,14 @@
 ' COVER: Viper.System.Exec.Shell
 ' COVER: Viper.System.Exec.ShellCapture
 ' COVER: Viper.System.Machine.Cores
-' COVER: Viper.System.Machine.get_Endian
+' COVER: Viper.System.Machine.Endian
 ' COVER: Viper.System.Machine.Home
 ' COVER: Viper.System.Machine.Host
-' COVER: Viper.System.Machine.MemFree
-' COVER: Viper.System.Machine.MemTotal
+' COVER: Viper.System.Machine.MemoryFree
+' COVER: Viper.System.Machine.MemoryTotal
 ' COVER: Viper.System.Machine.Os
-' COVER: Viper.System.Machine.OsVer
-' COVER: Viper.System.Machine.Temp
+' COVER: Viper.System.Machine.OsVersion
+' COVER: Viper.System.Machine.TempDir
 ' COVER: Viper.System.Machine.User
 ' COVER: Viper.Diagnostics.Log.LevelDebug
 ' COVER: Viper.Diagnostics.Log.LevelInfo
@@ -42,7 +42,7 @@ IF argc >= 3 THEN
     Viper.Core.Diagnostics.AssertEqStr(Viper.System.Environment.GetArgument(1), "alpha", "env.arg1")
     Viper.Core.Diagnostics.AssertEqStr(Viper.System.Environment.GetArgument(2), "beta", "env.arg2")
 END IF
-Viper.Core.Diagnostics.Assert(Viper.System.Environment.GetCommandLine() <> "", "env.cmd")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Environment.GetCommandLine()) > 0, "env.cmd")
 
 DIM name AS STRING
 name = "VIPER_SWEEP_ENV"
@@ -65,16 +65,16 @@ Viper.Core.Diagnostics.Assert(Viper.String.Trim(out) = "shellcap", "exec.shellca
 out = Viper.System.Exec.Capture("/bin/echo")
 Viper.Core.Diagnostics.Assert(Viper.String.Trim(out) = "", "exec.capture")
 
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.Os <> "", "machine.os")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.OsVer <> "", "machine.osver")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.Host <> "", "machine.host")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.User <> "", "machine.user")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.Home <> "", "machine.home")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.Temp <> "", "machine.temp")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Os) > 0, "machine.os")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.OsVersion) > 0, "machine.osver")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Host) > 0, "machine.host")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.User) > 0, "machine.user")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Home) > 0, "machine.home")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.TempDir) > 0, "machine.temp")
 Viper.Core.Diagnostics.Assert(Viper.System.Machine.Cores > 0, "machine.cores")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemTotal > 0, "machine.memtotal")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemFree >= 0, "machine.memfree")
-Viper.Core.Diagnostics.Assert(Viper.System.Machine.get_Endian <> "", "machine.endian")
+Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemoryTotal > 0, "machine.memtotal")
+Viper.Core.Diagnostics.Assert(Viper.System.Machine.MemoryFree >= 0, "machine.memfree")
+Viper.Core.Diagnostics.Assert(LEN(Viper.System.Machine.Endian) > 0, "machine.endian")
 
 Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.LevelInfo
 Viper.Diagnostics.Log.Debug("debug")

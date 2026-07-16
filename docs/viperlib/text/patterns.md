@@ -13,7 +13,7 @@ last-verified: 2026-07-14
 
 ## Viper.Text.Pattern
 
-Regular expression pattern matching for text search and manipulation.
+Byte-oriented regular-expression-subset matching for text search and manipulation.
 
 **Type:** Static utility class
 
@@ -38,11 +38,11 @@ Regular expression pattern matching for text search and manipulation.
 
 | Feature              | Syntax               | Description                                      |
 |----------------------|----------------------|--------------------------------------------------|
-| Literals             | `abc`                | Match literal characters                         |
-| Dot                  | `.`                  | Match any character except newline               |
+| Literals             | `abc`                | Match literal bytes                              |
+| Dot                  | `.`                  | Match any byte except `LF`                       |
 | Anchors              | `^` `$`              | Start/end of string                              |
-| Character class      | `[abc]` `[a-z]`      | Match any character in set                       |
-| Negated class        | `[^abc]` `[^0-9]`    | Match any character NOT in set                   |
+| Character class      | `[abc]` `[a-z]`      | Match any byte in the set                        |
+| Negated class        | `[^abc]` `[^0-9]`    | Match any byte not in the set                    |
 | Shorthand: digit     | `\d` `\D`            | Digit `[0-9]` / non-digit                        |
 | Shorthand: word      | `\w` `\W`            | Word char `[a-zA-Z0-9_]` / non-word              |
 | Shorthand: space     | `\s` `\S`            | Whitespace / non-whitespace                      |
@@ -50,7 +50,7 @@ Regular expression pattern matching for text search and manipulation.
 | Quantifier: plus     | `+` `+?`             | One or more (greedy / non-greedy)                |
 | Quantifier: optional | `?` `??`             | Zero or one (greedy / non-greedy)                |
 | Grouping             | `(abc)`              | Group subexpressions                             |
-| Alternation          | `a\|b`               | Match either alternative                         |
+| Alternation          | `a` &#124; `b`       | Match either alternative                         |
 | Escape               | `\\` `\.` `\*` etc.  | Match literal special character                  |
 
 ### NOT Supported
@@ -71,8 +71,26 @@ The following advanced regex features are not implemented:
 
 ### Byte Semantics
 
-- Pattern matching uses runtime string byte length, so embedded `NUL` bytes in text can be matched and returned.
-- Match positions and `FindFrom` start values are byte offsets.
+- Pattern matching uses runtime string byte length, so embedded `NUL` bytes in text can be matched
+  and returned. Dot, classes, shorthands, literals, and quantifiers all operate on bytes; `\d` and
+  `\w` are ASCII-only, and `\s` is the six-byte set space, tab, `LF`, `CR`, form feed, and vertical
+  tab.
+- Pattern source must not contain embedded `NUL` bytes: any `Pattern.*` call traps with
+  `Pattern: pattern contains NUL byte` rather than silently compiling only the prefix.
+- Match positions and `FindFrom` start values are byte offsets. Negative starts clamp to zero; a
+  start beyond the text returns no match.
+- Replacement text is literal; `$1`, `\1`, and similar capture-reference spellings are not
+  expanded.
+- Zero-width matches follow ECMAScript-style semantics: `Replace("abc", "", "-")` yields
+  `-a-b-c-` (the stepped-over byte is preserved), and `Split("abc", "")` yields `a`, `b`, `c`
+  (an empty match never splits at the current segment start or at end-of-text).
+- Parentheses are semantics-neutral: `(a*)a` matches exactly what `a*a` matches, and
+  `Captures` succeeds whenever `Find` succeeds. Capture groups are numbered lexically by
+  opening parenthesis; a group in an untaken alternation branch reports an empty string, and
+  a quantified group reports its last repetition.
+- Uppercase complement shorthands (`\D`, `\W`, `\S`) may be combined freely with other
+  members inside a character class; each shorthand contributes its own byte set to the union
+  (`[a\D]` matches `a` and every non-digit).
 - The regex cache is safe for concurrent users of cached patterns; in-use compiled entries are not evicted.
 - Prefer `FindOption()`, `FindFromOption()`, and `FindPosOption()` for new code. The legacy string-returning forms cannot distinguish no match from a valid empty-string match.
 
@@ -129,7 +147,7 @@ IF word.IsSome THEN
 END IF
 
 ' Find position
-DIM pos AS OBJECT = Viper.Text.Pattern.FindPosOption(text, "World")
+DIM pos AS OBJECT = Viper.Text.Pattern.FindPos(text, "World")
 IF pos.IsSome THEN
     PRINT pos.UnwrapI64()  ' Output: 7
 END IF
@@ -206,6 +224,8 @@ PRINT IsValidEmail("invalid-email")     ' Output: 0 (false)
 - Frequently used patterns avoid recompilation overhead
 - For maximum performance with many operations, use consistent pattern strings
 - For repeated operations with the same pattern, consider `CompiledPattern`
+- Matching is backtracking with a one-million-step cap shared across each search. Reaching the cap
+  is reported as no match rather than as a separate timeout result.
 
 ---
 
@@ -221,7 +241,7 @@ strings to avoid recompilation overhead.
 
 | Property  | Type   | Description                                   |
 |-----------|--------|-----------------------------------------------|
-| `Pattern` | String | The original pattern string used to compile   |
+| `Pattern` | String | The C-string prefix that was compiled          |
 
 ### Methods
 
@@ -244,11 +264,14 @@ strings to avoid recompilation overhead.
 
 ### Capture Groups
 
-The `Captures` and `CapturesFrom` methods return a Seq containing:
+For patterns that the capture matcher can represent correctly, `Captures` and `CapturesFrom`
+return a Seq containing:
 - Index 0: The full match
 - Index 1+: Captured groups in order of opening parentheses
 
-If there is no match, an empty Seq is returned.
+If there is no match, an empty Seq is returned. Alternation does not retain empty slots for
+unmatched lexical groups, and the capture matcher can fail even when `Find` succeeds; see
+[VDOC-057](../../documentation-review-findings.md#vdoc-057--compiledpattern-captures-uses-a-different-matcher-and-group-numbering).
 
 Prefer the Option-returning `Find*Option()` methods for branchable search code. The legacy
 `Find()` and `FindFrom()` methods return an empty string for no match, which is ambiguous
@@ -259,6 +282,14 @@ when the pattern itself can match an empty string.
 - Null text and replacement arguments are treated as empty strings.
 - Returned matches preserve runtime string byte length, including embedded `NUL` bytes.
 - A null pattern passed to the constructor traps.
+- A pattern containing an embedded `NUL` byte traps at construction
+  (`CompiledPattern: pattern contains NUL byte`), so `Pattern` always round-trips the
+  constructor input.
+- `FindFrom` and `CapturesFrom` use byte offsets, clamp negative starts to zero, and return no
+  result when the start is beyond the text.
+- `Replace` and `ReplaceFirst` insert the replacement literally; they do not expand capture-group
+  references. Zero-width matches preserve every source byte (see the static `Pattern` notes).
+- `SplitN` returns at most `limit` pieces when `limit > 0`; zero or a negative limit is unlimited.
 
 ### Zia Example
 
@@ -319,8 +350,8 @@ END IF
 DIM emailPattern AS Viper.Text.CompiledPattern = NEW Viper.Text.CompiledPattern("(\w+)@(\w+)\.(\w+)")
 groups = emailPattern.Captures("Contact: user@example.com")
 IF groups.Count > 0 THEN
-    PRINT "User: "; Viper.Collections.Seq.GetStr(groups, 1)   ' Output: user
-    PRINT "Domain: "; Viper.Collections.Seq.GetStr(groups, 2) ' Output: example
+    PRINT "Local part: "; Viper.Collections.Seq.GetStr(groups, 1) ' Output: user
+    PRINT "Host: "; Viper.Collections.Seq.GetStr(groups, 2)       ' Output: example
     PRINT "TLD: "; Viper.Collections.Seq.GetStr(groups, 3)    ' Output: com
 END IF
 ```
@@ -335,7 +366,7 @@ DIM all AS Viper.Collections.Seq = commaPattern.Split("a,b,c,d,e")
 PRINT all.Count  ' Output: 5
 
 ' Split with limit (max 3 parts)
-DIM limited AS Viper.Collections.Seq = commaPattern.SplitN("a,b,c,d,e", 3)
+DIM limited AS Viper.Collections.Seq = commaPattern.Split("a,b,c,d,e", 3)
 PRINT limited.Count        ' Output: 3
 PRINT Viper.Collections.Seq.GetStr(limited, 0) ' Output: a
 PRINT Viper.Collections.Seq.GetStr(limited, 1) ' Output: b
@@ -355,9 +386,11 @@ PRINT Viper.Collections.Seq.GetStr(limited, 2) ' Output: c,d,e (rest in last ele
 ### Performance Notes
 
 - Compilation is paid once per `CompiledPattern` instance, while matching still depends on both pattern and input complexity
-- The matcher is a backtracking engine with a per-attempt step cap; pathological patterns can stop matching at that cap rather than backtrack indefinitely
+- The matcher is a backtracking engine with a per-search step cap; pathological patterns can stop matching at that cap rather than backtrack indefinitely
 - Static `Pattern` operations share a lock-protected 16-entry LRU compile cache. An explicit `CompiledPattern` is useful when a pattern must remain compiled independently of that cache.
-- Capture extraction uses fixed storage for 32 explicit groups, plus element 0 for the whole match; keep capture patterns within that limit. Captures inside quantified groups are best-effort rather than fully PCRE-compatible.
+- Capture extraction supports any number of groups (storage is sized from the compiled
+  pattern), plus element 0 for the whole match. A quantified group captures its last
+  repetition.
 
 ---
 
@@ -374,8 +407,8 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 |-------------|---------|------------|------------------------------------------|
 | `Pos`       | Integer | Read/Write | Current byte position (0-indexed)        |
 | `IsEnd`     | Boolean | Read-only  | True if at end of string                 |
-| `Remaining` | Integer | Read-only  | Number of characters remaining           |
-| `Length`    | Integer | Read-only  | Total length of the source string        |
+| `Remaining` | Integer | Read-only  | Number of bytes remaining                |
+| `Length`    | Integer | Read-only  | Total byte length of the source string   |
 
 ### Methods
 
@@ -384,32 +417,42 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 | `Reset()`             | `Void()`                   | Reset position to beginning of string                          |
 | `Peek()`              | `Integer()`                | Peek at current character without advancing (-1 if at end)     |
 | `PeekAt(offset)`      | `Integer(Integer)`         | Peek at character at offset from current position              |
-| `PeekStr(n)`          | `String(Integer)`          | Peek at next n characters as a string (without advancing)      |
+| `PeekStr(n)`          | `String(Integer)`          | Peek at up to the next n bytes without advancing                |
 | `Read()`              | `Integer()`                | Read current character and advance (-1 if at end)              |
-| `ReadStr(n)`          | `String(Integer)`          | Read next n characters and advance                             |
-| `ReadUntil(delim)`    | `String(Integer)`          | Read until delimiter character (not including it)              |
-| `ReadUntilAny(chars)` | `String(String)`           | Read until any of the delimiter characters                     |
+| `ReadStr(n)`          | `String(Integer)`          | Read up to the next n bytes and advance                         |
+| `ReadUntil(delim)`    | `String(Integer)`          | Read until a delimiter byte, leaving it unconsumed              |
+| `ReadUntilAny(chars)` | `String(String)`           | Read until any byte in the delimiter string                     |
 | `Match(c)`            | `Boolean(Integer)`         | Check if current position matches character (no advance)       |
 | `MatchStr(s)`         | `Boolean(String)`          | Check if current position matches string (no advance)          |
 | `Accept(c)`           | `Boolean(Integer)`         | Match and consume character if it matches                      |
 | `AcceptStr(s)`        | `Boolean(String)`          | Match and consume string if it matches                         |
 | `AcceptAny(chars)`    | `Boolean(String)`          | Match and consume any one of the given characters              |
-| `Skip(n)`             | `Void(Integer)`            | Skip n characters                                              |
-| `SkipWhitespace()`    | `Integer()`                | Skip whitespace; returns number of characters skipped          |
+| `Skip(n)`             | `Void(Integer)`            | Skip up to n bytes                                              |
+| `SkipWhitespace()`    | `Integer()`                | Skip space, tab, `LF`, and `CR`; return the byte count           |
 | `ReadIdent()`         | `String()`                 | Read an identifier (letter/underscore start, then alnum/underscore) |
 | `ReadInt()`           | `String()`                 | Read an integer (optional sign + digits)                       |
-| `ReadNumber()`        | `String()`                 | Read a number (integer or float)                               |
-| `ReadQuoted(quote)`   | `String(Integer)`          | Read a quoted string (handles escapes); returns contents without quotes |
-| `ReadLine()`          | `String()`                 | Read until end of line (not including newline)                  |
+| `ReadNumber()`        | `String()`                 | Read a decimal number token with optional sign/exponent         |
+| `ReadQuoted(quote)`   | `String(Integer)`          | Consume a quoted string and decode its simple escapes           |
+| `ReadLine()`          | `String()`                 | Read a line and consume its `LF`, `CR`, or `CRLF` terminator    |
 
 ### Notes
 
-- The scanner operates on byte positions; all character values are byte values (ASCII/Latin-1)
+- The scanner operates on byte positions; all character values are integers from 0 through 255
 - The scanner retains the source string for its lifetime, so scanning remains valid even if the caller releases its reference
 - A null source creates an empty scanner
+- `Peek`, `PeekAt`, and `Read` return `-1` when their byte is out of range. `PeekAt` is relative to
+  `Pos` and accepts negative offsets.
 - `Match` and `MatchStr` test without advancing; `Accept` and `AcceptStr` advance only if matched
 - Null delimiter/character-set arguments fail safely; `ReadUntilAny(NULL)` reads the rest of the source
-- `ReadIdent`, `ReadInt`, `ReadNumber`, and `ReadQuoted` return empty string if the current position does not start a valid token of that type
+- `PeekStr` and `ReadStr` return empty for `n <= 0`; `Skip` is a no-op for `n <= 0`. Positive
+  lengths clamp at the end of the source.
+- `ReadIdent` recognizes ASCII letters/underscore followed by ASCII alphanumerics/underscore.
+  `ReadInt` accepts an optional sign followed by at least one digit. `ReadNumber` additionally
+  accepts forms such as `.5`, `1.`, and `1.5e-2`; an incomplete exponent is left unconsumed.
+- `ReadIdent`, `ReadInt`, `ReadNumber`, and `ReadQuoted` return an empty string without advancing if
+  the current position does not start the requested token.
+- `ReadQuoted` decodes `\n`, `\t`, `\r`, `\\`, `\"`, and `\'`. For another escaped byte it drops
+  the backslash and keeps that byte. An unterminated quoted string restores `Pos` and traps.
 - Setting `Pos` to a value outside the valid range clamps it to the string boundaries
 
 ### Zia Example
@@ -441,7 +484,7 @@ func start() {
 
 ```basic
 ' Create a scanner for a string
-DIM sc AS OBJECT = Viper.Text.Scanner.New("hello 42 world")
+DIM sc AS Viper.Text.Scanner = Viper.Text.Scanner.New("hello 42 world")
 
 ' Read an identifier
 DIM ident AS STRING = sc.ReadIdent()
@@ -484,7 +527,7 @@ PRINT sc.Pos       ' Output: 1 (advanced)
 
 ```basic
 ' Parse a simple key=value format
-DIM sc AS OBJECT = Viper.Text.Scanner.New("name=Alice age=30")
+DIM sc AS Viper.Text.Scanner = Viper.Text.Scanner.New("name=Alice age=30")
 
 DO WHILE NOT sc.IsEnd
     sc.SkipWhitespace()
@@ -520,17 +563,25 @@ Line-based text differencing using a longest-common-subsequence table. It comput
 | Method                       | Signature                    | Description                                              |
 |------------------------------|------------------------------|----------------------------------------------------------|
 | `CountChanges(a, b)`        | `Integer(String, String)`    | Count number of added + removed lines between two texts  |
-| `Lines(a, b)`               | `Seq(String, String)`        | Compute line-by-line diff with `" "`, `"+"`, `"-"` prefixes |
-| `Patch(original, diff)`     | `String(String, Seq)`        | Apply a diff (from `Lines`) to reconstruct modified text |
+| `Lines(a, b)`               | Registry: `Object(String, String)`; runtime: `Seq` | Compute a full line edit script |
+| `Patch(original, diff)`     | `String(String, Object)`     | Reconstruct modified text from a full `Lines` result |
 | `Unified(a, b, context)`    | `String(String, String, Integer)` | Produce compact unified-diff-style text with context lines |
 
 ### Notes
 
 - Each entry in the `Lines` result is prefixed: `" "` (unchanged), `"+"` (added), `"-"` (removed)
-- `Patch` takes the original text and a Seq of diff lines (as returned by `Lines`) and reconstructs the modified text
+- `Lines` is registered as `seq<str>`, so chained access such as `Diff.Lines(a, b).Count`
+  resolves against the returned sequence.
+- `Patch` reconstructs the modified text from the full `Lines` records and validates the diff
+  against `original`: every context and removed line must match the corresponding original
+  line, and the diff must consume the original exactly, or the call traps with
+  `Diff.Patch: diff does not apply to the original text`.
 - `Unified` emits `--- a` / `+++ b` headers and selected prefixed lines, but no `@@` hunk headers; it is diagnostic text, not a patch-applicable standard unified diff
-- All methods operate on line boundaries (splitting on newlines)
-- The implementation uses O(n*m) time and space for n and m input lines, so it is intended for modest text rather than very large files
+- `Unified` treats a negative context as 3; zero includes only added and removed records.
+- Lines split only at `LF`. A preceding `CR` remains part of line content, so LF and CRLF inputs
+  compare byte-differently.
+- The implementation uses O(n*m) time and space for n and m input lines and traps when the
+  `(n + 1) * (m + 1)` table would exceed 16,777,216 cells.
 - Diffing and patching use runtime string byte lengths, so lines containing embedded `NUL` bytes are compared and reconstructed without truncation
 - `Lines` returns an owned sequence of owned line strings
 
@@ -607,17 +658,24 @@ SQL-style LIKE pattern matching on strings. These are methods available on any S
 | Method              | Signature            | Description                                        |
 |---------------------|----------------------|----------------------------------------------------|
 | `Like(pattern)`     | `Boolean(String)`    | Case-sensitive SQL LIKE pattern matching            |
-| `LikeCI(pattern)`   | `Boolean(String)`    | Case-insensitive SQL LIKE pattern matching          |
+| `LikeIgnoreCase(pattern)`   | `Boolean(String)`    | Case-insensitive SQL LIKE pattern matching          |
 
 ### Pattern Syntax
 
 | Pattern | Description                                     | Example                          |
 |---------|-------------------------------------------------|----------------------------------|
-| `%`     | Matches any sequence of zero or more characters | `"hello".Like("%llo")` is true   |
-| `_`     | Matches exactly one character                   | `"hello".Like("h_llo")` is true  |
+| `%`     | Matches any sequence of zero or more UTF-8-shaped units | `"hello".Like("%llo")` is true |
+| `_`     | Matches exactly one UTF-8-shaped unit           | `"hello".Like("h_llo")` is true  |
 | `\`     | Escape character for literal `%`, `_`, or `\`   | `"100%".Like("100\%")` is true   |
 
-`_` consumes one UTF-8 code point and `%` advances on UTF-8 code-point boundaries. Literal matching remains bytewise, and `LikeCI` performs ASCII-only case folding.
+Matching covers the entire string, rather than searching for a matching substring. `_` and `%`
+advance by strictly validated UTF-8 code points (overlong encodings, UTF-16 surrogates, and
+code points above U+10FFFF trap with `String.Like: invalid UTF-8 sequence`), while literal
+matching remains bytewise.
+`LikeIgnoreCase` folds ASCII letters only, independent of the process locale; it is not a
+Unicode case algorithm.
+A null receiver or pattern is treated as an empty string. A backslash quotes any following pattern
+byte; a final backslash matches a literal backslash.
 
 ### Zia Example
 
@@ -635,9 +693,9 @@ func start() {
     Say(Fmt.Bool("hello".Like("world")));         // false
 
     // Case-insensitive matching
-    Say(Fmt.Bool("Hello".LikeCI("hello")));      // true
-    Say(Fmt.Bool("Hello".LikeCI("HELLO")));      // true
-    Say(Fmt.Bool("Hello".LikeCI("h%")));         // true
+    Say(Fmt.Bool("Hello".LikeIgnoreCase("hello")));      // true
+    Say(Fmt.Bool("Hello".LikeIgnoreCase("HELLO")));      // true
+    Say(Fmt.Bool("Hello".LikeIgnoreCase("h%")));         // true
 }
 ```
 
@@ -653,9 +711,9 @@ PRINT "hello".Like("h__lo")      ' Output: 1 (__ matches el)
 PRINT "hello".Like("world")      ' Output: 0 (no match)
 
 ' Case-insensitive matching
-PRINT "Hello World".LikeCI("hello%")  ' Output: 1
-PRINT "Hello World".LikeCI("HELLO%")  ' Output: 1
-PRINT "Hello World".LikeCI("%WORLD")  ' Output: 1
+PRINT "Hello World".LikeIgnoreCase("hello%")  ' Output: 1
+PRINT "Hello World".LikeIgnoreCase("HELLO%")  ' Output: 1
+PRINT "Hello World".LikeIgnoreCase("%WORLD")  ' Output: 1
 
 ' Escape special characters
 PRINT "100%".Like("100\%")       ' Output: 1 (literal %)
@@ -681,16 +739,25 @@ Reusable scoring and highlight ranges for command palettes, quick-open, and symb
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Score(query, candidate)` | `Integer(String, String)` | Return a deterministic match score, or `-1` when the query does not match |
+| `Score(query, candidate)` | `Integer(String, String)` | Return the raw subsequence score; an unmatched query returns `-1` |
 | `Match(query, candidate)` | `Map(String, String)` | Return `matched`, `score`, `query`, `candidate`, and matched `ranges` |
 
-`Match` returns ranges as a `Seq` of maps with `start` and `end` fields. The offsets are zero-based byte offsets into the candidate, and `end` is exclusive.
+`Match` returns a Map with Boolean `matched`, Integer `score`, String `query` and `candidate`, and
+`ranges`. Ranges is a Seq of Maps with Integer `start` and `end` fields. The offsets are zero-based
+byte offsets into the candidate, and `end` is exclusive.
 
 ### Notes
 
 - Empty queries match with score `0`.
-- Matching is case-insensitive, but acronym, separator, camel-case, and consecutive-character hits score higher.
-- Tie-breaking is stable for a given query and candidate string.
+- Matching is a greedy, case-insensitive byte-subsequence search. Exact-case, separator,
+  camel-case, and consecutive-byte hits score higher; gaps, a late first hit, and longer candidates
+  lower the score.
+- A successful match always scores `>= 0` (heavily penalized matches clamp to `0`), so `-1`
+  from `Score` reliably means the query did not match.
+- Case conversion and boundary detection are ASCII-only and locale-independent; bytes above
+  0x7F never fold or count as letters, so results are identical on every host.
+- Null query/candidate values are treated as empty strings. Returned query/candidate strings and
+  byte ranges preserve embedded `NUL` bytes.
 
 ### Zia Example
 

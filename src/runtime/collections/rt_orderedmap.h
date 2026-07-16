@@ -5,13 +5,14 @@
 //
 // File: src/runtime/collections/rt_orderedmap.h
 // Purpose: Insertion-order preserving string-keyed map where iteration yields entries in the order
-// they were first inserted, with O(1) average access.
+// they were first inserted, with O(1) average keyed access.
 //
 // Key invariants:
 //   - Iteration order matches the order of first insertion.
 //   - NULL keys are treated as the empty key; embedded NUL bytes are part of key identity.
 //   - Updating an existing key does not change its position in iteration order.
-//   - All operations are O(1) average-case.
+//   - Keyed operations (Get/Set/Has/Remove) are O(1) average-case; KeyAt
+//     walks the insertion-order list (O(n)), and snapshots/Clear are linear.
 //   - Values are retained while stored in the map.
 //
 // Ownership/Lifetime:
@@ -43,7 +44,7 @@ int64_t rt_orderedmap_len(void *map);
 /// @brief Check if the map is empty.
 /// @param map Ordered map object.
 /// @return 1 if empty, 0 otherwise.
-int64_t rt_orderedmap_is_empty(void *map);
+int8_t rt_orderedmap_is_empty(void *map);
 
 /// @brief Set a key-value pair. Preserves insertion order for new keys.
 /// @param map Ordered map object.
@@ -61,7 +62,7 @@ void *rt_orderedmap_get(void *map, rt_string key);
 /// @param map Ordered map object.
 /// @param key Key string.
 /// @return 1 if key exists, 0 otherwise.
-int64_t rt_orderedmap_has(void *map, rt_string key);
+int8_t rt_orderedmap_has(void *map, rt_string key);
 
 /// @brief Remove a key-value pair.
 /// @param map Ordered map object.

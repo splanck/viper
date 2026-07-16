@@ -13,6 +13,7 @@
 // ============================================================================
 
 bind "../../games/lib/gamebase3d";
+bind Viper.Input.Key as Key;
 bind "../../games/lib/iscene3d";
 
 bind Viper.Game3D;
@@ -36,7 +37,7 @@ class MenuScene implements IScene3D {
 
     expose func update(world: World3D, dt: Number) {
         var input: Input3D = world.Input;
-        if input.Pressed(Keys.Enter) {
+        if input.Pressed(Key.Enter) {
             game.startPlay();
         }
     }
@@ -97,7 +98,7 @@ class PlayScene implements IScene3D {
 
     expose func update(world: World3D, dt: Number) {
         var input: Input3D = world.Input;
-        if input.Pressed(Keys.Escape) {
+        if input.Pressed(Key.Escape) {
             game.backToMenu();
         }
     }

@@ -113,9 +113,9 @@ typedef struct rt_heap_hdr {
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
 | `rt_memory_retain(payload)` | Public `Viper.Runtime.Unsafe.Retain` wrapper; validates live object, array, or string handles before retaining and traps on raw string payloads or unsupported heap kinds. Compatibility name: `Viper.Memory.Retain`. |
-| `rt_memory_release(payload)` | Public `Viper.Runtime.Unsafe.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. Compatibility name: `Viper.Memory.Release`. |
+| `rt_memory_release(payload)` | Public `Viper.Runtime.Unsafe.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
 | `rt_memory_retain_str(str)` | Public `Viper.Runtime.Unsafe.RetainStr` wrapper; validates and retains a runtime string. Compatibility name: `Viper.Memory.RetainStr`. |
-| `rt_memory_release_str(str)` | Public `Viper.Runtime.Unsafe.ReleaseStr` wrapper; validates and releases a runtime string. Compatibility name: `Viper.Memory.ReleaseStr`. |
+| `rt_memory_release_str(str)` | Public `Viper.Runtime.Unsafe.ReleaseStr` wrapper; validates and releases a runtime string. |
 
 Public heap helpers reject non-runtime and already-freed payloads before header
 access. That keeps stale pointers on the trap path instead of relying on
@@ -348,7 +348,7 @@ owned weak-reference object. Static-style calls (`Get(ref)`, `Alive(ref)`,
 `ref.Alive()`, `ref.Reset(target)`, `ref.Free()`) are both supported. `Get`
 returns an owned strong reference to the current target or `NULL`; `Free`
 consumes only the weak-reference object and never retains or releases the target.
-Generic `Viper.Memory.Release(ref)` is also safe: weak-reference objects detach
+Generic `Viper.Runtime.Unsafe.Release(ref)` is also safe: weak-reference objects detach
 from the registry in their finalizer before their storage is freed.
 
 When a target object, array, or runtime string is freed,
@@ -415,7 +415,7 @@ object to users.
 `Viper.Runtime.Unsafe.Release()` reports this resurrected refcount to callers. A
 finalizer that calls `rt_obj_resurrect()` changes the return value from the
 transient zero to the restored live count. The compatibility
-`Viper.Memory.Release()` entry point reports the same value.
+`Viper.Runtime.Unsafe.Release()` entry point reports the same value.
 
 **Use case**: Vec2/Vec3 thread-local pool recycling. When the pool has space, the
 finalizer resurrects the object and pushes it back to the LIFO pool for reuse

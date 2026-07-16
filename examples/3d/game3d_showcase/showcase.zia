@@ -5,7 +5,7 @@ bind Viper.Graphics as Graphics;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
 bind Viper.Math as Math;
-bind Viper.Sound as Sound;
+bind Viper.Audio as Sound;
 bind Viper.Terminal as Terminal;
 
 func near(a: Float, b: Float, eps: Float) -> Boolean {

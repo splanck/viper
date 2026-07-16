@@ -9,7 +9,7 @@
 // Purpose: Implements a positioned binary read/write buffer with dynamic growth.
 //   BinaryBuffer maintains a heap-allocated byte array, a logical length (the
 //   highest byte written + 1), and a read/write cursor position. Supports typed
-//   reads and writes (i8, i16, i32, i64, f32, f64, bytes) at the cursor, with
+//   reads and writes (byte, i16/u16, i32/u32, i64, strings, and bytes) at the cursor, with
 //   automatic capacity doubling when the buffer is too small.
 //
 // Key invariants:
@@ -282,7 +282,7 @@ void *rt_binbuf_from_bytes(void *bytes_obj) {
 // significant byte first. Width matches the function name (i16/i32/i64).
 //=============================================================================
 
-/// @brief Append the low 8 bits of `value` as a single byte.
+/// @brief Append `value` as one byte; values outside 0..255 trap.
 void rt_binbuf_write_byte(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
     if (value < 0 || value > 255) {
@@ -718,8 +718,8 @@ int64_t rt_binbuf_get_position(void *obj) {
     return binbuf_require(obj)->position;
 }
 
-/// @brief Seek the cursor to a byte offset (clamped to [0, len]). Subsequent reads/writes
-/// happen from this position.
+/// @brief Seek the cursor to a byte offset in [0, len]; out-of-range input traps.
+/// Subsequent reads/writes happen from this position.
 void rt_binbuf_set_position(void *obj, int64_t pos) {
     rt_binbuf_impl *buf = binbuf_require(obj);
     if (!buf)

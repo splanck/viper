@@ -1,10 +1,10 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Graphics.Color.FromHSL
+' COVER: Viper.Graphics.Color.FromHsl
 ' COVER: Viper.Graphics.Color.Lerp
-' COVER: Viper.Graphics.Color.GetR
-' COVER: Viper.Graphics.Color.GetG
-' COVER: Viper.Graphics.Color.GetB
-' COVER: Viper.Graphics.Color.GetA
+' COVER: Viper.Graphics.Color.GetRed
+' COVER: Viper.Graphics.Color.GetGreen
+' COVER: Viper.Graphics.Color.GetBlue
+' COVER: Viper.Graphics.Color.GetAlpha
 ' COVER: Viper.Graphics.Color.Brighten
 ' COVER: Viper.Graphics.Color.Darken
 ' COVER: Viper.Graphics.Pixels.Invert
@@ -55,20 +55,20 @@ DIM red AS INTEGER
 DIM green AS INTEGER
 DIM blue AS INTEGER
 DIM white AS INTEGER
-red = Viper.Graphics.Color.RGB(255, 0, 0)
-green = Viper.Graphics.Color.RGB(0, 255, 0)
-blue = Viper.Graphics.Color.RGB(0, 0, 255)
-white = Viper.Graphics.Color.RGB(255, 255, 255)
+red = Viper.Graphics.Color.Rgb(255, 0, 0)
+green = Viper.Graphics.Color.Rgb(0, 255, 0)
+blue = Viper.Graphics.Color.Rgb(0, 0, 255)
+white = Viper.Graphics.Color.Rgb(255, 255, 255)
 
 ' Test GetR, GetG, GetB, GetA
 DIM r AS INTEGER
 DIM g AS INTEGER
 DIM b AS INTEGER
 DIM a AS INTEGER
-r = Viper.Graphics.Color.GetR(red)
-g = Viper.Graphics.Color.GetG(red)
-b = Viper.Graphics.Color.GetB(red)
-a = Viper.Graphics.Color.GetA(red)
+r = Viper.Graphics.Color.GetRed(red)
+g = Viper.Graphics.Color.GetGreen(red)
+b = Viper.Graphics.Color.GetBlue(red)
+a = Viper.Graphics.Color.GetAlpha(red)
 Viper.Core.Diagnostics.AssertEq(r, 255, "Color.GetR red")
 Viper.Core.Diagnostics.AssertEq(g, 0, "Color.GetG red")
 Viper.Core.Diagnostics.AssertEq(b, 0, "Color.GetB red")
@@ -77,37 +77,37 @@ Viper.Core.Diagnostics.AssertEq(a, 0, "Color.GetA RGB red")
 
 ' Test GetA with RGBA color
 DIM blueWithAlpha AS INTEGER
-blueWithAlpha = Viper.Graphics.Color.RGBA(0, 0, 255, 128)
-a = Viper.Graphics.Color.GetA(blueWithAlpha)
+blueWithAlpha = Viper.Graphics.Color.Rgba(0, 0, 255, 128)
+a = Viper.Graphics.Color.GetAlpha(blueWithAlpha)
 Viper.Core.Diagnostics.AssertEq(a, 128, "Color.GetA RGBA")
 
-r = Viper.Graphics.Color.GetR(green)
-g = Viper.Graphics.Color.GetG(green)
-b = Viper.Graphics.Color.GetB(green)
+r = Viper.Graphics.Color.GetRed(green)
+g = Viper.Graphics.Color.GetGreen(green)
+b = Viper.Graphics.Color.GetBlue(green)
 Viper.Core.Diagnostics.AssertEq(r, 0, "Color.GetR green")
 Viper.Core.Diagnostics.AssertEq(g, 255, "Color.GetG green")
 Viper.Core.Diagnostics.AssertEq(b, 0, "Color.GetB green")
 
 ' Test FromHSL - red is at hue 0
 DIM hslRed AS INTEGER
-hslRed = Viper.Graphics.Color.FromHSL(0, 100, 50)
-Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetR(hslRed) > 200, "Color.FromHSL red R")
-Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetG(hslRed) < 50, "Color.FromHSL red G")
-Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetB(hslRed) < 50, "Color.FromHSL red B")
+hslRed = Viper.Graphics.Color.FromHsl(0, 100, 50)
+Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetRed(hslRed) > 200, "Color.FromHSL red R")
+Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetGreen(hslRed) < 50, "Color.FromHSL red G")
+Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetBlue(hslRed) < 50, "Color.FromHSL red B")
 
 ' Test Lerp
 DIM lerped AS INTEGER
 lerped = Viper.Graphics.Color.Lerp(red, blue, 50)
-Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetR(lerped) > 100, "Color.Lerp R mid")
-Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetB(lerped) > 100, "Color.Lerp B mid")
+Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetRed(lerped) > 100, "Color.Lerp R mid")
+Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetBlue(lerped) > 100, "Color.Lerp B mid")
 
 ' Test Brighten and Darken
 DIM bright AS INTEGER
 DIM dark AS INTEGER
 bright = Viper.Graphics.Color.Brighten(red, 50)
 dark = Viper.Graphics.Color.Darken(red, 50)
-Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetR(bright) = 255, "Color.Brighten")
-Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetR(dark) < 200, "Color.Darken")
+Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetRed(bright) = 255, "Color.Brighten")
+Viper.Core.Diagnostics.Assert(Viper.Graphics.Color.GetRed(dark) < 200, "Color.Darken")
 
 '=============================================================================
 ' Test Pixels Extended Methods
@@ -124,9 +124,9 @@ Viper.Core.Diagnostics.AssertEq(inverted.Height, 8, "Pixels.Invert height")
 ' Red (255,0,0) inverted should be cyan (0,255,255)
 DIM invColor AS INTEGER
 invColor = inverted.Get(0, 0)
-Viper.Core.Diagnostics.AssertEq(Viper.Graphics.Color.GetR(invColor), 0, "Pixels.Invert R")
-Viper.Core.Diagnostics.AssertEq(Viper.Graphics.Color.GetG(invColor), 255, "Pixels.Invert G")
-Viper.Core.Diagnostics.AssertEq(Viper.Graphics.Color.GetB(invColor), 255, "Pixels.Invert B")
+Viper.Core.Diagnostics.AssertEq(Viper.Graphics.Color.GetRed(invColor), 0, "Pixels.Invert R")
+Viper.Core.Diagnostics.AssertEq(Viper.Graphics.Color.GetGreen(invColor), 255, "Pixels.Invert G")
+Viper.Core.Diagnostics.AssertEq(Viper.Graphics.Color.GetBlue(invColor), 255, "Pixels.Invert B")
 
 ' Test Grayscale
 DIM gray AS Viper.Graphics.Pixels
@@ -137,14 +137,14 @@ grayColor = gray.Get(0, 0)
 ' Grayscale of red should have R=G=B
 DIM grayR AS INTEGER
 DIM grayG AS INTEGER
-grayR = Viper.Graphics.Color.GetR(grayColor)
-grayG = Viper.Graphics.Color.GetG(grayColor)
+grayR = Viper.Graphics.Color.GetRed(grayColor)
+grayG = Viper.Graphics.Color.GetGreen(grayColor)
 Viper.Core.Diagnostics.AssertEq(grayR, grayG, "Pixels.Grayscale R=G")
 
 ' Test Tint
 DIM tinted AS Viper.Graphics.Pixels
 DIM tintBlue AS INTEGER
-tintBlue = Viper.Graphics.Color.RGBA(0, 0, 255, 128)
+tintBlue = Viper.Graphics.Color.Rgba(0, 0, 255, 128)
 tinted = pixels.Tint(tintBlue)
 Viper.Core.Diagnostics.AssertEq(tinted.Width, 8, "Pixels.Tint width")
 
@@ -184,7 +184,7 @@ Viper.Core.Diagnostics.AssertEq(sprite.X, 0, "Sprite.X initial")
 Viper.Core.Diagnostics.AssertEq(sprite.Y, 0, "Sprite.Y initial")
 Viper.Core.Diagnostics.AssertEq(sprite.Width, 16, "Sprite.Width")
 Viper.Core.Diagnostics.AssertEq(sprite.Height, 16, "Sprite.Height")
-Viper.Core.Diagnostics.AssertEq(sprite.Visible, 1, "Sprite.Visible initial")
+Viper.Core.Diagnostics.Assert(sprite.Visible, "Sprite.Visible initial")
 Viper.Core.Diagnostics.AssertEq(sprite.ScaleX, 100, "Sprite.ScaleX initial")
 Viper.Core.Diagnostics.AssertEq(sprite.ScaleY, 100, "Sprite.ScaleY initial")
 Viper.Core.Diagnostics.AssertEq(sprite.FrameCount, 1, "Sprite.FrameCount")
@@ -201,9 +201,9 @@ sprite.ScaleY = 150
 Viper.Core.Diagnostics.AssertEq(sprite.ScaleX, 200, "Sprite.ScaleX set")
 Viper.Core.Diagnostics.AssertEq(sprite.ScaleY, 150, "Sprite.ScaleY set")
 
-sprite.Visible = 0
-Viper.Core.Diagnostics.AssertEq(sprite.Visible, 0, "Sprite.Visible set")
-sprite.Visible = 1
+sprite.Visible = FALSE
+Viper.Core.Diagnostics.Assert(sprite.Visible = FALSE, "Sprite.Visible set")
+sprite.Visible = TRUE
 
 ' Test Move
 sprite.Move(5, 5)

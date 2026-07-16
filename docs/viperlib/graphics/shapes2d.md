@@ -19,7 +19,7 @@ These classes draw into `Pixels` or onto `Canvas` and are grouped by what they r
 | `ShapeRenderer2D` | Convenience renderer for lines, rectangles, circles, and paths on `Pixels`. |
 | `TextRenderer2D` | Built-in or `BitmapFont` text measurement and Canvas drawing wrapper. |
 | `TextLayout2D` | Text measurement helper with scale, wrap width, alignment metadata, and optional font. |
-| `SpriteFont` | Game-facing alias for `BitmapFont` loading and measurement. |
+| `BitmapFont` | Game-facing alias for `BitmapFont` loading and measurement. |
 | `SdfFont` | SDF-ready font wrapper around `BitmapFont`; the current backend uses bitmap font raster drawing. |
 | `NineSlice2D` | Stretchable nine-slice drawing into a `Pixels` target. |
 | `DebugDraw2D` | Retained debug line, rectangle, and circle draw queue for `Pixels`. |

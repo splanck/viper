@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Time & Timing
@@ -35,17 +35,23 @@ Basic timing utilities for sleeping and measuring elapsed time.
 | Method      | Signature       | Description                                                       |
 |-------------|-----------------|-------------------------------------------------------------------|
 | `Sleep(ms)` | `Void(Integer)` | Pause execution for the specified number of milliseconds          |
-| `Ticks()`   | `Integer()`     | Returns monotonic time in milliseconds since an unspecified epoch |
-| `TicksUs()` | `Integer()`     | Returns monotonic time in microseconds since an unspecified epoch |
+| `NowMs()`   | `Integer()`     | Returns monotonic time in milliseconds since an unspecified epoch |
+| `NowMicros()` | `Integer()`     | Returns monotonic time in microseconds since an unspecified epoch |
 
 ### Notes
 
-- `Ticks()` and `TicksUs()` return monotonic, non-decreasing values suitable for measuring elapsed time
-- The epoch (starting point) is unspecified - only use these functions for measuring durations, not absolute time
-- `TicksUs()` reports microsecond units; the clock's actual resolution is platform-dependent
-- Tick conversions trap on signed 64-bit overflow instead of wrapping
-- `Sleep(0)` returns immediately without sleeping
-- Negative values passed to `Sleep()` are treated as 0
+- `NowMs()` and `NowMicros()` use the platform's monotonic clock when it is available. On POSIX,
+  failure of `CLOCK_MONOTONIC` falls back to `CLOCK_REALTIME`, which can move backward or forward
+  when the wall clock is adjusted (VDOC-223). If all usable clock queries fail, these helpers
+  return `0`.
+- The epoch (starting point) is unspecified. Use tick values for elapsed durations, not absolute
+  dates or serialization.
+- `NowMicros()` reports microsecond units; neither method promises that much physical clock
+  resolution.
+- Tick conversions trap on signed 64-bit overflow instead of wrapping.
+- Negative sleep values are treated as `0`. Values above `2,147,483,647` ms are clamped to that
+  limit (about 24.85 days) for the platform sleep primitive. A zero-duration call does not block,
+  although Windows may yield the caller's remaining time slice.
 
 ### Zia Example
 
@@ -57,11 +63,11 @@ bind Viper.Time.Clock as Clock;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var t1 = Clock.Ticks();
-    // ... some work ...
-    var t2 = Clock.Ticks();
+    var t1 = Clock.NowMs();
+    // Perform the work being measured here.
+    var t2 = Clock.NowMs();
     Say("Elapsed: " + Fmt.Int(t2 - t1) + " ms");
-    Say("Ticks (us): " + Fmt.Int(Clock.TicksUs()));
+    Say("Ticks (us): " + Fmt.Int(Clock.NowMicros()));
 }
 ```
 
@@ -69,20 +75,20 @@ func start() {
 
 ```basic
 ' Measure execution time
-DIM startMs AS INTEGER = Viper.Time.Clock.Ticks()
+DIM startMs AS INTEGER = Viper.Time.Clock.NowMs()
 
-' Do some work...
+' Do a small unit of work
 FOR i = 1 TO 1000000
     ' busy loop
 NEXT
 
-DIM endMs AS INTEGER = Viper.Time.Clock.Ticks()
+DIM endMs AS INTEGER = Viper.Time.Clock.NowMs()
 PRINT "Elapsed time: "; endMs - startMs; " ms"
 
 ' High-precision timing with microseconds
-DIM startUs AS INTEGER = Viper.Time.Clock.TicksUs()
-' ... fast operation ...
-DIM endUs AS INTEGER = Viper.Time.Clock.TicksUs()
+DIM startUs AS INTEGER = Viper.Time.Clock.NowMicros()
+' Perform the fast operation here
+DIM endUs AS INTEGER = Viper.Time.Clock.NowMicros()
 PRINT "Elapsed: "; endUs - startUs; " microseconds"
 
 ' Sleep for a short delay
@@ -133,8 +139,13 @@ interval has expired.
 - `Wait()` handles intervals larger than the platform's single-sleep limit by sleeping in chunks until expired
 - Changing `Interval` while running affects when `Expired` becomes true
 - Constructor and assigned interval values less than or equal to zero are clamped to zero; such a countdown reports expired immediately
+- Elapsed time continues increasing after expiration while the countdown remains running. `Wait()`
+  does not stop it when it returns; call `Stop()` if the final elapsed value must remain fixed.
 - Countdown instances are not thread-safe; synchronize externally if an instance is shared
 - Instance methods and properties require a valid Countdown object; a null receiver traps
+- Countdown timing inherits `Clock`'s wall-clock fallback if the platform monotonic query fails
+  (VDOC-223). On Windows, the first-use performance-counter frequency cache is not synchronized
+  (VDOC-224).
 
 ### Zia Example
 
@@ -173,7 +184,7 @@ DIM timeout AS Viper.Time.Countdown = Viper.Time.Countdown.New(1000)
 timeout.Start()
 
 WHILE NOT operationComplete AND NOT timeout.Expired
-    ' Try operation...
+    ' Poll the surrounding operation here
 WEND
 
 IF timeout.Expired THEN
@@ -220,17 +231,16 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `DayOfWeek(timestamp)`           | `Integer(Integer)`          | Returns day of week (0=Sunday, 6=Saturday)               |
 | `Format(timestamp, format)`      | `String(Integer, String)`   | Formats a timestamp using strftime-style format          |
 | `FormatInZone(timestamp, zone, format)` | `String(Integer, TimeZone, String)` | Formats a UTC instant in a named time zone |
-| `ToISO(timestamp)`               | `String(Integer)`           | Returns ISO 8601 formatted string in UTC (with Z suffix) |
-| `ToLocal(timestamp)`             | `String(Integer)`           | Returns ISO 8601 formatted string in local time (no Z)   |
+| `ToIso8601(timestamp)`               | `String(Integer)`           | Returns ISO 8601 formatted string in UTC (with Z suffix) |
+| `FormatLocal(timestamp)`             | `String(Integer)`           | Returns ISO 8601 formatted string in local time (no Z)   |
 | `ToZone(timestamp, zone)`        | `String(Integer, TimeZone)` | Returns ISO 8601 local wall time plus numeric zone offset |
 | `Create(y, m, d, h, min, s)`     | `Integer(Integer...)`       | Creates a timestamp from local time components           |
 | `AddSeconds(timestamp, seconds)` | `Integer(Integer, Integer)` | Adds seconds to a timestamp                              |
 | `AddDays(timestamp, days)`       | `Integer(Integer, Integer)` | Adds days to a timestamp                                 |
 | `Diff(t1, t2)`                   | `Integer(Integer, Integer)` | Returns the difference in seconds between two timestamps |
-| `ParseISO(str)`                  | `Integer(String)`           | Parse an ISO 8601 datetime string to Unix timestamp      |
+| `ParseIso8601(str)`                  | `Integer(String)`           | Parse an ISO 8601 datetime string to Unix timestamp      |
 | `ParseDate(str)`                 | `Integer(String)`           | Parse a "YYYY-MM-DD" string to Unix timestamp            |
 | `ParseTime(str)`                 | `Integer(String)`           | Parse a "HH:MM:SS" string to seconds since midnight      |
-| `TryParse(str)`                  | `Integer(String)`           | Compatibility 0-sentinel parser; prefer `TryParseOption` |
 | `TryParseOption(str)`            | `Option[Integer](String)`   | Auto-detect format and parse; returns `None` on failure  |
 
 ### Notes
@@ -238,31 +248,53 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 - `Create` interprets components in the **local time zone**
 - `Create` returns `-1` if components are out of range, normalize to a different value (for example month 13 or day 32), or the resulting local timestamp cannot be represented safely by the platform time APIs
 - `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second` extract components in the **local time zone**
-- `ToISO` formats in **UTC** (appends `Z` suffix)
-- `ToLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
+- `ToIso8601` formats in **UTC** (appends `Z` suffix)
+- `FormatLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
 - `Format` uses the **local time zone** with strftime-style format strings
+- `Format` is host-dependent: supported conversions, localized names, and the active C locale come
+  from the platform `strftime`. The fixed buffer permits at most 255 output bytes; an empty,
+  embedded-NUL, unsupported/oversized, or otherwise failing format returns `""`.
 - `ToZone` and `FormatInZone` use Viper's embedded named-zone table, not host OS zoneinfo, so output is deterministic across macOS, Windows, and Linux for covered zones
 - `FormatInZone` currently supports `%Y`, `%m`, `%d`, `%H`, `%M`, `%S`, `%F`, `%T`, `%z`, `%Z`, and `%%`
+- An unsupported or dangling conversion in `FormatInZone`, an empty/embedded-NUL format, or output
+  beyond its 512-byte buffer returns `""`.
 - Timestamp accessors and formatters return 0 or an empty string when a timestamp cannot be represented by the platform `time_t`
 - `Diff(t1, t2)` returns the signed difference `t1 - t2` in seconds
 - `AddSeconds`, `AddDays`, and `Diff` trap on signed 64-bit overflow
+- `AddDays` adds exactly 86,400 seconds per day; it is elapsed-time arithmetic and does not preserve
+  a local wall-clock hour across daylight-saving transitions.
+- `Now` and `NowMs` read the adjustable wall clock, not a monotonic timer. `NowMs` returns `0` when
+  its platform query fails. `Now` forwards `time(NULL)` directly, so its `-1` failure value is also
+  a valid pre-epoch timestamp (VDOC-230).
+- `Create` uses `-1` for rejected/unrepresentable input, but `-1` is also the valid Unix instant
+  immediately before the epoch. There is no non-sentinel `Create` variant (VDOC-225).
+- Local civil-time creation rejects a skipped daylight-saving hour. For a repeated hour it accepts
+  whichever occurrence the host `mktime` chooses for `tm_isdst = -1`, which can vary by platform
+  and timezone implementation (VDOC-226). Use an explicit numeric offset or a named-zone UTC
+  instant when the distinction matters.
 
 ### Parsing Methods
 
 | Method       | Input Format                          | Returns                                |
 |--------------|---------------------------------------|----------------------------------------|
-| `ParseISO`   | `"2025-06-15T14:30:00Z"`, `"2025-06-15T14:30:00.123Z"`, or `"2025-06-15T14:30:00+02:00"` | Unix timestamp (seconds) |
+| `ParseIso8601`   | `"2025-06-15T14:30:00Z"`, `"2025-06-15T14:30:00.123Z"`, or `"2025-06-15T14:30:00+02:00"` | Unix timestamp (seconds) |
 | `ParseDate`  | `"2025-06-15"`                        | Unix timestamp (seconds, midnight)     |
 | `ParseTime`  | `"14:30"`, `"14:30:00"`, or `"14:30:00.123"` | Seconds since midnight (0-86399) |
-| `TryParse`   | Any of the above formats              | Compatibility 0-sentinel result        |
 | `TryParseOption` | Any of the above formats          | `Some(Integer)` on success, `None` on failure |
 
-- `ParseISO` accepts exact ISO 8601 datetime strings with optional fractional seconds and optional `Z` or numeric `+HH:MM`/`-HH:MM` offsets; `Z` and numeric offsets are interpreted as UTC instants, while no suffix means local time
+- `ParseIso8601` accepts exactly four year digits, `T`, `t`, or a space as the date/time separator,
+  optional fractional seconds (discarded because timestamps store whole seconds), and `Z`/`z` or
+  numeric `+HH:MM`/`-HH:MM` offsets. Numeric offsets are limited to `-14:00` through `+14:00`.
+  `Z` and numeric offsets identify UTC instants; no suffix means local time and inherits the
+  skipped/repeated-hour behavior above.
 - `ParseDate` parses exact `YYYY-MM-DD` strings and returns the timestamp at local midnight
 - `ParseTime` returns seconds since midnight (not a Unix timestamp) for exact `HH:MM`, `HH:MM:SS`, or `HH:MM:SS.fraction` strings
 - Invalid calendar values, out-of-range times, and trailing characters are rejected
-- On failure, `ParseISO` and `ParseDate` return `0`, while `ParseTime` returns `-1`; use `TryParseOption` when the Unix epoch must be distinguishable from failure
-- Prefer `TryParseOption` for new code. It preserves a valid Unix epoch parse as `Some(0)`, while `TryParse` remains available as the legacy 0-sentinel helper.
+- On failure, `ParseIso8601` and `ParseDate` return `0`, while `ParseTime` returns `-1`; use `TryParseOption` when the Unix epoch must be distinguishable from failure
+- `TryParseOption` preserves a valid Unix epoch or midnight parse as `Some(0)`. A time-only input
+  produces seconds since midnight; a date or datetime input produces a Unix timestamp. The former
+  `TryParse` numeric-sentinel target remains implemented in C for binary/internal compatibility
+  but is no longer registered in the current public runtime surface.
 
 ### Zia Example
 
@@ -281,16 +313,72 @@ func start() {
     Say("Hour: " + Fmt.Int(DateTime.Hour(now)));
 
     // Local ISO format (consistent with Create)
-    Say("Local: " + DateTime.ToLocal(now));
+    Say("Local: " + DateTime.FormatLocal(now));
 
     // UTC ISO format
-    Say("UTC: " + DateTime.ToISO(now));
+    Say("UTC: " + DateTime.ToIso8601(now));
 
     // Create a specific date and format it
     var christmas = DateTime.Create(2025, 12, 25, 12, 0, 0);
-    Say("Christmas: " + DateTime.ToLocal(christmas));
+    Say("Christmas: " + DateTime.FormatLocal(christmas));
 }
 ```
+
+### BASIC Example
+
+```basic
+' Get current time
+DIM now AS INTEGER
+now = Viper.Time.DateTime.Now()
+
+' Extract components
+PRINT "Year: "; Viper.Time.DateTime.Year(now)
+PRINT "Month: "; Viper.Time.DateTime.Month(now)
+PRINT "Day: "; Viper.Time.DateTime.Day(now)
+PRINT "Hour: "; Viper.Time.DateTime.Hour(now)
+
+' Format as a local-time string
+PRINT Viper.Time.DateTime.Format(now, "%Y-%m-%d %H:%M:%S")
+
+' Local ISO (no Z suffix, consistent with Create)
+PRINT Viper.Time.DateTime.FormatLocal(now)
+
+' UTC ISO (with Z suffix)
+PRINT Viper.Time.DateTime.ToIso8601(now)
+
+' Create a specific local date
+DIM birthday AS INTEGER
+birthday = Viper.Time.DateTime.Create(1990, 6, 15, 0, 0, 0)
+
+' Elapsed-time arithmetic
+DIM tomorrow AS INTEGER
+tomorrow = Viper.Time.DateTime.AddDays(now, 1)
+
+DIM age_seconds AS INTEGER
+age_seconds = Viper.Time.DateTime.Diff(now, birthday)
+```
+
+### Local Format Specifiers
+
+`DateTime.Format`, unlike `FormatInZone`, delegates to the host `strftime`. Common conversions
+include:
+
+| Specifier | Description             | Example  |
+|-----------|-------------------------|----------|
+| `%Y`      | Year, minimum four digits | 2025   |
+| `%m`      | Two-digit month         | 01-12    |
+| `%d`      | Two-digit day           | 01-31    |
+| `%H`      | 24-hour hour            | 00-23    |
+| `%I`      | 12-hour hour            | 01-12    |
+| `%M`      | Minute                  | 00-59    |
+| `%S`      | Second                  | 00-60    |
+| `%p`      | Locale AM/PM marker     | PM       |
+| `%A`, `%a`| Full/abbreviated weekday| Monday / Mon |
+| `%B`, `%b`| Full/abbreviated month  | January / Jan |
+| `%%`      | Literal percent sign    | %        |
+
+The platform may support additional conversions; portable code should not assume the same
+extensions or localized text across hosts.
 
 ### Named-zone Example
 
@@ -300,12 +388,15 @@ module TimeZoneDemo;
 bind Viper.Terminal;
 bind Viper.Time.DateTime as DateTime;
 bind Viper.Time.TimeZone as TimeZone;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var ny = TimeZone.Find("America/New_York");
-    var instant = DateTime.ParseISO("2025-03-09T07:00:00Z");
+    var instant = DateTime.ParseIso8601("2025-03-09T07:00:00Z");
     Say(DateTime.ToZone(instant, ny));                         // 2025-03-09T03:00:00-04:00
     Say(DateTime.FormatInZone(instant, ny, "%F %T %z %Z"));    // 2025-03-09 03:00:00 -0400 EDT
+    Say(TimeZone.get_Name(ny));                               // America/New_York
+    Say(Fmt.Int(TimeZone.OffsetAt(ny, instant)));             // -14400
 }
 ```
 
@@ -342,64 +433,28 @@ The New York and Sydney rules are authoritative only for the listed 2025-2026 wi
 transition the table uses its configured base rule; after the last transition it keeps the final rule indefinitely,
 so dates outside the window are deterministic but may not match historical or future IANA data.
 
+Empty, null, and embedded-NUL names also trap. TimeZone handles point at process-lifetime static
+data and must not be manually freed. The current registry declares `Find` as returning untyped
+`obj`, so Zia cannot chain `TimeZone.Find("UTC").OffsetAt(...)` or assign it to a typed TimeZone
+local. Pass the handle directly to `DateTime`, or use the explicit-receiver compatibility forms
+`TimeZone.get_Name(zone)`, `TimeZone.OffsetAt(zone, timestamp)`, and
+`TimeZone.IsDstAt(zone, timestamp)` (VDOC-228).
+
 ### DST Policy
 
 `TimeZone` converts UTC instants to wall time, so skipped and repeated local hours are resolved by the instant itself. For example, `2025-03-09T07:00:00Z` in `America/New_York` formats as `2025-03-09T03:00:00-04:00`, skipping the nonexistent `02:00` hour.
 
-### BASIC Example
+### BASIC Handle Example
 
 ```basic
-' Get current time
-DIM now AS INTEGER
-now = Viper.Time.DateTime.Now()
+DIM zone AS OBJECT = Viper.Time.TimeZone.Find("UTC")
+PRINT Viper.Time.TimeZone.get_Name(zone)       ' UTC
+PRINT Viper.Time.TimeZone.OffsetAt(zone, 0)    ' 0
+PRINT Viper.Time.TimeZone.IsDstAt(zone, 0)     ' 0
 
-' Extract components
-PRINT "Year: "; Viper.Time.DateTime.Year(now)
-PRINT "Month: "; Viper.Time.DateTime.Month(now)
-PRINT "Day: "; Viper.Time.DateTime.Day(now)
-PRINT "Hour: "; Viper.Time.DateTime.Hour(now)
-
-' Format as string
-PRINT Viper.Time.DateTime.Format(now, "%Y-%m-%d %H:%M:%S")
-' Output: "2025-12-06 14:30:00"
-' Empty, null, or embedded-NUL format patterns return an empty string.
-
-' Local ISO (no Z suffix, consistent with Create)
-PRINT Viper.Time.DateTime.ToLocal(now)
-' Output: "2025-12-06T14:30:00"
-
-' UTC ISO (with Z suffix)
-PRINT Viper.Time.DateTime.ToISO(now)
-' Output: "2025-12-06T19:30:00Z"
-
-' Create a specific date
-DIM birthday AS INTEGER
-birthday = Viper.Time.DateTime.Create(1990, 6, 15, 0, 0, 0)
-
-' Date arithmetic
-DIM tomorrow AS INTEGER
-tomorrow = Viper.Time.DateTime.AddDays(now, 1)
-
-DIM nextWeek AS INTEGER
-nextWeek = Viper.Time.DateTime.AddDays(now, 7)
-
-' Calculate difference
-DIM age_seconds AS INTEGER
-age_seconds = Viper.Time.DateTime.Diff(now, birthday)
+DIM instant AS INTEGER = Viper.Time.DateTime.ParseIso8601("2025-03-09T07:00:00Z")
+PRINT Viper.Time.DateTime.ToZone(instant, zone)
 ```
-
-### Format Specifiers
-
-| Specifier | Description       | Example |
-|-----------|-------------------|---------|
-| `%Y`      | 4-digit year      | 2025    |
-| `%m`      | 2-digit month     | 01-12   |
-| `%d`      | 2-digit day       | 01-31   |
-| `%H`      | 24-hour hour      | 00-23   |
-| `%M`      | Minute            | 00-59   |
-| `%S`      | Second            | 00-59   |
-| `%A`      | Full weekday name | Monday  |
-| `%B`      | Full month name   | January |
 
 ---
 
@@ -433,7 +488,7 @@ elapsed values down to nanosecond units.
 | `Start()`   | `Void()`  | Start or resume timing (no effect if already running) |
 | `Stop()`    | `Void()`  | Pause timing, preserving accumulated time             |
 | `Reset()`   | `Void()`  | Stop and clear all accumulated time                   |
-| `Restart()` | `Void()`  | Reset and start in one atomic operation               |
+| `Restart()` | `Void()`  | Reset and start in one convenience operation          |
 
 ### Notes
 
@@ -445,6 +500,11 @@ elapsed values down to nanosecond units.
 - `Stop()` has no effect if already stopped
 - Instance methods and properties require a valid Stopwatch object; a null receiver traps
 - Stopwatch instances are not thread-safe; synchronize externally if an instance is shared
+- `Restart()` is not a synchronization primitive or an atomic operation between threads. It is a
+  single API call on an otherwise non-thread-safe object.
+- On POSIX, failure of the monotonic clock falls back to the adjustable realtime clock and total
+  elapsed time can therefore decrease. If both queries fail, the internal timestamp is `0`
+  (VDOC-223). Windows uses an unsynchronized first-use frequency cache (VDOC-224).
 
 ### Zia Example
 
@@ -458,7 +518,7 @@ bind Viper.Text.Fmt as Fmt;
 func start() {
     var sw = Stopwatch.New();
     sw.Start();
-    // ... work to measure ...
+    // Perform the work to measure here.
     sw.Stop();
     Say("Elapsed: " + Fmt.Int(sw.get_ElapsedUs()) + " us");
 }
@@ -490,7 +550,7 @@ PRINT "Total: "; sw.ElapsedMs; " ms"
 
 ' Reset and restart
 sw.Restart()
-' More benchmarking...
+' Perform another benchmark here
 sw.Stop()
 PRINT "New timing: "; sw.ElapsedMs; " ms"
 ```
@@ -507,9 +567,9 @@ Date-only type for working with calendar dates without time components. Represen
 
 | Method                   | Signature                       | Description                                            |
 |--------------------------|---------------------------------|--------------------------------------------------------|
-| `Create(year, month, day)` | `DateOnly(Integer, Integer, Integer)` | Create a date from year, month, and day components |
-| `Today()`                | `DateOnly()`                    | Returns today's date                                   |
-| `Parse(str)`             | `DateOnly(String)`              | Parse a date string (e.g., "2025-06-15")               |
+| `Create(year, month, day)` | `DateOnly(Integer, Integer, Integer)` | Create a date, or `Nothing` for an invalid month/day |
+| `Today()`                | `DateOnly()`                    | Return today's local date, or `Nothing` if conversion fails |
+| `Parse(str)`             | `DateOnly(String)`              | Parse exact `YYYY-MM-DD`, or return `Nothing` on failure |
 | `FromDays(days)`         | `DateOnly(Integer)`             | Create a date from a day count (days since epoch)      |
 
 ### Properties
@@ -545,10 +605,23 @@ Date-only type for working with calendar dates without time components. Represen
 ### Notes
 
 - DateOnly is immutable -- all mutation methods return new DateOnly instances
+- Calendar arithmetic uses the proleptic Gregorian calendar and is independent of the host time
+  zone. Only `Today()` consults local time.
 - `DiffDays(other)` returns a negative value if `other` is after this date
 - `AddMonths` and `AddYears` clamp the day to the last valid day of the resulting month
-- `Parse` expects an exact ISO 8601 date format: "YYYY-MM-DD"; non-padded fields and trailing characters are rejected
+- `Create` validates month and day but accepts any signed 64-bit year. `Parse` accepts only exactly
+  four ASCII year digits and ten total bytes; non-padded fields, signs, embedded NULs, and trailing
+  characters are rejected by returning `Nothing`.
+- `ToString` uses a minimum width of four year digits. Created years below `0` or above `9999`
+  therefore produce text that `Parse` rejects, so the advertised serialization round trip holds
+  only for years `0000` through `9999` (VDOC-231).
+- `Format` supports `%Y`, `%y`, `%m`, `%d`, `%B`, `%b`, `%A`, `%a`, `%j`, and `%%`. Month and
+  weekday names are hard-coded English, unknown conversions are preserved literally, and the
+  input/output are length-aware (embedded NUL bytes are retained).
 - `FromDays`, `ToDays`, `DayOfWeek`, `AddDays`, `AddMonths`, `AddYears`, and `DiffDays` trap on signed 64-bit overflow
+- The low-level helpers return neutral values for null receivers and compare two null dates as
+  equal. Ordinary source should null-check a failed `Create`, `Today`, or `Parse` before invoking
+  instance members.
 
 ### Zia Example
 
@@ -645,7 +718,7 @@ Duration type for representing and manipulating time spans. Duration is a static
 
 | Method          | Signature          | Description                                            |
 |-----------------|--------------------|--------------------------------------------------------|
-| `Days(dur)`     | `Integer(Integer)` | Days component (remaining after extracting larger)     |
+| `Days(dur)`     | `Integer(Integer)` | Whole days in the duration's magnitude                  |
 | `Hours(dur)`    | `Integer(Integer)` | Hours component (0-23)                                 |
 | `Minutes(dur)`  | `Integer(Integer)` | Minutes component (0-59)                               |
 | `Seconds(dur)`  | `Integer(Integer)` | Seconds component (0-59)                               |
@@ -668,15 +741,20 @@ Duration type for representing and manipulating time spans. Duration is a static
 | Method          | Signature          | Description                                      |
 |-----------------|--------------------|--------------------------------------------------|
 | `ToString(dur)` | `String(Integer)` | Format as "d.HH:MM:SS" or "HH:MM:SS" (e.g., "02:00:00", "1.02:30:00") |
-| `ToISO(dur)`    | `String(Integer)` | Format as ISO 8601 duration (e.g., "PT2H")       |
+| `ToIso8601(dur)`    | `String(Integer)` | Format as ISO 8601 duration (e.g., "PT2H")       |
 
 ### Notes
 
 - Duration is a value type -- all methods take and return `i64` millisecond values
-- Duration values themselves require no heap object; `ToString` and `ToISO` allocate their returned strings
+- Duration values themselves require no heap object; `ToString` and `ToIso8601` allocate their returned strings
 - Negative durations are supported and represent time spans in the past
 - Component accessors (`Days`, `Hours`, `Minutes`, `Seconds`, and `Millis`) use the duration's magnitude; use total accessors when the sign must be preserved
+- Whole-unit total accessors use signed integer division and truncate toward zero. `Create` does
+  not require normalized components: each supplied value is multiplied by its unit and summed, so
+  values such as 25 hours or mixed signs are accepted when the calculation does not overflow.
 - `TotalSecondsF` returns a `f64` for sub-second precision
+- `TotalSecondsF` first converts the 64-bit millisecond value to `f64`; sufficiently large values
+  lose millisecond precision.
 - Factories and arithmetic methods trap on signed 64-bit overflow
 - `Abs(INT64_MIN)` and `Neg(INT64_MIN)` trap because the positive magnitude cannot be represented as a signed 64-bit value
 - `Div(dur, divisor)` traps when `divisor` is 0 and when dividing `INT64_MIN` by `-1`
@@ -695,7 +773,7 @@ func start() {
     Say("Millis: " + Fmt.Int(d));                            // 7200000
     Say("TotalMinutes: " + Fmt.Int(Duration.TotalMinutes(d))); // 120
     Say("ToString: " + Duration.ToString(d));                // 02:00:00
-    Say("ToISO: " + Duration.ToISO(d));                      // PT2H
+    Say("ToISO: " + Duration.ToIso8601(d));                      // PT2H
 }
 ```
 
@@ -708,7 +786,7 @@ DIM d AS INTEGER = Viper.Time.Duration.FromHours(2)
 PRINT "Millis: "; d                                    ' Output: 7200000
 PRINT "TotalMinutes: "; Viper.Time.Duration.TotalMinutes(d) ' Output: 120
 PRINT "ToString: "; Viper.Time.Duration.ToString(d)    ' Output: 02:00:00
-PRINT "ToISO: "; Viper.Time.Duration.ToISO(d)          ' Output: PT2H
+PRINT "ToISO: "; Viper.Time.Duration.ToIso8601(d)          ' Output: PT2H
 
 ' Create from components
 DIM d2 AS INTEGER = Viper.Time.Duration.Create(1, 2, 30, 0, 0)
@@ -755,19 +833,25 @@ A time range defined by start and end timestamps (in seconds). Useful for repres
 | `Hours()`           | `Integer()`              | Returns the number of whole hours in the range               |
 | `Duration()`        | `Integer()`              | Returns the duration in seconds                              |
 | `Overlaps(other)`   | `Boolean(DateRange)`     | Returns true if this range overlaps with another             |
-| `Intersection(other)`| `DateRange(DateRange)`  | Returns the overlapping portion of two ranges                |
-| `Union(other)`      | `DateRange(DateRange)`   | Returns the smallest range covering both ranges              |
+| `Intersection(other)`| `DateRange or Nothing(DateRange)` | Return the overlap, or `Nothing` when disjoint        |
+| `Union(other)`      | `DateRange or Nothing(DateRange)` | Return a contiguous union, or `Nothing` across a gap   |
 | `ToString()`        | `String()`               | Returns a string representation of the range                 |
 
 ### Notes
 
-- Timestamps are Unix timestamps in seconds (not milliseconds)
+- Timestamps are integer Unix timestamps in seconds (not milliseconds), and each range is a closed
+  interval over those integer instants.
 - The constructor normalizes reversed endpoints by swapping them, so stored ranges always satisfy `Start <= End`
 - `Contains` checks if `Start <= ts <= End`
 - `Intersection` returns `null` if the ranges do not overlap (does not trap)
 - `Union` returns `null` if the ranges are neither overlapping nor contiguous; endpoints one second apart are considered contiguous
-- `Days`, `Hours`, and `Duration` trap if the range span cannot be represented as a signed 64-bit integer
+- `Days`, `Hours`, and `Duration` use `End - Start`; they do not add one for the inclusive endpoint.
+  `Days` and `Hours` truncate the elapsed span to whole units. All three trap if the subtraction
+  cannot be represented as a signed 64-bit integer.
 - `ToString` formats both endpoints in UTC as `YYYY-MM-DD HH:MM - YYYY-MM-DD HH:MM`, without a zone suffix, and returns an empty string if either endpoint cannot be represented by the platform time APIs
+- `ToString` omits seconds, so it is a display form rather than a lossless serialization.
+- The live runtime metadata does not mark `Intersection` or `Union` nullable even though both
+  return `Nothing` for ordinary inputs (VDOC-232); callers must test the result before chaining.
 
 ### Zia Example
 
@@ -841,6 +925,11 @@ Formats time durations and timestamps into human-readable relative descriptions.
 - `FormatDuration` produces compact multi-unit strings like "45s", "2h 30m", "1d 5h 20m"
 - `Format` and `FormatShort` compare against the current system time
 - Relative month and year buckets use fixed 30-day and 365-day lengths, and displayed units are truncated rather than rounded
+- Differences below ten seconds render as `"just now"` (`Format`/`FormatFrom`) or `"now"`
+  (`FormatShort`).
+- `FormatDuration` discards the millisecond remainder and prefixes negative values with `-`.
+  Consequently, a negative duration between `-999` and `-1` ms currently renders as `"-0s"`
+  rather than `"0s"` (VDOC-227).
 
 ### Zia Example
 

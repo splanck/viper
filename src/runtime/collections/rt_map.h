@@ -10,11 +10,13 @@
 // Key invariants:
 //   - Keys are copied by the map; embedded NUL bytes are part of key identity.
 //   - Values are retained on insertion and released on removal or overwrite.
-//   - All operations are O(1) average-case using open-addressing.
+//   - All operations are O(1) average-case using hashed buckets with
+//     separate chaining (O(n) worst case within a chain).
 //   - rt_map_get returns NULL for keys not present.
 //
 // Ownership/Lifetime:
-//   - Map objects are heap-allocated; caller is responsible for lifetime management.
+//   - Map objects are GC-managed (rt_obj_new_i64) with a runtime finalizer;
+//     callers must not free them directly.
 //   - Values are retained while stored in the map.
 //
 // Error conventions:

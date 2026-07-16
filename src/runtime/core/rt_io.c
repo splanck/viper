@@ -42,6 +42,7 @@
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_ascii.h"
 #include "rt_option.h"
 #include "rt_output.h"
 #include "rt_result.h"
@@ -580,9 +581,9 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
         if (finalize) {
             size_t field_start = start;
             size_t field_end = i;
-            while (field_start < field_end && isspace((unsigned char)data[field_start]))
+            while (field_start < field_end && rt_ascii_isspace((unsigned char)data[field_start]))
                 ++field_start;
-            while (field_end > field_start && isspace((unsigned char)data[field_end - 1]))
+            while (field_end > field_start && rt_ascii_isspace((unsigned char)data[field_end - 1]))
                 --field_end;
             bool had_quotes = false;
             if (field_end > field_start && data[field_start] == '"' && data[field_end - 1] == '"') {

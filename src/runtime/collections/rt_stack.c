@@ -16,7 +16,8 @@
 //   - The "top" of the stack is items[len-1]; push writes to items[len] and
 //     increments len; pop reads items[len-1] and decrements len.
 //   - Pop on an empty stack traps with a descriptive error message.
-//   - Peek returns items[len-1] without removing it; returns NULL if empty.
+//   - Peek returns items[len-1] without removing it; Peek and Pop trap on an
+//     empty stack (TryPop returns None instead).
 //   - Stacks may own elements when created through the owning constructor; in
 //     that mode push retains and pop returns a retained transfer to the caller.
 //     Borrowing stacks store raw pointers without retain/release.
@@ -32,6 +33,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_collection_ids.h"
+
+#include "rt_box.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -497,7 +500,7 @@ int8_t rt_stack_has(void *obj, void *elem) {
 
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     for (int64_t i = 0; i < stack->len; i++) {
-        if (stack->items[i] == elem)
+        if (rt_box_equal(stack->items[i], elem))
             return 1;
     }
     return 0;

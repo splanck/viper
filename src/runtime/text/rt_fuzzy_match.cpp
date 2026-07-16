@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_fuzzy_match.h"
+#include "rt_ascii.h"
 
 #include "rt_map.h"
 #include "rt_object.h"
@@ -70,8 +71,8 @@ bool isBoundary(const std::string &s, size_t i) {
     char cur = s[i];
     if (prev == '/' || prev == '\\' || prev == '_' || prev == '-' || prev == '.' || prev == ' ')
         return true;
-    return std::islower(static_cast<unsigned char>(prev)) &&
-           std::isupper(static_cast<unsigned char>(cur));
+    return rt_ascii_islower(static_cast<unsigned char>(prev)) &&
+           rt_ascii_isupper(static_cast<unsigned char>(cur));
 }
 
 struct MatchResult {
@@ -91,8 +92,8 @@ MatchResult computeMatch(const std::string &query, const std::string &candidate)
     int64_t score = 0;
     int64_t last = -2;
     for (size_t ci = 0; ci < candidate.size() && qi < query.size(); ci++) {
-        char qc = static_cast<char>(std::tolower(static_cast<unsigned char>(query[qi])));
-        char cc = static_cast<char>(std::tolower(static_cast<unsigned char>(candidate[ci])));
+        char qc = static_cast<char>(rt_ascii_tolower(static_cast<unsigned char>(query[qi])));
+        char cc = static_cast<char>(rt_ascii_tolower(static_cast<unsigned char>(candidate[ci])));
         if (qc != cc)
             continue;
         result.positions.push_back(static_cast<int64_t>(ci));
@@ -113,7 +114,10 @@ MatchResult computeMatch(const std::string &query, const std::string &candidate)
     score -= static_cast<int64_t>(candidate.size() - query.size()) / 4;
     score -= result.positions.empty() ? 0 : result.positions.front();
     result.matched = true;
-    result.score = score;
+    // Penalties are unbounded, so clamp successful matches to zero: a
+    // non-negative score always means "matched" and -1 stays a reliable
+    // miss sentinel (VDOC-059).
+    result.score = score < 0 ? 0 : score;
     return result;
 }
 

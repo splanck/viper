@@ -149,7 +149,7 @@ class HoverController {
             hideTooltip();
             lastMouseX = mx;
             lastMouseY = my;
-            hoverStartMs = Viper.Time.Clock.Ticks();
+            hoverStartMs = Viper.Time.Clock.NowMs();
             if workScheduler != null {
                 workScheduler.Queue(scheduler.JOB_HOVER, sourcePath, engine.GetRevision(), -1);
             }
@@ -179,7 +179,7 @@ class HoverController {
             }
             workScheduler.Complete(scheduler.JOB_HOVER);
         } else {
-            var now = Viper.Time.Clock.Ticks();
+            var now = Viper.Time.Clock.NowMs();
             if now - hoverStartMs < HOVER_DELAY_MS { return; }
         }
 

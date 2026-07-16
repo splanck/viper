@@ -64,20 +64,20 @@ func testShiftRight() {
 func testUnsignedShiftRight() {
     setTest("Bits.Ushr");
 
-    assertEqInt(Viper.Math.Bits.Ushr(16, 1), 8, "ushr(16,1)");
-    assertEqInt(Viper.Math.Bits.Ushr(256, 4), 16, "ushr(256,4)");
+    assertEqInt(Viper.Math.Bits.ShiftRightLogical(16, 1), 8, "ushr(16,1)");
+    assertEqInt(Viper.Math.Bits.ShiftRightLogical(256, 4), 16, "ushr(256,4)");
 }
 
 func testRotate() {
     setTest("Bits.Rotl/Rotr");
 
     // Rotate left
-    assertEqInt(Viper.Math.Bits.Rotl(1, 1), 2, "rotl(1,1)");
-    assertEqInt(Viper.Math.Bits.Rotl(1, 4), 16, "rotl(1,4)");
+    assertEqInt(Viper.Math.Bits.RotateLeft(1, 1), 2, "rotl(1,1)");
+    assertEqInt(Viper.Math.Bits.RotateLeft(1, 4), 16, "rotl(1,4)");
 
     // Rotate right
-    assertEqInt(Viper.Math.Bits.Rotr(2, 1), 1, "rotr(2,1)");
-    assertEqInt(Viper.Math.Bits.Rotr(16, 4), 1, "rotr(16,4)");
+    assertEqInt(Viper.Math.Bits.RotateRight(2, 1), 1, "rotr(2,1)");
+    assertEqInt(Viper.Math.Bits.RotateRight(16, 4), 1, "rotr(16,4)");
 }
 
 func testBitManipulation() {
@@ -105,25 +105,25 @@ func testBitManipulation() {
 func testBitCount() {
     setTest("Bits.Count");
 
-    assertEqInt(Viper.Math.Bits.Count(0), 0, "count(0)");
-    assertEqInt(Viper.Math.Bits.Count(1), 1, "count(1)");
-    assertEqInt(Viper.Math.Bits.Count(10), 2, "count(10)");
-    assertEqInt(Viper.Math.Bits.Count(255), 8, "count(255)");
-    assertEqInt(Viper.Math.Bits.Count(127), 7, "count(127)");
+    assertEqInt(Viper.Math.Bits.CountOnes(0), 0, "count(0)");
+    assertEqInt(Viper.Math.Bits.CountOnes(1), 1, "count(1)");
+    assertEqInt(Viper.Math.Bits.CountOnes(10), 2, "count(10)");
+    assertEqInt(Viper.Math.Bits.CountOnes(255), 8, "count(255)");
+    assertEqInt(Viper.Math.Bits.CountOnes(127), 7, "count(127)");
 }
 
 func testLeadingTrailingZeros() {
     setTest("Bits.LeadZ/TrailZ");
 
     // Leading zeros (count from MSB)
-    assertEqInt(Viper.Math.Bits.LeadZ(1), 63, "leadz(1)");
-    assertEqInt(Viper.Math.Bits.LeadZ(256), 55, "leadz(256)");
+    assertEqInt(Viper.Math.Bits.CountLeadingZeros(1), 63, "leadz(1)");
+    assertEqInt(Viper.Math.Bits.CountLeadingZeros(256), 55, "leadz(256)");
 
     // Trailing zeros (count from LSB)
-    assertEqInt(Viper.Math.Bits.TrailZ(1), 0, "trailz(1)");
-    assertEqInt(Viper.Math.Bits.TrailZ(2), 1, "trailz(2)");
-    assertEqInt(Viper.Math.Bits.TrailZ(8), 3, "trailz(8)");
-    assertEqInt(Viper.Math.Bits.TrailZ(16), 4, "trailz(16)");
+    assertEqInt(Viper.Math.Bits.CountTrailingZeros(1), 0, "trailz(1)");
+    assertEqInt(Viper.Math.Bits.CountTrailingZeros(2), 1, "trailz(2)");
+    assertEqInt(Viper.Math.Bits.CountTrailingZeros(8), 3, "trailz(8)");
+    assertEqInt(Viper.Math.Bits.CountTrailingZeros(16), 4, "trailz(16)");
 }
 
 func testFlip() {

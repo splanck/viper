@@ -324,6 +324,7 @@ typedef struct {
     int64_t clip_y;          ///< Logical clip Y
     int64_t clip_w;          ///< Logical clip width
     int64_t clip_h;          ///< Logical clip height
+    int8_t relative_mouse_applied; ///< Relative (raw) mouse mode currently applied to the window
 } rt_canvas;
 
 /// @brief Safely down-cast an opaque pointer to rt_canvas.

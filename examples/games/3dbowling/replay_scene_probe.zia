@@ -31,7 +31,7 @@ bind "./lane/pins";
 bind "./presentation/replay";
 
 func main() {
-    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var world = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var pins = new PinManager();
     pins.initPins(world);
     var replay = new ReplayRecorder();

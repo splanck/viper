@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_mat3.c
+// File: src/runtime/graphics/math/rt_mat3.c
 // Purpose: 3×3 matrix type for 2D affine transformations in Viper. Supports
 //   construction from rotation/scale/translation components, matrix–matrix
 //   multiplication (transform concatenation), matrix–vector multiplication
@@ -21,7 +21,8 @@
 //       | m20 m21 m22 |   | 0  0  1  |
 //
 //     For a pure 2D affine transform:  a, b, c, d encode rotation/scale/shear;
-//     tx, ty encode translation. The bottom row is always [0, 0, 1].
+//     tx, ty encode translation. Affine factory matrices use bottom row [0,0,1];
+//     New and arithmetic operations can produce an arbitrary bottom row.
 //
 //   - 2D point transformation (homogeneous coordinates):
 //
@@ -224,7 +225,7 @@ void *rt_mat3_col(void *m, int64_t col) {
 // Arithmetic
 //=============================================================================
 
-/// @brief Element-wise addition (a + b). Returns identity for NULL inputs.
+/// @brief Element-wise addition (a + b). Returns zero for NULL inputs.
 void *rt_mat3_add(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
@@ -245,7 +246,7 @@ void *rt_mat3_add(void *a, void *b) {
                        ma->m[8] + mb->m[8]);
 }
 
-/// @brief Element-wise subtraction (a - b). Returns identity for NULL inputs.
+/// @brief Element-wise subtraction (a - b). Returns zero for NULL inputs.
 void *rt_mat3_sub(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
@@ -309,8 +310,8 @@ void *rt_mat3_mul_scalar(void *m, double s) {
                        mat->m[8] * s);
 }
 
-/// @brief Transform a 2D point (x, y) through `m` (treats v as homogeneous (x, y, 1)). The
-/// returned Vec3's third component is the homogeneous w; usually 1 for affine transforms.
+/// @brief Transform a 2D point (x, y) through the first two rows of `m`, treating v as
+/// homogeneous (x, y, 1), and return a Vec2. The bottom row is not evaluated.
 void *rt_mat3_transform_point(void *m, void *v) {
     if (!m || !v)
         return rt_vec2_zero();

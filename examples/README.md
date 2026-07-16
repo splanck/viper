@@ -78,7 +78,7 @@ Organized by namespace:
 
 | Namespace | Coverage |
 |-----------|----------|
-| [collections](apiaudit/collections/) | Bag, Bytes, Heap, List, Map, Queue, Ring, Seq, Stack, TreeMap, Set, ... |
+| [collections](apiaudit/collections/) | StringSet, Bytes, Heap, List, Map, Queue, Ring, Seq, Stack, SortedMap, Set, ... |
 | [core](apiaudit/core/) | Box, Object, String |
 | [crypto](apiaudit/crypto/) | Hash, KeyDerive, Rand, Aes, Cipher, Tls |
 | [functional](apiaudit/functional/) | Option, Result, Lazy, LazySeq |

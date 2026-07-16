@@ -381,7 +381,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
 }
 
 /// @brief Look up a value by its associated key.
-/// @details Returns NULL if the key is not present in the map.
+/// @details Returns an owned empty string if the key is not present.
 rt_string rt_bimap_get_by_key(void *obj, rt_string key) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -400,7 +400,7 @@ rt_string rt_bimap_get_by_key(void *obj, rt_string key) {
 }
 
 /// @brief Look up a key by its associated value (reverse lookup).
-/// @details Returns NULL if the value is not present in the reverse index.
+/// @details Returns an owned empty string if the value is not present in the reverse index.
 rt_string rt_bimap_get_by_value(void *obj, rt_string value) {
     if (!obj)
         return rt_string_from_bytes("", 0);

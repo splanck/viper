@@ -14,7 +14,7 @@
 // construction primitives those features are built on.
 //
 // Internally we delegate the heavy lifting to the Viper runtime's
-// `Viper.Text.Json` + `Viper.Text.JsonPath` — those are C-level
+// `Viper.Data.Json` + `Viper.Data.JsonPath` — those are C-level
 // fast parsers.  `JsonParser` in this file is a thin Zia wrapper
 // that layers SQL semantics (NULL on parse failure, type-code
 // mapping, ...) on top.
@@ -27,7 +27,7 @@
 //     io/json.zia      (YOU ARE HERE)
 //         │
 //         ▼
-//     Viper.Text.Json / Viper.Text.JsonPath   (runtime core)
+//     Viper.Data.Json / Viper.Data.JsonPath   (runtime core)
 //
 // HOW TO READ THIS FILE
 // ---------------------
@@ -42,8 +42,8 @@ module json;
 
 bind Viper.String as String;
 bind Viper.Text.Fmt as Fmt;
-bind Viper.Text.Json as Json;
-bind Viper.Text.JsonPath as JP;
+bind Viper.Data.Json as Json;
+bind Viper.Data.JsonPath as JP;
 bind Viper.Text.StringBuilder as SB;
 bind Viper.Collections.Seq as Seq;
 bind "../engine/types";

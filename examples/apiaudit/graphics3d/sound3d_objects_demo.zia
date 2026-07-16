@@ -2,7 +2,7 @@ module Sound3DObjectsDemo;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
-bind Viper.Sound;
+bind Viper.Audio;
 bind Viper.Terminal;
 
 func start() {
@@ -37,8 +37,8 @@ func start() {
     Say("Source X = " + toString(Vec3.get_X(sourcePos)));
     Say("Source Z = " + toString(Vec3.get_Z(sourcePos)));
 
-    if (Audio.IsAvailable()) {
-        if (Audio.Init() != 0) {
+    if (Mixer.IsAvailable()) {
+        if (Mixer.Init() != 0) {
             var voice = source.Play();
             Say("VoiceId = " + toString(voice));
             Say("IsPlaying = " + toString(source.IsPlaying));

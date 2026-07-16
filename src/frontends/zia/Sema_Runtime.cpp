@@ -164,7 +164,7 @@ static bool isKnownRuntimeClass(const std::vector<il::runtime::RuntimeClass> &ca
 static std::string_view generatedReturnOverride(std::string_view canonical) {
     static constexpr RuntimeReturnOverride kReturnOverrides[] = {
         // Crypto functions returning Viper.Collections.Bytes
-        {"Viper.Crypto.Rand.Bytes", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.SecureRandom.Bytes", "Viper.Collections.Bytes"},
         {"Viper.Crypto.Cipher.Encrypt", "Viper.Collections.Bytes"},
         {"Viper.Crypto.Cipher.Decrypt", "Viper.Collections.Bytes"},
         {"Viper.Crypto.Cipher.EncryptAAD", "Viper.Collections.Bytes"},
@@ -185,16 +185,16 @@ static std::string_view generatedReturnOverride(std::string_view canonical) {
         // IO functions returning Viper.Collections.Bytes
         {"Viper.IO.Stream.ToBytes", "Viper.Collections.Bytes"},
         // Text functions returning Viper.Collections.Seq
-        {"Viper.Text.Csv.ParseLine", "Viper.Collections.Seq"},
-        {"Viper.Text.Csv.ParseLineWith", "Viper.Collections.Seq"},
-        {"Viper.Text.Csv.Parse", "Viper.Collections.Seq"},
-        {"Viper.Text.Csv.ParseWith", "Viper.Collections.Seq"},
+        {"Viper.Data.Csv.ParseLine", "Viper.Collections.Seq"},
+        {"Viper.Data.Csv.ParseLineWith", "Viper.Collections.Seq"},
+        {"Viper.Data.Csv.Parse", "Viper.Collections.Seq"},
+        {"Viper.Data.Csv.ParseWith", "Viper.Collections.Seq"},
         {"Viper.Text.Markdown.ExtractLinks", "Viper.Collections.Seq"},
         {"Viper.Text.Markdown.ExtractHeadings", "Viper.Collections.Seq"},
         {"Viper.Text.Html.ExtractLinks", "Viper.Collections.Seq"},
         {"Viper.Text.Html.ExtractText", "Viper.Collections.Seq"},
         // Collection methods returning Seq from non-Seq classes
-        {"Viper.Collections.Bag.Items", "Viper.Collections.Seq"},
+        {"Viper.Collections.StringSet.Items", "Viper.Collections.Seq"},
         {"Viper.Collections.SortedSet.Items", "Viper.Collections.Seq"},
         {"Viper.Collections.Set.Items", "Viper.Collections.Seq"},
     };
@@ -216,9 +216,9 @@ static TypeRef ziaParamTypeForGeneratedToken(std::string_view token) {
     std::string_view base = runtimeTokenBase(token);
     if (base == "str")
         return types::string();
-    if (base == "i64" || base == "i32" || base == "i16" || base == "i8")
+    if (base == "i64" || base == "i32" || base == "i16")
         return types::integer();
-    if (base == "f64" || base == "f32")
+    if (base == "f64")
         return types::number();
     if (base == "i1" || base == "bool")
         return types::boolean();

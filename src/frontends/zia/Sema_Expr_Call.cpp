@@ -603,7 +603,7 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
 
     if (calleeName == "Viper.Collections.Seq.Get" || calleeName == "Viper.Collections.Seq.First" ||
         calleeName == "Viper.Collections.Seq.Last" || calleeName == "Viper.Collections.Seq.Peek" ||
-        calleeName == "Viper.Collections.Seq.Pop" || calleeName == "Viper.Collections.Seq.Remove" ||
+        calleeName == "Viper.Collections.Seq.Pop" || calleeName == "Viper.Collections.Seq.RemoveAt" ||
         calleeName == "Viper.Collections.Seq.FindWhere") {
         return elementReceiver && elementReceiver->elementType()
                    ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
@@ -638,7 +638,7 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
 
     if (calleeName == "Viper.Collections.Map.Get" || calleeName == "Viper.Collections.Map.GetOr" ||
         calleeName == "Viper.Collections.OrderedMap.Get" ||
-        calleeName == "Viper.Collections.TreeMap.Get" ||
+        calleeName == "Viper.Collections.SortedMap.Get" ||
         calleeName == "Viper.Collections.Trie.Get" ||
         calleeName == "Viper.Collections.FrozenMap.Get" ||
         calleeName == "Viper.Collections.FrozenMap.GetOr" ||
@@ -655,7 +655,7 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
 
     if (calleeName == "Viper.Collections.Map.Keys" ||
         calleeName == "Viper.Collections.OrderedMap.Keys" ||
-        calleeName == "Viper.Collections.TreeMap.Keys" ||
+        calleeName == "Viper.Collections.SortedMap.Keys" ||
         calleeName == "Viper.Collections.Trie.Keys" ||
         calleeName == "Viper.Collections.FrozenMap.Keys" ||
         calleeName == "Viper.Collections.DefaultMap.Keys" ||
@@ -667,7 +667,7 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
 
     if (calleeName == "Viper.Collections.Map.Values" ||
         calleeName == "Viper.Collections.OrderedMap.Values" ||
-        calleeName == "Viper.Collections.TreeMap.Values" ||
+        calleeName == "Viper.Collections.SortedMap.Values" ||
         calleeName == "Viper.Collections.FrozenMap.Values" ||
         calleeName == "Viper.Collections.LruCache.Values") {
         return mapReceiver && mapReceiver->valueType() ? asSeq(mapReceiver->valueType()) : fallback;
@@ -1368,9 +1368,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             if (dottedName == "Viper.Collections.Seq.New" && expr->args.size() == 1)
                 dottedName = "Viper.Collections.Seq.NewSized";
             else if (dottedName == "Viper.String.FromInt")
-                dottedName = "Viper.Core.Convert.ToString_Int";
+                dottedName = "Viper.Core.Convert.ToStringInt";
             else if (dottedName == "Viper.String.FromDouble")
-                dottedName = "Viper.Core.Convert.ToString_Double";
+                dottedName = "Viper.Core.Convert.ToStringDouble";
 
             analyzeArgTypes();
 

@@ -1,823 +1,681 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-07-15
 ---
 
 # Animation & Movement
-> Tween, SpriteAnimation, AnimStateMachine, AnimTimeline, SpriteSheet, PathFollower, ButtonGroup
+
+> `Tween`, `SpriteAnimation`, `AnimStateMachine`, `AnimTimeline`,
+> `AnimationEventBatch`, `SpriteSheet`, `PathFollower`, and `ButtonGroup`
 
 **Part of [Viper Runtime Library](../README.md) › [Game Utilities](README.md)**
+
+These helpers are state containers. Except for `SpriteSheet`, none of them draws anything. Call
+their update method from the game loop, then use the resulting value, frame, position, event batch,
+or selection when updating the rest of the game.
+
+`Tween`, `SpriteAnimation`, `AnimStateMachine`, and `AnimTimeline` measure time in integer update
+frames. `PathFollower` is the exception: its `Update(dt)` argument is elapsed milliseconds.
 
 ---
 
 ## Viper.Game.Tween
 
-Frame-based tweening with easing functions for smooth animations. Interpolates between values over time with various easing curves.
+`Tween` interpolates one number from a start value to an end value over a fixed number of calls to
+`Update()`.
 
-**Type:** Instance class (requires `New()`)
-
-### Constructor
-
-| Method  | Signature  | Description              |
-|---------|------------|--------------------------|
-| `New()` | `Tween()`  | Create a new tween       |
+- **Type:** instance class
+- **Constructor:** `Tween.New()`
+- **Initial state:** value 0, duration 0, inactive, incomplete, and unpaused
 
 ### Properties
 
-| Property     | Type                  | Description                                |
-|--------------|-----------------------|--------------------------------------------|
-| `Value`      | `Double` (read-only)  | Current interpolated value                 |
-| `ValueI64`   | `Integer` (read-only) | Current value as rounded integer           |
-| `IsRunning`  | `Boolean` (read-only) | True if tween is active (not paused)       |
-| `IsComplete` | `Boolean` (read-only) | True if tween has finished                 |
-| `IsPaused`   | `Boolean` (read-only) | True if tween is paused                    |
-| `Progress`   | `Integer` (read-only) | Completion percentage (0-100)              |
-| `Elapsed`    | `Integer` (read-only) | Frames elapsed since start                 |
-| `Duration`   | `Integer` (read-only) | Total duration in frames                   |
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `Value` | `Double` | read | Current interpolated value |
+| `ValueI64` | `Integer` | read | `Value` rounded half away from zero and saturated to the integer range |
+| `IsRunning` | `Boolean` | read | True only while active and not paused |
+| `IsComplete` | `Boolean` | read | True after natural completion; `Stop()` does not set it |
+| `IsPaused` | `Boolean` | read | True after a running tween is paused |
+| `Progress` | `Integer` | read | Truncated percentage from 0 through 100 |
+| `Elapsed` | `Integer` | read | Number of update frames consumed |
+| `Duration` | `Integer` | read | Configured duration in update frames |
 
 ### Methods
 
-| Method                          | Signature                     | Description                         |
-|---------------------------------|-------------------------------|-------------------------------------|
-| `Pause()`                       | `Void()`                      | Pause the tween                     |
-| `Reset()`                       | `Void()`                      | Reset and restart from beginning    |
-| `Resume()`                      | `Void()`                      | Resume a paused tween               |
-| `Start(from, to, dur, ease)`    | `Void(Double,Double,Int,Int)` | Start tween with float values       |
-| `StartI64(from, to, dur, ease)` | `Void(Int,Int,Int,Int)`       | Start tween with integer values     |
-| `Stop()`                        | `Void()`                      | Stop the tween                      |
-| `Update()`                      | `Boolean()`                   | Advance one frame; true if finished |
+| Method | Return | Behavior |
+|---|---|---|
+| `Start(from, to, duration, ease)` | `Void` | Start/restart a double tween |
+| `StartI64(from, to, duration, ease)` | `Void` | Convert integer endpoints to double, then start |
+| `Update()` | `Boolean` | Advance one frame; true only on the call that completes naturally |
+| `Pause()` | `Void` | Pause a running, incomplete tween |
+| `Resume()` | `Void` | Clear pause; it does not restart a stopped or completed tween |
+| `Stop()` | `Void` | Stop at the current value and clear pause, without marking complete |
+| `Reset()` | `Void` | Rewind to the start value, clear completion/pause, and restart if configured |
+| `Destroy()` | `Void` | Release the handle; receiver form is frontend sugar for the static target |
 
-### Static Methods
+`Start` clamps a non-positive duration to one frame and replaces an invalid easing code with
+linear easing. A non-finite `from` becomes 0; a non-finite `to` becomes the sanitized `from`.
+Every successful update increments `Elapsed` once. The completion update pins `Value` exactly to
+`to`, clears `IsRunning`, sets `IsComplete`, and returns true. Later updates return false.
 
-| Method                   | Signature              | Description                                |
-|--------------------------|------------------------|--------------------------------------------|
-| `LerpI64(from, to, t)`   | `Integer(Int,Int,Dbl)` | Integer linear interpolation (0≤t≤1)       |
-| `Ease(t, type)`          | `Double(Double,Int)`   | Apply easing function to progress value    |
+`StartI64` and `LerpI64` internally convert integer endpoints to binary64. Integers whose magnitude
+exceeds 2^53 may therefore change before interpolation; use the double API only when that loss is
+acceptable. `ValueI64` itself saturates at the integer limits and returns zero for a non-finite
+intermediate result.
 
-### Easing Types
+### Static methods and easing codes
 
-| Constant               | Value | Description                        |
-|------------------------|-------|------------------------------------|
-| `EASE_LINEAR`          | 0     | Linear interpolation (no easing)   |
-| `EASE_IN_QUAD`         | 1     | Quadratic ease-in (accelerate)     |
-| `EASE_OUT_QUAD`        | 2     | Quadratic ease-out (decelerate)    |
-| `EASE_IN_OUT_QUAD`     | 3     | Quadratic ease-in-out              |
-| `EASE_IN_CUBIC`        | 4     | Cubic ease-in                      |
-| `EASE_OUT_CUBIC`       | 5     | Cubic ease-out                     |
-| `EASE_IN_OUT_CUBIC`    | 6     | Cubic ease-in-out                  |
-| `EASE_IN_SINE`         | 7     | Sinusoidal ease-in                 |
-| `EASE_OUT_SINE`        | 8     | Sinusoidal ease-out                |
-| `EASE_IN_OUT_SINE`     | 9     | Sinusoidal ease-in-out             |
-| `EASE_IN_EXPO`         | 10    | Exponential ease-in                |
-| `EASE_OUT_EXPO`        | 11    | Exponential ease-out               |
-| `EASE_IN_OUT_EXPO`     | 12    | Exponential ease-in-out            |
-| `EASE_IN_BACK`         | 13    | Back ease-in (overshoots start)    |
-| `EASE_OUT_BACK`        | 14    | Back ease-out (overshoots end)     |
-| `EASE_IN_OUT_BACK`     | 15    | Back ease-in-out                   |
-| `EASE_IN_BOUNCE`       | 16    | Bounce ease-in                     |
-| `EASE_OUT_BOUNCE`      | 17    | Bounce ease-out                    |
-| `EASE_IN_OUT_BOUNCE`   | 18    | Bounce ease-in-out                 |
+| Method | Return | Behavior |
+|---|---|---|
+| `LerpI64(from, to, t)` | `Integer` | Clamp finite `t` to 0–1, interpolate through double, then round |
+| `Ease(t, type)` | `Double` | Apply one curve; non-finite/`t <= 0` returns 0 and `t >= 1` returns 1 |
 
-### Zia Example
+An unknown `Ease` type returns the already-clamped linear `t`. The `Start` methods instead replace
+an unknown type with 0 before storing it.
+
+| Code | Curve | Code | Curve |
+|---:|---|---:|---|
+| 0 | linear | 10 | in exponential |
+| 1 | in quadratic | 11 | out exponential |
+| 2 | out quadratic | 12 | in/out exponential |
+| 3 | in/out quadratic | 13 | in back |
+| 4 | in cubic | 14 | out back |
+| 5 | out cubic | 15 | in/out back |
+| 6 | in/out cubic | 16 | in bounce |
+| 7 | in sine | 17 | out bounce |
+| 8 | out sine | 18 | in/out bounce |
+| 9 | in/out sine |  |  |
+
+Back curves can leave the 0–1 range between their exact endpoints. That overshoot also affects
+`Value`.
+
+### Zia example
 
 ```rust
 module TweenDemo;
 
-bind Viper.Terminal;
 bind Viper.Game.Tween as Tween;
-bind Viper.Text.Fmt as Fmt;
+bind Viper.Terminal;
 
 func start() {
-    var tw = Tween.New();
-    tw.Start(0.0, 100.0, 10, 0);  // Linear, 10 frames
+    var move = Tween.New();
+    move.StartI64(0, 100, 4, 2); // out quadratic
 
-    var i = 0;
-    while i < 11 {
-        var done = tw.Update();
-        Say("Frame " + Fmt.Int(i) + ": " + Fmt.Int(tw.get_ValueI64()));
-        if done { Say("  Complete!"); }
-        i = i + 1;
+    while move.IsRunning {
+        var completedNow = move.Update();
+        SayInt(move.ValueI64);
+        if completedNow {
+            Say("complete");
+        }
     }
 
-    // Integer tween with easing
-    var tw2 = Tween.New();
-    tw2.StartI64(0, 200, 5, 2);  // EASE_OUT_QUAD
-
-    // Static lerp
-    Say("Lerp(0,100,0.5): " + Fmt.Int(Tween.LerpI64(0, 100, 0.5)));
+    move.Reset(); // rewinds and starts again
+    move.Update();
+    move.Stop();  // holds the current value; IsComplete remains false
+    SayBool(move.IsComplete);
 }
-```
-
-### Example: Smooth Movement
-
-```basic
-DIM canvas AS OBJECT = Viper.Graphics.Canvas.New("Tween Demo", 800, 600)
-DIM moveTween AS OBJECT = Viper.Game.Tween.New()
-
-' Move from x=100 to x=600 over 60 frames with ease-out
-moveTween.Start(100.0, 600.0, 60, 2)  ' EASE_OUT_QUAD = 2
-
-DO WHILE NOT canvas.ShouldClose
-    canvas.Poll()
-    canvas.Clear(32)
-
-    ' Update tween
-    IF moveTween.Update() THEN
-        PRINT "Animation complete!"
-    END IF
-
-    ' Draw at tweened position
-    DIM x AS INTEGER = moveTween.ValueI64
-    canvas.Box(x, 280, 40, 40, 16711680)
-
-    ' Show progress
-    canvas.Text(10, 10, "Progress: " & moveTween.Progress & "%", 16777215)
-
-    canvas.Flip()
-LOOP
-```
-
-### Example: UI Transitions
-
-```basic
-' Fade-in effect using opacity tween
-DIM fadeTween AS OBJECT = Viper.Game.Tween.New()
-fadeTween.Start(0.0, 255.0, 30, 8)  ' EASE_OUT_SINE
-
-DO WHILE fadeTween.IsRunning
-    canvas.Poll()
-    fadeTween.Update()
-
-    DIM alpha AS INTEGER = fadeTween.ValueI64
-    DIM color AS INTEGER = 16711680 OR (alpha << 24)
-    canvas.Clear(0)
-    canvas.BoxFilled(100, 100, 200, 150, color)
-    canvas.Flip()
-LOOP
 ```
 
 ---
 
 ## Viper.Game.SpriteAnimation
 
-Frame-based sprite animation controller for animated characters, effects, and UI elements.
+`SpriteAnimation` selects an integer frame index. It does not own an image or extract a sprite.
 
-**Type:** Instance class (requires `New()`)
-
-### Constructor
-
-| Method  | Signature           | Description               |
-|---------|---------------------|---------------------------|
-| `New()` | `SpriteAnimation()` | Create new animation      |
+- **Type:** instance class
+- **Constructor:** `SpriteAnimation.New()`
+- **Defaults:** range 0–0, six updates per displayed frame, speed 1.0, loop enabled, ping-pong
+  disabled, and stopped
 
 ### Properties
 
-| Property        | Type                   | Description                              |
-|-----------------|------------------------|------------------------------------------|
-| `Frame`         | `Integer` (read/write) | Current frame index                      |
-| `FrameDuration` | `Integer` (read/write) | Frames to display each animation frame   |
-| `FrameCount`    | `Integer` (read-only)  | Total frames in animation                |
-| `IsPlaying`     | `Boolean` (read-only)  | True if playing (not paused/stopped)     |
-| `IsPaused`      | `Boolean` (read-only)  | True if paused                           |
-| `IsFinished`    | `Boolean` (read-only)  | True if one-shot animation completed     |
-| `Progress`      | `Integer` (read-only)  | Completion percentage (0-100)            |
-| `Speed`         | `Double` (read/write)  | Playback speed multiplier (1.0 = normal) |
-| `Loop`          | `Boolean` (read/write) | Enable looping                           |
-| `PingPong`      | `Boolean` (read/write) | Enable ping-pong (forward/backward)      |
-| `FrameChanged`  | `Boolean` (read-only)  | True if frame changed this update        |
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `Frame` | `Integer` | read/write | Current frame, clamped to the configured range |
+| `FrameDuration` | `Integer` | read/write | Update ticks per displayed frame; values below one become one |
+| `FrameCount` | `Integer` | read | Inclusive configured range size |
+| `IsPlaying` | `Boolean` | read | True while playing and not paused |
+| `IsPaused` | `Boolean` | read | Pause flag |
+| `IsFinished` | `Boolean` | read | True after a non-looping traversal completes |
+| `Progress` | `Integer` | read | Current frame's truncated 0–100 position in the forward range |
+| `Speed` | `Double` | read/write | Playback multiplier, clamped to 0.0–10.0 |
+| `Loop` | `Boolean` | read/write | Wrap or continue ping-pong traversal |
+| `PingPong` | `Boolean` | read/write | Traverse forward and then backward |
+| `FrameChanged` | `Boolean` | read | Whether the latest `Update()` changed the visible frame at least once |
 
 ### Methods
 
-| Method                        | Signature           | Description                         |
-|-------------------------------|---------------------|-------------------------------------|
-| `Pause()`                     | `Void()`            | Pause (can resume)                  |
-| `Play()`                      | `Void()`            | Start/restart from beginning        |
-| `Reset()`                     | `Void()`            | Reset to first frame                |
-| `Resume()`                    | `Void()`            | Resume paused animation             |
-| `Setup(start, end, duration)` | `Void(Int,Int,Int)` | Configure frame range and timing    |
-| `Stop()`                      | `Void()`            | Stop and reset to first frame       |
-| `Update()`                    | `Boolean()`         | Advance animation; high playback speeds may step through multiple frames in one call |
+| Method | Return | Behavior |
+|---|---|---|
+| `Setup(start, end, frameDuration)` | `Void` | Configure an inclusive forward-only range and rewind |
+| `Play()` | `Void` | Start or restart from the configured first frame |
+| `Stop()` | `Void` | Stop, rewind, and clear pause/finish state |
+| `Pause()` | `Void` | Pause only if currently playing |
+| `Resume()` | `Void` | Clear pause; it does not start a stopped animation |
+| `Reset()` | `Void` | Rewind counters/frame without changing play or pause state |
+| `Update()` | `Boolean` | Advance timing; true only on the update that finishes a one-shot traversal |
+| `Destroy()` | `Void` | Release the handle |
 
-`Stop()` clears pause/finish state and rewinds to the configured start frame. In one-shot ping-pong mode, a single-frame animation now reports completion on the first completed update instead of waiting for a second bounce.
+`Setup` clamps a negative start to zero, clamps the end up to the start, and clamps duration to at
+least one. It resets the frame, counters, direction, and finish flag but deliberately preserves
+the play and pause flags. Reverse ranges cannot be configured here; `AnimStateMachine` does support
+them.
 
-### Zia Example
+Each `Update()` adds `Speed` to a fractional accumulator. Speed 0 freezes the visible frame while
+the object remains playing. Values above 1 can consume several timing ticks and may cross multiple
+frames in one call. A non-finite or negative speed becomes zero; values above 10 become 10.
 
-```rust
-module SpriteAnimDemo;
+For a non-looping forward clip, the last frame remains visible for its complete duration. The next
+frame-step attempt marks the animation finished and returns true. A non-looping ping-pong clip
+travels from start to end and back to start, then finishes at the start. Its `Progress` consequently
+rises to 100 and falls back to 0; it is not a completion percentage in ping-pong mode. A one-frame
+ping-pong clip completes on its first timed step.
 
-bind Viper.Terminal;
-bind Viper.Game.SpriteAnimation as SA;
-bind Viper.Text.Fmt as Fmt;
-
-func start() {
-    var anim = SA.New();
-    anim.Setup(0, 7, 6);       // Frames 0-7, 6 game frames each
-    anim.set_Loop(true);       // Note: Loop takes bool, not int
-    anim.Play();
-
-    Say("FrameCount: " + Fmt.Int(anim.get_FrameCount()));
-
-    var i = 0;
-    while i < 20 {
-        anim.Update();
-        if anim.get_FrameChanged() {
-            Say("Frame " + Fmt.Int(i) + ": " + Fmt.Int(anim.get_Frame()));
-        }
-        i = i + 1;
-    }
-
-    anim.Pause();
-    Say("Paused at frame: " + Fmt.Int(anim.get_Frame()));
-    anim.Resume();
-    anim.Update();
-    Say("Resumed, frame: " + Fmt.Int(anim.get_Frame()));
-}
-```
-
-### Example: Character Walk Cycle
+### BASIC example
 
 ```basic
-DIM walkAnim AS OBJECT = Viper.Game.SpriteAnimation.New()
-walkAnim.Setup(0, 7, 6)  ' Frames 0-7, 6 game frames each
-walkAnim.Loop = 1
-walkAnim.Play()
+DIM walk AS OBJECT = Viper.Game.SpriteAnimation.New()
+walk.Setup(0, 7, 6)
+walk.Loop = TRUE
+walk.Speed = 1.0
+walk.Play()
 
-' In game loop
-walkAnim.Update()
-DIM frameIndex AS INTEGER = walkAnim.Frame
-' Use frameIndex to select sprite region
+FOR tick = 1 TO 12
+    IF walk.Update() THEN PRINT "one-shot completed"
+    IF walk.FrameChanged THEN PRINT walk.Frame
+NEXT
+
+walk.Pause()
+PRINT walk.IsPaused
+walk.Resume()
+END
 ```
-
-### Example: Attack Animation (One-Shot)
-
-```basic
-DIM attackAnim AS OBJECT = Viper.Game.SpriteAnimation.New()
-attackAnim.Setup(8, 15, 4)  ' Frames 8-15, faster playback
-attackAnim.Loop = 0  ' One-shot
-
-' Trigger attack
-attackAnim.Play()
-
-' In game loop
-IF attackAnim.Update() THEN
-    ' Animation finished, return to idle
-    idleAnim.Play()
-END IF
-```
-
-### Notes
-
-- `Update()` can advance through multiple frames in one call when `Speed` is high or frame time accumulates; `FrameChanged` still reports whether any visible frame step occurred.
-- Non-looping animations still finish on their terminal frame even if a single update consumes several frame steps.
 
 ---
 
 ## Viper.Game.AnimStateMachine
 
-Combined state machine + animation playback. Each state maps to an animation clip
-(frame range, duration, loop flag). Transitions automatically reconfigure the animation.
-Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation together.
+`AnimStateMachine` maps state IDs to frame clips and combines transitions, playback, and
+frame-keyed event IDs. It holds at most 32 clips.
 
-**Type:** Instance (obj)
-**Constructor:** `NEW Viper.Game.AnimStateMachine()`
+- **Type:** instance class
+- **Constructor:** `AnimStateMachine.New()`
+- **Initial state:** no current/previous state (`-1`), frame 0, stopped
 
 ### Properties
 
-| Property         | Type    | Access | Description                                       |
-|------------------|---------|--------|---------------------------------------------------|
-| `CurrentState`   | Integer | Read   | Current state ID (-1 if none set)                 |
-| `PreviousState`  | Integer | Read   | Previous state ID (-1 if no transition occurred)  |
-| `JustEntered`    | Boolean | Read   | 1 if a transition occurred since last ClearFlags  |
-| `JustExited`     | Boolean | Read   | 1 if the previous state was exited                |
-| `FramesInState`  | Integer | Read   | Frames spent in the current state                 |
-| `CurrentFrame`   | Integer | Read   | Current animation frame index                     |
-| `IsAnimFinished` | Boolean | Read   | 1 if the current one-shot clip has finished       |
-| `Progress`       | Integer | Read   | Animation progress 0-100 within the current clip  |
-| `StateName`      | String  | Read   | Name of the current named state, or empty string  |
-| `EventFired`     | Boolean | Read   | True once when the configured event frame is reached |
-| `EventsFiredCount` | Integer | Read | Compatibility: number of multi-events fired during the most recent `Update()` |
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `CurrentState` | `Integer` | read | Current state ID, or -1 |
+| `PreviousState` | `Integer` | read | State before the latest real transition, or -1 |
+| `JustEntered` | `Boolean` | read | Latched transition flag |
+| `JustExited` | `Boolean` | read | Latched flag; false for the initial state |
+| `FramesInState` | `Integer` | read | Number of `Update()` calls in the state, saturating at the integer maximum |
+| `CurrentFrame` | `Integer` | read | Current clip frame |
+| `IsAnimFinished` | `Boolean` | read | Whether the current non-looping clip has completed |
+| `Progress` | `Integer` | read | Truncated 0–100 position through either a forward or reverse clip |
+| `StateName` | `Object` | read | Runtime string for a named state, otherwise an empty string |
+
+`StateName` is registered as bare `Object` even though the runtime returns a string. In Zia, assign
+it to an explicitly typed string when string operations are needed.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `AddState(id, start, end, dur, loop)` | `Void(Integer, Integer, Integer, Integer, Boolean)` | Register a state with its animation clip |
-| `SetInitial(id)` | `Boolean(Integer)` | Set the initial state (must be added first) |
-| `Transition(id)` | `Boolean(Integer)` | Transition to a new state; same-state transitions are successful no-ops |
-| `Update()` | `Void()` | Advance one frame — call once per game loop |
-| `ClearFlags()` | `Void()` | Clear JustEntered / JustExited edge flags |
-| `AddNamed(name, start, end, dur, loop)` | `Void(String, Integer, Integer, Integer, Boolean)` | Register a named state |
-| `Play(name)` | `Void(String)` | Transition to a named state |
-| `SetEventFrame(frame)` | `Void(Integer)` | Configure a frame event |
-| `AddEvent(stateId, frame, eventId)` | `Boolean(Integer, Integer, Integer)` | Add a frame-keyed event to a specific state; returns false when `frame` is outside the state's clip |
-| `ClearEvents(stateId)` | `Void(Integer)` | Remove all multi-events from a state |
-| `PollEvents()` | `AnimationEventBatch()` | Snapshot event IDs from the most recent update |
-| `EventFiredId(index)` | `Integer(Integer)` | Compatibility: get an event id from the most recent update, or 0 when invalid |
+| Method | Return | Behavior |
+|---|---|---|
+| `AddState(id, start, end, duration, loop)` | `Void` | Add or replace a numeric clip |
+| `AddNamed(name, start, end, duration, loop)` | `Void` | Add a clip with an automatically assigned ID and copied name |
+| `SetInitial(id)` | `Boolean` | Select a registered starting state |
+| `Transition(id)` | `Boolean` | Switch to a registered state |
+| `Play(name)` | `Void` | Transition to the first registered clip with that name |
+| `Update()` | `Void` | Advance the state counter and at most one animation frame |
+| `ClearFlags()` | `Void` | Clear `JustEntered` and `JustExited` |
+| `AddEvent(stateId, frame, eventId)` | `Boolean` | Add one event to a frame in that clip |
+| `ClearEvents(stateId)` | `Void` | Remove all multi-events from one clip |
+| `PollEvents()` | `AnimationEventBatch` | Snapshot IDs fired by the most recent update |
+| `SetEventFrame(frame)` | `Void` | Configure the obsolete single-event path; see warning below |
 
-### Zia Example
+### Registration and transition rules
+
+- Numeric state IDs must be non-negative. A negative ID is ignored.
+- Negative start/end frames are independently clamped to zero. `start > end` creates a supported
+  reverse clip. Duration is clamped to at least one update per frame.
+- Re-registering an ID overwrites its clip and clears that clip's events. If it is already active,
+  the current playback fields are not reapplied until a later transition.
+- Adding a 33rd distinct state traps. Each state holds at most eight events; a ninth returns false.
+- `SetInitial` sets `JustEntered`, clears the previous state, and starts the clip. Unknown IDs
+  return false.
+- `Transition` to the current ID returns true but is a no-op: it neither restarts playback nor
+  relatches flags. A real transition resets the frame and event masks.
+- Transition flags remain true until `ClearFlags()`; reading them does not consume them.
+
+`AddNamed` copies at most 31 bytes of the name. The current auto-ID algorithm uses the clip count,
+not an unused-ID search. Mixing sparse numeric IDs with named registration can overwrite a numeric
+clip and store the name into the wrong slot. Until that defect is fixed, use either sequential
+numeric states starting at zero or named states on a fresh machine; do not mix the two styles.
+
+### Playback and events
+
+`Update()` does nothing before `SetInitial`/`Play`. Once active, `FramesInState` increases every
+call, including while a one-shot is already finished. Animation playback advances at most one
+frame per call. Like `SpriteAnimation`, a one-shot finishes only when the runtime attempts to step
+past the terminal frame after that frame's configured duration.
+
+`AddEvent` accepts only a frame inside the target clip, including reverse clips. Events are checked
+when playback crosses a frame, returned in insertion order, and debounced for the current clip
+cycle. A looping wrap clears the masks so they can fire next cycle. Merely entering a state does
+not fire an event attached to its starting frame. Call `PollEvents()` after each `Update()` before
+the next update replaces the producer's current event list.
+
+`SetEventFrame` remains in the public registry, but its only observer (`EventFired`) is no longer
+registered. It has no usable public result. Use `AddEvent` and `PollEvents` instead. The former
+`EventsFiredCount` and `EventFiredId` compatibility members are also no longer public.
+
+### Viper.Game.AnimationEventBatch
+
+The result of `PollEvents()` is an immutable copy that remains valid after later animation updates.
+
+| Member | Return | Behavior |
+|---|---|---|
+| `Count` | `Integer` | Number of copied IDs |
+| `GetId(index)` | `Integer` | ID at a valid zero-based index; otherwise 0 |
+| `Contains(eventId)` | `Boolean` | Linear membership test |
+| `Ids()` | `Object` | New owned `Seq` of boxed integers |
+
+`Ids()` is registered as bare `Object`, not `Viper.Collections.Seq`. `GetId` is the most portable
+way to iterate. The integer 0 is a valid event ID, so use `Count` to distinguish it from an invalid
+index.
+
+### Zia example
 
 ```rust
-module CharacterDemo;
-bind Viper.Game;
+module AnimStateDemo;
 
-// State IDs
+bind Viper.Game.AnimStateMachine as AnimStateMachine;
+bind Viper.Terminal;
+
 final IDLE = 0;
-final WALK = 1;
-final JUMP = 2;
-final ATTACK = 3;
+final ATTACK = 1;
+final HIT_EVENT = 40;
 
 func start() {
-    var anim = AnimStateMachine.New();
+    var machine = AnimStateMachine.New();
+    machine.AddState(IDLE, 0, 3, 2, true);
+    machine.AddState(ATTACK, 8, 10, 1, false);
+    machine.AddEvent(ATTACK, 9, HIT_EVENT);
+    machine.SetInitial(IDLE);
+    machine.ClearFlags();
 
-    // Define states: (id, startFrame, endFrame, frameDuration, loop)
-    anim.AddState(IDLE,   0,  3, 8, true);   // frames 0-3, slow loop
-    anim.AddState(WALK,   4,  9, 4, true);   // frames 4-9, medium loop
-    anim.AddState(JUMP,  10, 13, 3, false);  // frames 10-13, one-shot
-    anim.AddState(ATTACK,14, 17, 2, false);  // frames 14-17, fast one-shot
-
-    anim.SetInitial(IDLE);
-
-    // Game loop
-    // ...
-    anim.Update();
-    var frame = anim.CurrentFrame;  // Use to set sprite frame
-
-    // Transition based on input
-    var speed = 1;
-    if speed > 0 {
-        anim.Transition(WALK);
-    } else {
-        anim.Transition(IDLE);
+    machine.Transition(ATTACK);
+    var tick = 0;
+    while tick < 4 {
+        machine.Update();
+        var events = machine.PollEvents();
+        if events.Contains(HIT_EVENT) {
+            Say("apply hit");
+        }
+        tick = tick + 1;
     }
 
-    // Check for one-shot completion
-    if anim.IsAnimFinished {
-        anim.Transition(IDLE);
-    }
-
-    anim.ClearFlags();
+    SayBool(machine.IsAnimFinished);
+    machine.ClearFlags();
 }
 ```
-
-### Notes
-
-- `Update()` does nothing until an initial state has been set.
-- `SetEventFrame` is the legacy single-event flag. Use `AddEvent` when a state needs more than one frame event or explicit event IDs.
-- Multi-events fire once per clip playback when the current frame crosses the registered frame. They are cleared and can fire again after a transition or timeline reset.
-- Transitioning to the current state returns true without relatching `JustEntered` / `JustExited`.
-- Frame events fire once when playback reaches the configured frame and do not retrigger while the frame remains unchanged.
 
 ---
 
 ## Viper.Game.AnimTimeline
 
-Frame-based timeline for sequencing animation tracks, integer tweens, and marker events. It is useful for cutscenes, scripted UI motion, and coordinating game animation without tying the sequence to one sprite.
+`AnimTimeline` is a passive frame scheduler. It stores track spans and payload integers, advances a
+playhead, and reports crossed marker IDs. It does **not** own or update a `Tween`,
+`SpriteAnimation`, or `AnimStateMachine`; application code must query the timeline and drive those
+objects itself.
 
-**Type:** Instance (obj)
-**Constructor:** `AnimTimeline.New(totalDurationFrames)`
+- **Type:** instance class
+- **Constructor:** `AnimTimeline.New(totalDurationFrames)`
+- **Capacity:** 16 tracks and 32 markers
+- **Initial state:** frame 0, stopped, non-looping, unfinished
+
+The total duration is clamped to at least one. It is not exposed as a property.
 
 ### Properties
 
-| Property | Type | Access | Description |
-|----------|------|--------|-------------|
-| `IsPlaying` | Boolean | Read | True while playback is active |
-| `IsFinished` | Boolean | Read | True after a non-looping timeline reaches the end |
-| `CurrentFrame` | Integer | Read | Current timeline frame |
-| `Looping` | Boolean | Write | Enable wrap-around playback |
-| `EventsFiredCount` | Integer | Read | Compatibility: marker count fired by the most recent `Advance` |
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `IsPlaying` | `Boolean` | read | Whether positive advances can move the playhead |
+| `IsFinished` | `Boolean` | read | Whether non-looping playback reached the end |
+| `CurrentFrame` | `Integer` | read | Current frame, 0 through total duration for non-looping playback |
+| `Looping` | `Boolean` | write only | Enable modulo wrap at the total duration |
+
+There is no public getter for `Looping`.
 
 ### Methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `AddAnimTrack(name, start, duration, stateId)` | `Integer(String, Integer, Integer, Integer)` | Add an animation track payload |
-| `AddTweenTrack(name, start, duration, from, to)` | `Integer(String, Integer, Integer, Integer, Integer)` | Add an integer tween payload |
-| `AddMarker(frame, eventId)` | `Integer(Integer, Integer)` | Add a marker event |
-| `Play()` / `Pause()` / `Stop()` | `Void()` | Control playback |
-| `Advance(deltaFrames)` | `Void(Integer)` | Move forward and record marker events crossed |
-| `PollEvents()` | `AnimationEventBatch()` | Snapshot marker event IDs from the latest advance |
-| `EventFiredId(index)` | `Integer(Integer)` | Compatibility: read marker event IDs from the latest advance |
-| `TrackIsActive(index)` | `Boolean(Integer)` | True if current frame is inside a track range |
-| `TrackProgress(index)` | `Double(Integer)` | Track progress from 0.0 to 1.0 |
-| `TrackPayloadA(index)` | `Integer(Integer)` | Read the first track payload value |
-| `TrackPayloadB(index)` | `Integer(Integer)` | Read the second track payload value |
-| `TrackPayloadC(index)` | `Integer(Integer)` | Read the third track payload value |
+| Method | Return | Behavior |
+|---|---|---|
+| `AddAnimTrack(name, start, duration, stateId)` | `Integer` | Add a span whose payload A is `stateId` |
+| `AddTweenTrack(name, start, duration, from, to)` | `Integer` | Add a span with A=`from`, B=`to`, C=0 |
+| `AddMarker(frame, eventId)` | `Integer` | Add a marker |
+| `Play()` | `Void` | Start/resume at the current frame and clear finish state |
+| `Pause()` | `Void` | Stop advancing without rewinding |
+| `Stop()` | `Void` | Stop, rewind to zero, and reset marker fired flags |
+| `Advance(deltaFrames)` | `Void` | Move forward by a positive integer amount |
+| `PollEvents()` | `AnimationEventBatch` | Snapshot marker IDs from the latest advance |
+| `TrackIsActive(index)` | `Boolean` | Test the track's half-open active span |
+| `TrackProgress(index)` | `Double` | Return its clamped 0.0–1.0 playhead position |
+| `TrackPayloadA/B/C(index)` | `Integer` | Read stored payload slots; invalid indices return 0 |
 
-`Stop()` rewinds to frame 0 and clears fired marker state. In looping mode, markers are reset when playback wraps so they can fire on later loops.
+Track starts are clamped to zero, durations to at least one, and names are copied into 31-byte
+internal fields. Names have no public query. The add methods return insertion-order indices or -1
+at capacity. Track spans are half-open: `[start, start + duration)`. `TrackProgress` is zero at and
+before the start and one at and after the end.
 
-`AnimationEventBatch` exposes `Count`, `GetId(index)`, `Contains(eventId)`, and `Ids()`. Prefer
-`PollEvents()` over reading `EventsFiredCount` plus `EventFiredId` because the returned batch can
-be stored safely after the animation advances again.
+The current implementation never updates payload C. For tween tracks it remains zero at every
+playhead position; callers must calculate the interpolated value from payload A, payload B, and
+`TrackProgress`, or use a real `Tween`. Anim tracks similarly only expose a state ID; they do not
+transition a state machine.
+
+### Playback and marker rules
+
+`Advance` first clears the latest marker list, even when its delta is non-positive or playback is
+paused. A non-looping advance that reaches the duration leaves `CurrentFrame` equal to the duration,
+sets finished, and stops. `Play()` at that terminal frame does not rewind, so the next advance
+finishes immediately; call `Stop()` before replaying from the start.
+
+Markers fire when crossed in `(oldFrame, newFrame]` and are returned in marker insertion order.
+Consequences of the current implementation include:
+
+- A marker at frame zero does not fire on initial playback. It can fire on a looping wrap.
+- Markers beyond the total duration are accepted but cannot fire.
+- A single looping `Advance` spanning several cycles reports each marker at most once.
+- Loop wrap resets all marker flags, allowing markers to fire on later advances.
+
+The former mutable `EventsFiredCount` and `EventFiredId` C entry points are not in the current
+public registry. Use `PollEvents()`.
+
+### Zia example
+
+```rust
+module TimelineDemo;
+
+bind Viper.Game.AnimTimeline as AnimTimeline;
+bind Viper.Game.Tween as Tween;
+bind Viper.Terminal;
+
+final SWAP_SCENE = 90;
+
+func start() {
+    var timeline = AnimTimeline.New(60);
+    var track = timeline.AddTweenTrack("panel-x", 10, 20, 0, 300);
+    timeline.AddMarker(30, SWAP_SCENE);
+    timeline.Play();
+    timeline.Advance(15);
+
+    if timeline.TrackIsActive(track) {
+        var x = Tween.LerpI64(
+            timeline.TrackPayloadA(track),
+            timeline.TrackPayloadB(track),
+            timeline.TrackProgress(track));
+        SayInt(x);
+    }
+
+    timeline.Advance(15);
+    var events = timeline.PollEvents();
+    SayBool(events.Contains(SWAP_SCENE));
+}
+```
 
 ---
 
 ## Viper.Graphics.SpriteSheet
 
-> **Note:** SpriteSheet is in the `Viper.Graphics` namespace, not `Viper.Game`.
+`SpriteSheet` belongs to `Viper.Graphics`, not `Viper.Game`. It retains one `Pixels` atlas and maps
+names to rectangular regions. Extraction creates a new independent `Pixels` buffer each time.
 
-Sprite sheet/atlas for named region extraction from a single texture. Defines named rectangular regions within an atlas image and extracts them as individual `Pixels` buffers.
+- **Type:** instance class
+- **Constructors:** `SpriteSheet.New(atlas)` and `SpriteSheet.FromGrid(atlas, width, height)`
+- **Initial region capacity:** 16, growing as needed
 
-**Type:** Instance class (requires `New(atlas)` or `FromGrid(atlas, frameW, frameH)`)
+### Properties and methods
 
-### Constructors
+| Member | Return/access | Behavior |
+|---|---|---|
+| `RegionCount` | `Integer`, read | Number of named regions |
+| `Width` | `Integer`, read | Atlas width |
+| `Height` | `Integer`, read | Atlas height |
+| `SetRegion(name, x, y, w, h)` | `Void` | Add or replace a valid in-bounds rectangle |
+| `GetRegion(name)` | `Object` | New `Pixels` copy, or null when missing/allocation fails |
+| `HasRegion(name)` | `Boolean` | Whether the name exists |
+| `RegionNames()` | `Object` | New owned `Seq` of names in insertion order |
+| `RemoveRegion(name)` | `Boolean` | Remove a region while preserving remaining order |
 
-| Method                          | Signature                         | Description                                     |
-|---------------------------------|-----------------------------------|-------------------------------------------------|
-| `New(atlas)`                    | `SpriteSheet(Pixels)`             | Create from atlas Pixels buffer                 |
-| `FromGrid(atlas, frameW, frameH)` | `SpriteSheet(Pixels, Int, Int)` | Create with uniform grid (auto-named "0", "1", ...) |
+The two object-returning methods are not registered with their concrete `Pixels`/`Seq` result
+types. In Zia, call an explicit class accessor such as `Pixels.get_Width(value)` or
+`Seq.get_Count(value)` when member inference cannot recover the erased type.
 
-Both constructors require a real `Pixels` atlas handle. Invalid or wrong-class atlas handles return `NULL` instead of being retained as a corrupt sheet.
+Both constructors require an actual `Pixels` handle. `New` returns null for a null or wrong-class
+atlas. `FromGrid` additionally requires positive cell dimensions and exact divisibility in both
+directions. It names cells `"0"`, `"1"`, and so on in row-major order.
 
-### Properties
+`SetRegion` silently ignores a null/empty name, non-positive dimensions, negative coordinates, or
+a rectangle outside the atlas. Replacing a name keeps its insertion position. Adding copies the
+name; it does not retain the caller's string. There is no Boolean success result, and name-allocation
+failure is also silent.
 
-| Property      | Type                  | Description                              |
-|---------------|-----------------------|------------------------------------------|
-| `RegionCount` | `Integer` (read-only) | Number of defined regions                |
-| `Width`       | `Integer` (read-only) | Width of the underlying atlas            |
-| `Height`      | `Integer` (read-only) | Height of the underlying atlas           |
+`GetRegion` allocates and copies the rectangle on every call. The returned pixels do not share
+storage with the atlas, so modifications in either object do not affect the other. Cache extracted
+regions if they are used every frame.
 
-### Methods
-
-| Method                         | Signature                      | Description                                   |
-|--------------------------------|--------------------------------|-----------------------------------------------|
-| `GetRegion(name)`              | `Pixels(String)`               | Extract region as new Pixels (NULL if missing) |
-| `HasRegion(name)`              | `Boolean(String)`              | Check if region name exists                   |
-| `RegionNames()`                | `Seq()`                        | Get all region names as a Seq                 |
-| `RemoveRegion(name)`           | `Boolean(String)`              | Remove a region; false if not found           |
-| `SetRegion(name, x, y, w, h)` | `Void(String,Int,Int,Int,Int)` | Define a named region                         |
-
-### Notes
-
-- `FromGrid()` automatically slices the atlas into equal cells and names them `"0"`, `"1"`, etc. (left-to-right, top-to-bottom)
-- Atlas width and height must be exact multiples of `frameW` and `frameH`; partial right/bottom strips are rejected instead of being silently dropped
-- `GetRegion()` returns a new Pixels object each call — cache results for repeated use
-- Region coordinates are in pixels, relative to the atlas top-left corner
-- Backed by a single atlas Pixels object — regions share the source data
-
-### Zia Example
+### Zia example
 
 ```rust
 module SpriteSheetDemo;
 
 bind Viper.Graphics;
+bind Viper.Collections.Seq as Seq;
 bind Viper.Terminal;
-bind Viper.Collections;
-bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var atlas = Pixels.New(128, 128);
+    var atlas = Pixels.New(64, 32);
     atlas.Fill(Color.RGB(255, 0, 0));
 
-    var sheet = SpriteSheet.New(atlas);
-    Say("Regions: " + Fmt.Int(sheet.RegionCount));  // 0
+    var sheet = SpriteSheet.FromGrid(atlas, 16, 16);
+    SayInt(sheet.RegionCount); // 8
 
-    // Define named regions
-    sheet.SetRegion("idle", 0, 0, 32, 32);
-    sheet.SetRegion("walk1", 32, 0, 32, 32);
-    sheet.SetRegion("walk2", 64, 0, 32, 32);
-    sheet.SetRegion("jump", 96, 0, 32, 32);
+    var frame = sheet.GetRegion("0");
+    SayInt(Pixels.get_Width(frame));
 
-    // Query regions
-    SayBool(sheet.HasRegion("idle"));     // true
-    SayBool(sheet.HasRegion("attack"));   // false
-
-    // Get region as Pixels
-    var region = sheet.GetRegion("idle");
-    SayInt(Pixels.get_Width(region));   // 32
-
-    // Region names list
     var names = sheet.RegionNames();
-    SayInt(Seq.get_Count(names));  // 4
-
-    // Remove a region
-    sheet.RemoveRegion("jump");
-    SayInt(sheet.RegionCount);  // 3
-
-    // Auto-slice from grid
-    var gridSheet = SpriteSheet.FromGrid(atlas, 32, 32);
-    SayInt(gridSheet.RegionCount);  // 16
+    SayInt(Seq.get_Count(names));
+    sheet.RemoveRegion("7");
+    SayBool(sheet.HasRegion("7"));
 }
 ```
-
-### BASIC Example
-
-```basic
-' Load an atlas image
-DIM atlas AS OBJECT = Viper.Graphics.Pixels.Load("sprites.png")
-
-' Method 1: Manual region definition
-DIM sheet AS OBJECT = Viper.Graphics.SpriteSheet.New(atlas)
-sheet.SetRegion("player_idle", 0, 0, 32, 48)
-sheet.SetRegion("player_walk1", 32, 0, 32, 48)
-sheet.SetRegion("player_walk2", 64, 0, 32, 48)
-sheet.SetRegion("enemy", 0, 48, 32, 32)
-
-' Extract a region
-DIM idle AS OBJECT = sheet.GetRegion("player_idle")
-
-' Check what's available
-PRINT sheet.RegionCount  ' Output: 4
-IF sheet.HasRegion("enemy") THEN
-    DIM enemy AS OBJECT = sheet.GetRegion("enemy")
-END IF
-
-' Method 2: Uniform grid layout
-DIM gridSheet AS OBJECT = Viper.Graphics.SpriteSheet.FromGrid(atlas, 32, 32)
-' Regions auto-named "0", "1", "2", ... (left-to-right, top-to-bottom)
-DIM frame0 AS OBJECT = gridSheet.GetRegion("0")
-DIM frame1 AS OBJECT = gridSheet.GetRegion("1")
-
-' List all region names
-DIM names AS OBJECT = gridSheet.RegionNames()
-FOR i = 0 TO names.Length - 1
-    PRINT names.Get(i)
-NEXT
-```
-
-### Use Cases
-
-- **Character animation:** Define walk, idle, attack frames from a sprite sheet
-- **Tile sets:** Extract tiles from a uniform grid atlas
-- **UI elements:** Store buttons, icons, and decorations in a single texture
-- **Game objects:** Keep all enemy sprites in one atlas for efficient loading
 
 ---
 
 ## Viper.Game.PathFollower
 
-Path following for moving objects along predefined waypoint paths.
+`PathFollower` moves a fixed-point position along up to 64 waypoints.
 
-**Type:** Instance class (requires `New()`)
-
-### Constructor
-
-| Method  | Signature        | Description                |
-|---------|------------------|----------------------------|
-| `New()` | `PathFollower()` | Create a new path follower |
+- **Type:** instance class
+- **Constructor:** `PathFollower.New()`
+- **Defaults:** no points, once mode, stopped, speed 100000 (100 world units/second)
+- **Scale:** coordinates and speed use 1000 units per world unit; `Progress` uses 0–1000 per mille
 
 ### Properties
 
-| Property     | Type                   | Description                                  |
-|--------------|------------------------|----------------------------------------------|
-| `PointCount` | `Integer` (read-only)  | Number of waypoints                          |
-| `Mode`       | `Integer` (read/write) | Path mode (0=once, 1=loop, 2=pingpong)       |
-| `Speed`      | `Integer` (read/write) | Speed in units/sec (fixed-point: 1000=1)     |
-| `IsActive`   | `Boolean` (read-only)  | True if following path                       |
-| `IsFinished` | `Boolean` (read-only)  | True if reached end (once mode)              |
-| `X`          | `Integer` (read-only)  | Current X position (fixed-point)             |
-| `Y`          | `Integer` (read-only)  | Current Y position (fixed-point)             |
-| `Progress`   | `Integer` (read/write) | Overall progress (0-1000)                    |
-| `Segment`    | `Integer` (read-only)  | Current segment index                        |
-| `Angle`      | `Integer` (read-only)  | Movement direction (degrees × 1000)          |
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `PointCount` | `Integer` | read | Waypoint count, 0–64 |
+| `Mode` | `Integer` | read/write | 0 once, 1 loop, 2 ping-pong |
+| `Speed` | `Integer` | read/write | Positive fixed-point world units per second |
+| `IsActive` | `Boolean` | read | Whether updates are enabled |
+| `IsFinished` | `Boolean` | read | True only after once-mode completion |
+| `X`, `Y` | `Integer` | read | Current fixed-point coordinates |
+| `Progress` | `Integer` | read/write | Path-distance position from 0 through 1000 |
+| `Segment` | `Integer` | read | Current zero-based segment index |
+| `Angle` | `Integer` | read | Quantized direction in degrees × 1000 |
 
 ### Methods
 
-| Method           | Signature           | Description                          |
-|------------------|---------------------|--------------------------------------|
-| `AddPoint(x, y)` | `Boolean(Int,Int)`  | Add waypoint (fixed-point coords)    |
-| `Clear()`        | `Void()`            | Remove all waypoints                 |
-| `Pause()`        | `Void()`            | Pause movement                       |
-| `Start()`        | `Void()`            | Begin following path                 |
-| `Stop()`         | `Void()`            | Stop and reset to start              |
-| `Update(dt)`     | `Void(Integer)`     | Update position (dt in milliseconds) |
+| Method | Return | Behavior |
+|---|---|---|
+| `AddPoint(x, y)` | `Boolean` | Append one waypoint; false at 64 |
+| `Clear()` | `Void` | Remove all waypoints and reset state |
+| `Start()` | `Void` | Start/resume when at least two points exist |
+| `Pause()` | `Void` | Disable updates without moving |
+| `Stop()` | `Void` | Disable updates and rewind, preserving points |
+| `Update(dtMilliseconds)` | `Void` | Spend the distance implied by a positive delta |
+| `Destroy()` | `Void` | Release the handle and its length cache |
 
-### Path Modes
+Invalid mode values and non-positive speed assignments are ignored, preserving the current value.
+Use `Pause()` rather than speed zero. The first point immediately becomes `X`/`Y`. Adding points
+marks a lazily rebuilt segment-length cache dirty.
 
-| Constant              | Value | Description                |
-|-----------------------|-------|----------------------------|
-| `PATHFOLLOW_ONCE`     | 0     | Play once, stop at end     |
-| `PATHFOLLOW_LOOP`     | 1     | Loop back to start         |
-| `PATHFOLLOW_PINGPONG` | 2     | Reverse at endpoints       |
+`Start()` is a no-op with fewer than two points. It resumes a paused path from its current position;
+after once-mode completion it rewinds first. `Stop()` always rewinds and clears completion. `Clear()`
+also discards the waypoints.
 
-### Coordinate Scale
+Each positive update computes `floor(Speed * dt / 1000)` fixed-point distance and can cross several
+segments. Once mode stops at the final point. Loop mode jumps from the final point back to the first
+segment; it does not add a closing last-to-first segment. Ping-pong reverses over the same segments.
+Setting `Progress` clamps to 0–1000 and seeks by path length, but does not change active, finished,
+or traversal-direction flags.
 
-PathFollower uses a 1000:1 coordinate scale — 1000 units equals 1 world unit. Waypoint coordinates should be specified in this scale.
-Zero-length segments are skipped automatically during playback, so duplicate adjacent waypoints no longer stall loop or ping-pong paths.
+`Angle` is only an eight-direction approximation: 0, 45, 90, …, 315 degrees, multiplied by 1000.
+Positive Y is treated as down. It reflects reverse traversal in ping-pong mode. It is not an
+`atan2` result for the actual segment slope.
 
-### Zia Example
+### Current precision and degenerate-path limitations
+
+Adjacent duplicate waypoints are skipped when positive movement reaches them, but a path whose
+total length is zero remains active forever and never becomes finished. Do not start an all-equal
+path.
+
+Movement has no fractional-distance remainder, and segment position is stored in only 1001 steps.
+If `Speed * dt / 1000` is below one fixed-point unit, the entire update is lost. Even above that,
+movement smaller than one-thousandth of the current segment produces a zero progress delta and is
+also lost. Repeated small updates can therefore stall permanently instead of accumulating. Choose
+a timestep/speed for which each update advances at least one per-mille step of the longest segment,
+or perform the accumulation in application code until this defect is fixed.
+
+If allocation of the internal segment-length cache fails, length becomes zero and the follower can
+likewise remain active without motion; no public error is reported and the cache is not retried
+until another point is added.
+
+### Zia example
 
 ```rust
 module PathFollowerDemo;
 
+bind Viper.Game.PathFollower as PathFollower;
 bind Viper.Terminal;
-bind Viper.Game.PathFollower as PF;
-bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var pf = PF.New();
-    pf.AddPoint(0, 0);
-    pf.AddPoint(100000, 0);       // 100 units right
-    pf.AddPoint(100000, 100000);   // 100 units down
-    pf.set_Speed(50000);           // 50 units/sec
-    pf.set_Mode(1);                // PATHFOLLOW_LOOP
+    var path = PathFollower.New();
+    path.AddPoint(0, 0);
+    path.AddPoint(100000, 0);      // 100 world units
+    path.AddPoint(100000, 50000); // then 50 down
+    path.Speed = 50000;           // 50 world units/second
+    path.Mode = 0;                // once
+    path.Start();
 
-    pf.Start();
-    Say("Points: " + Fmt.Int(pf.get_PointCount()));
-    Say("Active: " + Fmt.Bool(pf.get_IsActive()));
+    path.Update(100);             // five world units
+    SayInt(path.X / 1000);
+    SayInt(path.Y / 1000);
+    SayInt(path.Angle);
 
-    // Simulate a few frames
-    var i = 0;
-    while i < 5 {
-        pf.Update(16);
-        Say("Pos: " + Fmt.Int(pf.get_X()) + ", " + Fmt.Int(pf.get_Y()));
-        i = i + 1;
-    }
-
-    pf.Pause();
-    Say("Paused, segment: " + Fmt.Int(pf.get_Segment()));
+    path.Pause();
+    path.Start();                 // resume
 }
 ```
-
-### Example: Patrol Route
-
-```basic
-DIM patrol AS OBJECT = Viper.Game.PathFollower.New()
-patrol.AddPoint(100000, 100000)   ' 100, 100
-patrol.AddPoint(400000, 100000)   ' 400, 100
-patrol.AddPoint(400000, 400000)   ' 400, 400
-patrol.AddPoint(100000, 400000)   ' 100, 400
-patrol.Mode = 1                    ' PATHFOLLOW_LOOP
-patrol.Speed = 50000              ' 50 units/sec
-patrol.Start()
-
-' In game loop
-patrol.Update(16)
-DIM enemyX AS INTEGER = patrol.X / 1000
-DIM enemyY AS INTEGER = patrol.Y / 1000
-```
-
-### Example: Cutscene Camera
-
-```basic
-DIM cameraPath AS OBJECT = Viper.Game.PathFollower.New()
-cameraPath.AddPoint(0, 0)
-cameraPath.AddPoint(200000, 100000)
-cameraPath.AddPoint(500000, 300000)
-cameraPath.Mode = 0  ' PATHFOLLOW_ONCE
-cameraPath.Speed = 30000
-cameraPath.Start()
-
-DO WHILE NOT cameraPath.IsFinished
-    cameraPath.Update(16)
-    SetCameraPosition(cameraPath.X / 1000, cameraPath.Y / 1000)
-    RenderScene()
-LOOP
-```
-
-### Notes
-
-- `Start()` resumes a paused path. If an `ONCE` path already finished, `Start()` rewinds to the first waypoint before replaying it.
-- Closely spaced waypoints keep their true segment length; short segments are not collapsed away by internal distance rounding.
 
 ---
 
 ## Viper.Game.ButtonGroup
 
-Manages mutually exclusive button selection, like radio buttons or tool palettes. Only one button can be selected at a time. Button IDs are arbitrary integers, including `-1`; use `HasSelection` to distinguish "no selection" from selecting a button whose ID is `-1`.
+`ButtonGroup` stores integer IDs in insertion order and allows at most one selection. IDs are
+application values; the group does not retain Button objects or draw UI.
 
-**Type:** Instance class (requires `New()`)
-
-### Constructor
-
-| Method  | Signature       | Description                    |
-|---------|-----------------|--------------------------------|
-| `New()` | `ButtonGroup()` | Create a new empty button group|
+- **Type:** instance class
+- **Constructor:** `ButtonGroup.New()`
+- **Capacity:** 256 IDs
 
 ### Properties
 
-| Property           | Type                  | Description                                    |
-|--------------------|-----------------------|------------------------------------------------|
-| `Count`            | `Integer` (read-only) | Number of buttons in the group                 |
-| `Selected`         | `Integer` (read-only) | Currently selected button ID, or -1 if none    |
-| `HasSelection`     | `Boolean` (read-only) | True if any button is selected                 |
-| `SelectionChanged` | `Boolean` (read-only) | True if selection just changed this frame      |
+| Property | Type | Access | Meaning |
+|---|---|---|---|
+| `Count` | `Integer` | read | Registered ID count |
+| `Selected` | `Integer` | read | Selected ID, or -1 when none |
+| `HasSelection` | `Boolean` | read | Distinguishes no selection from selecting ID -1 |
+| `SelectionChanged` | `Boolean` | read | Latched until `ClearChangedFlag()` |
 
 ### Methods
 
-| Method               | Signature           | Description                                    |
-|----------------------|---------------------|------------------------------------------------|
-| `Add(id)`            | `Boolean(Integer)`  | Add button ID to group; false if exists        |
-| `ClearChangedFlag()` | `Void()`            | Clear SelectionChanged flag                    |
-| `ClearSelection()`   | `Void()`            | Deselect all buttons                           |
-| `GetAt(index)`       | `Integer(Integer)`  | Get button ID at index (for iteration)         |
-| `Has(id)`            | `Boolean(Integer)`  | Check if button ID is in group                 |
-| `IsSelected(id)`     | `Boolean(Integer)`  | Check if specific button is selected           |
-| `Remove(id)`         | `Boolean(Integer)`  | Remove button from group                       |
-| `Select(id)`         | `Boolean(Integer)`  | Select a button (deselects others)             |
-| `SelectNext()`       | `Integer()`         | Select next button (wraps); returns new ID     |
-| `SelectPrev()`       | `Integer()`         | Select previous button (wraps); returns new ID |
+| Method | Return | Behavior |
+|---|---|---|
+| `Add(id)` | `Boolean` | Append a unique ID |
+| `Remove(id)` | `Boolean` | Remove an existing ID |
+| `Has(id)` | `Boolean` | Test registration |
+| `Select(id)` | `Boolean` | Select a registered ID |
+| `ClearSelection()` | `Void` | Deselect, if selected |
+| `IsSelected(id)` | `Boolean` | Test the active selection |
+| `ClearChangedFlag()` | `Void` | Clear the change latch |
+| `GetAt(index)` | `Integer` | Read an insertion-order ID; invalid index returns -1 |
+| `SelectNext()` | `Integer` | Cycle forward with wrap |
+| `SelectPrevious()` | `Integer` | Cycle backward with wrap |
+| `Destroy()` | `Void` | Release the handle |
 
-### Zia Example
+`Add` normally returns false for a duplicate. The current implementation checks capacity before
+checking duplicates, so *any* `Add` call after the group reaches 256 IDs traps—even an attempt to
+re-add an existing ID. `GetAt` returning -1 is also ambiguous because -1 is a valid registered ID;
+iterate only from zero to `Count - 1`.
 
-```rust
-module ButtonGroupDemo;
+Selecting an unknown ID returns false. Selecting the already selected ID returns true without
+setting the change latch. Removing the selected ID or clearing a real selection sets the latch;
+removing another ID does not. Reading `SelectionChanged` never clears it.
 
-bind Viper.Terminal;
-bind Viper.Game.ButtonGroup as BG;
-bind Viper.Text.Fmt as Fmt;
+With no selection, `SelectNext()` chooses the first ID and `SelectPrevious()` chooses the last.
+Both return -1 for an empty group, which is again ambiguous with a valid ID. Cycling a one-item
+group that is already selected does not set `SelectionChanged`.
 
-func start() {
-    var bg = BG.New();
-    bg.Add(0);  // Pencil
-    bg.Add(1);  // Brush
-    bg.Add(2);  // Eraser
-    bg.Select(0);
-
-    Say("Selected: " + Fmt.Int(bg.get_Selected()));
-    Say("Count: " + Fmt.Int(bg.get_Count()));
-
-    bg.SelectNext();
-    Say("After next: " + Fmt.Int(bg.get_Selected()));
-
-    bg.SelectPrev();
-    Say("After prev: " + Fmt.Int(bg.get_Selected()));
-
-    Say("IsSelected(0): " + Fmt.Bool(bg.IsSelected(0)));
-}
-```
-
-### Example: Tool Palette
+### BASIC example
 
 ```basic
-' Tool IDs
 CONST TOOL_PENCIL = 1
 CONST TOOL_BRUSH = 2
 CONST TOOL_ERASER = 3
-CONST TOOL_FILL = 4
 
-' Create tool group
 DIM tools AS OBJECT = Viper.Game.ButtonGroup.New()
 tools.Add(TOOL_PENCIL)
 tools.Add(TOOL_BRUSH)
 tools.Add(TOOL_ERASER)
-tools.Add(TOOL_FILL)
-tools.Select(TOOL_PENCIL)  ' Default tool
+tools.Select(TOOL_PENCIL)
 
-' Handle keyboard shortcuts
-IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyP) THEN tools.Select(TOOL_PENCIL)
-IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyB) THEN tools.Select(TOOL_BRUSH)
-IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyE) THEN tools.Select(TOOL_ERASER)
-IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyF) THEN tools.Select(TOOL_FILL)
+PRINT tools.Selected
+tools.ClearChangedFlag()
+tools.SelectNext()
 
-' Cycle through tools with Tab
-IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyTab) THEN
-    tools.SelectNext()
-END IF
-
-' React to selection change
 IF tools.SelectionChanged THEN
-    SELECT CASE tools.Selected
-    CASE TOOL_PENCIL: SetCursor("pencil")
-    CASE TOOL_BRUSH: SetCursor("brush")
-    CASE TOOL_ERASER: SetCursor("eraser")
-    CASE TOOL_FILL: SetCursor("bucket")
-    END SELECT
+    PRINT tools.Selected
     tools.ClearChangedFlag()
 END IF
 
-' Draw tool palette with selection highlighting
-FOR i = 0 TO tools.Count - 1
-    DIM toolId AS INTEGER = tools.GetAt(i)
-    DIM highlight AS INTEGER = 0
-    IF tools.IsSelected(toolId) THEN highlight = 1
-    DrawToolButton(i, toolId, highlight)
-NEXT
-```
-
-### Example: Radio Buttons
-
-```basic
-' Difficulty options
-CONST DIFF_EASY = 0
-CONST DIFF_NORMAL = 1
-CONST DIFF_HARD = 2
-
-DIM difficulty AS OBJECT = Viper.Game.ButtonGroup.New()
-difficulty.Add(DIFF_EASY)
-difficulty.Add(DIFF_NORMAL)
-difficulty.Add(DIFF_HARD)
-difficulty.Select(DIFF_NORMAL)  ' Default
-
-' In menu update
-IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyUp) THEN
-    difficulty.SelectPrev()
-END IF
-IF Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.KeyDown) THEN
-    difficulty.SelectNext()
-END IF
-
-' Get selected difficulty for game settings
-DIM selectedDifficulty AS INTEGER = difficulty.Selected
+tools.SelectPrevious()
+PRINT tools.IsSelected(TOOL_PENCIL)
+END
 ```
 
 ---
 
+## See also
 
-## See Also
-
-- [Core Utilities](core.md)
+- [Core Game Utilities](core.md)
 - [Physics & Collision](physics.md)
 - [Visual Effects](effects.md)
-- [Game Utilities Overview](README.md)
-- [Viper Runtime Library](../README.md)
+- [Graphics](../graphics/README.md)
+- [Generated Game API](../../generated/runtime/game.md)
+- [Generated Graphics API](../../generated/runtime/graphics.md)

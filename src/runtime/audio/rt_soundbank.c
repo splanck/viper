@@ -183,7 +183,10 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
     rt_soundbank_impl *bank = as_soundbank(bank_ptr);
     if (!bank || !name || !sound)
         return 0;
-    if (!rt_sound_is_handle(sound))
+    // A registration must establish playability (VDOC-121): wrappers whose
+    // backend handles were detached by Audio.Shutdown are rejected here
+    // rather than failing later inside SoundBank.Play.
+    if (!rt_sound_is_playable(sound))
         return 0;
 
     int replacing;

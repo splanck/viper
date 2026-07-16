@@ -74,7 +74,7 @@ func start() {
     }
 
     // Test 7: Circle body via static function
-    var circ = Viper.Game.Physics2D.CircleBody.New(50.0, 50.0, 25.0, 1.0);
+    var circ = Viper.Game.Physics2D.Body.NewCircle(50.0, 50.0, 25.0, 1.0);
     var is_circ = Viper.Game.Physics2D.Body.get_IsCircle(circ);
     if (is_circ != true) {
         Say("FAIL: circle body should report IsCircle");

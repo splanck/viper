@@ -6,32 +6,32 @@ PRINT "=== Viper.Text.Codec API Audit ==="
 ' --- Base64Enc / Base64Dec ---
 PRINT "--- Base64 ---"
 DIM b64 AS STRING
-b64 = Viper.Text.Codec.Base64Enc("Hello, World!")
+b64 = Viper.Text.Codec.Base64Encode("Hello, World!")
 PRINT "Encoded: "; b64
-PRINT "Decoded: "; Viper.Text.Codec.Base64Dec(b64)
+PRINT "Decoded: "; Viper.Text.Codec.Base64Decode(b64)
 
 DIM b64_2 AS STRING
-b64_2 = Viper.Text.Codec.Base64Enc("Viper Language")
+b64_2 = Viper.Text.Codec.Base64Encode("Viper Language")
 PRINT "Encoded: "; b64_2
-PRINT "Decoded: "; Viper.Text.Codec.Base64Dec(b64_2)
+PRINT "Decoded: "; Viper.Text.Codec.Base64Decode(b64_2)
 
 ' Empty string
 DIM b64_empty AS STRING
-b64_empty = Viper.Text.Codec.Base64Enc("")
+b64_empty = Viper.Text.Codec.Base64Encode("")
 PRINT "Empty encoded: "; b64_empty
-PRINT "Empty decoded: "; Viper.Text.Codec.Base64Dec(b64_empty)
+PRINT "Empty decoded: "; Viper.Text.Codec.Base64Decode(b64_empty)
 
 ' --- HexEnc / HexDec ---
 PRINT "--- Hex ---"
 DIM hex AS STRING
-hex = Viper.Text.Codec.HexEnc("Hi!")
+hex = Viper.Text.Codec.HexEncode("Hi!")
 PRINT "Hex encoded: "; hex
-PRINT "Hex decoded: "; Viper.Text.Codec.HexDec(hex)
+PRINT "Hex decoded: "; Viper.Text.Codec.HexDecode(hex)
 
 DIM hex2 AS STRING
-hex2 = Viper.Text.Codec.HexEnc("ABC")
+hex2 = Viper.Text.Codec.HexEncode("ABC")
 PRINT "Hex encoded: "; hex2
-PRINT "Hex decoded: "; Viper.Text.Codec.HexDec(hex2)
+PRINT "Hex decoded: "; Viper.Text.Codec.HexDecode(hex2)
 
 ' --- UrlEncode / UrlDecode ---
 PRINT "--- URL Encoding ---"

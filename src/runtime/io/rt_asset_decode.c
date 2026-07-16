@@ -11,11 +11,11 @@
 //          using the appropriate format decoder.
 //
 // Key invariants:
-//   - For formats with internal buffer APIs (JPEG, Sound), calls them directly.
-//   - For formats without buffer APIs (PNG, BMP, GIF, OBJ, etc.), writes to a
-//     temp file and calls the file-based loader. This is safe and non-invasive.
+//   - JPEG, PNG, GIF, and Sound decoding use in-memory entry points.
+//   - BMP currently spills to an exclusive temporary file for its path-based loader.
 //   - Extension matching is case-insensitive.
-//   - Returns NULL for unknown extensions (caller should return as Bytes).
+//   - Returns NULL for unknown extensions and failed recognized decodes; the caller
+//     falls back to Bytes in either case.
 //
 // Ownership/Lifetime:
 //   - Input data buffer is borrowed (not freed).
@@ -280,12 +280,10 @@ static int iext(const char *name, const char *ext) {
 
 /// @brief Adapter that lets file-based image decoders consume in-memory bytes.
 ///
-/// Viper's decoder suite is split: JPEG and audio codecs accept raw
-/// memory buffers (`_decode_buffer`, `_load_mem`), but PNG, BMP, and
-/// GIF decoders only have file-path entry points (they rely on
-/// file-handle seek semantics internally). To feed those loaders
-/// from embedded/mounted assets, we spill the bytes to an exclusively
-/// created temp file, call the path-based loader, and unlink.
+/// Some decoders expose only a file-path entry point. To feed those loaders
+/// from embedded/mounted assets, this helper spills the bytes to an exclusively
+/// created temp file, calls the path-based loader, and unlinks it. The current
+/// caller uses this path for BMP; JPEG, PNG, GIF, and audio decode in memory.
 static void *load_via_tempfile(const uint8_t *data,
                                size_t size,
                                const char *ext,
@@ -497,7 +495,7 @@ static void *load_via_tempfile(const uint8_t *data,
 /// @param name  Asset name (for extension detection).
 /// @param data  Raw asset bytes.
 /// @param size  Size of data.
-/// @return Typed GC object, or NULL if extension is unknown (return as Bytes).
+/// @return Typed GC object, or NULL if the extension is unknown or decoding fails.
 void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size) {
     if (!name || !data || size == 0)
         return NULL;

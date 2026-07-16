@@ -1436,7 +1436,7 @@ class Executor {
             if left.kind == SQL_NULL { return sqlInteger(0); }
             var leftStr = left.toString();
             var pattern = right.toString();
-            if String.LikeCI(leftStr, pattern) {
+            if String.LikeIgnoreCase(leftStr, pattern) {
                 return sqlInteger(1);
             }
             return sqlInteger(0);
@@ -2186,7 +2186,7 @@ class Executor {
 
     // Hash for GROUP BY and hash join bucketing (FNV-1a via runtime).
     expose func computeKeyHash(s: String) -> Integer {
-        var h = Viper.Crypto.Hash.Fast(s);
+        var h = Viper.Crypto.Hash.NonCryptoFast(s);
         if h < 0 { return 0 - h; }
         return h;
     }

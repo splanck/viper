@@ -7,18 +7,18 @@ func start() {
     var bs = new Viper.Collections.BitSet(64);
     SayBool(bs.IsEmpty);
     SayInt(bs.Length);
-    bs.Set(3);
-    bs.Set(7);
-    bs.Set(15);
+    bs.SetBit(3);
+    bs.SetBit(7);
+    bs.SetBit(15);
     SayInt(bs.Count);
-    SayBool(bs.Get(3));
-    SayBool(bs.Get(4));
-    bs.Toggle(3);
-    SayBool(bs.Get(3));
-    bs.Clear(7);
+    SayBool(bs.GetBit(3));
+    SayBool(bs.GetBit(4));
+    bs.ToggleBit(3);
+    SayBool(bs.GetBit(3));
+    bs.ClearBit(7);
     SayInt(bs.Count);
     Say(bs.ToString());
-    bs.ClearAll();
+    bs.Clear();
     SayInt(bs.Count);
 
     var bf = new Viper.Collections.BloomFilter(1000, 0.01);
@@ -33,9 +33,9 @@ func start() {
     uf.Union(1, 2);
     uf.Union(3, 4);
     uf.Union(2, 3);
-    SayBool(uf.Connected(1, 4));
-    SayBool(uf.Connected(1, 5));
-    SayInt(uf.SetSize(1));
+    SayBool(uf.IsConnected(1, 4));
+    SayBool(uf.IsConnected(1, 5));
+    SayInt(uf.ComponentSize(1));
 
     var by = new Viper.Collections.Bytes(8);
     SayInt(by.Length);
@@ -49,22 +49,22 @@ func start() {
 
     var lru = new Viper.Collections.LruCache(3);
     SayBool(lru.IsEmpty);
-    SayInt(lru.Cap);
-    lru.Put("a", "1");
-    lru.Put("b", "2");
-    lru.Put("c", "3");
+    SayInt(lru.Capacity);
+    lru.Set("a", "1");
+    lru.Set("b", "2");
+    lru.Set("c", "3");
     SayInt(lru.Count);
     SayBool(lru.Has("a"));
-    lru.Put("d", "4");
+    lru.Set("d", "4");
     SayInt(lru.Count);
     lru.Remove("d");
     SayInt(lru.Count);
 
     var mm = new Viper.Collections.MultiMap();
     SayBool(mm.IsEmpty);
-    mm.Put("color", "red");
-    mm.Put("color", "blue");
-    mm.Put("size", "large");
+    mm.Add("color", "red");
+    mm.Add("color", "blue");
+    mm.Add("size", "large");
     SayInt(mm.Count);
     SayInt(mm.KeyCount);
     SayInt(mm.CountFor("color"));

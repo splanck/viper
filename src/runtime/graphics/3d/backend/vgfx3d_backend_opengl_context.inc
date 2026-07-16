@@ -708,6 +708,21 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         return NULL;
     }
     gl.Enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+    /* Reversed-Z depth precision: with GL_ZERO_TO_ONE clip control the
+     * fixed [-1,1]->[0,1] window remap is dropped, so the reversed depth
+     * distribution keeps its float density at the far field. Opt-in via
+     * VIPER_GL_CLIP_CONTROL=1 until validated on a live Linux/GL machine
+     * (this TU has no compile or run coverage on the macOS dev host); the
+     * shader prologue (compile_shader_parts) and the VS z remap key off
+     * gl_zero_to_one_clip, so flipping the default is a one-line change. */
+    gl_zero_to_one_clip = 0;
+    {
+        const char *clip_opt = getenv("VIPER_GL_CLIP_CONTROL");
+        if (clip_opt && strcmp(clip_opt, "1") == 0 && gl.ClipControl) {
+            gl.ClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+            gl_zero_to_one_clip = 1;
+        }
+    }
     gl_init_context_defaults(ctx, w, h);
     gl_query_default_framebuffer_buffer(ctx);
     gl_probe_default_framebuffer_writable(ctx);

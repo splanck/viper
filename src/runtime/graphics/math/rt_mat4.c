@@ -5,22 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_mat4.c
+// File: src/runtime/graphics/math/rt_mat4.c
 // Purpose: 4x4 matrix mathematics for the Viper.Mat4 class. Implements 3D
 //   affine and projective transforms: translation, rotation (from quaternion or
 //   axis-angle), scale, matrix multiplication, transpose, determinant, inverse,
-//   perspective and orthographic projection, and Vec3/Vec4 transformation.
+//   perspective and orthographic projection, and Vec3 point/direction transformation.
 //   Used by the 3D scene graph, camera, and skeletal animation systems.
 //
 // Key invariants:
 //   - Elements are stored in row-major order: m[r*4+c] accesses row r, column c.
-//   - The bottom row of affine transforms is always (0, 0, 0, 1).
+//   - Affine factory matrices use bottom row (0,0,0,1); New and arithmetic
+//     operations can produce an arbitrary bottom row.
 //   - Rotation basis vectors (X, Y, Z columns) represent the transformed axes;
 //     translation is stored in column 3 (Tx, Ty, Tz).
 //   - Mat4 objects are immutable after creation; all operations return new
 //     objects allocated from the GC heap.
-//   - Inverse is computed via cofactor expansion; degenerate matrices (det == 0)
-//     return the identity matrix with a runtime warning.
+//   - Inverse is computed via cofactor expansion; a non-finite determinant or
+//     |det| < 1e-15 silently returns the identity matrix.
 //   - Perspective projection uses a right-handed coordinate system, depth range
 //     [-1, 1] (OpenGL convention), with near/far clip planes.
 //
@@ -28,9 +29,9 @@
 //   - All Mat4 objects are allocated via rt_obj_new_i64 (GC heap); no manual
 //     free is required. The mat4_impl struct contains only a double[16] array.
 //
-// Links: src/runtime/graphics/rt_mat4.h (public API),
-//        src/runtime/graphics/rt_vec3.h (Vec3 operand and result type),
-//        src/runtime/graphics/rt_quat.h (quaternion-to-matrix conversion)
+// Links: src/runtime/graphics/math/rt_mat4.h (public API),
+//        src/runtime/graphics/math/rt_vec3.h (Vec3 operand and result type),
+//        src/runtime/graphics/math/rt_quat.h (quaternion-to-matrix conversion)
 //
 //===----------------------------------------------------------------------===//
 
@@ -413,7 +414,7 @@ double rt_mat4_get(void *m, int64_t row, int64_t col) {
 // Arithmetic
 //=============================================================================
 
-/// @brief Element-wise addition (a + b). Returns identity for NULL inputs.
+/// @brief Element-wise addition (a + b). Returns zero for invalid inputs.
 void *rt_mat4_add(void *a, void *b) {
     mat4_impl *ma = mat4_checked(a);
     mat4_impl *mb = mat4_checked(b);
@@ -442,7 +443,7 @@ void *rt_mat4_add(void *a, void *b) {
                        r[15]);
 }
 
-/// @brief Element-wise subtraction (a - b). Returns identity for NULL inputs.
+/// @brief Element-wise subtraction (a - b). Returns zero for invalid inputs.
 void *rt_mat4_sub(void *a, void *b) {
     mat4_impl *ma = mat4_checked(a);
     mat4_impl *mb = mat4_checked(b);
@@ -506,7 +507,7 @@ void *rt_mat4_mul(void *a, void *b) {
                        r[15]);
 }
 
-/// @brief Multiply every entry of `m` by scalar `s`. Returns identity for NULL `m`.
+/// @brief Multiply every entry of `m` by scalar `s`. Returns zero for invalid `m`.
 void *rt_mat4_mul_scalar(void *m, double s) {
     mat4_impl *mat = mat4_checked(m);
     if (!mat)
@@ -594,8 +595,7 @@ void *rt_mat4_transform_vec(void *m, void *v) {
 // Matrix Operations
 //=============================================================================
 
-/// @brief Return the transpose of `m` (rows become columns). Useful for converting between
-/// row-major and column-major matrix layouts when interfacing with other math libraries.
+/// @brief Return the mathematical transpose of `m` (rows become columns).
 void *rt_mat4_transpose(void *m) {
     mat4_impl *mat = mat4_checked(m);
     if (!mat)
@@ -718,7 +718,7 @@ void *rt_mat4_inverse(void *m) {
                        inv[15]);
 }
 
-/// @brief Element-wise negation (-m). Returns identity for NULL input.
+/// @brief Element-wise negation (-m). Returns zero for invalid input.
 void *rt_mat4_neg(void *m) {
     mat4_impl *mat = mat4_checked(m);
     if (!mat)

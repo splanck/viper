@@ -235,7 +235,7 @@ class CommandInputOverlay {
         completedAction = COMMAND_INPUT_NONE;
         if visible == false { return COMMAND_INPUT_NONE; }
         Layout(shell);
-        if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
+        if Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
             Cancel();
             return COMMAND_INPUT_CANCEL;
         }
@@ -244,7 +244,7 @@ class CommandInputOverlay {
             return COMMAND_INPUT_CANCEL;
         }
         if applyButton.WasClicked()
-           or Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter()) {
+           or Input.Keyboard.WasPressed(Viper.Input.Key.Enter) {
             return Complete();
         }
         return COMMAND_INPUT_NONE;

@@ -729,10 +729,10 @@ int64_t rt_obj_reference_equals(void *a, void *b) {
     return a == b ? 1 : 0;
 }
 
-/// @brief Default implementation of Object.Equals.
+/// @brief Runtime implementation of Object.Equals.
 ///
-/// Returns true if two references point to the same instance. This default
-/// behavior can be overridden by derived classes to implement value equality.
+/// Runtime strings compare by byte content and tagged boxes compare by tag and
+/// value. Other objects fall back to reference identity.
 ///
 /// **Usage example:**
 /// ```vb
@@ -746,8 +746,7 @@ int64_t rt_obj_reference_equals(void *a, void *b) {
 ///
 /// @return 1 if equal, 0 if not equal.
 ///
-/// @note Default implementation is reference equality.
-/// @note Derived classes may override to provide value-based equality.
+/// @note Use Object.RefEquals when identity is required for strings or boxes.
 int64_t rt_obj_equals(void *self, void *other) {
     int self_is_string = rt_string_is_handle(self);
     int other_is_string = rt_string_is_handle(other);
@@ -760,11 +759,10 @@ int64_t rt_obj_equals(void *self, void *other) {
     return self == other ? 1 : 0;
 }
 
-/// @brief Default implementation of Object.GetHashCode.
+/// @brief Runtime implementation of Object.HashCode.
 ///
-/// Returns a hash code derived from the object's memory address. This provides
-/// a stable hash for the object's lifetime but is not suitable for value-based
-/// hashing.
+/// Runtime strings hash their complete byte contents and tagged boxes hash their
+/// values consistently with Object.Equals. Other objects use a mixed pointer hash.
 ///
 /// **Usage example:**
 /// ```vb
@@ -773,9 +771,8 @@ int64_t rt_obj_equals(void *self, void *other) {
 ///
 /// @param self The object to hash.
 ///
-/// @return 64-bit hash code based on the object's address.
+/// @return 64-bit content/value/identity hash as appropriate for the runtime type.
 ///
-/// @note Derived classes should override if overriding Equals.
 /// @note Two equal objects (by Equals) must return the same hash code.
 int64_t rt_obj_get_hash_code(void *self) {
     if (!self)
@@ -800,8 +797,9 @@ int64_t rt_obj_get_hash_code(void *self) {
 
 /// @brief Default implementation of Object.ToString.
 ///
-/// Returns the class's qualified name as a string. For example, a Dog class
-/// would return "Dog", and a class in a namespace would return "MyApp.Dog".
+/// Strings return their own contents. Tagged boxes format their contained value.
+/// Built-in and user objects return a registered/qualified class name when one
+/// is available, and unknown objects fall back to "Object".
 ///
 /// **Usage example:**
 /// ```vb
@@ -811,7 +809,7 @@ int64_t rt_obj_get_hash_code(void *self) {
 ///
 /// @param self The object to convert to string (may be NULL).
 ///
-/// @return A new string containing the class name, or "<null>" if self is NULL.
+/// @return An owned display string, or "<null>" if self is NULL.
 ///
 /// @note Returns "Object" if type metadata is unavailable.
 /// @note Does not include memory address for deterministic test output.

@@ -12,8 +12,11 @@
 Provides Lazy functionality for functional programming workflows.
 
 `Viper.Functional.Lazy` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes a property such as `IsEvaluated` and
-operations including `Of`, `OfStr`, `OfI64`, `Get`.
+construct the class directly. Its public surface exposes properties such as `IsEvaluated` and
+operations including `New`, `Of`, `OfStr`, `OfI64`, `Get`. `New` wraps a zero-argument
+supplier that is invoked once on first access; the `Of*` factories wrap eager values.
+
+Constructor: `Viper.Functional.Lazy.New`
 
 #### Properties
 
@@ -33,7 +36,8 @@ operations including `Of`, `OfStr`, `OfI64`, `Get`.
 | <a id="viper-functional-lazy-geti64"></a>`GetI64` | `i64()` | `Viper.Functional.Lazy.GetI64` |
 | <a id="viper-functional-lazy-force"></a>`Force` | `void()` | `Viper.Functional.Lazy.Force` |
 | <a id="viper-functional-lazy-map"></a>`Map` | `obj<Viper.Functional.Lazy>(obj)` | `Viper.Functional.Lazy.Map` |
-| <a id="viper-functional-lazy-flatmap"></a>`FlatMap` | `obj<Viper.Functional.Lazy>(obj)` | `Viper.Functional.Lazy.FlatMap` |
+| <a id="viper-functional-lazy-andthen"></a>`AndThen` | `obj<Viper.Functional.Lazy>(obj)` | `Viper.Functional.Lazy.AndThen` |
+| <a id="viper-functional-lazy-new"></a>`New` | `obj<Viper.Functional.Lazy>(obj)` | `Viper.Functional.Lazy.New` |
 
 <a id="viper-functional-lazyseq"></a>
 ### `Viper.Functional.LazySeq`
@@ -58,7 +62,9 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-functional-lazyseq-range"></a>`Range` | `obj<Viper.Functional.LazySeq>(i64,i64,i64)` | `Viper.Functional.LazySeq.Range` |
 | <a id="viper-functional-lazyseq-repeat"></a>`Repeat` | `obj<Viper.Functional.LazySeq>(obj,i64)` | `Viper.Functional.LazySeq.Repeat` |
 | <a id="viper-functional-lazyseq-next"></a>`Next` | `obj()` | `Viper.Functional.LazySeq.Next` |
+| <a id="viper-functional-lazyseq-nextoption"></a>`NextOption` | `obj<Viper.Option>()` | `Viper.Functional.LazySeq.NextOption` |
 | <a id="viper-functional-lazyseq-peek"></a>`Peek` | `obj()` | `Viper.Functional.LazySeq.Peek` |
+| <a id="viper-functional-lazyseq-peekoption"></a>`PeekOption` | `obj<Viper.Option>()` | `Viper.Functional.LazySeq.PeekOption` |
 | <a id="viper-functional-lazyseq-reset"></a>`Reset` | `void()` | `Viper.Functional.LazySeq.Reset` |
 | <a id="viper-functional-lazyseq-map"></a>`Map` | `obj<Viper.Functional.LazySeq>(obj)` | `Viper.Functional.LazySeq.Map` |
 | <a id="viper-functional-lazyseq-filter"></a>`Filter` | `obj<Viper.Functional.LazySeq>(obj)` | `Viper.Functional.LazySeq.Filter` |
@@ -68,10 +74,9 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-functional-lazyseq-dropwhile"></a>`DropWhile` | `obj<Viper.Functional.LazySeq>(obj)` | `Viper.Functional.LazySeq.DropWhile` |
 | <a id="viper-functional-lazyseq-concat"></a>`Concat` | `obj<Viper.Functional.LazySeq>(obj)` | `Viper.Functional.LazySeq.Concat` |
 | <a id="viper-functional-lazyseq-toseq"></a>`ToSeq` | `seq<obj>()` | `Viper.Functional.LazySeq.ToSeq` |
-| <a id="viper-functional-lazyseq-toseqn"></a>`ToSeqN` | `seq<obj>(i64)` | `Viper.Functional.LazySeq.ToSeqN` |
+| `ToSeq` | `seq<obj>(i64)` | `Viper.Functional.LazySeq.ToSeqLimited` |
 | <a id="viper-functional-lazyseq-count"></a>`Count` | `i64()` | `Viper.Functional.LazySeq.Count` |
-| <a id="viper-functional-lazyseq-find"></a>`Find` | `obj(obj)` | `Viper.Functional.LazySeq.Find` |
-| <a id="viper-functional-lazyseq-findoption"></a>`FindOption` | `obj<Viper.Option>(obj)` | `Viper.Functional.LazySeq.FindOption` |
+| <a id="viper-functional-lazyseq-find"></a>`Find` | `obj<Viper.Option>(obj)` | `Viper.Functional.LazySeq.Find` |
 | <a id="viper-functional-lazyseq-any"></a>`Any` | `i1(obj)` | `Viper.Functional.LazySeq.Any` |
 | <a id="viper-functional-lazyseq-all"></a>`All` | `i1(obj)` | `Viper.Functional.LazySeq.All` |
 
@@ -79,6 +84,7 @@ to construct the class directly. Its public surface exposes properties such as `
 
 | Function | Signature | Runtime symbol |
 |---|---|---|
+| `Viper.Functional.Lazy.New` | `obj<Viper.Functional.Lazy>(obj)` | `rt_lazy_new_wrapper` |
 | `Viper.Functional.Lazy.Of` | `obj<Viper.Functional.Lazy>(obj)` | `rt_lazy_of` |
 | `Viper.Functional.Lazy.OfStr` | `obj<Viper.Functional.Lazy>(str)` | `rt_lazy_of_str` |
 | `Viper.Functional.Lazy.OfI64` | `obj<Viper.Functional.Lazy>(i64)` | `rt_lazy_of_i64` |
@@ -88,11 +94,13 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-functional-lazy-get-isevaluated"></a>`Viper.Functional.Lazy.get_IsEvaluated` | `i1(obj)` | `rt_lazy_is_evaluated` |
 | `Viper.Functional.Lazy.Force` | `void(obj)` | `rt_lazy_force` |
 | `Viper.Functional.Lazy.Map` | `obj<Viper.Functional.Lazy>(obj,obj)` | `rt_lazy_map_wrapper` |
-| `Viper.Functional.Lazy.FlatMap` | `obj<Viper.Functional.Lazy>(obj,obj)` | `rt_lazy_flat_map_wrapper` |
+| `Viper.Functional.Lazy.AndThen` | `obj<Viper.Functional.Lazy>(obj,obj)` | `rt_lazy_flat_map_wrapper` |
 | `Viper.Functional.LazySeq.Range` | `obj<Viper.Functional.LazySeq>(i64,i64,i64)` | `rt_lazyseq_w_range` |
 | `Viper.Functional.LazySeq.Repeat` | `obj<Viper.Functional.LazySeq>(obj,i64)` | `rt_lazyseq_w_repeat` |
 | `Viper.Functional.LazySeq.Next` | `obj(obj)` | `rt_lazyseq_w_next` |
 | `Viper.Functional.LazySeq.Peek` | `obj(obj)` | `rt_lazyseq_w_peek` |
+| `Viper.Functional.LazySeq.NextOption` | `obj<Viper.Option>(obj)` | `rt_lazyseq_w_next_option` |
+| `Viper.Functional.LazySeq.PeekOption` | `obj<Viper.Option>(obj)` | `rt_lazyseq_w_peek_option` |
 | `Viper.Functional.LazySeq.Reset` | `void(obj)` | `rt_lazyseq_w_reset` |
 | <a id="viper-functional-lazyseq-get-index"></a>`Viper.Functional.LazySeq.get_Index` | `i64(obj)` | `rt_lazyseq_w_index` |
 | <a id="viper-functional-lazyseq-get-isexhausted"></a>`Viper.Functional.LazySeq.get_IsExhausted` | `i1(obj)` | `rt_lazyseq_w_is_exhausted` |
@@ -100,14 +108,13 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Functional.LazySeq.Drop` | `obj<Viper.Functional.LazySeq>(obj,i64)` | `rt_lazyseq_w_drop` |
 | `Viper.Functional.LazySeq.Concat` | `obj<Viper.Functional.LazySeq>(obj,obj)` | `rt_lazyseq_w_concat` |
 | `Viper.Functional.LazySeq.ToSeq` | `seq<obj>(obj)` | `rt_lazyseq_w_to_seq` |
-| `Viper.Functional.LazySeq.ToSeqN` | `seq<obj>(obj,i64)` | `rt_lazyseq_w_to_seq_n` |
+| <a id="viper-functional-lazyseq-toseqlimited"></a>`Viper.Functional.LazySeq.ToSeqLimited` | `seq<obj>(obj,i64)` | `rt_lazyseq_w_to_seq_n` |
 | `Viper.Functional.LazySeq.Count` | `i64(obj)` | `rt_lazyseq_w_count` |
 | `Viper.Functional.LazySeq.Map` | `obj<Viper.Functional.LazySeq>(obj,obj)` | `rt_lazyseq_w_map` |
 | `Viper.Functional.LazySeq.Filter` | `obj<Viper.Functional.LazySeq>(obj,obj)` | `rt_lazyseq_w_filter` |
 | `Viper.Functional.LazySeq.TakeWhile` | `obj<Viper.Functional.LazySeq>(obj,obj)` | `rt_lazyseq_w_take_while` |
 | `Viper.Functional.LazySeq.DropWhile` | `obj<Viper.Functional.LazySeq>(obj,obj)` | `rt_lazyseq_w_drop_while` |
-| `Viper.Functional.LazySeq.Find` | `obj(obj,obj)` | `rt_lazyseq_w_find` |
-| `Viper.Functional.LazySeq.FindOption` | `obj<Viper.Option>(obj,obj)` | `rt_lazyseq_w_find_option` |
+| `Viper.Functional.LazySeq.Find` | `obj<Viper.Option>(obj,obj)` | `rt_lazyseq_w_find_option` |
 | `Viper.Functional.LazySeq.Any` | `i1(obj,obj)` | `rt_lazyseq_w_any` |
 | `Viper.Functional.LazySeq.All` | `i1(obj,obj)` | `rt_lazyseq_w_all` |
 

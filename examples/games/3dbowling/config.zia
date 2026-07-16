@@ -186,8 +186,11 @@ var PIN_RESTITUTION: Float = 0.08;
 var PIN_FRICTION: Float = 0.82;
 // Lower than the old 0.26/0.72: pins now tumble and slide into neighbors
 // instead of resisting the topple, so a good pocket hit carries the rack.
+// Angular damping recalibrated after the solver's world-space inertia fix:
+// pins tip about the correct axes now, so slightly more damping keeps the
+// pocket strike rate inside the realistic 40-80% band.
 var PIN_LINEAR_DAMPING: Float = 0.34;
-var PIN_ANGULAR_DAMPING: Float = 0.62;
+var PIN_ANGULAR_DAMPING: Float = 0.66;
 var PIN_Z_OFFSET: Float = 15.5;
 var PIN_KNOCKDOWN_SPEED: Float = 0.62;
 var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.062;

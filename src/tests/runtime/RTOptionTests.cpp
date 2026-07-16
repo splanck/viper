@@ -165,6 +165,16 @@ static void test_option_value() {
         test_result("Value on None returns NULL", rt_option_value(o) == NULL);
     }
 
+    // Test 3: Value never reinterprets typed payloads as pointers
+    {
+        test_result("Value on SomeI64 returns NULL",
+                    rt_option_value(rt_option_some_i64(42)) == NULL);
+        test_result("Value on SomeF64 returns NULL",
+                    rt_option_value(rt_option_some_f64(3.5)) == NULL);
+        test_result("Value on SomeStr returns NULL",
+                    rt_option_value(rt_option_some_str(rt_const_cstr("s"))) == NULL);
+    }
+
     printf("\n");
 }
 

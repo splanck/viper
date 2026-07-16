@@ -122,7 +122,7 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 | `canvas` | `Viper.Graphics3D.Canvas3D` |
 | `camera` | `Viper.Graphics3D.Camera3D` |
 | `scene` | `Viper.Graphics3D.SceneGraph` |
-| `physics` | `Viper.Graphics3D.Physics3DWorld` |
+| `physics` | `Viper.Graphics3D.PhysicsWorld3D` |
 | `input` | `Viper.Game3D.Input3D` |
 | `audio` | `Viper.Game3D.Sound3D` with a camera-aligned listener |
 | `effects` | `Viper.Game3D.EffectRegistry3D` with a `PostFX3D` chain and particle/decal registry |
@@ -160,7 +160,7 @@ and determinism — are never touched. Poses captured before a floating-origin
 rebase are discarded rather than lerped across the rebase delta.
 `FixedInterpolationAlpha` remains available for games that blend visual-only
 state manually.
-Raw `Viper.Graphics3D.Physics3DWorld` users can use the same fixed-step pattern
+Raw `Viper.Graphics3D.PhysicsWorld3D` users can use the same fixed-step pattern
 without the Game3D facade through `Physics3DWorld.StepFixed(dt, fixedDt,
 maxSteps)`, `FixedStepAlpha`, and `DroppedFixedSteps`. `fixedDt` should be
 positive (commonly `1.0 / 60.0`) and `maxSteps` should be a positive spiral
@@ -195,7 +195,7 @@ aggregates. `Summary()` returns stable `name=value` lines in that order,
 omitting zero counters and returning `""` when clean. Smoke probes can print
 `Game3D.Diagnostics.Summary()` and assert it is empty.
 
-`Viper.Graphics3D.Physics3DWorld.BroadphaseFallbackCount` reports the matching
+`Viper.Graphics3D.PhysicsWorld3D.BroadphaseFallbackCount` reports the matching
 per-world broadphase fallback total. CCD inspection remains available through
 `LastCcdRequestedSubsteps`, `LastCcdSubsteps`, `CcdSubstepClampedCount`, plus
 `LastCcdClampedBodyCount` and `CcdSubstepClampedBodyCount` for affected-body
@@ -521,7 +521,7 @@ Use `LayerMask.None()`, `LayerMask.All()`, `LayerMask.Of(layer)`,
 validated as single-bit masks. Physics query masks follow the same bit semantics:
 `LayerMask.None()` matches no layers, while `LayerMask.All()` matches any layer.
 
-`attachBody` also accepts a raw `Viper.Graphics3D.Physics3DBody` as an escape
+`attachBody` also accepts a raw `Viper.Graphics3D.PhysicsBody3D` as an escape
 hatch. The common path should use `BodyDef`, because it applies filters, node
 binding, sync mode, and world registration consistently. The default
 `BodyDef` sync mode is `NodeFromBody`: spawn seeds the body from the node once,
@@ -1050,7 +1050,7 @@ Game3D.Sound3D.setListenerPose(
 | `setListenerPose(pos, forward, up)` | Set a manual listener pose; `up` is reserved for future orientation support |
 | `setAttenuation(refDist, maxDist)` | Store and apply Game3D playback attenuation defaults; sources stay full-volume through `refDist`, then fall linearly to silence at `maxDist` |
 | `volume` | Default source/playback volume, clamped to 0..100 |
-| `load(path)` / `loadAsset(assetPath)` | Load a `Viper.Sound.Sound` clip from filesystem or asset resolver |
+| `load(path)` / `loadAsset(assetPath)` | Load a `Viper.Audio.Sound` clip from filesystem or asset resolver |
 | `playAt(clip, pos)` | Create and play a positional `SoundSource3D` at a `Vec3` |
 | `playAttached(clip, entity)` | Create an `SoundSource3D` bound to the entity node, so it follows after scene/body sync |
 | `play2D(clip)` | Play a non-positional clip and return the voice id |
@@ -1209,7 +1209,7 @@ for all runtime input APIs:
 | Numpad | `Numpad0`-`Numpad9`, `NumpadAdd`, `NumpadSubtract`, `NumpadMultiply`, `NumpadDivide`, `NumpadDecimal`, `NumpadEnter` |
 
 The same key codes remain available through `Viper.Input.Keyboard.Key*` and
-`Viper.Game3D.Keys` for compatibility. New examples should import
+`Viper.Input.Key` for compatibility. New examples should import
 `Viper.Input.Key` and reserve `Keyboard` for key state queries.
 
 ---
@@ -1378,7 +1378,7 @@ until `MoveChoice(±1)` + `ConfirmChoice()`; poll `ChoiceMade()` (one-shot) and
 `LipSync3D.New(entity)` makes speakers look alive: bind a `MorphTarget3D`
 (`BindMorph`) plus up to four mouth shapes (`BindMouthShape(name, scale)`),
 then `Drive(voiceId)` — the mixer's per-voice RMS meter
-(`Viper.Sound.Voice.EnableMetering/GetLevel`, pre-attenuation so distance
+(`Viper.Audio.Voice.EnableMetering/GetLevel`, pre-attenuation so distance
 never closes the mouth) feeds an envelope follower (0.04 s attack / 0.12 s
 release, soft-knee curve). `DriveLevel(level)` injects levels directly.
 `SetBlink(true, shape, minInterval, maxInterval)` adds seeded-deterministic
@@ -1572,5 +1572,5 @@ now live in the C runtime.
 `examples/3d/openworld_slice/` is the streaming vertical-slice smoke project.
 The bowling setup migration lives at `examples/games/3dbowling/game3d/`.
 
-Use the lower-level `Viper.Graphics3D` and `Viper.Sound` APIs as escape hatches
+Use the lower-level `Viper.Graphics3D` and `Viper.Audio` APIs as escape hatches
 when a sample needs behavior outside the Game3D convenience layer.

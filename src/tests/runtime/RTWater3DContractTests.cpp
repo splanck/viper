@@ -251,6 +251,12 @@ extern "C" void rt_material3d_set_double_sided(void *m, int8_t enabled) {
 
 extern "C" void rt_material3d_set_shininess(void *, double) {}
 
+/* Camera position read used by the SetSimDistance gate; the isolated harness
+ * has no camera module, so the gate stays inactive. */
+extern "C" int8_t rt_camera3d_get_position_components(void *, double *, double *, double *) {
+    return 0;
+}
+
 extern "C" void rt_material3d_set_ssr_enabled(void *, int8_t) {}
 
 extern "C" void rt_material3d_set_texture(void *m, void *tex) {

@@ -10,9 +10,9 @@ func start() {
     var canvas = Canvas3D.New("Transparency Demo", 640, 480);
     var cam = Camera3D.New(60.0, 640.0 / 480.0, 0.1, 100.0);
 
-    var sphere = Mesh3D.NewSphere(0.6, 16);
-    var floor = Mesh3D.NewPlane(10.0, 10.0);
-    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var sphere = Mesh3D.Sphere(0.6, 16);
+    var floor = Mesh3D.Plane(10.0, 10.0);
+    var box = Mesh3D.Box(1.0, 1.0, 1.0);
 
     // Build glass panel (vertical quad)
     var panel = Mesh3D.New();
@@ -24,31 +24,31 @@ func start() {
     Mesh3D.AddTriangle(panel, 0, 2, 3);
 
     // Opaque materials
-    var floor_mat = Material3D.NewColor(0.3, 0.3, 0.35);
-    var sphere_mat = Material3D.NewColor(0.9, 0.2, 0.15);
+    var floor_mat = Material3D.FromColor(0.3, 0.3, 0.35);
+    var sphere_mat = Material3D.FromColor(0.9, 0.2, 0.15);
     Material3D.SetShininess(sphere_mat, 64.0);
-    var box_mat = Material3D.NewColor(0.2, 0.5, 0.9);
+    var box_mat = Material3D.FromColor(0.2, 0.5, 0.9);
 
     // Transparent materials (glass panels)
-    var red_glass = Material3D.NewColor(1.0, 0.2, 0.2);
+    var red_glass = Material3D.FromColor(1.0, 0.2, 0.2);
     red_glass.Alpha = 0.35;
 
-    var green_glass = Material3D.NewColor(0.2, 1.0, 0.3);
+    var green_glass = Material3D.FromColor(0.2, 1.0, 0.3);
     green_glass.Alpha = 0.35;
 
-    var blue_glass = Material3D.NewColor(0.3, 0.4, 1.0);
+    var blue_glass = Material3D.FromColor(0.3, 0.4, 1.0);
     blue_glass.Alpha = 0.35;
 
     // Light
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.9);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
 
     var floor_xform = Mat4.Translate(0.0, -1.0, 0.0);
     var angle = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
 
         var target = new Vec3(0.0, 0.5, 0.0);

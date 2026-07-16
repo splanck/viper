@@ -30,7 +30,7 @@ PRINT qt.ItemCount       ' 3
 ' --- QueryRectResult (x, y, w, h) -> QueryResult ---
 PRINT "--- QueryRectResult ---"
 DIM result AS OBJECT
-result = qt.QueryRectResult(0, 0, 200, 200)
+result = qt.QueryRect(0, 0, 200, 200)
 PRINT result.Count       ' 3 (all items in range)
 PRINT result.Contains(1)
 DIM r0 AS INTEGER
@@ -40,13 +40,13 @@ PRINT r0
 ' --- QueryRectResult (narrow region) ---
 PRINT "--- QueryRectResult narrow ---"
 DIM found2 AS OBJECT
-found2 = qt.QueryRectResult(0, 0, 40, 40)
+found2 = qt.QueryRect(0, 0, 40, 40)
 PRINT found2.Count       ' 1
 
 ' --- QueryPointResult (x, y, radius) ---
 PRINT "--- QueryPointResult ---"
 DIM pFound AS OBJECT
-pFound = qt.QueryPointResult(15, 15, 10)
+pFound = qt.QueryPoint(15, 15, 10)
 PRINT pFound.Count
 
 ' --- Update (id, x, y, w, h) ---
@@ -59,11 +59,11 @@ PRINT qt.ItemCount       ' 3
 ' --- QueryRect after move ---
 PRINT "--- QueryRect after move ---"
 DIM found3Result AS OBJECT
-found3Result = qt.QueryRectResult(0, 0, 40, 40)
+found3Result = qt.QueryRect(0, 0, 40, 40)
 PRINT found3Result.Count ' 0
 
 DIM found4Result AS OBJECT
-found4Result = qt.QueryRectResult(390, 390, 30, 30)
+found4Result = qt.QueryRect(390, 390, 30, 30)
 PRINT found4Result.Count ' 1
 
 ' --- Remove ---
@@ -101,7 +101,7 @@ PRINT "--- Clear ---"
 qt.Clear()
 PRINT qt.ItemCount       ' 0
 DIM found5 AS OBJECT
-found5 = qt.QueryRectResult(0, 0, 800, 600)
+found5 = qt.QueryRect(0, 0, 800, 600)
 PRINT found5.Count       ' 0
 
 PRINT "=== Quadtree audit complete ==="

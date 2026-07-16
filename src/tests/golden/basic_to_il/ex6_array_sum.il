@@ -1,8 +1,5 @@
-il VERSION
+il 0.3.0
 extern @Viper.String.Asc(str) -> i64
-extern @Viper.Text.Char.IsIdentifierStart(str) -> i1
-extern @Viper.Text.Char.IsIdentifierPart(str) -> i1
-extern @Viper.Text.Char.IsAlnum(str) -> i1
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
 extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
@@ -14,18 +11,21 @@ extern @Viper.String.Mid(str, i64) -> str
 extern @Viper.String.MidLen(str, i64, i64) -> str
 extern @Viper.String.TrimEnd(str) -> str
 extern @Viper.String.Right(str, i64) -> str
-extern @Viper.String.Cmp(str, str) -> i64
-extern @Viper.String.CmpNoCase(str, str) -> i64
+extern @Viper.String.Compare(str, str) -> i64
+extern @Viper.String.CompareIgnoreCase(str, str) -> i64
 extern @Viper.String.Count(str, str) -> i64
 extern @Viper.String.EndsWith(str, str) -> i1
-extern @Viper.String.Flip(str) -> str
-extern @Viper.String.Has(str, str) -> i1
+extern @Viper.String.Reverse(str) -> str
+extern @Viper.String.Contains(str, str) -> i1
 extern @Viper.String.PadLeft(str, i64, str) -> str
 extern @Viper.String.PadRight(str, i64, str) -> str
 extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Replace(str, str, str) -> str
 extern @Viper.String.Split(str, str) -> ptr
 extern @Viper.String.Lines(str) -> ptr
+extern @Viper.Text.Char.IsIdentifierStart(str) -> i1
+extern @Viper.Text.Char.IsIdentifierPart(str) -> i1
+extern @Viper.Text.Char.IsAlphanumeric(str) -> i1
 extern @Viper.String.StartsWith(str, str) -> i1
 extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Trim(str) -> str
@@ -35,8 +35,8 @@ extern @Viper.Terminal.PrintF64(f64) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @rt_str_empty() -> str
-extern @Viper.Terminal.ReadLine() -> str
 extern @Viper.Core.Convert.ToInt64(str) -> i64
+extern @Viper.Terminal.ReadLine() -> str
 extern @rt_arr_i64_new(i64) -> ptr
 extern @rt_arr_i64_len(ptr) -> i64
 extern @rt_arr_i64_get(ptr, i64) -> i64

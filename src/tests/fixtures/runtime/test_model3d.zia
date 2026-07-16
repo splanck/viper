@@ -9,8 +9,8 @@ func start() {
     var scene = SceneGraph.New();
     var parent = SceneNode.New();
     var child = SceneNode.New();
-    var mesh = Mesh3D.NewBox(1.0, 2.0, 3.0);
-    var mat = Material3D.NewColor(0.2, 0.4, 0.8);
+    var mesh = Mesh3D.Box(1.0, 2.0, 3.0);
+    var mat = Material3D.FromColor(0.2, 0.4, 0.8);
 
     parent.Name = "parent";
     child.Name = "child";
@@ -28,11 +28,12 @@ func start() {
         return;
     }
 
-    var model = SceneAsset.Load(path);
-    if (model == null) {
-        Say("FAIL: SceneAsset.Load should load saved .vscn assets");
+    var loadedModel = SceneAsset.LoadResult(path);
+    if (not loadedModel.IsOk) {
+        Say("FAIL: SceneAsset.LoadResult should load saved .vscn assets");
         return;
     }
+    var model = loadedModel.Unwrap();
 
     if (SceneAsset.get_MeshCount(model) != 1 || SceneAsset.get_MaterialCount(model) != 1 ||
         SceneAsset.get_NodeCount(model) != 2) {
@@ -40,8 +41,8 @@ func start() {
         return;
     }
 
-    var templateChild = SceneAsset.FindNode(model, "child");
-    if (templateChild == null) {
+    var templateChildOpt = SceneAsset.FindNode(model, "child");
+    if (templateChildOpt.IsNone) {
         Say("FAIL: SceneAsset.FindNode should find imported template nodes");
         return;
     }
@@ -52,18 +53,19 @@ func start() {
         return;
     }
 
-    var instChild = SceneNode.Find(instRoot, "child");
-    if (instChild == null) {
+    var instChildOpt = SceneNode.Find(instRoot, "child");
+    if (instChildOpt.IsNone) {
         Say("FAIL: instantiated subtree should preserve child names");
         return;
     }
+    var instChild = instChildOpt.Unwrap();
 
     SceneNode.SetPosition(instChild, 9.0, 9.0, 9.0);
     if (Vec3.get_Y(SceneNode.get_Position(instChild)) != 9.0) {
         Say("FAIL: instantiated nodes should be writable");
         return;
     }
-    if (Vec3.get_Y(SceneNode.get_Position(templateChild)) != 5.0) {
+    if (Vec3.get_Y(SceneNode.get_Position(templateChildOpt.Unwrap())) != 5.0) {
         Say("FAIL: mutating an instance should not change the template node");
         return;
     }
@@ -73,7 +75,7 @@ func start() {
         Say("FAIL: InstantiateScene should create a new SceneGraph with imported nodes");
         return;
     }
-    if (SceneGraph.Find(instScene, "child") == null) {
+    if (SceneGraph.Find(instScene, "child").IsNone) {
         Say("FAIL: InstantiateScene should preserve searchable node names");
         return;
     }

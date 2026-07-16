@@ -39,8 +39,7 @@ extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
 /// **State transitions:**
 /// ```
 /// Created ──Start()──▶ Running ──Entry returns──▶ Finished
-///                                                    │
-///                                         ──Join()──▶ Joined
+///                  Join methods wait for Finished; there is no separate Joined state.
 /// ```
 ///
 /// **Memory layout:**

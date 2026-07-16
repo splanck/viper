@@ -199,7 +199,7 @@ namespace detail {
         name == "rt_queue_try_pop" || name == "Viper.Collections.Queue.Pop" ||
         name == "Viper.Collections.Queue.TryPop" || name == "rt_seq_pop" ||
         name == "rt_seq_remove" || name == "Viper.Collections.Seq.Pop" ||
-        name == "Viper.Collections.Seq.Remove" || name == "rt_multimap_get_first" ||
+        name == "Viper.Collections.Seq.RemoveAt" || name == "rt_multimap_get_first" ||
         name == "Viper.Collections.MultiMap.GetFirst" || name == "rt_pqueue_pop" ||
         name == "rt_pqueue_try_pop" || name == "rt_pqueue_peek" || name == "rt_pqueue_try_peek" ||
         name == "Viper.Collections.Heap.Pop" || name == "Viper.Collections.Heap.TryPop" ||
@@ -335,7 +335,7 @@ namespace detail {
         name == "rt_obj_type_name" || name == "Viper.Core.Object.TypeName" ||
         name == "Viper.Core.Object.get_TypeName" || name == "rt_parse_double_option" ||
         name == "rt_parse_int64_option" || name == "rt_parse_bool_option" ||
-        name == "Viper.Core.Parse.TryNum" || name == "Viper.Core.Parse.TryDouble" ||
+        name == "Viper.Core.Parse.TryDouble" || name == "Viper.Core.Parse.TryDouble" ||
         name == "Viper.Core.Parse.TryInt" || name == "Viper.Core.Parse.TryBool" ||
         name == "rt_datetime_try_parse_option" || name == "Viper.Time.DateTime.TryParseOption" ||
         name == "rt_queue_try_pop_option" || name == "Viper.Collections.Queue.TryPopOption" ||

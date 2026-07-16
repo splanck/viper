@@ -12,7 +12,9 @@ last-verified: 2026-07-14
 
 ## Viper.Localization.Locale
 
-Immutable handle representing a BCP-47 language tag. Parsed from strings like `"en-US"`, `"zh-Hans-CN"`, `"fr-FR"`.
+Immutable handle representing the runtime's BCP-47-shaped locale tag. Parsed from strings like
+`"en-US"`, `"zh-Hans-CN"`, and `"fr-FR"`; the current parser implements a constrained subset
+of RFC 5646 rather than a complete language-tag validator.
 
 **Type:** Reference class (immutable, GC-managed).
 
@@ -23,9 +25,9 @@ Immutable handle representing a BCP-47 language tag. Parsed from strings like `"
 | `Parse(tag)` | `Locale(String)` | Canonicalize + validate; **traps** on invalid input. |
 | `TryParse(tag)` | `Locale(String)` | Returns `null` on failure instead of trapping. |
 | `TryParseOption(tag)` | `Option[Locale](String)` | Returns `Some(Locale)` on success or `None` on failure. |
-| `FromParts(lang, script, region)` | `Locale(String, String, String)` | Build from pre-split subtags. Empty script/region strings mean "absent". |
+| `FromParts(lang, script, region)` | `Locale(String, String, String)` | Concatenate the supplied parts and parse the result. Empty script/region strings mean "absent". |
 | `Invariant()` | `Locale()` | Returns the `root` locale (universal fallback). |
-| `Equals(other)` | `Bool(Locale)` | Canonical-tag equality. |
+| `Equals(other)` | `Bool(Locale)` | Canonical-tag equality for non-null handles. |
 | `Fallbacks()` | `Object()` (runtime `List` of `Locale`) | Returns the walk-order fallback chain. |
 | `ToString()` | `String()` | Canonical tag string. |
 
@@ -44,9 +46,24 @@ Prefer `TryParseOption` for new code. `TryParse` remains as a compatibility help
 
 - Input canonicalization lowercases the language, Title-cases the script, uppercases an alphabetic region, normalizes underscores to dashes, and lowercases extension/private-use subtags. `Locale.Parse` does **not** accept POSIX encoding or modifier suffixes such as `.UTF-8` or `@latin`; only the system-locale platform adapters strip those suffixes before parsing.
 - Leading, trailing, and duplicate separators are rejected (`"-en"`, `"en-"`, `"en--US"`).
-- Variants, Unicode extensions, and private-use tails are preserved in `Tag`. Fallbacks walk from the full tag to its base language/script/region chain, then `root`.
+- The accepted shape is a 2–8-letter primary language followed by optional script, region,
+  variants, extensions, and a private-use tail. Variants, accepted extensions, and accepted
+  private-use tails are preserved in `Tag`. Fallbacks walk from the full tag to its base
+  language/script/region chain, then `root`.
 - Parsed-but-unloaded locales are still usable for `Tag` / `Fallbacks()`, but their info queries use the baked en-US invariant data. Loading the tag does not retroactively bind an already-created handle; parse it again, use the handle returned by `LocaleManager.Load`, or pass it to `SetCurrent` after loading.
 - `Parse` traps on empty input, a primary language shorter than two characters, subtags longer than eight characters, malformed extension/private-use structure, or non-ASCII-alphanumeric subtag content.
+- The parser follows the RFC 5646 well-formedness grammar: pure private-use tags
+  (`x-private`, empty `Language`), extended language subtags (`zh-cmn-Hans-CN`, up to three
+  3-letter subtags after a 2-3 letter language), and long tags (canonical buffer 127 bytes)
+  are accepted, while empty extensions (`en-a-b-foo`, `en-a-x-foo`), script or region after a
+  variant (`en-abcde-Latn`, `en-abcde-US`), and duplicate variants (`sl-rozaj-rozaj`) are
+  rejected. Subtag validity against the IANA registry (including grandfathered tags) is not
+  checked.
+- `FromParts` requires one pre-split subtag per argument: values containing `-` or `_` trap,
+  and each supplied part must classify as the field it was passed as (`FromParts("en", "US", "")`
+  traps because `US` is a region shape, not a script).
+- Null handles are invariant-shaped across the whole API, including equality:
+  `Equals(null, Invariant())` returns `true`.
 - The runtime registry currently exposes `Fallbacks()` as opaque `Object`, so Zia cannot infer that it is iterable. Traverse it through `Viper.Collections.List` as shown below.
 
 ### Zia Example
@@ -127,8 +144,8 @@ Static process-global registry of loaded locales + current/system-locale state.
 |---|---|---|
 | `Current()` | `Locale()` | Currently active locale. |
 | `SetCurrent(loc)` | `Void(Locale)` | Set current; **traps** if locale isn't loaded. |
-| `System()` | `Locale()` | Detected system locale (may be unloaded); falls back to en-US when detection fails. |
-| `Available()` | `List[String]()` | Registered locale tags in registration order. |
+| `System()` | `Locale()` | System locale detected at first access (may be unloaded); falls back to en-US when detection fails. |
+| `Available()` | `Object()` (runtime `List` of `String`) | Registered locale tags in registration order. |
 | `IsLoaded(loc)` | `Bool(Locale)` | Whether the locale is in the registry. |
 | `LoadFromJson(path)` | `Void(String)` | Load from filesystem; traps on error. |
 | `TryLoadFromJson(path)` | `Bool(String)` | Returns `false` on failure instead of trapping. |
@@ -144,12 +161,24 @@ Static process-global registry of loaded locales + current/system-locale state.
 ### Notes
 
 - First access triggers lazy initialization: it registers baked en-US and detects the system locale. Current uses that locale only when its exact tag is already loaded; otherwise current starts as en-US.
-- Thread-safe via a process-global rwlock; hot-path formatters capture the locale's data pointer at construction and never re-lock.
+- Registry/current/system operations are synchronized through a process-global rwlock. Formatters
+  capture the locale's data pointer at construction and do not re-lock; concurrently mutating one
+  formatter's writable properties is not a supported synchronization mechanism.
 - `LoadFromJson(path)` and `LoadFromAsset(name)` parse locale JSON and register the canonical tag. `Try*` variants return `false` on missing/malformed input instead of trapping.
 - `Load(tag)` looks for `<canonical-tag>.json` in directories added with `AddSearchPath`.
+- Baked en-US is authoritative. Loading JSON whose canonical tag is `en-US` reports success but
+  leaves the baked record in place.
 - `LoadFromJson` / `LoadFromAsset` refuse to replace a loaded locale while any live locale or formatter object still retains that locale data. `Try*` returns `false`; non-try loaders trap after releasing the registry lock.
 - `Unload` returns `false` (does not trap) when the locale is the current or system locale, or when other live handles/formatters still hold its data pointer. Passing the only remaining `Locale` handle for that loaded record unbinds that handle and unloads the record.
-- `Reset` leaves in-use loaded records registered so existing locale/formatter objects cannot dangle; unload them after those objects are released.
+- `Reset` changes both current and system handles to en-US, clears search paths, and leaves in-use
+  loaded records registered so existing locale/formatter objects cannot dangle; unload them after
+  those objects are released. It does not re-run system detection.
+- On Windows, detection first uses `GetUserDefaultLocaleName`; its environment fallback checks
+  `LC_ALL`, `LANG`, then `LC_MESSAGES`. Linux/BSD check `LC_ALL`, `LC_MESSAGES`, then `LANG`.
+  macOS deliberately uses only `LC_ALL`, `LANG`, and `LC_MESSAGES`—not CoreFoundation—so a
+  GUI-launched process without those variables commonly falls back to en-US.
+- Like `Fallbacks()`, `Available()` is registered as opaque `Object`. Call
+  `Viper.Collections.List.get_Count(...)` / `Get(...)` explicitly rather than chaining `.Count`.
 
 ### See Also
 

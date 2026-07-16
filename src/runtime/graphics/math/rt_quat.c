@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_quat.c
+// File: src/runtime/graphics/math/rt_quat.c
 // Purpose: Quaternion mathematics for the Viper.Quat class. Implements Hamilton
 //   quaternions for 3D rotation: construction from axis-angle and Euler angles,
 //   multiplication (composition), conjugate/inverse, normalization, dot product,
@@ -245,8 +245,9 @@ void *rt_quat_conjugate(void *q) {
     return quat_alloc(-qv->x, -qv->y, -qv->z, qv->w);
 }
 
-/// @brief Quaternion inverse (conjugate / |q|²). For unit quaternions matches `_conjugate`
-/// but is safer for general use. Traps on null or zero-length/non-finite input.
+/// @brief Quaternion inverse (conjugate / |q|²). For unit quaternions matches `_conjugate`.
+/// @details Traps on an invalid receiver or a zero/non-finite length. Squaring an
+///          extreme finite length can still overflow or underflow (VDOC-206).
 void *rt_quat_inverse(void *q) {
     ViperQuat *qv = quat_checked(q, "Quat.Inverse: invalid quaternion");
     if (!qv)
@@ -306,7 +307,8 @@ double rt_quat_dot(void *a, void *b) {
 
 /// @brief Spherical linear interpolation between unit quaternions `a` and `b`. `t` ∈ [0, 1]
 /// (0 = a, 1 = b). Picks the shorter arc by negating one operand if the dot product is < 0.
-/// Falls back to `_lerp` for nearly-aligned inputs to avoid numerical instability.
+/// Falls back to a component-wise linear blend for nearly-aligned inputs to avoid
+/// numerical instability; that branch is not explicitly renormalized.
 void *rt_quat_slerp(void *a, void *b, double t) {
     if (!isfinite(t)) {
         rt_trap("Quat.Slerp: non-finite interpolation parameter");

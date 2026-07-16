@@ -190,6 +190,14 @@ size_t rt_box_hash(void *elem);
 /// @return 1 if equal, 0 otherwise.
 int8_t rt_box_equal(void *a, void *b);
 
+/// @brief Total, transitive default sort order shared by the collections.
+/// @details Ranks by type class (NULL < numeric < string < other), compares
+///          within class by value (boxed i64/i1 exactly; f64 with NaN last;
+///          raw or boxed strings lexicographically), and falls back to a
+///          well-defined uintptr_t pointer order for other objects.
+/// @return Negative, zero, or positive for a<b, a==b, a>b.
+int64_t rt_box_default_sort_compare(void *a, void *b);
+
 #ifdef __cplusplus
 }
 #endif

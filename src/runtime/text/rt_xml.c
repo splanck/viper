@@ -473,21 +473,24 @@ static bool is_name_char(char c) {
 
 /// @brief Return true if the null-terminated string `s` is a valid XML 1.0 name.
 ///        ASCII syntax is checked byte-for-byte; UTF-8 non-ASCII bytes are allowed.
-static bool is_valid_xml_name_cstr(const char *s) {
-    if (!s || !is_name_start_char(*s))
-        return false;
-    for (const char *p = s + 1; *p; ++p) {
-        if (!is_name_char(*p))
-            return false;
-    }
-    return true;
-}
 
 /// @brief Return true if `name` (an `rt_string`) is a valid XML 1.0 element or attribute name.
 static bool is_valid_xml_name(rt_string name) {
-    if (!name || rt_str_len(name) <= 0)
+    int64_t len = name ? rt_str_len(name) : 0;
+    if (!name || len <= 0)
         return false;
-    return is_valid_xml_name_cstr(rt_string_cstr(name));
+    const char *s = rt_string_cstr(name);
+    if (!s)
+        return false;
+    // Scan the full runtime byte length so an embedded NUL (forbidden in XML
+    // names) rejects the name instead of validating only the prefix before it.
+    if (!is_name_start_char(s[0]))
+        return false;
+    for (int64_t i = 1; i < len; ++i) {
+        if (!is_name_char(s[i]))
+            return false;
+    }
+    return true;
 }
 
 /// @brief Return true if `needle` appears anywhere within the `len`-byte buffer `s`.
@@ -1378,8 +1381,11 @@ int8_t rt_xml_is_node(void *node) {
 
 /// @brief `Xml.IsValid(text)` — boolean parse-success probe.
 ///
-/// Internally runs `Parse` and discards the result. Useful for cheap
-/// well-formedness checks without keeping the document around.
+/// Internally runs `Parse` and discards the result. This checks acceptance by
+/// this parser's practical XML subset, NOT full XML 1.0 well-formedness: DTD
+/// contents are skipped (declared entities are not expanded), only the five
+/// predefined named entities plus numeric references are decoded, and
+/// namespaces/UTF-8 byte sequences are not validated.
 ///
 /// @param text Candidate XML.
 /// @return 1 if it parses, 0 otherwise.

@@ -253,6 +253,8 @@ extern "C" void rt_keyboard_begin_frame(void) {}
 
 extern "C" void rt_mouse_begin_frame(void) {}
 
+extern "C" void rt_mouse_finalize_frame(void) {}
+
 extern "C" void rt_pad_begin_frame(void) {}
 
 extern "C" void rt_pad_poll(void) {}
@@ -274,6 +276,37 @@ extern "C" void rt_mouse_button_down(int64_t) {}
 extern "C" void rt_mouse_button_up(int64_t) {}
 
 extern "C" void rt_mouse_update_wheel(double, double) {}
+
+extern "C" int8_t rt_mouse_is_captured(void) {
+    return 0;
+}
+
+extern "C" int8_t rt_mouse_get_relative_mode(void) {
+    return 0;
+}
+
+extern "C" void rt_mouse_set_relative_native(int8_t) {}
+
+extern "C" int8_t rt_mouse_get_relative_native(void) {
+    return 0;
+}
+
+extern "C" void rt_mouse_force_delta(int64_t, int64_t) {}
+
+extern "C" void rt_mouse_force_delta_f(double, double) {}
+
+extern "C" int32_t vgfx_set_relative_mouse(vgfx_window_t, int32_t) {
+    return 0;
+}
+
+extern "C" void vgfx_get_relative_deltas(vgfx_window_t, double *dx, double *dy) {
+    if (dx)
+        *dx = 0.0;
+    if (dy)
+        *dy = 0.0;
+}
+
+extern "C" void vgfx_warp_cursor(vgfx_window_t, int32_t, int32_t) {}
 
 extern "C" void rt_action_update(void) {}
 

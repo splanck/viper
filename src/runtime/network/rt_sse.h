@@ -9,7 +9,7 @@
 // Purpose: Server-Sent Events (SSE) client for receiving event streams.
 // Key invariants:
 //   - Connects via HTTP and reads text/event-stream data.
-//   - Events are parsed per the SSE spec (event, data, id fields).
+//   - Parses data/event/id/retry fields with bounded lines and event payloads.
 // Ownership/Lifetime:
 //   - SSE client objects are GC-managed.
 // Links: rt_network_http.c (HTTP connection)
@@ -28,13 +28,13 @@ extern "C" {
 void *rt_sse_connect(rt_string url);
 /// @brief Block until the next event arrives; returns the event's `data:` payload (empty on close).
 rt_string rt_sse_recv(void *client);
-/// @brief Like `_recv` but returns empty string after @p timeout_ms milliseconds with no event.
+/// @brief Like `_recv`, with readiness and per-read timeout; this is not a whole-event deadline.
 rt_string rt_sse_recv_for(void *client, int64_t timeout_ms);
-/// @brief True if the SSE stream is still open.
+/// @brief True if the local SSE transport/session is still marked open (no remote-liveness probe).
 int8_t rt_sse_is_open(void *client);
 /// @brief Close the SSE connection.
 void rt_sse_close(void *client);
-/// @brief Get the `event:` field of the most recent event (empty for default `message` events).
+/// @brief Get the most recently observed `event:` value (currently retained across omitted fields).
 rt_string rt_sse_last_event_type(void *client);
 /// @brief Get the `id:` field of the most recent event (used for resuming after disconnect).
 rt_string rt_sse_last_event_id(void *client);

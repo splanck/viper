@@ -14,11 +14,11 @@ PRINT rl.TryAcquire()
 PRINT rl.Available
 
 PRINT "--- TryAcquireN ---"
-PRINT rl.TryAcquireN(5)
+PRINT rl.TryAcquire(5)
 PRINT rl.Available
 
 PRINT "--- TryAcquireN exceed ---"
-PRINT rl.TryAcquireN(100)
+PRINT rl.TryAcquire(100)
 PRINT rl.Available
 
 PRINT "--- Reset ---"

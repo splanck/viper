@@ -14,9 +14,9 @@
 //     requests below this threshold are rejected by public wrappers.
 //   - PBKDF2 and scrypt work factors are capped to avoid CPU/memory DoS.
 //   - Salt must be non-empty; a NULL or empty salt causes a trap.
-//   - Output key length is specified in bytes; any positive length is supported.
+//   - Output key length is specified in bytes and limited to 1 through 1024.
 //   - HMAC-SHA256 block size is 64 bytes; key padding follows RFC 2104.
-//   - The derived key is returned as a hex-encoded rt_string for portability.
+//   - Each algorithm has a Bytes-returning API and a lowercase-hex String API.
 //
 // Ownership/Lifetime:
 //   - The returned rt_string key is a fresh allocation owned by the caller.

@@ -184,6 +184,11 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_completion_engine PRIVATE zia_editor_services)
     viper_add_ctest(test_zia_completion_engine test_zia_completion_engine)
 
+    # Document mirror delta validation tests (VDOC-109)
+    viper_add_test(test_zia_doc_mirror ${_VIPER_ZIA_DIR}/test_zia_doc_mirror.cpp)
+    target_link_libraries(test_zia_doc_mirror PRIVATE zia_editor_services)
+    viper_add_ctest(test_zia_doc_mirror test_zia_doc_mirror)
+
     # Recursion depth limit tests
     viper_add_test(test_zia_depth_limits ${_VIPER_ZIA_DIR}/test_zia_depth_limits.cpp)
     target_link_libraries(test_zia_depth_limits PRIVATE ${VIPER_ZIA_LIBS})

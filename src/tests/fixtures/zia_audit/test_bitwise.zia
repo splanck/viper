@@ -62,22 +62,22 @@ func start() {
     checkBool("Bits.Get 0xFF bit 7", Viper.Math.Bits.Get(0xFF, 7), true);
 
     // Bit counting
-    check("Bits.Count 0", Viper.Math.Bits.Count(0), 0);
-    check("Bits.Count 1", Viper.Math.Bits.Count(1), 1);
-    check("Bits.Count 0xFF", Viper.Math.Bits.Count(0xFF), 8);
-    check("Bits.Count 0xFFFF", Viper.Math.Bits.Count(0xFFFF), 16);
+    check("Bits.Count 0", Viper.Math.Bits.CountOnes(0), 0);
+    check("Bits.Count 1", Viper.Math.Bits.CountOnes(1), 1);
+    check("Bits.Count 0xFF", Viper.Math.Bits.CountOnes(0xFF), 8);
+    check("Bits.Count 0xFFFF", Viper.Math.Bits.CountOnes(0xFFFF), 16);
 
     // Leading/trailing zeros
-    check("Bits.LeadZ 1", Viper.Math.Bits.LeadZ(1), 63);
-    check("Bits.LeadZ min", Viper.Math.Bits.LeadZ(0x8000000000000000), 0);
-    check("Bits.TrailZ 1", Viper.Math.Bits.TrailZ(1), 0);
-    check("Bits.TrailZ min", Viper.Math.Bits.TrailZ(0x8000000000000000), 63);
-    check("Bits.TrailZ 8", Viper.Math.Bits.TrailZ(8), 3);
-    check("Bits.TrailZ 16", Viper.Math.Bits.TrailZ(16), 4);
+    check("Bits.LeadZ 1", Viper.Math.Bits.CountLeadingZeros(1), 63);
+    check("Bits.LeadZ min", Viper.Math.Bits.CountLeadingZeros(0x8000000000000000), 0);
+    check("Bits.TrailZ 1", Viper.Math.Bits.CountTrailingZeros(1), 0);
+    check("Bits.TrailZ min", Viper.Math.Bits.CountTrailingZeros(0x8000000000000000), 63);
+    check("Bits.TrailZ 8", Viper.Math.Bits.CountTrailingZeros(8), 3);
+    check("Bits.TrailZ 16", Viper.Math.Bits.CountTrailingZeros(16), 4);
 
     // Rotation
-    check("Bits.Rotl 1 by 4", Viper.Math.Bits.Rotl(1, 4), 16);
-    check("Bits.Rotr 16 by 4", Viper.Math.Bits.Rotr(16, 4), 1);
+    check("Bits.Rotl 1 by 4", Viper.Math.Bits.RotateLeft(1, 4), 16);
+    check("Bits.Rotr 16 by 4", Viper.Math.Bits.RotateRight(16, 4), 1);
 
     // Report results
     Viper.Terminal.Say("=== Results ===");

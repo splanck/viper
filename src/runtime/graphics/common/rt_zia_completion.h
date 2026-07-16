@@ -132,6 +132,12 @@ void rt_zia_doc_close(rt_string path);
 /// @details Primarily a testability accessor for byte-exact mirror assertions.
 rt_string rt_zia_doc_text(rt_string path);
 
+/// @brief True when a mirror exists for @p path (even if its text is empty).
+int8_t rt_zia_doc_has(rt_string path);
+
+/// @brief True when the full editor-service bridge is linked (weak stub: 0).
+int8_t rt_zia_service_available(void);
+
 /// @brief Run semantic analysis for @p file_path straight off its mirror text.
 /// @return Diagnostics serialized as severity\tline\tcol\tcode\tmessage per row,
 ///         or "" when no mirror exists for @p file_path (caller should full-sync).

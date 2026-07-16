@@ -8,14 +8,16 @@
 // access, search, encoding/decoding, and conversion to/from strings and hex.
 //
 // Key invariants:
-//   - Byte values are stored as uint8_t; set operations clamp input to [0, 255].
+//   - Byte values are stored as uint8_t; writes truncate to the low 8 bits
+//     of the supplied integer (no clamping).
 //   - Bytes are stored contiguously in memory.
 //   - String conversion produces a copy of the UTF-8 bytes; the original is not modified.
-//   - Hex encoding produces uppercase hex digits.
+//   - Hex encoding produces lowercase hex digits.
 //
 // Ownership/Lifetime:
-//   - Bytes objects are heap-allocated; caller is responsible for lifetime management.
-//   - rt_bytes_from_str and rt_bytes_from_hex allocate new objects; caller must free.
+//   - Bytes objects are GC-managed (rt_obj_new_i64) with a runtime finalizer;
+//     callers must not free them directly.
+//   - rt_bytes_from_str and rt_bytes_from_hex allocate new GC-managed objects.
 //
 // Error conventions:
 //   - Out-of-bounds index → rt_trap()
@@ -93,7 +95,7 @@ int64_t rt_bytes_get(void *obj, int64_t idx);
 /// @brief Set a byte value at the specified index.
 /// @param obj Bytes object pointer.
 /// @param idx Index to write to.
-/// @param val Value to write (clamped to 0-255).
+/// @param val Value to write (low 8 bits are stored).
 void rt_bytes_set(void *obj, int64_t idx, int64_t val);
 
 /// @brief Create a new byte array from a slice of this one.

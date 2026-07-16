@@ -40,7 +40,7 @@ var AI_DEAD: Integer = 7;
 
 class EnemyManager {
     hide Game3D.World3D world;
-    hide G3D.Physics3DWorld phys;
+    hide G3D.PhysicsWorld3D phys;
     hide enemy_defs.EnemyDefs defs;
     hide targets.TargetRegistry reg;
     hide ballistics.Ballistics ball;
@@ -82,9 +82,9 @@ class EnemyManager {
     hide List[Float] orbitPhase;
     hide List[Float] repositionT;
     hide List[Integer] flankChoice;
-    hide List[G3D.Physics3DBody] torso;
-    hide List[G3D.Physics3DBody] head;
-    hide List[G3D.Physics3DBody] weakBody;
+    hide List[G3D.PhysicsBody3D] torso;
+    hide List[G3D.PhysicsBody3D] head;
+    hide List[G3D.PhysicsBody3D] weakBody;
     hide List[Float] coverX; hide List[Float] coverZ; hide List[Float] coverFaceX; hide List[Float] coverFaceZ;
     hide List[Float] flankX; hide List[Float] flankZ;
     hide enemy_models.EnemyModels models;
@@ -144,21 +144,21 @@ class EnemyManager {
             // Placeholder colliders sized for a generic humanoid. Each spawn
             // replaces the slot's three bodies with archetype-sized ones via
             // rebuildBodies (bounded per-spawn churn, not per-frame).
-            var t = G3D.Physics3DBody.NewAABB(0.4, 0.9, 0.4, 0.0);
-            G3D.Physics3DBody.set_CollisionLayer(t, config.LAYER_ENEMY);
-            G3D.Physics3DBody.set_CollisionMask(t, 0);
-            G3D.Physics3DBody.SetPosition(t, 0.0, -100.0, 0.0);
-            G3D.Physics3DWorld.Add(phys, t);
-            var hd = G3D.Physics3DBody.NewAABB(0.28, 0.28, 0.28, 0.0);
-            G3D.Physics3DBody.set_CollisionLayer(hd, config.LAYER_ENEMY);
-            G3D.Physics3DBody.set_CollisionMask(hd, 0);
-            G3D.Physics3DBody.SetPosition(hd, 0.0, -100.0, 0.0);
-            G3D.Physics3DWorld.Add(phys, hd);
-            var wk = G3D.Physics3DBody.NewAABB(0.22, 0.22, 0.22, 0.0);
-            G3D.Physics3DBody.set_CollisionLayer(wk, config.LAYER_ENEMY);
-            G3D.Physics3DBody.set_CollisionMask(wk, 0);
-            G3D.Physics3DBody.SetPosition(wk, 0.0, -100.0, 0.0);
-            G3D.Physics3DWorld.Add(phys, wk);
+            var t = G3D.PhysicsBody3D.NewAABB(0.4, 0.9, 0.4, 0.0);
+            G3D.PhysicsBody3D.set_CollisionLayer(t, config.LAYER_ENEMY);
+            G3D.PhysicsBody3D.set_CollisionMask(t, 0);
+            G3D.PhysicsBody3D.SetPosition(t, 0.0, -100.0, 0.0);
+            G3D.PhysicsWorld3D.Add(phys, t);
+            var hd = G3D.PhysicsBody3D.NewAABB(0.28, 0.28, 0.28, 0.0);
+            G3D.PhysicsBody3D.set_CollisionLayer(hd, config.LAYER_ENEMY);
+            G3D.PhysicsBody3D.set_CollisionMask(hd, 0);
+            G3D.PhysicsBody3D.SetPosition(hd, 0.0, -100.0, 0.0);
+            G3D.PhysicsWorld3D.Add(phys, hd);
+            var wk = G3D.PhysicsBody3D.NewAABB(0.22, 0.22, 0.22, 0.0);
+            G3D.PhysicsBody3D.set_CollisionLayer(wk, config.LAYER_ENEMY);
+            G3D.PhysicsBody3D.set_CollisionMask(wk, 0);
+            G3D.PhysicsBody3D.SetPosition(wk, 0.0, -100.0, 0.0);
+            G3D.PhysicsWorld3D.Add(phys, wk);
             torso.Add(t); head.Add(hd); weakBody.Add(wk);
             navAgent.Add(null); navReady.Add(0);
             i = i + 1;
@@ -284,30 +284,30 @@ class EnemyManager {
     }
 
     // Replace the slot's hit bodies with archetype-sized ones. Runs once per
-    // spawn (never per frame); Physics3DWorld.Remove compacts the world's body
+    // spawn (never per frame); PhysicsWorld3D.Remove compacts the world's body
     // array and frees the old bodies, so the world body count stays flat.
     hide func rebuildBodies(s: Integer) {
         reg.unregisterEntity(config.TGT_ENEMY, s);
-        G3D.Physics3DWorld.Remove(phys, torso[s]);
-        G3D.Physics3DWorld.Remove(phys, head[s]);
-        G3D.Physics3DWorld.Remove(phys, weakBody[s]);
+        G3D.PhysicsWorld3D.Remove(phys, torso[s]);
+        G3D.PhysicsWorld3D.Remove(phys, head[s]);
+        G3D.PhysicsWorld3D.Remove(phys, weakBody[s]);
         var hw = defs.bodyHalfWidthOf(arch[s]);
         var hh = defs.bodyHalfHeightOf(arch[s]);
         var hs = defs.headHalfSizeOf(arch[s]);
-        var t = G3D.Physics3DBody.NewAABB(hw, hh, hw * 0.82, 0.0);
-        var hd = G3D.Physics3DBody.NewAABB(hs, hs, hs, 0.0);
+        var t = G3D.PhysicsBody3D.NewAABB(hw, hh, hw * 0.82, 0.0);
+        var hd = G3D.PhysicsBody3D.NewAABB(hs, hs, hs, 0.0);
         var ws = M.maxf(0.10, hs * 0.72);
-        var wk = G3D.Physics3DBody.NewAABB(ws, ws, ws, 0.0);
+        var wk = G3D.PhysicsBody3D.NewAABB(ws, ws, ws, 0.0);
         configureQueryBody(t); configureQueryBody(hd); configureQueryBody(wk);
-        G3D.Physics3DWorld.Add(phys, t);
-        G3D.Physics3DWorld.Add(phys, hd);
-        G3D.Physics3DWorld.Add(phys, wk);
+        G3D.PhysicsWorld3D.Add(phys, t);
+        G3D.PhysicsWorld3D.Add(phys, hd);
+        G3D.PhysicsWorld3D.Add(phys, wk);
         torso[s] = t; head[s] = hd; weakBody[s] = wk;
     }
 
-    hide func configureQueryBody(body: G3D.Physics3DBody) {
-        G3D.Physics3DBody.set_CollisionLayer(body, config.LAYER_ENEMY);
-        G3D.Physics3DBody.set_CollisionMask(body, 0);
+    hide func configureQueryBody(body: G3D.PhysicsBody3D) {
+        G3D.PhysicsBody3D.set_CollisionLayer(body, config.LAYER_ENEMY);
+        G3D.PhysicsBody3D.set_CollisionMask(body, 0);
     }
 
     /// Assign an authored first-move waypoint to a live enemy slot.
@@ -335,12 +335,12 @@ class EnemyManager {
         var sh = defs.silHof(arch[s]);
         var by = y[s] + defs.bodyHalfHeightOf(arch[s]) + 0.05;
         var hy = y[s] + sh * 1.72;
-        G3D.Physics3DBody.SetPosition(torso[s], x[s], by, z[s]);
-        G3D.Physics3DBody.SetPosition(head[s], x[s], hy, z[s]);
+        G3D.PhysicsBody3D.SetPosition(torso[s], x[s], by, z[s]);
+        G3D.PhysicsBody3D.SetPosition(head[s], x[s], hy, z[s]);
         var weakBack = defs.bodyHalfWidthOf(arch[s]) * 1.05;
         var backX = 0.0 - Math.Sin(M.toRad(yaw[s])) * weakBack;
         var backZ = Math.Cos(M.toRad(yaw[s])) * weakBack;
-        G3D.Physics3DBody.SetPosition(weakBody[s], x[s] + backX, y[s] + sh * 1.15, z[s] + backZ);
+        G3D.PhysicsBody3D.SetPosition(weakBody[s], x[s] + backX, y[s] + sh * 1.15, z[s] + backZ);
         var hpFrac = 1.0;
         var mx = defs.hpOf(arch[s]) * healthScale;
         if mx > 0.5 { hpFrac = health[s] / mx; }
@@ -353,9 +353,9 @@ class EnemyManager {
         arch[s] = -1;
         routeOn[s] = 0;
         reg.unregisterEntity(config.TGT_ENEMY, s);
-        G3D.Physics3DBody.SetPosition(torso[s], 0.0, -100.0, 0.0);
-        G3D.Physics3DBody.SetPosition(head[s], 0.0, -100.0, 0.0);
-        G3D.Physics3DBody.SetPosition(weakBody[s], 0.0, -100.0, 0.0);
+        G3D.PhysicsBody3D.SetPosition(torso[s], 0.0, -100.0, 0.0);
+        G3D.PhysicsBody3D.SetPosition(head[s], 0.0, -100.0, 0.0);
+        G3D.PhysicsBody3D.SetPosition(weakBody[s], 0.0, -100.0, 0.0);
         models.onDespawn(s);
         if navReady[s] == 1 { G3D.NavAgent3D.ClearTarget(navAgent[s]); }
         navReady[s] = 0;

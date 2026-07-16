@@ -15,8 +15,10 @@
 #include "rt_regex.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstring>
 
@@ -493,7 +495,123 @@ static void test_edge_cases() {
 // Entry Point
 //=============================================================================
 
+static void test_nul_pattern_rejected() {
+    printf("Testing Pattern NUL rejection:\n");
+
+    // VDOC-053: a pattern with an embedded NUL must trap instead of silently
+    // compiling only its prefix (which would also alias cache entries).
+    const char pat_bytes[] = {'a', '\0', 'b'};
+    rt_string pat = rt_string_from_bytes(pat_bytes, sizeof(pat_bytes));
+
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    bool trapped = true;
+    if (setjmp(env) == 0) {
+        (void)rt_pattern_is_match(rt_const_cstr("a"), pat);
+        trapped = false;
+    }
+    test_result("IsMatch traps on NUL-containing pattern", trapped);
+    if (trapped)
+        test_result("trap message mentions NUL",
+                    strstr(rt_trap_get_error(), "NUL") != NULL);
+    rt_trap_clear_recovery();
+
+    printf("\n");
+}
+
+static void test_zero_width_replace_split() {
+    printf("Testing zero-width Replace/Split:\n");
+
+    // VDOC-054: zero-width matches must not drop source bytes.
+    rt_string out = rt_pattern_replace(rt_const_cstr("abc"), rt_const_cstr(""), rt_const_cstr("-"));
+    test_result("Replace empty pattern keeps source bytes",
+                strcmp(rt_string_cstr(out), "-a-b-c-") == 0);
+
+    out = rt_pattern_replace(rt_const_cstr("abc"), rt_const_cstr("x?"), rt_const_cstr("-"));
+    test_result("Replace optional no-match keeps source bytes",
+                strcmp(rt_string_cstr(out), "-a-b-c-") == 0);
+
+    void *parts = rt_pattern_split(rt_const_cstr("abc"), rt_const_cstr(""));
+    test_result("Split empty pattern piece count", rt_seq_len(parts) == 3);
+    test_result("Split empty pattern pieces",
+                strcmp(seq_get_str(parts, 0), "a") == 0 &&
+                    strcmp(seq_get_str(parts, 1), "b") == 0 &&
+                    strcmp(seq_get_str(parts, 2), "c") == 0);
+
+    // Non-zero-width splitting is unchanged, including trailing empties.
+    parts = rt_pattern_split(rt_const_cstr("a,b,"), rt_const_cstr(","));
+    test_result("Split ',' trailing separator", rt_seq_len(parts) == 3);
+    test_result("Split ',' pieces",
+                strcmp(seq_get_str(parts, 0), "a") == 0 &&
+                    strcmp(seq_get_str(parts, 1), "b") == 0 &&
+                    strcmp(seq_get_str(parts, 2), "") == 0);
+
+    printf("\n");
+}
+
+static void test_complement_shorthands_in_classes() {
+    printf("Testing complement shorthands in classes:\n");
+
+    // VDOC-055: an uppercase shorthand inside a class complements only that
+    // member, not the whole class.
+    test_result("[a\\D] matches 'a'",
+                rt_pattern_is_match(rt_const_cstr("a"), rt_const_cstr("[a\\D]")));
+    test_result("[\\D0] matches '0'",
+                rt_pattern_is_match(rt_const_cstr("0"), rt_const_cstr("[\\D0]")));
+    test_result("[\\D0] matches 'x'",
+                rt_pattern_is_match(rt_const_cstr("x"), rt_const_cstr("[\\D0]")));
+    test_result("[a\\D] does not match '5'",
+                !rt_pattern_is_match(rt_const_cstr("5"), rt_const_cstr("[a\\D]")));
+
+    // Standalone complements and negated classes keep their semantics.
+    test_result("\\D matches 'x'", rt_pattern_is_match(rt_const_cstr("x"), rt_const_cstr("\\D")));
+    test_result("\\D does not match '5'",
+                !rt_pattern_is_match(rt_const_cstr("5"), rt_const_cstr("\\D")));
+    test_result("[^\\D] matches '5'",
+                rt_pattern_is_match(rt_const_cstr("5"), rt_const_cstr("[^\\D]")));
+    test_result("[^\\D] does not match 'x'",
+                !rt_pattern_is_match(rt_const_cstr("x"), rt_const_cstr("[^\\D]")));
+    test_result("[_\\S] matches ' _' second byte",
+                rt_pattern_is_match(rt_const_cstr("_"), rt_const_cstr("[_\\S]")));
+    test_result("[0\\W] matches '0'",
+                rt_pattern_is_match(rt_const_cstr("0"), rt_const_cstr("[0\\W]")));
+
+    printf("\n");
+}
+
+static void test_group_backtracking() {
+    printf("Testing group backtracking:\n");
+
+    // VDOC-056: parentheses must be semantics-neutral — a greedy quantifier
+    // inside a group must give bytes back to following syntax.
+    test_result("(a*)a matches 'aaa'",
+                rt_pattern_is_match(rt_const_cstr("aaa"), rt_const_cstr("(a*)a")));
+    test_result("(a+)a matches 'aa'",
+                rt_pattern_is_match(rt_const_cstr("aa"), rt_const_cstr("(a+)a")));
+    test_result("(a+)a does not match 'a'",
+                !rt_pattern_is_match(rt_const_cstr("a"), rt_const_cstr("(a+)a")));
+    test_result("(ab*)b matches 'abb'",
+                rt_pattern_is_match(rt_const_cstr("abb"), rt_const_cstr("(ab*)b")));
+    test_result("(a|aa)b matches 'aab'",
+                rt_pattern_is_match(rt_const_cstr("aab"), rt_const_cstr("(a|aa)b")));
+    test_result("(a*)(a) matches 'a'",
+                rt_pattern_is_match(rt_const_cstr("a"), rt_const_cstr("(a*)(a)")));
+
+    // Grouped and ungrouped forms report the same extents.
+    rt_string grouped = rt_pattern_find(rt_const_cstr("aaa"), rt_const_cstr("(a*)a"));
+    rt_string plain = rt_pattern_find(rt_const_cstr("aaa"), rt_const_cstr("a*a"));
+    test_result("(a*)a and a*a find the same text",
+                strcmp(rt_string_cstr(grouped), rt_string_cstr(plain)) == 0 &&
+                    strcmp(rt_string_cstr(grouped), "aaa") == 0);
+
+    printf("\n");
+}
+
 int main() {
+    test_nul_pattern_rejected();
+    test_group_backtracking();
+    test_complement_shorthands_in_classes();
+    test_zero_width_replace_split();
     printf("=== RT Pattern (Regex) Tests ===\n\n");
 
     test_is_match();

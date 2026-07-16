@@ -411,6 +411,13 @@ void rt_mouse_init(void);
 /// @details Called by Canvas.Poll() to clear deltas and event lists.
 void rt_mouse_begin_frame(void);
 
+/// @brief Recompute the absolute mouse delta after this frame's events are pumped.
+/// @details Called by the poll paths after event processing so Mouse.DeltaX/Y
+///          describe the motion observed during this poll rather than lagging one
+///          frame behind Mouse.X/Y. Relative-mode overrides (rt_mouse_force_delta*)
+///          are applied afterwards by the Canvas3D poll and take precedence.
+void rt_mouse_finalize_frame(void);
+
 /// @brief Update mouse position.
 /// @param x Current X position.
 /// @param y Current Y position.

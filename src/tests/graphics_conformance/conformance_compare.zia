@@ -1,0 +1,115 @@
+// =============================================================================
+// conformance_compare.zia — full-image diff between two backend renders
+// =============================================================================
+//
+// Loads two PNGs and reports per-pixel channel-sum difference metrics
+// (mean, max, and the share of pixels above a "visibly different" bound).
+// Thresholds default to values that tolerate legitimate GPU-vs-software
+// rasterization variance (edge AA, interpolation precision) while failing on
+// convention bugs (flipped axes, wrong lighting space, missing passes).
+//
+// Environment:
+//   VIPER_CONFORMANCE_A       first PNG (golden; usually the software render)
+//   VIPER_CONFORMANCE_B       second PNG (backend under test)
+//   VIPER_CONFORMANCE_EXACT   "1" requires byte-identical pixels (self checks)
+//
+// Prints metric lines and "RESULT: ok" / "RESULT: fail ...".
+// =============================================================================
+module conformance_compare;
+
+bind Viper.Core.Convert as Convert;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Math;
+bind Viper.System.Environment as Env;
+bind Viper.Terminal as Terminal;
+
+func intStr(i: Integer) -> String {
+    return Convert.ToStringInt(i);
+}
+
+func channel(px: Integer, shift: Integer) -> Integer {
+    return Bits.And(px >> shift, 0xFF);
+}
+
+func absInt(value: Integer) -> Integer {
+    if (value < 0) { return 0 - value; }
+    return value;
+}
+
+// Sum of absolute RGB channel differences: 0 (identical) .. 765.
+func colorDiff(a: Integer, b: Integer) -> Integer {
+    return absInt(channel(a, 24) - channel(b, 24)) +
+           absInt(channel(a, 16) - channel(b, 16)) +
+           absInt(channel(a, 8) - channel(b, 8));
+}
+
+func main() {
+    var pathA = Env.GetVariable("VIPER_CONFORMANCE_A");
+    var pathB = Env.GetVariable("VIPER_CONFORMANCE_B");
+    var exact = Env.GetVariable("VIPER_CONFORMANCE_EXACT") == "1";
+    if (pathA == "" || pathB == "") {
+        Terminal.Say("RESULT: fail set VIPER_CONFORMANCE_A and VIPER_CONFORMANCE_B");
+        return;
+    }
+
+    var imgA = Pixels.LoadPng(pathA);
+    if (imgA == null) {
+        Terminal.Say("RESULT: fail cannot load " + pathA);
+        return;
+    }
+    var imgB = Pixels.LoadPng(pathB);
+    if (imgB == null) {
+        Terminal.Say("RESULT: fail cannot load " + pathB);
+        return;
+    }
+
+    var width = Pixels.get_Width(imgA);
+    var height = Pixels.get_Height(imgA);
+    if (width != Pixels.get_Width(imgB) || height != Pixels.get_Height(imgB)) {
+        Terminal.Say("RESULT: fail image dimensions differ");
+        return;
+    }
+
+    var totalDiff = 0;
+    var maxDiff = 0;
+    var overCount = 0;
+    var y = 0;
+    while (y < height) {
+        var x = 0;
+        while (x < width) {
+            var diff = colorDiff(Pixels.Get(imgA, x, y), Pixels.Get(imgB, x, y));
+            totalDiff = totalDiff + diff;
+            if (diff > maxDiff) { maxDiff = diff; }
+            if (diff > 48) { overCount = overCount + 1; }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+
+    var pixels = width * height;
+    var meanMilli = (totalDiff * 1000) / pixels;
+    var overPermille = (overCount * 1000) / pixels;
+    Terminal.Say("CONFORMANCE: " + pathA + " vs " + pathB);
+    Terminal.Say("CONFORMANCE: pixels=" + intStr(pixels) + " meanMilli=" + intStr(meanMilli) +
+                 " max=" + intStr(maxDiff) + " overPermille=" + intStr(overPermille));
+
+    if (exact) {
+        if (maxDiff != 0) {
+            Terminal.Say("RESULT: fail images not byte-identical in exact mode");
+            return;
+        }
+        Terminal.Say("RESULT: ok");
+        return;
+    }
+
+    // Mean channel-sum <= 18 (≈6 per channel) and <= 3% of pixels visibly off.
+    if (meanMilli > 18000) {
+        Terminal.Say("RESULT: fail mean difference above tolerance");
+        return;
+    }
+    if (overPermille > 30) {
+        Terminal.Say("RESULT: fail too many visibly different pixels");
+        return;
+    }
+    Terminal.Say("RESULT: ok");
+}

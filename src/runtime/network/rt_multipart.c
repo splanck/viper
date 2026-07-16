@@ -8,7 +8,7 @@
 // File: src/runtime/network/rt_multipart.c
 // Purpose: Multipart form-data builder/parser for HTTP file uploads.
 // Key invariants:
-//   - RFC 2046 compliant boundary generation and formatting.
+//   - Generates random boundaries and conventional CRLF multipart formatting.
 //   - Builder is append-only; parts are concatenated on Build().
 // Ownership/Lifetime:
 //   - Multipart objects are GC-managed.

@@ -47,10 +47,11 @@ SIDE_EFFECT_MARKERS = (
     "Viper.Net",
     "Viper.Network",
     "Viper.Http",
+    "Viper.Crypto.Tls",
     "Viper.Thread",
     "Viper.Graphics",
     "Viper.GUI",
-    "Viper.Sound",
+    "Viper.Audio",
     "Viper.Audio",
     "Viper.Input",
     "Viper.System",
@@ -176,7 +177,9 @@ def pseudo_reason(code: str) -> str:
     for marker in PSEUDO_MARKERS:
         if marker in code:
             return f"contains placeholder {marker!r}"
-    if re.search(r"\b[A-Z][A-Za-z0-9_]*(Result|Repository|Service|Gateway)\b", code):
+    # Match standalone domain-style type names, not qualified API members such
+    # as `Cipher.DecryptResult` or `Tls.ConnectResult`.
+    if re.search(r"(?<!\.)\b[A-Z][A-Za-z0-9_]*(Result|Repository|Service|Gateway)\b", code):
         return "contains domain placeholder types"
     if re.search(r"\b(?:Record|Item|Image|Request|Response|User|Account|Browser|Cart|Database|Schedule|Equipment|Benefits|StockGrant|SMTP)\b", code):
         return "contains domain placeholder types"

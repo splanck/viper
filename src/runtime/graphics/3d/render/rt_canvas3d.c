@@ -851,10 +851,15 @@ static void canvas3d_bind_skinning_cmd(rt_canvas3d *c,
         cmd->bone_palette = NULL;
         cmd->prev_bone_palette = NULL;
         cmd->bone_count = 0;
+        cmd->extra_influences = NULL;
         return;
     }
     lane_count = (size_t)bone_count * 16u;
     prev_source = prev_bone_palette ? prev_bone_palette : mesh->prev_bone_palette;
+    /* Influences 5-8: import-time mesh data (never animation-mutated), so the
+     * pointer is stable for the deferred draw — backends with
+     * gpu_skinning_extras consume it, others leave it to CPU skinning. */
+    cmd->extra_influences = bone_count > 0 ? mesh->extra_influences : NULL;
     if (!rt_heap_is_payload((void *)(uintptr_t)mesh)) {
         cmd->bone_palette = mesh->bone_palette;
         cmd->bone_count = bone_count;
@@ -868,6 +873,7 @@ static void canvas3d_bind_skinning_cmd(rt_canvas3d *c,
         cmd->bone_palette = NULL;
         cmd->prev_bone_palette = NULL;
         cmd->bone_count = 0;
+        cmd->extra_influences = NULL;
         return;
     }
     cmd->bone_palette = palette_snapshot;
@@ -1505,6 +1511,7 @@ static void rt_canvas3d_finalize(void *obj) {
     c->final_overlay_arena_capacity = 0u;
     c->final_overlay_arena_used = 0u;
     c->final_overlay_arena_peak = 0u;
+    canvas3d_frame_arena_free(c);
     free(c->final_overlay_temp_objects);
     c->final_overlay_temp_objects = NULL;
     c->final_overlay_temp_obj_capacity = 0;
@@ -2150,6 +2157,10 @@ int64_t rt_canvas3d_poll(void *obj) {
             rt_mouse_force_delta(dx, dy);
         } else if (!captured) {
             rt_canvas3d_update_mouse_from_logical(mx, my);
+            /* Recompute the absolute delta after this frame's motion so
+             * Mouse.DeltaX/Y describe the same frame as Mouse.X/Y. Captured
+             * paths above force their own (relative) deltas instead. */
+            rt_mouse_finalize_frame();
         }
     }
 

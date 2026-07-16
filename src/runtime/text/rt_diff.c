@@ -7,14 +7,18 @@
 //
 // File: src/runtime/text/rt_diff.c
 // Purpose: Implements line-level text diff for the Viper.Text.Diff class.
-//          Computes the Myers LCS-based edit script between two multiline
-//          strings, producing added/removed/unchanged line annotations.
+//          Computes a dynamic-programming LCS edit script between two
+//          multiline strings, producing added/removed/unchanged line records.
 //
 // Key invariants:
 //   - Input strings are split on '\n' into line arrays before diffing.
-//   - The diff produces a minimal edit script (fewest insertions + deletions).
-//   - Each output record carries a tag: "=" (unchanged), "+" (added), "-" (removed).
-//   - Context lines (unchanged lines adjacent to changes) are included in output.
+//   - The diff produces a minimal edit script (fewest insertions + deletions);
+//     the LCS table is bounded by RT_DIFF_MAX_LCS_CELLS and traps beyond it.
+//   - Each Lines record is prefixed ' ' (unchanged), '+' (added), or
+//     '-' (removed); Lines always contains every line of both inputs
+//     (context selection happens only in Unified).
+//   - Patch validates the diff against its original argument and traps on
+//     mismatch (VDOC-061).
 //   - Empty input produces an empty diff, not a null result.
 //   - All returned strings are fresh allocations; the diff holds no live refs.
 //
@@ -399,9 +403,16 @@ int64_t rt_diff_count_changes(rt_string a, rt_string b) {
 ///          kept in the signature so the API can later switch to a
 ///          non-redundant patch format without breaking callers.
 rt_string rt_diff_patch(rt_string original, void *diff) {
-    (void)original;
     if (!diff)
         return rt_string_from_bytes("", 0);
+
+    // Validate the diff against `original` (VDOC-061): every context (' ')
+    // and removed ('-') line must match the corresponding original line,
+    // and the diff must consume the original exactly.
+    const char *orig_str = original ? rt_string_cstr(original) : "";
+    size_t orig_len = original ? (size_t)rt_str_len(original) : 0;
+    line_array orig_lines = split_lines(orig_str ? orig_str : "", orig_len);
+    size_t orig_index = 0;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -414,19 +425,42 @@ rt_string rt_diff_patch(rt_string original, void *diff) {
         const char *cstr = rt_string_cstr(line);
         if (!cstr)
             continue;
+        int64_t line_len = rt_str_len(line);
+        if (line_len < 1)
+            continue;
+
+        if (cstr[0] == ' ' || cstr[0] == '-') {
+            // Context/removed lines consume one original line and must match.
+            size_t content_len = (size_t)(line_len - 1);
+            if (orig_index >= (size_t)orig_lines.count ||
+                orig_lines.lens[orig_index] != content_len ||
+                memcmp(orig_lines.lines[orig_index], cstr + 1, content_len) != 0) {
+                rt_sb_free(&sb);
+                free_lines(&orig_lines);
+                rt_trap("Diff.Patch: diff does not apply to the original text");
+                return rt_string_from_bytes("", 0);
+            }
+            orig_index++;
+        }
 
         // Include lines that are same (' ') or added ('+')
         if (cstr[0] == ' ' || cstr[0] == '+') {
             if (!first)
                 diff_check_sb(&sb, rt_sb_append_cstr(&sb, "\n"));
-            int64_t line_len = rt_str_len(line);
             if (line_len > 1)
                 diff_check_sb(
                     &sb, rt_sb_append_bytes(&sb, cstr + 1, (size_t)(line_len - 1))); // Skip prefix
             first = 0;
         }
-        // Skip removed lines ('-')
     }
+
+    if (orig_index != (size_t)orig_lines.count) {
+        rt_sb_free(&sb);
+        free_lines(&orig_lines);
+        rt_trap("Diff.Patch: diff does not apply to the original text");
+        return rt_string_from_bytes("", 0);
+    }
+    free_lines(&orig_lines);
 
     rt_string result = diff_string_from_bytes_or_trap(sb.data, sb.len);
     rt_sb_free(&sb);

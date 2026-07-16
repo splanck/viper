@@ -237,7 +237,7 @@ class Git {
         if gitPath != "" and IO.File.Exists(gitPath) { return gitPath; }
         var overridePath = EnvValue("VIPER_GIT_BINARY");
         if overridePath != "" and IO.File.Exists(overridePath) {
-            gitPath = Path.Abs(overridePath);
+            gitPath = Path.Absolute(overridePath);
             return gitPath;
         }
         var name = "git";
@@ -606,7 +606,7 @@ class Git {
 
     hide func ResolveBinary(name: String) -> String {
         if name == "" { return ""; }
-        if Path.IsAbs(name) {
+        if Path.IsAbsolute(name) {
             if IO.File.Exists(name) { return name; }
             return "";
         }
@@ -618,7 +618,7 @@ class Git {
             var entry = Obj.ToString(Seq.Get(entries, i));
             if entry != "" {
                 var cand = Path.Join(entry, name);
-                if IO.File.Exists(cand) { return Path.Abs(cand); }
+                if IO.File.Exists(cand) { return Path.Absolute(cand); }
             }
             i = i + 1;
         }

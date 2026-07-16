@@ -296,7 +296,7 @@ done:
         rt_obj_free(ctx);
 }
 
-/// @brief Run a callback asynchronously on the default thread pool, returning a Future.
+/// @brief Run a callback asynchronously on a new background thread, returning a Future.
 static void *rt_async_run_impl(void *callback, void *arg, int8_t retain_arg) {
     if (!callback) {
         rt_trap("Async.Run: nil callback");

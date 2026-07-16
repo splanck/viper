@@ -67,7 +67,7 @@ PRINT "Len after Recv: "; Viper.Threads.Channel.get_Count(ch)
 
 ' --- TryRecvOption ---
 PRINT "--- TryRecvOption ---"
-DIM item2 AS OBJECT = Viper.Threads.Channel.TryRecvOption(ch)
+DIM item2 AS OBJECT = Viper.Threads.Channel.TryRecv(ch)
 PRINT "TryRecvOption: "; Viper.Core.Box.ToStr(item2.Unwrap())
 
 ' --- Drain remaining ---

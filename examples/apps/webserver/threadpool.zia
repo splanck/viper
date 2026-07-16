@@ -107,7 +107,7 @@ func pool_submit(conn: Viper.Network.Tcp) {
     Threads.Monitor.Enter(pool_queue);
     pool_queue.add(conn);
     // Signal one waiting worker
-    Threads.Monitor.Pause(pool_queue);
+    Threads.Monitor.Notify(pool_queue);
     Threads.Monitor.Exit(pool_queue);
 }
 
@@ -117,7 +117,7 @@ func pool_shutdown() {
     Threads.Monitor.Enter(pool_queue);
     pool_running = 0;
     // Wake all workers so they can see the shutdown flag
-    Threads.Monitor.PauseAll(pool_queue);
+    Threads.Monitor.NotifyAll(pool_queue);
     Threads.Monitor.Exit(pool_queue);
 
     // Join all worker threads

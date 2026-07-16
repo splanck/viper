@@ -32,7 +32,7 @@
 //     rt_obj_free() explicitly; the GC also reclaims them automatically.
 //
 // Links: src/runtime/game/rt_timer.h (public API),
-//        docs/viperlib/game.md (Timer section — note: frame-based, not ms-based)
+//        docs/viperlib/game/core.md (frame- and millisecond-driven modes)
 //
 //===----------------------------------------------------------------------===//
 

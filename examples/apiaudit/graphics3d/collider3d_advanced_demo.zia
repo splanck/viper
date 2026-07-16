@@ -12,21 +12,21 @@ func heightColor(hi: Integer, lo: Integer) -> Integer {
 func start() {
     Say("Collider3D advanced demo");
 
-    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
-    var mesh = Mesh3D.NewBox(2.0, 1.0, 4.0);
+    var world = PhysicsWorld3D.New(0.0, 0.0, 0.0);
+    var mesh = Mesh3D.Box(2.0, 1.0, 4.0);
     var hull = Collider3D.NewConvexHull(mesh);
-    var wall = Physics3DBody.New(0.0);
+    var wall = PhysicsBody3D.New(0.0);
     wall.Collider = hull;
-    Physics3DWorld.Add(world, wall);
+    PhysicsWorld3D.Add(world, wall);
 
-    var sphere = Physics3DBody.NewSphere(0.5, 1.0);
-    Physics3DBody.SetPosition(sphere, 1.3, 0.0, 0.0);
-    Physics3DWorld.Add(world, sphere);
-    Physics3DWorld.Step(world, 0.016);
-    Say("Convex hull collisions = " + toString(Physics3DWorld.get_CollisionCount(world)));
+    var sphere = PhysicsBody3D.Sphere(0.5, 1.0);
+    PhysicsBody3D.SetPosition(sphere, 1.3, 0.0, 0.0);
+    PhysicsWorld3D.Add(world, sphere);
+    PhysicsWorld3D.Step(world, 0.016);
+    Say("Convex hull collisions = " + toString(PhysicsWorld3D.get_CollisionCount(world)));
 
     var compound = Collider3D.NewCompound();
-    var child = Collider3D.NewBox(0.5, 0.5, 0.5);
+    var child = Collider3D.Box(0.5, 0.5, 0.5);
     var childXf = Transform3D.New();
     Transform3D.SetPosition(childXf, 2.0, 0.0, 0.0);
     Collider3D.AddChild(compound, child, childXf);
@@ -45,13 +45,13 @@ func start() {
         z = z + 1;
     }
     var heightfield = Collider3D.NewHeightfield(pixels, 1.0, 2.0, 1.0);
-    var terrain = Physics3DBody.New(0.0);
+    var terrain = PhysicsBody3D.New(0.0);
     terrain.Collider = heightfield;
-    Physics3DWorld.Add(world, terrain);
+    PhysicsWorld3D.Add(world, terrain);
 
-    sphere = Physics3DBody.NewSphere(0.35, 1.0);
-    Physics3DBody.SetPosition(sphere, 0.8, 0.9, 0.0);
-    Physics3DWorld.Add(world, sphere);
-    Physics3DWorld.Step(world, 0.016);
-    Say("Heightfield collisions = " + toString(Physics3DWorld.get_CollisionCount(world)));
+    sphere = PhysicsBody3D.Sphere(0.35, 1.0);
+    PhysicsBody3D.SetPosition(sphere, 0.8, 0.9, 0.0);
+    PhysicsWorld3D.Add(world, sphere);
+    PhysicsWorld3D.Step(world, 0.016);
+    Say("Heightfield collisions = " + toString(PhysicsWorld3D.get_CollisionCount(world)));
 }

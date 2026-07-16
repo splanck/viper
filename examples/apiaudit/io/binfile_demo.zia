@@ -33,7 +33,7 @@ func start() {
     // --- Pos (after writing) ---
     Say("--- Pos ---");
     Say("Pos after write:");
-    SayInt(BinFile.get_Pos(wf));
+    SayInt(BinFile.get_Position(wf));
 
     // --- Flush ---
     Say("--- Flush ---");
@@ -67,14 +67,14 @@ func start() {
     // --- Pos ---
     Say("--- Pos (after reads) ---");
     Say("Pos:");
-    SayInt(BinFile.get_Pos(rf));
+    SayInt(BinFile.get_Position(rf));
 
     // --- Seek ---
     Say("--- Seek ---");
     BinFile.Seek(rf, 0, 0);
     Say("Seek to 0");
     Say("Pos after seek:");
-    SayInt(BinFile.get_Pos(rf));
+    SayInt(BinFile.get_Position(rf));
     Say("ReadByte after seek:");
     SayInt(BinFile.ReadByte(rf));
 

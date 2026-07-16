@@ -40,8 +40,8 @@ func main() {
     game.setup("Ridgebound Tree Material Probe", 320, 180);
 
     var world = game.getWorld();
-    var barkNodeOption = world.FindNodeOption("mesh_0_material_0");
-    var canopyNodeOption = world.FindNodeOption("mesh_1_material_1");
+    var barkNodeOption = world.FindNode("mesh_0_material_0");
+    var canopyNodeOption = world.FindNode("mesh_1_material_1");
     if (barkNodeOption.IsNone) {
         fail(game, "imported maple bark material node was not spawned");
         return;

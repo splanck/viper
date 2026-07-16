@@ -21,7 +21,7 @@ func start() {
     var camera = world.Camera;
 
     var ground = Game3D.Entity3D.New();
-    var groundBody = G3D.Physics3DBody.NewAABB(50.0, 0.5, 50.0, 0.0);
+    var groundBody = G3D.PhysicsBody3D.NewAABB(50.0, 0.5, 50.0, 0.0);
     ground.AttachBody(groundBody);
     ground.SetPosition(0.0, -0.5, 0.0);
     world.Spawn(ground);
@@ -37,7 +37,7 @@ func start() {
     world.SetCameraController(tp);
 
     // Third-person camera-relative drive: yaw 90 + forward => player moves -X.
-    G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_KeyW(), true);
+    G3D.Canvas3D.PushSyntheticKey(canvas, Viper.Input.Key.W, true);
     world.RunFramesOnly(30, 0.016666666666666666);
     G3D.Canvas3D.ClearSyntheticInput(canvas);
     var pos = player.Position;
@@ -76,7 +76,7 @@ func start() {
 
     // Lock-on: a target crate ahead on a dedicated layer.
     var target = Game3D.Entity3D.New();
-    var targetBody = G3D.Physics3DBody.NewAABB(0.4, 0.4, 0.4, 1.0);
+    var targetBody = G3D.PhysicsBody3D.NewAABB(0.4, 0.4, 0.4, 1.0);
     target.AttachBody(targetBody);
     target.SetPosition(Math.Vec3.get_X(pos) - 5.0, 1.0, Math.Vec3.get_Z(pos));
     world.Spawn(target);
@@ -99,7 +99,7 @@ func start() {
 
     // Traversal probes: 1 m wall ahead of a foot-level origin.
     var wall = Game3D.Entity3D.New();
-    var wallBody = G3D.Physics3DBody.NewAABB(2.0, 0.5, 0.25, 0.0);
+    var wallBody = G3D.PhysicsBody3D.NewAABB(2.0, 0.5, 0.25, 0.0);
     wall.AttachBody(wallBody);
     wall.SetPosition(20.0, 0.5, 20.0);
     world.Spawn(wall);

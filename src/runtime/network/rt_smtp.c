@@ -653,7 +653,8 @@ void rt_smtp_set_tls(void *obj, int8_t enable) {
 ///   1. Connect: implicit TLS via `rt_tls_connect` (port 465) or plain `rt_tcp_connect_for`.
 ///   2. Read 220 greeting; send `EHLO localhost`, expect 250.
 ///   3. If `use_tls && port != 465`: send STARTTLS (220), wrap the existing socket in a TLS
-///      session, detach the underlying TCP handle so it isn't double-closed, and re-issue EHLO.
+///      session, and after a successful handshake detach the underlying TCP handle before
+///      re-issuing EHLO. The current handshake-failure path closes TLS before detaching TCP.
 ///   4. If credentials are set: send AUTH LOGIN (334) → base64(username) (334) → base64(password)
 ///      (235). Each base64 step uses `rt_codec_base64_enc`, then `rt_string_unref`s the encoder
 ///      output to keep peak memory low.

@@ -3728,3 +3728,173 @@ void rt_texatlas3d_get_uv_rect(
     if (v1)
         *v1 = 1;
 }
+
+/// @brief Stub for `Particles3D.set_Seed`. Silent no-op stub.
+void rt_particles3d_set_seed(void *obj, int64_t seed) {
+    (void)obj;
+    (void)seed;
+}
+
+/// @brief Stub for `Particles3D.get_Seed`. Silent stub returning 0.
+int64_t rt_particles3d_get_seed(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+/* Stub-parity audit additions: entry points registered in the 3D runtime
+ * defs whose implementations compile only in graphics-enabled builds. */
+
+/// @brief Silent fallback stub for `BlendTree3D.get_BlendMode` (graphics-disabled build).
+int64_t rt_blend_tree3d_get_blend_mode(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("BlendTree3D.get_BlendMode: graphics support not compiled in", 0);
+}
+
+/// @brief Trapping stub for `BlendTree3D.set_BlendMode` (graphics-disabled build).
+void rt_blend_tree3d_set_blend_mode(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("BlendTree3D.set_BlendMode: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Decal3D.SetDepthBias` (graphics-disabled build).
+void rt_decal3d_set_depth_bias(void *o, double a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Decal3D.SetDepthBias: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Material3D.ClearAlbedoRenderTarget` (graphics-disabled build).
+void rt_material3d_clear_albedo_render_target(void *o) {
+    (void)o;
+    RT_GRAPHICS_TRAP_VOID("Material3D.ClearAlbedoRenderTarget: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `Material3D.get_SsrEnabled` (graphics-disabled build).
+int8_t rt_material3d_get_ssr_enabled(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Material3D.get_SsrEnabled: graphics support not compiled in", 0);
+}
+
+/// @brief Trapping stub for `Material3D.SetAlbedoRenderTarget` (graphics-disabled build).
+void rt_material3d_set_albedo_render_target(void *o, void *a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Material3D.SetAlbedoRenderTarget: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Material3D.SetEmissiveRenderTarget` (graphics-disabled build).
+void rt_material3d_set_emissive_render_target(void *o, void *a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Material3D.SetEmissiveRenderTarget: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Material3D.set_SsrEnabled` (graphics-disabled build).
+void rt_material3d_set_ssr_enabled(void *o, int8_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Material3D.set_SsrEnabled: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `SceneAsset.ApplyVariant` (graphics-disabled build).
+int64_t rt_model3d_apply_variant(void *o, void *a1, int64_t a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("SceneAsset.ApplyVariant: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `SceneAsset.GenerateLODs` (graphics-disabled build).
+int64_t rt_model3d_generate_lods(void *o, int64_t a1, double a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("SceneAsset.GenerateLODs: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `SceneAsset.get_VariantCount` (graphics-disabled build).
+int64_t rt_model3d_get_variant_count(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("SceneAsset.get_VariantCount: graphics support not compiled in",
+                                  0);
+}
+
+/// @brief Silent fallback stub for `SceneAsset.GetVariantName` (graphics-disabled build).
+rt_string rt_model3d_get_variant_name(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("SceneAsset.GetVariantName: graphics support not compiled in",
+                                  rt_string_from_bytes("", 0));
+}
+
+/// @brief Trapping stub for `SceneAsset.LoadResultWithOptions` (graphics-disabled build).
+void *rt_model3d_load_result_with_options(rt_string a0, int8_t a1) {
+    (void)a0;
+    (void)a1;
+    RT_GRAPHICS_TRAP_RET("SceneAsset.LoadResultWithOptions: graphics support not compiled in",
+                         NULL);
+}
+
+/// @brief Trapping stub for `SceneAsset.LoadWithOptions` (graphics-disabled build).
+void *rt_model3d_load_with_options(rt_string a0, int8_t a1) {
+    (void)a0;
+    (void)a1;
+    RT_GRAPHICS_TRAP_RET("SceneAsset.LoadWithOptions: graphics support not compiled in", NULL);
+}
+
+/// @brief Trapping stub for `SceneAsset.LoadWithOptionsEx` (graphics-disabled build).
+void *rt_model3d_load_with_options_ex(rt_string a0, rt_string a1) {
+    (void)a0;
+    (void)a1;
+    RT_GRAPHICS_TRAP_RET("SceneAsset.LoadWithOptionsEx: graphics support not compiled in", NULL);
+}
+
+/// @brief Trapping stub for `Particles3D.SetStretch` (graphics-disabled build).
+void rt_particles3d_set_stretch(void *o, double a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Particles3D.SetStretch: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Particles3D.SetTrail` (graphics-disabled build).
+void rt_particles3d_set_trail(void *o, double a1, int64_t a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_TRAP_VOID("Particles3D.SetTrail: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `Skeleton3D.get_AliasCount` (graphics-disabled build).
+int64_t rt_skeleton3d_get_alias_count(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Skeleton3D.get_AliasCount: graphics support not compiled in", 0);
+}
+
+/// @brief Trapping stub for `Skeleton3D.SetBoneAlias` (graphics-disabled build).
+void rt_skeleton3d_set_bone_alias(void *o, rt_string a1, rt_string a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_TRAP_VOID("Skeleton3D.SetBoneAlias: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `Sprite3D.get_Additive` (graphics-disabled build).
+int8_t rt_sprite3d_get_additive(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Sprite3D.get_Additive: graphics support not compiled in", 0);
+}
+
+/// @brief Trapping stub for `Sprite3D.set_Additive` (graphics-disabled build).
+void rt_sprite3d_set_additive(void *o, int8_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Sprite3D.set_Additive: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Sprite3D.SetColor` (graphics-disabled build).
+void rt_sprite3d_set_color(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Sprite3D.SetColor: graphics support not compiled in");
+}

@@ -765,7 +765,7 @@ bool is_allowed_duplicate_function_export(std::string_view key,
     }
 
     if (starts_with(symbol, "rt_gc_")) {
-        return all_names_start_with_one_of(names, {"Viper.Memory.GC.", "Viper.Runtime.GC."});
+        return all_names_start_with_one_of(names, {"Viper.Runtime.GC.", "Viper.Runtime.GC."});
     }
 
     if (starts_with(symbol, "rt_memory_")) {
@@ -1020,7 +1020,7 @@ bool is_allowed_length_property(std::string_view qualified_name) {
         "Viper.IO.BinaryBuffer.Length",
         "Viper.IO.MemStream.Length",
         "Viper.IO.Stream.Length",
-        "Viper.Sound.MusicGen.Length",
+        "Viper.Audio.MusicGen.Length",
         "Viper.String.Length",
         "Viper.Text.Scanner.Length",
         "Viper.Text.StringBuilder.Length",

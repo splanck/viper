@@ -47,7 +47,7 @@ PRINT "Decrypted with key: "; Viper.Collections.Bytes.ToStr(dec2)
 ' --- DeriveKey ---
 PRINT "--- DeriveKey ---"
 DIM salt AS OBJECT
-salt = Viper.Crypto.Rand.Bytes(16)
+salt = Viper.Crypto.SecureRandom.Bytes(16)
 DIM derived AS OBJECT
 derived = Viper.Crypto.Cipher.DeriveKey("password", salt)
 PRINT "Derived key length: "; Viper.Collections.Bytes.get_Length(derived)

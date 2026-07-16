@@ -14,24 +14,24 @@ func start() {
     var up = new Vec3(0.0, 1.0, 0.0);
     Camera3D.LookAt(cam, eye, target, up);
 
-    var sphere = Mesh3D.NewSphere(0.5, 16);
-    var floor = Mesh3D.NewPlane(10.0, 10.0);
-    var cube = Mesh3D.NewBox(0.8, 0.8, 0.8);
+    var sphere = Mesh3D.Sphere(0.5, 16);
+    var floor = Mesh3D.Plane(10.0, 10.0);
+    var cube = Mesh3D.Box(0.8, 0.8, 0.8);
 
     // Regular lit material
-    var floor_mat = Material3D.NewColor(0.2, 0.2, 0.25);
+    var floor_mat = Material3D.FromColor(0.2, 0.2, 0.25);
 
     // Emissive materials — glow without needing light
-    var red_glow = Material3D.NewColor(0.1, 0.0, 0.0);
+    var red_glow = Material3D.FromColor(0.1, 0.0, 0.0);
     Material3D.SetEmissiveColor(red_glow, 1.0, 0.2, 0.1);
 
-    var green_glow = Material3D.NewColor(0.0, 0.1, 0.0);
+    var green_glow = Material3D.FromColor(0.0, 0.1, 0.0);
     Material3D.SetEmissiveColor(green_glow, 0.1, 1.0, 0.3);
 
-    var blue_glow = Material3D.NewColor(0.0, 0.0, 0.1);
+    var blue_glow = Material3D.FromColor(0.0, 0.0, 0.1);
     Material3D.SetEmissiveColor(blue_glow, 0.2, 0.3, 1.0);
 
-    var white_glow = Material3D.NewColor(0.1, 0.1, 0.1);
+    var white_glow = Material3D.FromColor(0.1, 0.1, 0.1);
     Material3D.SetEmissiveColor(white_glow, 0.8, 0.8, 0.9);
     Material3D.SetShininess(white_glow, 128.0);
 
@@ -40,13 +40,13 @@ func start() {
 
     // One dim directional light
     var light_dir = new Vec3(-1.0, -1.0, -0.5);
-    var light = Light3D.NewDirectional(light_dir, 0.3, 0.3, 0.35);
+    var light = Light3D.Directional(light_dir, 0.3, 0.3, 0.35);
     Canvas3D.SetLight(canvas, 0, light);
 
     var floor_xform = Mat4.Translate(0.0, -1.0, 0.0);
     var angle = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.02, 0.02, 0.04);
 

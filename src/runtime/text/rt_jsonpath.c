@@ -6,18 +6,23 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_jsonpath.c
-// Purpose: Implements a JSONPath query engine for the Viper.Text.JsonPath class.
-//          Evaluates JSONPath expressions against a parsed rt_map/rt_seq JSON
-//          tree (from rt_json.c), supporting dot notation, bracket notation,
-//          wildcard (*), recursive descent (..), and array slices.
+// Purpose: Implements a JSONPath-like path resolver for the Viper.Data.JsonPath
+//          class. Evaluates dot-separated paths against a parsed rt_map/rt_seq
+//          JSON tree (from rt_json.c). The supported syntax is: dot segments
+//          (`a.b`), bracket indices (`[0]`, negative from the end) and quoted
+//          bracket keys (`["k"]`/`['k']`), an optional leading `$`, and — in
+//          `Query` only — a single wildcard `*` segment. Recursive descent
+//          (`..`), slices, filters, and unions are NOT implemented.
 //
 // Key invariants:
-//   - Input JSON must be pre-parsed by rt_json into an rt_map tree.
+//   - Input JSON must be pre-parsed by rt_json into an rt_map tree (raw JSON
+//     source strings are auto-parsed).
 //   - Query returns a Seq of all matched nodes; empty Seq if no match.
-//   - '$' is the root selector; '.' and '..' navigate child/descendant nodes.
+//   - '$' is the root selector; '.' separates child segments.
 //   - Array indices in brackets are zero-based; negative indices from the end.
-//   - Wildcard '*' matches all children of the current node.
-//   - Invalid JSONPath expressions cause a trap with a descriptive error.
+//   - In Query, the single wildcard '*' matches all children of the current node.
+//   - Unrecognized or malformed path forms resolve to "no match" (NULL / empty
+//     Seq / false); the resolver does not emit syntax diagnostics or traps.
 //
 // Ownership/Lifetime:
 //   - The input JSON tree is borrowed unless a raw JSON string root is auto-parsed.
@@ -35,6 +40,7 @@
 #include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_map.h"
+#include "rt_format.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -107,7 +113,12 @@ static int jsonpath_parse_i64_span(const char *text, int64_t len, int64_t *out_i
 
 // --- Helper: navigate one segment ---
 
-static void *navigate_segment(void *current, const char *seg, int64_t len) {
+/// @brief Navigate one path segment, reporting whether the container held it.
+/// @details `*found` distinguishes a stored JSON null (C NULL value, found)
+///          from an absent key/index (not found) — the value tree uses C NULL
+///          for both, so the container must be consulted directly.
+static void *navigate_segment_ex(void *current, const char *seg, int64_t len, int *found) {
+    *found = 0;
     if (!current || len == 0)
         return NULL;
 
@@ -121,8 +132,10 @@ static void *navigate_segment(void *current, const char *seg, int64_t len) {
             int64_t slen = rt_seq_len(current);
             if (idx < 0)
                 idx += slen;
-            if (idx >= 0 && idx < slen)
+            if (idx >= 0 && idx < slen) {
+                *found = 1;
                 return rt_seq_get(current, idx);
+            }
         }
         return NULL;
     }
@@ -131,19 +144,35 @@ static void *navigate_segment(void *current, const char *seg, int64_t len) {
     if (!is_map_obj(current))
         return NULL;
     rt_string key = rt_string_from_bytes(seg, len);
-    void *val = rt_map_get(current, key);
+    void *val = NULL;
+    if (rt_map_has(current, key)) {
+        *found = 1;
+        val = rt_map_get(current, key);
+    }
     rt_string_unref(key);
     return val;
 }
 
+
 // --- Helper: resolve path ---
 
-static void *resolve_path(void *root, const char *path) {
-    if (!root || !path || !*path)
+/// @brief Resolve a path while reporting whether the terminal segment exists.
+/// @details `*out_found` is 1 when every segment was present in its container —
+///          including a terminal segment whose stored value is JSON null — and 0
+///          when any segment was absent. This lets `Has`/`GetOr` distinguish a
+///          present null member from a missing path.
+static void *resolve_path_ex(void *root, const char *path, int *out_found) {
+    *out_found = 0;
+    if (!root)
+        return NULL;
+    if (!path || !*path) {
+        *out_found = 1;
         return root;
+    }
 
     void *current = root;
     const char *p = path;
+    int found = 1; // The root itself exists.
 
     // Skip leading '$.' if present
     if (p[0] == '$' && p[1] == '.')
@@ -167,7 +196,7 @@ static void *resolve_path(void *root, const char *path) {
                 const char *start = p;
                 while (*p && *p != quote)
                     p++;
-                current = navigate_segment(current, start, (int64_t)(p - start));
+                current = navigate_segment_ex(current, start, (int64_t)(p - start), &found);
                 if (*p == quote)
                     p++;
                 if (*p == ']')
@@ -176,7 +205,7 @@ static void *resolve_path(void *root, const char *path) {
                 const char *start = p;
                 while (*p && *p != ']')
                     p++;
-                current = navigate_segment(current, start, (int64_t)(p - start));
+                current = navigate_segment_ex(current, start, (int64_t)(p - start), &found);
                 if (*p == ']')
                     p++;
             }
@@ -187,10 +216,23 @@ static void *resolve_path(void *root, const char *path) {
         const char *start = p;
         while (*p && *p != '.' && *p != '[')
             p++;
-        current = navigate_segment(current, start, (int64_t)(p - start));
+        current = navigate_segment_ex(current, start, (int64_t)(p - start), &found);
     }
 
+    // Remaining path segments after a null/leaf value mean the path is missing
+    // (a JSON null has no children). Skip trailing dots before deciding.
+    while (*p == '.')
+        p++;
+    if (*p && !current)
+        found = 0;
+
+    *out_found = found;
     return current;
+}
+
+static void *resolve_path(void *root, const char *path) {
+    int found = 0;
+    return resolve_path_ex(root, path, &found);
 }
 
 // --- Helper: wildcard query ---
@@ -283,6 +325,21 @@ static void *retain_jsonpath_value(void *value) {
     return value;
 }
 
+/// @brief Convert a runtime path String to a C string, rejecting embedded NULs.
+/// @details Paths are text: the resolver walks C strings, so a path whose runtime
+///          byte length extends past a NUL would silently address a different
+///          (shorter) path. Such paths match nothing instead (VDOC-038).
+/// @return NUL-terminated path text, or NULL when the path contains a NUL byte.
+static const char *jsonpath_path_cstr(rt_string path) {
+    if (!path)
+        return NULL;
+    const char *p = rt_string_cstr(path);
+    int64_t len = rt_str_len(path);
+    if (!p || len < 0 || memchr(p, '\0', (size_t)len) != NULL)
+        return NULL;
+    return p;
+}
+
 /// @brief Navigate a parsed JSON tree by dot-separated path (e.g., "user.name").
 void *rt_jsonpath_get(void *root, rt_string path) {
     if (!root || !path)
@@ -291,25 +348,61 @@ void *rt_jsonpath_get(void *root, rt_string path) {
     root = auto_parse_root(root, &owned_root);
     if (!root)
         return NULL;
-    void *result = retain_jsonpath_value(resolve_path(root, rt_string_cstr(path)));
+    const char *path_text = jsonpath_path_cstr(path);
+    if (!path_text) {
+        if (owned_root)
+            release_local_obj(root);
+        return NULL;
+    }
+    void *result = retain_jsonpath_value(resolve_path(root, path_text));
     if (owned_root)
         release_local_obj(root);
     return result;
 }
 
 /// @brief Navigate a JSON tree by path, returning a default value if the path doesn't exist.
+/// @brief Resolve a path with existence tracking, sharing the auto-parse root logic.
+/// @param out_found Receives 1 when the terminal segment exists (even as JSON null).
+/// @return Retained value at the path, or NULL when missing or stored null.
+static void *jsonpath_get_ex(void *root, rt_string path, int *out_found) {
+    *out_found = 0;
+    if (!root || !path)
+        return NULL;
+    int owned_root = 0;
+    root = auto_parse_root(root, &owned_root);
+    if (!root)
+        return NULL;
+    const char *path_text = jsonpath_path_cstr(path);
+    if (!path_text) {
+        if (owned_root)
+            release_local_obj(root);
+        return NULL;
+    }
+    void *result = retain_jsonpath_value(resolve_path_ex(root, path_text, out_found));
+    if (owned_root)
+        release_local_obj(root);
+    return result;
+}
+
 void *rt_jsonpath_get_or(void *root, rt_string path, void *def) {
-    void *result = rt_jsonpath_get(root, path);
-    return result ? result : retain_jsonpath_value(def);
+    // The default applies only when the path is MISSING: a present JSON null
+    // member is a real value and is returned as NULL rather than replaced.
+    int found = 0;
+    void *result = jsonpath_get_ex(root, path, &found);
+    if (found)
+        return result;
+    return retain_jsonpath_value(def);
 }
 
 /// @brief Check whether a path exists in a parsed JSON tree.
 int8_t rt_jsonpath_has(void *root, rt_string path) {
-    void *result = rt_jsonpath_get(root, path);
-    if (!result)
-        return 0;
-    release_local_obj(result);
-    return 1;
+    // Existence is judged by the containers along the path, so a present JSON
+    // null member reports true while a missing key/index reports false.
+    int found = 0;
+    void *result = jsonpath_get_ex(root, path, &found);
+    if (result)
+        release_local_obj(result);
+    return found ? 1 : 0;
 }
 
 /// @brief Query a JSON tree with wildcard path support (returns a sequence of matching values).
@@ -324,7 +417,12 @@ void *rt_jsonpath_query(void *root, rt_string path) {
     if (!root)
         return results;
 
-    const char *p = rt_string_cstr(path);
+    const char *p = jsonpath_path_cstr(path);
+    if (!p) {
+        if (owned_root)
+            release_local_obj(root);
+        return results;
+    }
 
     // Skip leading '$.'
     if (p[0] == '$' && p[1] == '.')
@@ -396,7 +494,8 @@ rt_string rt_jsonpath_get_str(void *root, rt_string path) {
     } else if (tag == RT_BOX_F64) {
         double d = rt_unbox_f64(val);
         char buf[64];
-        snprintf(buf, sizeof(buf), "%.17g", d);
+        // Locale-independent exact formatting (VDOC-041).
+        rt_format_f64_roundtrip(d, buf, sizeof(buf));
         result = rt_string_from_bytes(buf, strlen(buf));
     } else if (tag == RT_BOX_I1) {
         int64_t b = rt_unbox_i1(val);
@@ -417,7 +516,8 @@ int64_t rt_jsonpath_get_int(void *root, rt_string path) {
     if (tag == RT_BOX_I64)
         result = rt_unbox_i64(val);
     if (tag == RT_BOX_F64)
-        result = (int64_t)rt_unbox_f64(val);
+        // Defined saturating conversion; raw casts are UB out of range (VDOC-037).
+        result = (int64_t)rt_f64_to_i64(rt_unbox_f64(val));
     if (tag == RT_BOX_I1)
         result = rt_unbox_i1(val);
     if (tag == RT_BOX_STR) {

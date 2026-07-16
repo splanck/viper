@@ -16,7 +16,7 @@ func start() {
     mesh.AddTriangle(0, 2, 3);
     var node = SceneNode.New();
     node.Mesh = mesh;
-    var mat = Material3D.NewColor(1.0, 0.1, 0.1);
+    var mat = Material3D.FromColor(1.0, 0.1, 0.1);
     Material3D.SetUnlit(mat, true);
     node.Material = mat;
     scene.Add(node);

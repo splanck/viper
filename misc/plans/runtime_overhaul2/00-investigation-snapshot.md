@@ -77,7 +77,7 @@ Representative groups:
 - `Viper.IO.BinaryBuffer.NewCap` and `NewCapacity`.
 - `Viper.Math.Vec2.Len` and `Length`.
 - `Viper.Math.Vec3.Norm` and `Normalize`.
-- `Viper.Memory.GC.*` and `Viper.Runtime.GC.*`.
+- `Viper.Runtime.GC.*` and `Viper.Runtime.GC.*`.
 - `Viper.Memory.Retain/Release` and `Viper.Runtime.Unsafe.*`.
 
 Decision: each concept gets one canonical public name. Compatibility names are

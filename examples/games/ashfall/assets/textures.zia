@@ -97,7 +97,7 @@ class TextureLib {
     }
 
     hide func buildMat(surf: Integer, r: Float, g: Float, b: Float) -> G3D.Material3D {
-        var m = G3D.Material3D.NewPBR(r, g, b);
+        var m = G3D.Material3D.PBR(r, g, b);
         // Class parameters.
         var rough = 0.85;
         var metal = 0.05;
@@ -175,7 +175,7 @@ class TextureLib {
     // terrain material stays white and the layers carry the color.
     expose func terrainMat() -> G3D.Material3D {
         if hasTerrMat { return terrMat; }
-        terrMat = G3D.Material3D.NewPBR(1.0, 1.0, 1.0);
+        terrMat = G3D.Material3D.PBR(1.0, 1.0, 1.0);
         terrMat.Roughness = 0.95;
         terrMat.Metallic = 0.0;
         terrMat.EmissiveIntensity = 1.0;

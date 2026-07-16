@@ -108,6 +108,25 @@ typedef enum {
 ///          Everything below U+0590 is treated as LTR or neutral; everything
 ///          above U+0800 (with minor Arabic Supplement handling) is LTR.
 static cp_dir_t classify(uint32_t cp) {
+    // Weak and neutral characters inside the RTL blocks (VDOC-074): digits
+    // with bidi class AN and combining marks (NSM) are not strong, so they
+    // must not decide FirstStrong or count as directional content.
+    if ((cp >= 0x0660 && cp <= 0x0669) || (cp >= 0x06F0 && cp <= 0x06F9))
+        return DIR_NEUTRAL; // Arabic-Indic digits (bidi class AN)
+    if ((cp >= 0x0591 && cp <= 0x05BD) || cp == 0x05BF || cp == 0x05C1 || cp == 0x05C2 ||
+        cp == 0x05C4 || cp == 0x05C5 || cp == 0x05C7)
+        return DIR_NEUTRAL; // Hebrew points (NSM)
+    if ((cp >= 0x0610 && cp <= 0x061A) || (cp >= 0x064B && cp <= 0x065F) || cp == 0x0670 ||
+        (cp >= 0x06D6 && cp <= 0x06DC) || (cp >= 0x06DF && cp <= 0x06E4) || cp == 0x06E7 ||
+        cp == 0x06E8 || (cp >= 0x06EA && cp <= 0x06ED))
+        return DIR_NEUTRAL; // Arabic combining marks (NSM)
+
+    // Generic combining-mark blocks (NSM) outside the RTL ranges.
+    if ((cp >= 0x0300 && cp <= 0x036F) || (cp >= 0x0483 && cp <= 0x0489) ||
+        (cp >= 0x1AB0 && cp <= 0x1AFF) || (cp >= 0x1DC0 && cp <= 0x1DFF) ||
+        (cp >= 0x20D0 && cp <= 0x20FF) || (cp >= 0xFE20 && cp <= 0xFE2F))
+        return DIR_NEUTRAL;
+
     // RTL scripts.
     if (cp >= 0x0590 && cp <= 0x05FF)
         return DIR_RTL; // Hebrew

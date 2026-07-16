@@ -4,8 +4,10 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_csv.h
-// Purpose: CSV parsing and formatting utilities compliant with RFC 4180, handling quoted fields,
-// embedded newlines, escaped double-quotes, and custom delimiters.
+// Purpose: CSV parsing and formatting utilities based on RFC 4180 quoting rules, handling quoted
+// fields, embedded newlines, escaped double-quotes, and custom delimiters. Deviations from strict
+// RFC 4180: multi-row Format emits LF (not CRLF) row endings, unequal field counts are not
+// enforced, and parsing accepts LF and CR line endings as extensions.
 //
 // Key invariants:
 //   - Handles quoted fields, escaped quotes (double-quote inside quotes), and newlines in fields.
@@ -36,7 +38,8 @@ void *rt_csv_parse_line(rt_string line);
 
 /// @brief Parse a single CSV line with custom delimiter.
 /// @param line CSV line to parse.
-/// @param delim Delimiter string (first character used).
+/// @param delim Delimiter string; must be exactly one byte (empty selects the comma default,
+///              anything longer traps).
 /// @return Newly allocated Seq containing field strings.
 void *rt_csv_parse_line_with(rt_string line, rt_string delim);
 
@@ -48,7 +51,8 @@ void *rt_csv_parse(rt_string text);
 
 /// @brief Parse multi-line CSV text with custom delimiter.
 /// @param text Multi-line CSV text.
-/// @param delim Delimiter string (first character used).
+/// @param delim Delimiter string; must be exactly one byte (empty selects the comma default,
+///              anything longer traps).
 /// @return Newly allocated Seq of rows, each row a Seq of field strings.
 void *rt_csv_parse_with(rt_string text, rt_string delim);
 
@@ -60,7 +64,8 @@ rt_string rt_csv_format_line(void *fields);
 
 /// @brief Format a Seq of strings into a CSV line with custom delimiter.
 /// @param fields Seq of strings to format.
-/// @param delim Delimiter string (first character used).
+/// @param delim Delimiter string; must be exactly one byte (empty selects the comma default,
+///              anything longer traps).
 /// @return Newly allocated CSV line string.
 rt_string rt_csv_format_line_with(void *fields, rt_string delim);
 
@@ -72,7 +77,8 @@ rt_string rt_csv_format(void *rows);
 
 /// @brief Format a Seq of Seq of strings with custom delimiter.
 /// @param rows Seq of rows, each row a Seq of field strings.
-/// @param delim Delimiter string (first character used).
+/// @param delim Delimiter string; must be exactly one byte (empty selects the comma default,
+///              anything longer traps).
 /// @return Newly allocated multi-line CSV string.
 rt_string rt_csv_format_with(void *rows, rt_string delim);
 

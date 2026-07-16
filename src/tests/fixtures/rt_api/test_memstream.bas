@@ -53,7 +53,7 @@ DIM reader AS OBJECT
 textPath = "/tmp/viper_rt_api_memstream_lines.txt"
 writer = Viper.IO.LineWriter.Open(textPath)
 writer.Write("alpha")
-writer.WriteLn("beta")
+writer.WriteLine("beta")
 writer.Close()
 
 reader = Viper.IO.LineReader.Open(textPath)

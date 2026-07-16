@@ -3044,3 +3044,413 @@ void rt_game3d_world_remove_cloth(void *world, void *cloth) {
     (void)world;
     (void)cloth;
 }
+
+/* Physics3DWorld query-config, CCD counters, and traversal probes */
+
+/// @brief Stub for `Physics3DWorld.get_MaxQueryHits`. Silent stub returning 0.
+int64_t rt_world3d_get_max_query_hits(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.SetMaxQueryHits`. Silent no-op stub.
+void rt_world3d_set_max_query_hits(void *w, int64_t max_hits) {
+    (void)w;
+    (void)max_hits;
+}
+
+/// @brief Stub for `Physics3DWorld.get_CcdToiCount`. Silent stub returning 0.
+int64_t rt_world3d_get_ccd_toi_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.get_CcdSubstepClampedBodyCount`. Silent stub returning 0.
+int64_t rt_world3d_get_ccd_substep_clamped_body_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.get_LastCcdClampedBodyCount`. Silent stub returning 0.
+int64_t rt_world3d_get_last_ccd_clamped_body_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.ProbeClearance`. Silent stub returning false.
+int8_t rt_world3d_probe_clearance(
+    void *w, void *position, double radius, double height, int64_t mask) {
+    (void)w;
+    (void)position;
+    (void)radius;
+    (void)height;
+    (void)mask;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.ProbeLedge`. Silent stub returning NULL (no ledge).
+void *rt_world3d_probe_ledge(void *w,
+                             void *position,
+                             void *forward,
+                             double max_height,
+                             double min_height,
+                             double reach,
+                             int64_t mask) {
+    (void)w;
+    (void)position;
+    (void)forward;
+    (void)max_height;
+    (void)min_height;
+    (void)reach;
+    (void)mask;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.ProbeVault`. Silent stub returning NULL (no vault).
+void *rt_world3d_probe_vault(void *w,
+                             void *position,
+                             void *forward,
+                             double max_height,
+                             double max_depth,
+                             double reach,
+                             int64_t mask) {
+    (void)w;
+    (void)position;
+    (void)forward;
+    (void)max_height;
+    (void)max_depth;
+    (void)reach;
+    (void)mask;
+    return NULL;
+}
+
+/* Character3D configuration and state accessors */
+
+/// @brief Stub for `Character3D.TrySetHeight`. Silent stub returning false.
+int8_t rt_character3d_try_set_height(void *c, double height) {
+    (void)c;
+    (void)height;
+    return 0;
+}
+
+/// @brief Stub for `Character3D.set_Height`. Silent no-op stub.
+void rt_character3d_set_height(void *c, double height) {
+    (void)c;
+    (void)height;
+}
+
+/// @brief Stub for `Character3D.get_Height`. Silent stub returning 0.
+double rt_character3d_get_height(void *c) {
+    (void)c;
+    return 0.0;
+}
+
+/// @brief Stub for `Character3D.set_PushStrength`. Silent no-op stub.
+void rt_character3d_set_push_strength(void *c, double strength) {
+    (void)c;
+    (void)strength;
+}
+
+/// @brief Stub for `Character3D.get_PushStrength`. Silent stub returning 0.
+double rt_character3d_get_push_strength(void *c) {
+    (void)c;
+    return 0.0;
+}
+
+/// @brief Stub for `Character3D.set_CollideDynamic`. Silent no-op stub.
+void rt_character3d_set_collide_dynamic(void *c, int8_t enabled) {
+    (void)c;
+    (void)enabled;
+}
+
+/// @brief Stub for `Character3D.get_CollideDynamic`. Silent stub returning false.
+int8_t rt_character3d_get_collide_dynamic(void *c) {
+    (void)c;
+    return 0;
+}
+
+/// @brief Stub for `Character3D.set_RidePlatforms`. Silent no-op stub.
+void rt_character3d_set_ride_platforms(void *c, int8_t enabled) {
+    (void)c;
+    (void)enabled;
+}
+
+/// @brief Stub for `Character3D.get_RidePlatforms`. Silent stub returning false.
+int8_t rt_character3d_get_ride_platforms(void *c) {
+    (void)c;
+    return 0;
+}
+
+/// @brief Stub for `Character3D.IsSliding`. Silent stub returning false.
+int8_t rt_character3d_is_sliding(void *c) {
+    (void)c;
+    return 0;
+}
+
+/// @brief Stub for `Character3D.GetGroundBody`. Silent stub returning NULL.
+void *rt_character3d_get_ground_body(void *c) {
+    (void)c;
+    return NULL;
+}
+
+/* Ragdoll3D */
+
+/// @brief Stub for `Ragdoll3D.New`. Silent stub returning NULL.
+void *rt_ragdoll3d_from_skeleton(void *skeleton) {
+    (void)skeleton;
+    return NULL;
+}
+
+/// @brief Stub for `Ragdoll3D.get_TotalMass`. Silent stub returning 0.
+double rt_ragdoll3d_get_total_mass(void *r) {
+    (void)r;
+    return 0.0;
+}
+
+/// @brief Stub for `Ragdoll3D.set_TotalMass`. Silent no-op stub.
+void rt_ragdoll3d_set_total_mass(void *r, double mass) {
+    (void)r;
+    (void)mass;
+}
+
+/// @brief Stub for `Ragdoll3D.get_RadiusScale`. Silent stub returning 0.
+double rt_ragdoll3d_get_radius_scale(void *r) {
+    (void)r;
+    return 0.0;
+}
+
+/// @brief Stub for `Ragdoll3D.set_RadiusScale`. Silent no-op stub.
+void rt_ragdoll3d_set_radius_scale(void *r, double scale) {
+    (void)r;
+    (void)scale;
+}
+
+/// @brief Stub for `Ragdoll3D.get_MinBoneLength`. Silent stub returning 0.
+double rt_ragdoll3d_get_min_bone_length(void *r) {
+    (void)r;
+    return 0.0;
+}
+
+/// @brief Stub for `Ragdoll3D.set_MinBoneLength`. Silent no-op stub.
+void rt_ragdoll3d_set_min_bone_length(void *r, double length) {
+    (void)r;
+    (void)length;
+}
+
+/// @brief Stub for `Ragdoll3D.get_BodyCount`. Silent stub returning 0.
+int64_t rt_ragdoll3d_get_body_count(void *r) {
+    (void)r;
+    return 0;
+}
+
+/// @brief Stub for `Ragdoll3D.get_Active`. Silent stub returning false.
+int8_t rt_ragdoll3d_get_active(void *r) {
+    (void)r;
+    return 0;
+}
+
+/// @brief Stub for `Ragdoll3D.SetJointLimits`. Silent no-op stub.
+void rt_ragdoll3d_set_joint_limits(void *ragdoll,
+                                   rt_string bone_name,
+                                   double swing_deg,
+                                   double twist_deg) {
+    (void)ragdoll;
+    (void)bone_name;
+    (void)swing_deg;
+    (void)twist_deg;
+}
+
+/// @brief Stub for `Ragdoll3D.Activate`. Silent no-op stub.
+void rt_ragdoll3d_activate(void *r, void *world, void *skeleton, void *node) {
+    (void)r;
+    (void)world;
+    (void)skeleton;
+    (void)node;
+}
+
+/// @brief Stub for `Ragdoll3D.Deactivate`. Silent no-op stub.
+void rt_ragdoll3d_deactivate(void *r, double blend_seconds) {
+    (void)r;
+    (void)blend_seconds;
+}
+
+/// @brief Stub for `Ragdoll3D.SetPowered`. Silent no-op stub.
+void rt_ragdoll3d_set_powered(void *r, int64_t enabled, double strength) {
+    (void)r;
+    (void)enabled;
+    (void)strength;
+}
+
+/// @brief Stub for `Ragdoll3D.Step`. Silent no-op stub.
+void rt_ragdoll3d_step(void *r, double dt) {
+    (void)r;
+    (void)dt;
+}
+
+/// @brief Stub for `Ragdoll3D.GetBody`. Silent stub returning NULL.
+void *rt_ragdoll3d_get_body(void *ragdoll, rt_string bone_name) {
+    (void)ragdoll;
+    (void)bone_name;
+    return NULL;
+}
+
+/// @brief Stub for the C-internal closest-hit raw raycast. Silent stub returning NULL.
+void *rt_world3d_raycast_closest_body_raw(void *world,
+                                          double ox,
+                                          double oy,
+                                          double oz,
+                                          double dx,
+                                          double dy,
+                                          double dz,
+                                          double max_distance,
+                                          int64_t mask,
+                                          const void *ignore_body,
+                                          double *out_distance) {
+    (void)world;
+    (void)ox;
+    (void)oy;
+    (void)oz;
+    (void)dx;
+    (void)dy;
+    (void)dz;
+    (void)max_distance;
+    (void)mask;
+    (void)ignore_body;
+    if (out_distance)
+        *out_distance = -1.0;
+    return NULL;
+}
+
+/* Vehicle3D */
+
+/// @brief Stub for `Vehicle3D.New`. Silent stub returning NULL.
+void *rt_vehicle3d_new(void *world, void *chassis) {
+    (void)world;
+    (void)chassis;
+    return NULL;
+}
+
+/// @brief Stub for `Vehicle3D.AddWheel`. Silent stub returning -1.
+int64_t rt_vehicle3d_add_wheel(void *vehicle,
+                               double x,
+                               double y,
+                               double z,
+                               double radius,
+                               double suspension_rest,
+                               double stiffness,
+                               double damping,
+                               int8_t steers,
+                               int8_t driven) {
+    (void)vehicle;
+    (void)x;
+    (void)y;
+    (void)z;
+    (void)radius;
+    (void)suspension_rest;
+    (void)stiffness;
+    (void)damping;
+    (void)steers;
+    (void)driven;
+    return -1;
+}
+
+/// @brief Stub for `Vehicle3D.SetInput`. Silent no-op stub.
+void rt_vehicle3d_set_input(void *vehicle, double throttle, double brake, double steer) {
+    (void)vehicle;
+    (void)throttle;
+    (void)brake;
+    (void)steer;
+}
+
+/// @brief Stub for `Vehicle3D.SetDriveForce`. Silent no-op stub.
+void rt_vehicle3d_set_drive_force(void *vehicle, double newtons) {
+    (void)vehicle;
+    (void)newtons;
+}
+
+/// @brief Stub for `Vehicle3D.SetBrakeForce`. Silent no-op stub.
+void rt_vehicle3d_set_brake_force(void *vehicle, double newtons) {
+    (void)vehicle;
+    (void)newtons;
+}
+
+/// @brief Stub for `Vehicle3D.SetMaxSteer`. Silent no-op stub.
+void rt_vehicle3d_set_max_steer(void *vehicle, double degrees) {
+    (void)vehicle;
+    (void)degrees;
+}
+
+/// @brief Stub for `Vehicle3D.SetGrip`. Silent no-op stub.
+void rt_vehicle3d_set_grip(void *vehicle, double longitudinal, double lateral) {
+    (void)vehicle;
+    (void)longitudinal;
+    (void)lateral;
+}
+
+/// @brief Stub for `Vehicle3D.SetCollisionMask`. Silent no-op stub.
+void rt_vehicle3d_set_collision_mask(void *vehicle, int64_t mask) {
+    (void)vehicle;
+    (void)mask;
+}
+
+/// @brief Stub for `Vehicle3D.Step`. Silent no-op stub.
+void rt_vehicle3d_step(void *vehicle, double dt) {
+    (void)vehicle;
+    (void)dt;
+}
+
+/// @brief Stub for `Vehicle3D.get_Speed`. Silent stub returning 0.
+double rt_vehicle3d_get_speed(void *vehicle) {
+    (void)vehicle;
+    return 0.0;
+}
+
+/// @brief Stub for `Vehicle3D.get_WheelCount`. Silent stub returning 0.
+int64_t rt_vehicle3d_get_wheel_count(void *vehicle) {
+    (void)vehicle;
+    return 0;
+}
+
+/// @brief Stub for `Vehicle3D.WheelInContact`. Silent stub returning false.
+int8_t rt_vehicle3d_wheel_in_contact(void *vehicle, int64_t index) {
+    (void)vehicle;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub for `Vehicle3D.WheelTravel`. Silent stub returning 0.
+double rt_vehicle3d_wheel_travel(void *vehicle, int64_t index) {
+    (void)vehicle;
+    (void)index;
+    return 0.0;
+}
+
+/// @brief Stub for `Vehicle3D.WheelLoad`. Silent stub returning 0.
+double rt_vehicle3d_wheel_load(void *vehicle, int64_t index) {
+    (void)vehicle;
+    (void)index;
+    return 0.0;
+}
+
+/* Stub-parity audit additions: entry points registered in the 3D runtime
+ * defs whose implementations compile only in graphics-enabled builds. */
+
+/// @brief Trapping stub for `Collider3D.NewConvexHullReduced` (graphics-disabled build).
+void *rt_collider3d_new_convex_hull_reduced(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_RET("Collider3D.NewConvexHullReduced: graphics support not compiled in", NULL);
+}
+
+/// @brief Silent fallback stub for `Ray3D.IntersectTriangleCull` (graphics-disabled build).
+double rt_ray3d_intersect_triangle_cull(
+    void *o, void *a1, void *a2, void *a3, void *a4, int8_t a5) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Ray3D.IntersectTriangleCull: graphics support not compiled in",
+                                  0.0);
+}

@@ -33,7 +33,7 @@ Translation catalog keyed by message ID. Supports placeholder interpolation, fal
 | `FormatWith(key, values)` | `String(String, runtime List of String)` | Positional `{0}`, `{1}`, … |
 | `Plural(key, n, vars)` | `String(String, Int, runtime Map of String)` | Plural-aware lookup (see Notes). |
 | `Fallback(other)` | `MessageBundle(MessageBundle)` | Attach a fallback and return this bundle; traps when the proposed chain reaches this bundle. |
-| `Keys()` | `List[String]()` | Snapshot of keys defined by this bundle (excludes fallback); order is unspecified. |
+| `Keys()` | `Object()` (runtime `List` of `String`) | Snapshot of keys defined by this bundle (excludes fallback); order is unspecified. |
 
 Prefer `TryGetOption` or `GetOr` for new code. `TryGet` remains available for compatibility, but its empty-string sentinel cannot distinguish a missing key from an intentional empty translation.
 
@@ -46,12 +46,33 @@ Prefer `TryGetOption` or `GetOr` for new code. `TryGet` remains available for co
 
 ### Notes
 
-- **Fallback chain.** Each bundle lookup checks the raw key, then locale-qualified keys using `<locale-tag>:<key>` across that bundle's locale fallback chain, then repeats on its explicit fallback. A lookup examines at most 16 bundles. `Fallback` rejects a proposed chain that reaches the receiver within that bound.
-- **Plural.** `Plural(key, n, vars)` evaluates the bound locale's cardinal plural category for `n`, then looks up `<key>.<category>` (falling through to `<key>.other` if missing). `{n}` is added to a temporary copy of `vars`; the caller's map is not mutated.
+- **Fallback chain.** Each bundle lookup checks the raw key, then locale-qualified keys using `<locale-tag>:<key>` across that bundle's locale fallback chain, then repeats on its explicit fallback. A lookup examines at most 16 bundles. `Fallback` validates the entire proposed chain and traps on any cycle, regardless of chain length.
+- **Plural.** `Plural(key, n, vars)` evaluates the bound locale's cardinal plural category for `n`, then looks up `<key>.<category>` (falling through to `<key>.other` if missing). `{n}` is added to a temporary copy of `vars`; the caller's map is not mutated. The injected value is rendered with the bound locale's `numbers.digits` set, matching `RelativeTimeFormat`.
 - **Value types.** `FromMap`, JSON loaders, `Format(vars)`, and `Plural(vars)` require raw runtime string values. In Zia, create the runtime map with `Viper.Collections.Map.New()` and populate it with `Map.SetStr`; a typed `Map[String, String]` currently boxes its values and is not compatible. `FormatWith(values)` likewise requires a runtime list containing raw strings; a string `Split(...).ToList()` result is one compatible source. Oversized positional indices are preserved literally.
 - **Missing placeholders.** Placeholders referencing absent keys in `vars` are preserved literally, e.g. `{name}` stays `{name}`.
 - **Escaping.** Use `{{` and `}}` for literal braces.
 - JSON loaders expect a flat `{"key": "value", ...}` object and reject non-string values.
+- `FromMap` retains the supplied runtime map rather than cloning it. Mutating that map later
+  changes subsequent bundle lookups; `Keys()` itself returns a new snapshot list.
+- `Keys()` is registered as opaque `Object`, so direct `.Count` chaining is inferred against
+  `MessageBundle` and fails. Use `Viper.Collections.List.get_Count(bundle.Keys())` and
+  `Viper.Collections.List.Get(...)` explicitly.
+
+### Message JSON shape
+
+Message files are independent of the locale-data schema. Their root is one flat JSON object:
+
+```json
+{
+  "greet": "Hello, {name}!",
+  "items.one": "1 item",
+  "items.other": "{n} items"
+}
+```
+
+Keys and values must be strings. Nested objects, arrays, numbers, booleans, and JSON null values
+are rejected as message values. The loader does not impose the locale file's 256 KB or 256-byte
+field caps.
 
 ### Zia Example
 
@@ -103,7 +124,7 @@ func start() {
 ### See Also
 
 - [PluralRules](#viperlocalizationpluralrules) — underlying category evaluator.
-- [Data files](data-files.md) — JSON schema for loaded messages.
+- [Data files](data-files.md) — locale records and the plural-rule DSL used to select message forms.
 
 ---
 
@@ -119,7 +140,7 @@ CLDR plural category selection for cardinal and ordinal numeric forms.
 | `Cardinal(n)` | `String(Float)` | Returns `"zero"/"one"/"two"/"few"/"many"/"other"`. |
 | `CardinalInt(n)` | `String(Int)` | Integer fast path. |
 | `Ordinal(n)` | `String(Int)` | English: `"one"/"two"/"few"/"other"` (1st/2nd/3rd/4th). |
-| `Categories()` | `List[String]()` | Distinct categories appearing across this locale's cardinal and ordinal rule chains, preserving first occurrence. |
+| `Categories()` | `Object()` (runtime `List` of `String`) | Distinct categories appearing across this locale's cardinal and ordinal rule chains, preserving first occurrence. |
 
 ### Notes
 
@@ -129,11 +150,16 @@ CLDR plural category selection for cardinal and ordinal numeric forms.
   - `v` = visible fraction digit count (incl. trailing zeros)
   - `f` = visible fraction digits as integer (with trailing zeros)
   - `t` = visible fraction digits without trailing zeros
-- A `Float` does not retain source spelling, so lexical trailing zeros cannot survive the call (`1.20` has the same value as `1.2`). Non-integer floats are rendered with 15 significant digits before deriving `v`, `f`, and `t`; integer-valued doubles use `v=f=t=0`.
+- A `Float` does not retain source spelling, so lexical trailing zeros cannot survive the call (`1.20` has the same value as `1.2`). Non-integer floats are rendered with C-locale `%.15g` before deriving `v`, `f`, and `t`; integer-valued doubles use `v=f=t=0`. The current derivation does not apply an exponent from that spelling, so values such as `0.0000001` incorrectly receive `v=f=t=0` (VDOC-076).
 - Loaded locale plural rules support CLDR-style range/list predicates: `in`, `not in`, `within`, `not within`, comma-separated lists, and `a..b` ranges. `in` matches integral values only; `within` also matches fractional values.
+- Despite the separate `CardinalInt` entry point, rule evaluation converts operands and literals
+  to binary64. Equality, ranges, and `mod` can therefore be wrong above 2^53 (VDOC-083).
 - Nonfinite `Cardinal` inputs return `"other"`.
 - **en-US** cardinal: `one` for `i=1 && v=0`; else `other`.
 - **en-US** ordinal: `one` for `n mod 10 = 1 && n mod 100 != 11`; `two` for `n mod 10 = 2 && n mod 100 != 12`; `few` for `n mod 10 = 3 && n mod 100 != 13`; else `other`.
+- `Categories()` is registered as opaque `Object`; use the explicit
+  `Viper.Collections.List` accessors. Each call also currently leaks one retained string reference
+  per category in its returned list (VDOC-077).
 
 ### Zia Example
 

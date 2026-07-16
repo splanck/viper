@@ -44,7 +44,7 @@ func start() {
 
     // --- Create ---
     Say("--- Create ---");
-    var ts = DT.Create(2024, 6, 15, 12, 30, 0);
+    var ts = DT.FromParts(2024, 6, 15, 12, 30, 0);
     Say("Create(2024, 6, 15, 12, 30, 0):");
     SayInt(ts);
     Say("Year of created:");
@@ -86,12 +86,12 @@ func start() {
     // --- ToISO ---
     Say("--- ToISO ---");
     Say("ToISO:");
-    Say(DT.ToISO(ts));
+    Say(DT.ToIso8601(ts));
 
     // Test epoch
     Say("--- Epoch ---");
     Say("ToISO(0):");
-    Say(DT.ToISO(0));
+    Say(DT.ToIso8601(0));
 
     Say("=== DateTime Demo Complete ===");
 }

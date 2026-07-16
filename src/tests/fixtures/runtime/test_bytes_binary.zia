@@ -20,9 +20,9 @@ func testI16LEWriteRead() {
     setTest("I16LEWriteRead");
 
     var b = Viper.Collections.Bytes.New(8);
-    Viper.Collections.Bytes.WriteI16LE(b, 0, 0x1234);
+    Viper.Collections.Bytes.WriteI16LittleEndian(b, 0, 0x1234);
 
-    var v = Viper.Collections.Bytes.ReadI16LE(b, 0);
+    var v = Viper.Collections.Bytes.ReadI16LittleEndian(b, 0);
     assertEqInt(v, 0x1234, "i16le roundtrip");
 
     // Verify endianness: LE means low byte first
@@ -36,9 +36,9 @@ func testI16BEWriteRead() {
     setTest("I16BEWriteRead");
 
     var b = Viper.Collections.Bytes.New(8);
-    Viper.Collections.Bytes.WriteI16BE(b, 0, 0x1234);
+    Viper.Collections.Bytes.WriteI16BigEndian(b, 0, 0x1234);
 
-    var v = Viper.Collections.Bytes.ReadI16BE(b, 0);
+    var v = Viper.Collections.Bytes.ReadI16BigEndian(b, 0);
     assertEqInt(v, 0x1234, "i16be roundtrip");
 
     // Verify endianness: BE means high byte first
@@ -52,9 +52,9 @@ func testI32LEWriteRead() {
     setTest("I32LEWriteRead");
 
     var b = Viper.Collections.Bytes.New(8);
-    Viper.Collections.Bytes.WriteI32LE(b, 0, 0x12345678);
+    Viper.Collections.Bytes.WriteI32LittleEndian(b, 0, 0x12345678);
 
-    var v = Viper.Collections.Bytes.ReadI32LE(b, 0);
+    var v = Viper.Collections.Bytes.ReadI32LittleEndian(b, 0);
     assertEqInt(v, 0x12345678, "i32le roundtrip");
 
     // Verify endianness: LE means lowest byte first
@@ -68,9 +68,9 @@ func testI32BEWriteRead() {
     setTest("I32BEWriteRead");
 
     var b = Viper.Collections.Bytes.New(8);
-    Viper.Collections.Bytes.WriteI32BE(b, 0, 0x12345678);
+    Viper.Collections.Bytes.WriteI32BigEndian(b, 0, 0x12345678);
 
-    var v = Viper.Collections.Bytes.ReadI32BE(b, 0);
+    var v = Viper.Collections.Bytes.ReadI32BigEndian(b, 0);
     assertEqInt(v, 0x12345678, "i32be roundtrip");
 
     // Verify endianness: BE means highest byte first
@@ -84,9 +84,9 @@ func testI64LEWriteRead() {
     setTest("I64LEWriteRead");
 
     var b = Viper.Collections.Bytes.New(16);
-    Viper.Collections.Bytes.WriteI64LE(b, 0, 1234567890123);
+    Viper.Collections.Bytes.WriteI64LittleEndian(b, 0, 1234567890123);
 
-    var v = Viper.Collections.Bytes.ReadI64LE(b, 0);
+    var v = Viper.Collections.Bytes.ReadI64LittleEndian(b, 0);
     assertEqInt(v, 1234567890123, "i64le roundtrip");
 }
 
@@ -94,9 +94,9 @@ func testI64BEWriteRead() {
     setTest("I64BEWriteRead");
 
     var b = Viper.Collections.Bytes.New(16);
-    Viper.Collections.Bytes.WriteI64BE(b, 0, 9876543210987);
+    Viper.Collections.Bytes.WriteI64BigEndian(b, 0, 9876543210987);
 
-    var v = Viper.Collections.Bytes.ReadI64BE(b, 0);
+    var v = Viper.Collections.Bytes.ReadI64BigEndian(b, 0);
     assertEqInt(v, 9876543210987, "i64be roundtrip");
 }
 
@@ -106,17 +106,17 @@ func testOffsetWrites() {
     var b = Viper.Collections.Bytes.New(16);
 
     // Write i16le at offset 2
-    Viper.Collections.Bytes.WriteI16LE(b, 2, 0x1234);
-    var v1 = Viper.Collections.Bytes.ReadI16LE(b, 2);
+    Viper.Collections.Bytes.WriteI16LittleEndian(b, 2, 0x1234);
+    var v1 = Viper.Collections.Bytes.ReadI16LittleEndian(b, 2);
     assertEqInt(v1, 0x1234, "i16le at offset 2");
 
     // Write i32be at offset 8
-    Viper.Collections.Bytes.WriteI32BE(b, 8, 0x11223344);
-    var v2 = Viper.Collections.Bytes.ReadI32BE(b, 8);
+    Viper.Collections.Bytes.WriteI32BigEndian(b, 8, 0x11223344);
+    var v2 = Viper.Collections.Bytes.ReadI32BigEndian(b, 8);
     assertEqInt(v2, 0x11223344, "i32be at offset 8");
 
     // Original i16 at offset 2 should be undisturbed
-    var v3 = Viper.Collections.Bytes.ReadI16LE(b, 2);
+    var v3 = Viper.Collections.Bytes.ReadI16LittleEndian(b, 2);
     assertEqInt(v3, 0x1234, "i16le at offset 2 still intact");
 }
 
@@ -124,15 +124,15 @@ func testSignedReads() {
     setTest("SignedReads");
 
     var b = Viper.Collections.Bytes.New(16);
-    Viper.Collections.Bytes.WriteI16LE(b, 0, -1);
-    Viper.Collections.Bytes.WriteI16BE(b, 2, -2);
-    Viper.Collections.Bytes.WriteI32LE(b, 4, -1);
-    Viper.Collections.Bytes.WriteI32BE(b, 8, -2);
+    Viper.Collections.Bytes.WriteI16LittleEndian(b, 0, -1);
+    Viper.Collections.Bytes.WriteI16BigEndian(b, 2, -2);
+    Viper.Collections.Bytes.WriteI32LittleEndian(b, 4, -1);
+    Viper.Collections.Bytes.WriteI32BigEndian(b, 8, -2);
 
-    assertEqInt(Viper.Collections.Bytes.ReadI16LE(b, 0), -1, "i16le sign extension");
-    assertEqInt(Viper.Collections.Bytes.ReadI16BE(b, 2), -2, "i16be sign extension");
-    assertEqInt(Viper.Collections.Bytes.ReadI32LE(b, 4), -1, "i32le sign extension");
-    assertEqInt(Viper.Collections.Bytes.ReadI32BE(b, 8), -2, "i32be sign extension");
+    assertEqInt(Viper.Collections.Bytes.ReadI16LittleEndian(b, 0), -1, "i16le sign extension");
+    assertEqInt(Viper.Collections.Bytes.ReadI16BigEndian(b, 2), -2, "i16be sign extension");
+    assertEqInt(Viper.Collections.Bytes.ReadI32LittleEndian(b, 4), -1, "i32le sign extension");
+    assertEqInt(Viper.Collections.Bytes.ReadI32BigEndian(b, 8), -2, "i32be sign extension");
 }
 
 func start() {

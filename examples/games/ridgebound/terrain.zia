@@ -195,7 +195,7 @@ class RidgeboundTerrain {
         Terrain3D.SetLayerScale(land, 3, 6.0);
         splatMap = createTerrainSplatMap(land, config.SPLAT_SIZE, config.SPLAT_SIZE);
         Terrain3D.SetSplatMap(land, splatMap);
-        Terrain3D.SetLODDistances(land, config.TERRAIN_LOD_NEAR, config.TERRAIN_LOD_FAR);
+        Terrain3D.SetLodDistances(land, config.TERRAIN_LOD_NEAR, config.TERRAIN_LOD_FAR);
         Terrain3D.SetSkirtDepth(land, config.TERRAIN_SKIRT_DEPTH);
 
         return land;
@@ -209,7 +209,7 @@ class RidgeboundTerrain {
         grass = Vegetation3D.New(createGrassBladeTexture());
         Vegetation3D.SetBladeSize(grass, config.GRASS_BLADE_W, config.GRASS_BLADE_H, config.GRASS_BLADE_VAR);
         Vegetation3D.SetWindParams(grass, config.GRASS_WIND_SPEED, config.GRASS_WIND_STRENGTH, config.GRASS_WIND_TURBULENCE);
-        Vegetation3D.SetLODDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
+        Vegetation3D.SetLodDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
         Vegetation3D.SetDensityMap(grass, createVegetationDensity(config.SPLAT_SIZE, config.SPLAT_SIZE));
         Vegetation3D.Populate(grass, land, config.GRASS_BLADE_COUNT);
     }
@@ -229,11 +229,11 @@ class RidgeboundTerrain {
     expose func applyQuality(level: Integer) {
         if (grass == null) { return; }
         if (level <= 0) {
-            Vegetation3D.SetLODDistances(grass, 22.0, 52.0);
+            Vegetation3D.SetLodDistances(grass, 22.0, 52.0);
         } else if (level == 1) {
-            Vegetation3D.SetLODDistances(grass, 30.0, 74.0);
+            Vegetation3D.SetLodDistances(grass, 30.0, 74.0);
         } else {
-            Vegetation3D.SetLODDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
+            Vegetation3D.SetLodDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
         }
     }
 

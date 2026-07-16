@@ -64,7 +64,7 @@ class FocusThrottle {
     expose func AllowBackgroundWork() -> Boolean {
         if focused { return true; }
         if headlessMode { return true; }
-        var now = Time.Clock.Ticks();
+        var now = Time.Clock.NowMs();
         if now - lastAllowTick >= UNFOCUSED_INTERVAL_MS {
             lastAllowTick = now;
             return true;

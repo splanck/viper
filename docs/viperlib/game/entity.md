@@ -1,45 +1,57 @@
+---
+status: active
+audience: public
+last-verified: 2026-07-15
+---
+
 # Viper.Game.Entity
 
-Lightweight 2D game object combining position, velocity, size, health, and built-in tilemap collision.
+`Entity` is a lightweight 2D position, velocity, health, and tile-collision handle. Position and
+velocity use centipixels (1/100 pixel); width and height use whole pixels. Its constructor is a
+legacy function-namespace entry, so use the fully qualified name.
 
-## Overview
+## Construction and properties
 
-Entity replaces the common pattern of parallel arrays + manual gravity/moveAndCollide code. One `UpdatePhysics()` call replaces 13+ lines of gravity + collision + flag checking.
+`Viper.Game.Entity.New(x, y, width, height)` stores `x`/`y` unchanged, clamps non-positive
+dimensions to 1 pixel, starts facing right, and starts active. Allocation can return null.
 
-## API
+| Property | Access | Notes |
+|---|---|---|
+| `X`, `Y` | get/set | Centipixel position; setters teleport without collision. |
+| `VelocityX`, `VelocityY` | get/set | Centipixel displacement per 16 ms base frame. |
+| `Width`, `Height` | get | Pixel collision dimensions. |
+| `Dir` | get/set | Setter maps negative values to `-1` and zero/positive values to `1`. |
+| `Health`, `MaxHealth` | get/set | Unrestricted signed integers; neither setter clamps the other value. Both initially zero. |
+| `Type` | get/set | Uninterpreted application tag. |
+| `Active` | get/set | Passive flag only; Entity methods do not skip inactive values automatically. |
+| `OnGround`, `HitLeft`, `HitRight`, `HitCeiling` | get | Collision state reset at the start of each positive-delta movement call. |
 
-### Entity.New(x, y, width, height) -> Entity
-Create entity at position (x, y) in centipixels (x100) with size in pixels. Width and height clamp to at least 1 pixel.
+The historical abbreviations `VX`, `VY`, `HP`, and `MaxHP` are not public property names.
 
-### Properties
-- `X`, `Y` — Position in centipixels (get/set)
-- `VX`, `VY` — Velocity in centipixels per frame (get/set)
-- `Width`, `Height` — Size in pixels (read-only)
-- `Dir` — Facing direction: 1=right, -1=left (get/set)
-- `HP`, `MaxHP` — Health points (get/set)
-- `Type` — User-defined type ID (get/set)
-- `Active` — Active flag (get/set)
-- `OnGround`, `HitLeft`, `HitRight`, `HitCeiling` — Collision flags (read-only, set by MoveAndCollide)
+## Physics and collision
 
-### Methods
-- `ApplyGravity(gravity, maxFall, dt)` — Apply gravity to VY, cap at maxFall
-- `MoveAndCollide(tilemap, dt)` — Move by velocity, sweep against tilemap solids, preserve subpixel centipixel remainder, and set collision flags
-- `UpdatePhysics(tilemap, gravity, maxFall, dt)` — Combined ApplyGravity + MoveAndCollide
-- `AtEdge(tilemap)` — Returns true if no solid tile below leading edge (for patrol AI)
-- `PatrolReverse(speed)` — Reverse direction on wall hit, set VX to ±speed
-- `Overlaps(other)` — AABB overlap test with another Entity
+- `ApplyGravity(gravity, maxFall, dt)` adds `gravity * dt / 16` with truncation and saturation;
+  negative `maxFall` becomes zero, and only positive downward velocity is capped.
+- `MoveAndCollide(tilemap, dt)` moves X then Y with swept leading-edge tile checks. A null Tilemap
+  performs saturated free movement. `dt <= 0` is a no-op and does not reset flags.
+- `UpdatePhysics(tilemap, gravity, maxFall, dt)` calls the two operations above.
+- `AtEdge(tilemap)` samples two pixels below the leading edge and returns false for a null map.
+- `PatrolReverse(speed)` changes direction/velocity only when the last movement set a wall flag.
+- `Overlaps(other)` uses half-open pixel AABBs; touching edges do not overlap.
 
-Positions use floor division when converting centipixels to tile pixels, so negative coordinates collide consistently instead of truncating toward zero.
+Centipixel-to-pixel collision conversion floors negative coordinates. A stationary call currently
+clears a prior grounded contact without probing the supporting tile (VDOC-241).
 
 ## Example
-```rust
-var enemy = Entity.New(10000, 5000, 24, 16)
-enemy.set_Health(3)
-enemy.set_VelocityX(100)
 
-// Per frame:
-enemy.UpdatePhysics(tilemap, 78, 1350, dt)
-if enemy.get_OnGround() { /* can jump */ }
-enemy.PatrolReverse(100)
-if enemy.AtEdge(tilemap) { enemy.set_Dir(0 - enemy.get_Dir()) }
+```rust
+module EntityExample;
+
+func start() {
+    var enemy = Viper.Game.Entity.New(10000, 5000, 24, 16);
+    enemy.set_Health(3);
+    enemy.set_VelocityX(100);
+    enemy.UpdatePhysics(null, 78, 1350, 16);
+    Viper.Terminal.SayInt(enemy.get_X());
+}
 ```

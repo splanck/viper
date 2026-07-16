@@ -7,8 +7,8 @@
 //
 // File: src/runtime/game/rt_spriteanim.c
 // Purpose: Frame-index animation controller for Viper sprite sheets. Advances
-//   an integer frame index through a configurable sequence of frames at a
-//   specified frames-per-second rate relative to the game's frame rate.
+//   an integer frame index through a configurable sequence at a per-update
+//   speed multiplier and configurable update ticks per displayed frame.
 //   Supports looping, ping-pong (forward then reverse), one-shot (stops at
 //   last frame), and manual frame control. The controller does not draw
 //   anything — it only computes which frame to display each update, leaving
@@ -18,12 +18,13 @@
 //   - Frames are identified by non-negative integers (indices into a sprite
 //     sheet row). The range [start_frame, end_frame] is inclusive. There is no
 //     compile-time cap on frame count — any integer range is valid.
-//   - Animation speed is expressed as `fps` (frames of animation per second).
-//     The controller accumulates fractional frame advances each Update() call
-//     based on `fps / game_fps`. Callers pass `game_fps` (e.g. 60) to Update.
+//   - Animation speed is a unitless [0,10] multiplier. Each no-argument
+//     Update() adds it to a fractional tick accumulator; frame_duration says
+//     how many whole ticks each displayed frame lasts.
 //   - Loop mode: wraps from end_frame back to start_frame automatically.
 //   - PingPong mode: plays start→end, then end→start, alternating direction.
-//   - OneShot mode: stops at end_frame; is_complete() returns 1 thereafter.
+//   - One-shot mode displays the terminal frame for its full duration, then
+//     stops when the next frame step is attempted.
 //   - Calling Reset() returns to start_frame and clears the complete flag.
 //   - The current frame is always in [start_frame, end_frame].
 //
@@ -156,7 +157,7 @@ rt_spriteanim rt_spriteanim_new(void) {
     anim->start_frame = 0;
     anim->end_frame = 0;
     anim->current_frame = 0;
-    anim->frame_duration = 6; // Default: 10fps at 60fps game
+    anim->frame_duration = 6; // Default: six update ticks per displayed frame
     anim->frame_counter = 0;
 
     anim->speed = 1.0;

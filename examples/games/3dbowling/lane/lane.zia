@@ -198,12 +198,12 @@ class LaneBuilder {
     hide List[Float] oilWear;
     hide List[Float] oilCarry;
 
-    hide Physics3DBody laneFloorBody;
-    hide Physics3DBody gutterFloorL;
-    hide Physics3DBody gutterFloorR;
-    hide Physics3DBody wallBodyL;
-    hide Physics3DBody wallBodyR;
-    hide Physics3DBody backWallBody;
+    hide PhysicsBody3D laneFloorBody;
+    hide PhysicsBody3D gutterFloorL;
+    hide PhysicsBody3D gutterFloorR;
+    hide PhysicsBody3D wallBodyL;
+    hide PhysicsBody3D wallBodyR;
+    hide PhysicsBody3D backWallBody;
 
     hide Trigger3D leftGutterTrigger;
     hide Trigger3D rightGutterTrigger;
@@ -211,7 +211,7 @@ class LaneBuilder {
 
     /// @brief Build all meshes / transforms / batches / physics / triggers.
     /// @param pattern OIL_HOUSE / OIL_SPORT / OIL_DRY (sets oilEndZ).
-    expose func initLane(world: Physics3DWorld, pattern: Integer) {
+    expose func initLane(world: PhysicsWorld3D, pattern: Integer) {
         oilPattern = pattern;
         if (pattern == config.OIL_SPORT) {
             oilEndZ = config.OIL_END_SPORT;
@@ -592,52 +592,52 @@ class LaneBuilder {
     }
 
     /// @brief Spawn static physics bodies for floor / gutters / walls / back.
-    hide func buildPhysics(world: Physics3DWorld) {
+    hide func buildPhysics(world: PhysicsWorld3D) {
         var totalLenHalf = (config.LANE_LENGTH + config.LANE_APPROACH) / 2.0;
-        laneFloorBody = Physics3DBody.NewAABB(config.LANE_WIDTH / 2.0, 0.06, totalLenHalf, 0.0);
-        Physics3DBody.set_Static(laneFloorBody, true);
-        Physics3DBody.SetPosition(laneFloorBody, 0.0, -0.06, laneCenterZ);
-        Physics3DBody.set_Friction(laneFloorBody, 0.35);
-        Physics3DBody.set_Restitution(laneFloorBody, 0.08);
-        Physics3DBody.set_CollisionLayer(laneFloorBody, config.LAYER_STATIC);
-        Physics3DWorld.Add(world, laneFloorBody);
+        laneFloorBody = PhysicsBody3D.NewAABB(config.LANE_WIDTH / 2.0, 0.06, totalLenHalf, 0.0);
+        PhysicsBody3D.set_IsStatic(laneFloorBody, true);
+        PhysicsBody3D.SetPosition(laneFloorBody, 0.0, -0.06, laneCenterZ);
+        PhysicsBody3D.set_Friction(laneFloorBody, 0.35);
+        PhysicsBody3D.set_Restitution(laneFloorBody, 0.08);
+        PhysicsBody3D.set_CollisionLayer(laneFloorBody, config.LAYER_STATIC);
+        PhysicsWorld3D.Add(world, laneFloorBody);
 
         var gutterX = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W / 2.0;
-        gutterFloorL = Physics3DBody.NewAABB(config.LANE_GUTTER_W / 2.0, 0.05, totalLenHalf, 0.0);
-        Physics3DBody.set_Static(gutterFloorL, true);
-        Physics3DBody.SetPosition(gutterFloorL, -gutterX, config.GUTTER_Y - 0.02, laneCenterZ);
-        Physics3DBody.set_Friction(gutterFloorL, 0.22);
-        Physics3DBody.set_CollisionLayer(gutterFloorL, config.LAYER_STATIC);
-        Physics3DWorld.Add(world, gutterFloorL);
+        gutterFloorL = PhysicsBody3D.NewAABB(config.LANE_GUTTER_W / 2.0, 0.05, totalLenHalf, 0.0);
+        PhysicsBody3D.set_IsStatic(gutterFloorL, true);
+        PhysicsBody3D.SetPosition(gutterFloorL, -gutterX, config.GUTTER_Y - 0.02, laneCenterZ);
+        PhysicsBody3D.set_Friction(gutterFloorL, 0.22);
+        PhysicsBody3D.set_CollisionLayer(gutterFloorL, config.LAYER_STATIC);
+        PhysicsWorld3D.Add(world, gutterFloorL);
 
-        gutterFloorR = Physics3DBody.NewAABB(config.LANE_GUTTER_W / 2.0, 0.05, totalLenHalf, 0.0);
-        Physics3DBody.set_Static(gutterFloorR, true);
-        Physics3DBody.SetPosition(gutterFloorR, gutterX, config.GUTTER_Y - 0.02, laneCenterZ);
-        Physics3DBody.set_Friction(gutterFloorR, 0.22);
-        Physics3DBody.set_CollisionLayer(gutterFloorR, config.LAYER_STATIC);
-        Physics3DWorld.Add(world, gutterFloorR);
+        gutterFloorR = PhysicsBody3D.NewAABB(config.LANE_GUTTER_W / 2.0, 0.05, totalLenHalf, 0.0);
+        PhysicsBody3D.set_IsStatic(gutterFloorR, true);
+        PhysicsBody3D.SetPosition(gutterFloorR, gutterX, config.GUTTER_Y - 0.02, laneCenterZ);
+        PhysicsBody3D.set_Friction(gutterFloorR, 0.22);
+        PhysicsBody3D.set_CollisionLayer(gutterFloorR, config.LAYER_STATIC);
+        PhysicsWorld3D.Add(world, gutterFloorR);
 
         var wallX = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W + 0.025;
-        wallBodyL = Physics3DBody.NewAABB(0.05, 0.5, totalLenHalf, 0.0);
-        Physics3DBody.set_Static(wallBodyL, true);
-        Physics3DBody.SetPosition(wallBodyL, -wallX, 0.25, laneCenterZ);
-        Physics3DBody.set_Restitution(wallBodyL, 0.28);
-        Physics3DBody.set_CollisionLayer(wallBodyL, config.LAYER_STATIC);
-        Physics3DWorld.Add(world, wallBodyL);
+        wallBodyL = PhysicsBody3D.NewAABB(0.05, 0.5, totalLenHalf, 0.0);
+        PhysicsBody3D.set_IsStatic(wallBodyL, true);
+        PhysicsBody3D.SetPosition(wallBodyL, -wallX, 0.25, laneCenterZ);
+        PhysicsBody3D.set_Restitution(wallBodyL, 0.28);
+        PhysicsBody3D.set_CollisionLayer(wallBodyL, config.LAYER_STATIC);
+        PhysicsWorld3D.Add(world, wallBodyL);
 
-        wallBodyR = Physics3DBody.NewAABB(0.05, 0.5, totalLenHalf, 0.0);
-        Physics3DBody.set_Static(wallBodyR, true);
-        Physics3DBody.SetPosition(wallBodyR, wallX, 0.25, laneCenterZ);
-        Physics3DBody.set_Restitution(wallBodyR, 0.28);
-        Physics3DBody.set_CollisionLayer(wallBodyR, config.LAYER_STATIC);
-        Physics3DWorld.Add(world, wallBodyR);
+        wallBodyR = PhysicsBody3D.NewAABB(0.05, 0.5, totalLenHalf, 0.0);
+        PhysicsBody3D.set_IsStatic(wallBodyR, true);
+        PhysicsBody3D.SetPosition(wallBodyR, wallX, 0.25, laneCenterZ);
+        PhysicsBody3D.set_Restitution(wallBodyR, 0.28);
+        PhysicsBody3D.set_CollisionLayer(wallBodyR, config.LAYER_STATIC);
+        PhysicsWorld3D.Add(world, wallBodyR);
 
-        backWallBody = Physics3DBody.NewAABB(3.0, 1.5, 0.1, 0.0);
-        Physics3DBody.set_Static(backWallBody, true);
-        Physics3DBody.SetPosition(backWallBody, 0.0, 0.75, config.PIN_Z_OFFSET + 2.1);
-        Physics3DBody.set_Restitution(backWallBody, 0.2);
-        Physics3DBody.set_CollisionLayer(backWallBody, config.LAYER_STATIC);
-        Physics3DWorld.Add(world, backWallBody);
+        backWallBody = PhysicsBody3D.NewAABB(3.0, 1.5, 0.1, 0.0);
+        PhysicsBody3D.set_IsStatic(backWallBody, true);
+        PhysicsBody3D.SetPosition(backWallBody, 0.0, 0.75, config.PIN_Z_OFFSET + 2.1);
+        PhysicsBody3D.set_Restitution(backWallBody, 0.2);
+        PhysicsBody3D.set_CollisionLayer(backWallBody, config.LAYER_STATIC);
+        PhysicsWorld3D.Add(world, backWallBody);
     }
 
     /// @brief Spawn the three Trigger3D volumes (left/right gutter + pin deck).
@@ -1016,7 +1016,7 @@ class LaneBuilder {
             "  SCORE " + toString(score);
         if (nextLabel == monitorLabel) { return; }
         monitorLabel = nextLabel;
-        monitorTexture.FillRGBA(0x07141FFF);
+        monitorTexture.FillRgba(0x07141FFF);
         monitorTexture.DrawTextCenteredScaled(16, player, 0x56CFE1, 2);
         monitorTexture.DrawTextCenteredScaled(58,
             "FRAME " + toString(frame) + "   SCORE " + toString(score),

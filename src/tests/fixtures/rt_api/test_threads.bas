@@ -2,11 +2,11 @@
 DIM cq AS Viper.Threads.ConcurrentQueue
 cq = Viper.Threads.ConcurrentQueue.New()
 PRINT "cq empty: "; cq.IsEmpty
-cq.Enqueue("a")
-cq.Enqueue("b")
-cq.Enqueue("c")
+cq.Push("a")
+cq.Push("b")
+cq.Push("c")
 PRINT "cq len: "; cq.Count
-cq.Dequeue()
+cq.Pop()
 PRINT "cq len after dequeue: "; cq.Count
 cq.Clear()
 PRINT "cq empty after clear: "; cq.IsEmpty
@@ -72,7 +72,7 @@ DIM th AS Viper.Threads.Throttler
 th = Viper.Threads.Throttler.New(100)
 PRINT "throttle interval: "; th.Interval
 PRINT "throttle count: "; th.Count
-PRINT "throttle try: "; th.Try()
+PRINT "throttle try: "; th.TryAcquire()
 PRINT "throttle count after try: "; th.Count
 
 DIM sched AS Viper.Threads.Scheduler

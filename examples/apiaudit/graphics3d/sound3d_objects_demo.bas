@@ -24,7 +24,7 @@ listener = Viper.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
 
-source = Viper.Graphics3D.SoundSource3D.New(Viper.Sound.Synth.Tone(523, 220, 0))
+source = Viper.Graphics3D.SoundSource3D.New(Viper.Audio.Synth.Tone(523, 220, 0))
 source.BindNode(node)
 source.MaxDistance = 20.0
 source.Volume = 75
@@ -37,8 +37,8 @@ pos = source.Position
 PRINT "Source X = "; Viper.Math.Vec3.get_X(pos)
 PRINT "Source Z = "; Viper.Math.Vec3.get_Z(pos)
 
-IF Viper.Sound.Audio.IsAvailable() THEN
-    IF Viper.Sound.Audio.Init() <> 0 THEN
+IF Viper.Audio.Mixer.IsAvailable() THEN
+    IF Viper.Audio.Mixer.Init() <> 0 THEN
         voice = source.Play()
         PRINT "VoiceId = "; voice
         PRINT "IsPlaying = "; source.IsPlaying

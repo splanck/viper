@@ -166,14 +166,14 @@ class SignatureController {
             Hide();
             return;
         }
-        if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
+        if Input.Keyboard.WasPressed(Viper.Input.Key.Escape) {
             Hide();
             return;
         }
-        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyDown()) {
+        if Input.Keyboard.IsDown(Viper.Input.Key.LeftControl) and Input.Keyboard.WasPressed(Viper.Input.Key.Down) {
             if NextOverload() { return; }
         }
-        if Input.Keyboard.Ctrl() and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyUp()) {
+        if Input.Keyboard.IsDown(Viper.Input.Key.LeftControl) and Input.Keyboard.WasPressed(Viper.Input.Key.Up) {
             if PreviousOverload() { return; }
         }
 

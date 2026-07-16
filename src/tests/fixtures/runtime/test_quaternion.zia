@@ -24,16 +24,16 @@ func start() {
 
     // === Test 3: Length ===
     // |q| = sqrt(1+4+9+16) = sqrt(30)
-    var len = Viper.Math.Quat.Len(q);
+    var len = Viper.Math.Quat.Length(q);
     if (len < 5.47) { Say("FAIL: Len should be ~5.477"); return; }
     if (len > 5.48) { Say("FAIL: Len should be ~5.477"); return; }
 
-    var lenSq = Viper.Math.Quat.LenSq(q);
+    var lenSq = Viper.Math.Quat.LengthSquared(q);
     if (lenSq != 30.0) { Say("FAIL: LenSq should be 30"); return; }
 
     // === Test 4: Normalize ===
-    var normed = Viper.Math.Quat.Norm(q);
-    var nLen = Viper.Math.Quat.Len(normed);
+    var normed = Viper.Math.Quat.Normalize(q);
+    var nLen = Viper.Math.Quat.Length(normed);
     if (nLen < 0.999) { Say("FAIL: normalized len should be ~1"); return; }
     if (nLen > 1.001) { Say("FAIL: normalized len should be ~1"); return; }
 
@@ -66,7 +66,7 @@ func start() {
     // 90 degrees around Z axis
     var zAxis = Viper.Math.Vec3.New(0.0, 0.0, 1.0);
     var rot90 = Viper.Math.Quat.FromAxisAngle(zAxis, 1.5707963);
-    var rotLen = Viper.Math.Quat.Len(rot90);
+    var rotLen = Viper.Math.Quat.Length(rot90);
     if (rotLen < 0.999) { Say("FAIL: FromAxisAngle should be unit length"); return; }
     if (rotLen > 1.001) { Say("FAIL: FromAxisAngle should be unit length"); return; }
 
@@ -82,7 +82,7 @@ func start() {
 
     // === Test 10: FromEuler ===
     var euler = Viper.Math.Quat.FromEuler(0.0, 0.0, 1.5707963);
-    var eulerLen = Viper.Math.Quat.Len(euler);
+    var eulerLen = Viper.Math.Quat.Length(euler);
     if (eulerLen < 0.999) { Say("FAIL: FromEuler should be unit length"); return; }
     if (eulerLen > 1.001) { Say("FAIL: FromEuler should be unit length"); return; }
 

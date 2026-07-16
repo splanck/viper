@@ -2,7 +2,7 @@
 // weapons/targets.zia — physics-body → damageable-target registry
 // =============================================================================
 //
-// A raycast/overlap returns the hit Physics3DBody; this registry maps that body
+// A raycast/overlap returns the hit PhysicsBody3D; this registry maps that body
 // back to a (targetKind, entityIndex, region) so the damage pipeline knows what
 // it hit and where. Lookup is reference equality on the body handle (no hash
 // map). A damageable typically registers two bodies — a torso (REGION_BODY) and
@@ -15,7 +15,7 @@ bind Viper.Graphics3D as G3D;
 bind "../config" as config;
 
 class TargetRegistry {
-    hide List[G3D.Physics3DBody] body;
+    hide List[G3D.PhysicsBody3D] body;
     hide List[Integer] kind;
     hide List[Integer] index;
     hide List[Integer] region;
@@ -29,7 +29,7 @@ class TargetRegistry {
         body = []; kind = []; index = []; region = []; alive = [];
     }
 
-    expose func register(b: G3D.Physics3DBody, k: Integer, idx: Integer, reg: Integer) {
+    expose func register(b: G3D.PhysicsBody3D, k: Integer, idx: Integer, reg: Integer) {
         var i = 0;
         while i < body.Count {
             if alive[i] == 0 {
@@ -42,7 +42,7 @@ class TargetRegistry {
     }
 
     // Free every slot pointing at this body (torso + head).
-    expose func unregister(b: G3D.Physics3DBody) {
+    expose func unregister(b: G3D.PhysicsBody3D) {
         var i = 0;
         while i < body.Count {
             if alive[i] == 1 && body[i] == b { alive[i] = 0; }
@@ -60,7 +60,7 @@ class TargetRegistry {
     }
 
     // Resolve a hit body to a registry slot, or -1.
-    expose func resolve(b: G3D.Physics3DBody) -> Integer {
+    expose func resolve(b: G3D.PhysicsBody3D) -> Integer {
         var i = 0;
         while i < body.Count {
             if alive[i] == 1 && body[i] == b { return i; }

@@ -46,9 +46,9 @@ func start() {
                     new Vec3(0.0, 9.0, 16.0),
                     new Vec3(3.0, 0.0, 0.0),
                     new Vec3(0.0, 1.0, 0.0));
-    var ground = Mesh3D.NewPlane(50.0, 50.0);
-    var pillar = Mesh3D.NewBox(1.0, 3.0, 3.0);
-    var mat = Material3D.NewColor(0.7, 0.7, 0.7);
+    var ground = Mesh3D.Plane(50.0, 50.0);
+    var pillar = Mesh3D.Box(1.0, 3.0, 3.0);
+    var mat = Material3D.FromColor(0.7, 0.7, 0.7);
 
     Canvas3D.EnableShadows(canvas, 256);
     // Pin one sun cascade: this probe counts cube-face slots, and the CSM-capable
@@ -57,11 +57,11 @@ func start() {
     Canvas3D.SetAmbient(canvas, 0.05, 0.05, 0.05);
 
     // Path-keeper: a dim shadowed sun keeps per-pixel shading in both frames.
-    var sun = Light3D.NewDirectional(new Vec3(0.2, -1.0, 0.1), 0.15, 0.15, 0.15);
+    var sun = Light3D.Directional(new Vec3(0.2, -1.0, 0.1), 0.15, 0.15, 0.15);
     sun.CastsShadows = true;
     Canvas3D.SetLight(canvas, 0, sun);
 
-    var point = Light3D.NewPoint(new Vec3(0.0, 2.0, 0.0), 1.0, 1.0, 1.0, 0.0);
+    var point = Light3D.Point(new Vec3(0.0, 2.0, 0.0), 1.0, 1.0, 1.0, 0.0);
     point.CastsShadows = true;
     Canvas3D.SetLight(canvas, 1, point);
 

@@ -809,6 +809,12 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
                      vscn_clamp_abs_or(node->scale_xyz[2], 1.0)) ||
         !vscn_append(
             buf, len, cap, "%s  \"visible\": %s,\n", indent, node->visible ? "true" : "false") ||
+        /* Authoring flags round-trip so bakes and binding sync behave the same
+         * after reload. Impostor ASSETS are intentionally transient — they are
+         * generated proxies (pixels/meshes) rebuilt by the impostor bake. */
+        !vscn_append(
+            buf, len, cap, "%s  \"isStatic\": %s,\n", indent, node->is_static ? "true" : "false") ||
+        !vscn_append(buf, len, cap, "%s  \"syncMode\": %d,\n", indent, (int)node->sync_mode) ||
         !vscn_append(
             buf, len, cap, "%s  \"hasMesh\": %s,\n", indent, node->mesh ? "true" : "false") ||
         !vscn_append(buf,

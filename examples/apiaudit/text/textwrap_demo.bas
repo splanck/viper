@@ -69,8 +69,8 @@ PRINT "empty: "; Viper.Text.TextWrapper.LineCount("")
 
 ' --- MaxLineLen ---
 PRINT "--- MaxLineLen ---"
-PRINT "Max len: "; Viper.Text.TextWrapper.MaxLineLen("short" + CHR(10) + "a much longer line" + CHR(10) + "med")
-PRINT "Single: "; Viper.Text.TextWrapper.MaxLineLen("single")
+PRINT "Max len: "; Viper.Text.TextWrapper.MaxLineLength("short" + CHR(10) + "a much longer line" + CHR(10) + "med")
+PRINT "Single: "; Viper.Text.TextWrapper.MaxLineLength("single")
 
 PRINT "=== TextWrapper Demo Complete ==="
 END

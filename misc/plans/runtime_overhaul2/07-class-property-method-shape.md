@@ -98,7 +98,7 @@ include:
 
 - `Viper.Input.Keyboard`;
 - `Viper.Graphics3D.Canvas3D`;
-- `Viper.Game3D.Keys`;
+- `Viper.Input.Key`;
 - `Viper.Input.Key`;
 - `Viper.GUI.CodeEditor`;
 - `Viper.Graphics.Canvas`;

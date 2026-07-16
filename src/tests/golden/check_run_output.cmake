@@ -7,7 +7,12 @@ endif ()
 if (NOT DEFINED EXPECT)
     message(FATAL_ERROR "EXPECT not set")
 endif ()
-execute_process(COMMAND ${ILC} -run ${IL_FILE} RESULT_VARIABLE res OUTPUT_VARIABLE out ERROR_VARIABLE err)
+# RUN_CMD selects the CLI form under test: the legacy top-level "-run" flag
+# (default) or the "run" subcommand, which also accepts .il targets.
+if (NOT DEFINED RUN_CMD)
+    set(RUN_CMD "-run")
+endif ()
+execute_process(COMMAND ${ILC} ${RUN_CMD} ${IL_FILE} RESULT_VARIABLE res OUTPUT_VARIABLE out ERROR_VARIABLE err)
 # Normalize Windows line endings
 string(REPLACE "\r\n" "\n" out "${out}")
 string(REPLACE "\r" "\n" out "${out}")

@@ -6,5 +6,5 @@ func start() {
         var result: String = "Hello" + " " + "World" + "!";
         sum = sum + result.Length;
     }
-    Viper.System.Environment.EndProgram(sum);
+    Viper.System.Environment.Exit(sum);
 }

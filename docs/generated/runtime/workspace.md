@@ -11,8 +11,8 @@
 
 Provides File Index constants and static operations for workspace tooling.
 
-`Viper.Workspace.FileIndex` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `Enumerate`, `Page`, `Status`, `ShouldIgnore`.
+`Viper.Workspace.FileIndex` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `Enumerate`, `Page`, `Status`, `ShouldIgnore`.
 
 #### Methods
 
@@ -43,7 +43,8 @@ Its public surface exposes operations including `PollBatch`.
 Provides Edit constants and static operations for workspace tooling.
 
 `Viper.Workspace.Edit` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Validate`, `Apply`, `ValidateInRoot`, `ApplyInRoot`.
+Its public surface exposes operations including `Validate`, `Apply`, `ValidateInRoot`,
+`ApplyInRoot`.
 
 #### Methods
 

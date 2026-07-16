@@ -83,6 +83,16 @@ static void test_inc_by() {
     assert(rt_countmap_inc_by(cm, k, 3) == 8);
     assert(rt_countmap_total(cm) == 8);
 
+    // VDOC-099: the return is the post-operation count for every accepted
+    // amount — zero is a lookup no-op, and negatives trap.
+    assert(rt_countmap_inc_by(cm, k, 0) == 8);
+    assert(rt_countmap_total(cm) == 8);
+    rt_string missing = make_str("missing");
+    assert(rt_countmap_inc_by(cm, missing, 0) == 0);
+    rt_string_unref(missing);
+    EXPECT_TRAP(rt_countmap_inc_by(cm, k, -2));
+    assert(rt_countmap_total(cm) == 8);
+
     rt_string_unref(k);
 }
 

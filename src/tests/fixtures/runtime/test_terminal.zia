@@ -120,10 +120,10 @@ func testInputNonBlocking() {
     setTest("InputNonBlocking");
 
     // Non-blocking input test
-    var key1 = Viper.Terminal.GetKeyTimeout(0);  // 0ms timeout
+    var key1 = Viper.Terminal.ReadKeyFor(0);  // 0ms timeout
     assertTrue(key1 == "" || key1 == key1, "GetKeyTimeout returns string");
 
-    var key2 = Viper.Terminal.InKey();  // returns immediately
+    var key2 = Viper.Terminal.PollKey();  // returns immediately
     assertTrue(key2 == "" || key2 == key2, "InKey returns string");
 }
 

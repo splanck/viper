@@ -34,11 +34,11 @@ func start() {
     var floorEnt = Game3D.Entity3D.New();
     floorEnt.SetPosition(0.0, 0.0, 0.0);
     world.Spawn(floorEnt);
-    var shape = Collider3D.NewBox(10.0, 0.5, 10.0);
+    var shape = Collider3D.Box(10.0, 0.5, 10.0);
     shape.SurfaceType = ice;
     shape.Friction = 0.02;
-    var body = Physics3DBody.New(0.0);
-    body.Static = true;
+    var body = PhysicsBody3D.New(0.0);
+    body.IsStatic = true;
     body.Collider = shape;
     body.UserData = 4242;
     floorEnt.AttachBody(body);

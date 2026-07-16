@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "common/PlatformCapabilities.hpp"
+#include "frontends/common/CharUtils.hpp"
 #include "frontends/zia/Lexer.hpp"
 #include "frontends/zia/Token.hpp"
 #include "frontends/zia/ZiaAnalysis.hpp"
@@ -100,12 +101,40 @@ size_t mirrorOffsetOf(const std::string &s, int line, int col) {
     return o;
 }
 
+/// @brief Strict variant of mirrorOffsetOf (VDOC-109): fails instead of
+///        clamping when @p line is past the buffer or @p col is past the end
+///        of the line, so corrupt journal coordinates surface as malformed
+///        deltas and trigger the caller's full-sync fallback.
+bool mirrorOffsetOfStrict(const std::string &s, int line, int col, size_t *out) {
+    if (line < 0 || col < 0)
+        return false;
+    size_t o = 0;
+    int l = 0;
+    while (l < line) {
+        if (o >= s.size())
+            return false; // line beyond buffer
+        if (s[o] == '\n')
+            l++;
+        o++;
+    }
+    for (int c = 0; c < col; c++) {
+        if (o >= s.size() || s[o] == '\n')
+            return false; // column beyond end of line
+        o++;
+    }
+    *out = o;
+    return true;
+}
+
 /// @brief Apply the compact delta JSON emitted by
 ///        vg_codeeditor_take_deltas_json to @p text in order.
 /// @details Schema: `[{"r":N,"sl":N,"sc":N,"el":N,"ec":N,"t":"<escaped>"},...]`
 ///          — each delta replaced the pre-edit byte range [(sl,sc)..(el,ec)) with
 ///          t. Returns false on any malformed input (caller then full-syncs).
-bool mirrorApplyDeltasJson(std::string &text, const std::string &json) {
+bool mirrorApplyDeltasJson(std::string &text,
+                           const std::string &json,
+                           uint64_t base_revision,
+                           uint64_t end_revision) {
     size_t i = 0;
     auto skipWs = [&]() {
         while (i < json.size() &&
@@ -125,6 +154,7 @@ bool mirrorApplyDeltasJson(std::string &text, const std::string &json) {
             return false;
         i++;
         int sl = 0, sc = 0, el = 0, ec = 0;
+        long rev = -1;
         bool haveSl = false, haveSc = false, haveEl = false, haveEc = false;
         std::string t;
         while (true) {
@@ -209,7 +239,13 @@ bool mirrorApplyDeltasJson(std::string &text, const std::string &json) {
                 }
                 long v = 0;
                 bool any = false;
+                size_t digits = 0;
                 while (i < json.size() && json[i] >= '0' && json[i] <= '9') {
+                    // Bounded accumulation (VDOC-115): editor coordinates and
+                    // revisions fit comfortably in 10 digits; longer literals
+                    // are malformed input, not values.
+                    if (++digits > 10)
+                        return false;
                     v = v * 10 + (json[i] - '0');
                     i++;
                     any = true;
@@ -231,7 +267,9 @@ bool mirrorApplyDeltasJson(std::string &text, const std::string &json) {
                     ec = static_cast<int>(v);
                     haveEc = true;
                 }
-                // "r" (revision) is ignored during application.
+                else if (key == "r") {
+                    rev = v;
+                }
             }
             skipWs();
             if (i < json.size() && json[i] == ',') {
@@ -241,12 +279,21 @@ bool mirrorApplyDeltasJson(std::string &text, const std::string &json) {
         }
         if (!haveSl || !haveSc || !haveEl || !haveEc)
             return false;
-        size_t so = mirrorOffsetOf(text, sl, sc);
-        size_t eo = mirrorOffsetOf(text, el, ec);
-        if (eo > text.size())
-            eo = text.size();
+        // Revision enforcement (VDOC-109): each delta must advance strictly
+        // past the mirror's stored revision and stay within end_revision, so
+        // stale or out-of-order journal entries are rejected.
+        if (rev >= 0) {
+            uint64_t urev = static_cast<uint64_t>(rev);
+            if (urev <= base_revision || urev > end_revision)
+                return false;
+            base_revision = urev;
+        }
+        size_t so = 0;
+        size_t eo = 0;
+        if (!mirrorOffsetOfStrict(text, sl, sc, &so) || !mirrorOffsetOfStrict(text, el, ec, &eo))
+            return false;
         if (so > eo)
-            so = eo;
+            return false; // reversed range is corrupt, not an insertion
         text = text.substr(0, so) + t + text.substr(eo);
 
         skipWs();
@@ -377,6 +424,15 @@ std::string sourcePathForFile(uint32_t fileId,
     return fallbackPath;
 }
 
+struct FixitRecord {
+    std::string message;
+    std::string replacement;
+    int64_t startLine{0};
+    int64_t startColumn{0};
+    int64_t endLine{0};
+    int64_t endColumn{0};
+};
+
 struct DiagnosticRecord {
     std::string file;
     int64_t line{0};
@@ -390,6 +446,7 @@ struct DiagnosticRecord {
     std::string stage;
     std::string help;
     bool hasFixit{false};
+    std::vector<FixitRecord> fixits; ///< all fixes; keeps async schema parity (VDOC-116)
     std::string fixitMessage;
     std::string fixitReplacement;
     int64_t fixitStartLine{0};
@@ -486,14 +543,24 @@ DiagnosticRecord diagnosticToRecord(const il::support::Diagnostic &diagnostic,
     record.stage = diagnostic.stage;
     record.help = diagnostic.help;
     record.hasFixit = !diagnostic.fixits.empty();
+    for (const auto &fixit : diagnostic.fixits) {
+        FixitRecord fr;
+        fr.message = fixit.message;
+        fr.replacement = fixit.replacement;
+        fr.startLine = fixit.range.begin.line;
+        fr.startColumn = fixit.range.begin.column;
+        fr.endLine = fixit.range.end.line;
+        fr.endColumn = fixit.range.end.column;
+        record.fixits.push_back(std::move(fr));
+    }
     if (record.hasFixit) {
-        const auto &fixit = diagnostic.fixits.front();
-        record.fixitMessage = fixit.message;
-        record.fixitReplacement = fixit.replacement;
-        record.fixitStartLine = fixit.range.begin.line;
-        record.fixitStartColumn = fixit.range.begin.column;
-        record.fixitEndLine = fixit.range.end.line;
-        record.fixitEndColumn = fixit.range.end.column;
+        const auto &first = record.fixits.front();
+        record.fixitMessage = first.message;
+        record.fixitReplacement = first.replacement;
+        record.fixitStartLine = first.startLine;
+        record.fixitStartColumn = first.startColumn;
+        record.fixitEndLine = first.endLine;
+        record.fixitEndColumn = first.endColumn;
     }
     return record;
 }
@@ -514,6 +581,22 @@ void *diagnosticRecordsToSeq(const std::vector<DiagnosticRecord> &diagnostics) {
         mapSetStr(map, "stage", diagnostic.stage);
         mapSetStr(map, "help", diagnostic.help);
         mapSetBool(map, "hasFixit", diagnostic.hasFixit);
+        // Full fixits sequence: async diagnostics match the synchronous
+        // Check*/Compile* map schema (VDOC-116).
+        void *fixits = rt_seq_new_owned();
+        for (const auto &fr : diagnostic.fixits) {
+            void *fm = rt_map_new();
+            mapSetStr(fm, "message", fr.message);
+            mapSetStr(fm, "replacement", fr.replacement);
+            mapSetInt(fm, "startLine", fr.startLine);
+            mapSetInt(fm, "startColumn", fr.startColumn);
+            mapSetInt(fm, "endLine", fr.endLine);
+            mapSetInt(fm, "endColumn", fr.endColumn);
+            rt_seq_push(fixits, fm);
+            releaseRuntimeObject(fm);
+        }
+        mapSetObject(map, "fixits", fixits);
+        releaseRuntimeObject(fixits);
         mapSetStr(map, "fixitMessage", diagnostic.fixitMessage);
         mapSetStr(map, "fixitReplacement", diagnostic.fixitReplacement);
         mapSetInt(map, "fixitStartLine", diagnostic.fixitStartLine);
@@ -1070,20 +1153,15 @@ void *referencesForKey(ProjectIndex &index, const SymbolKey &targetKey) {
 }
 
 bool isIdentifierText(std::string_view text) {
-    if (text.empty())
+    // Mirror the Zia lexer exactly (VDOC-114): deterministic ASCII
+    // classification (il::frontends::common::char_utils) and the lexer's 1024-byte
+    // identifier cap, so an accepted rename can never produce a lexer error.
+    if (text.empty() || text.size() > 1024)
         return false;
-    auto isStart = [](char ch) {
-        unsigned char c = static_cast<unsigned char>(ch);
-        return std::isalpha(c) || ch == '_';
-    };
-    auto isContinue = [](char ch) {
-        unsigned char c = static_cast<unsigned char>(ch);
-        return std::isalnum(c) || ch == '_';
-    };
-    if (!isStart(text.front()))
+    if (!il::frontends::common::char_utils::isIdentifierStart(text.front()))
         return false;
     for (char ch : text.substr(1)) {
-        if (!isContinue(ch))
+        if (!il::frontends::common::char_utils::isIdentifierContinue(ch))
             return false;
     }
     return !Lexer::lookupKeyword(text).has_value();
@@ -1924,6 +2002,12 @@ std::string symbolsForSource(const std::string &source, const std::string &path)
     std::ostringstream out;
     auto globals = result->sema->getGlobalSymbols();
     for (const auto &sym : globals) {
+        // Document symbols cover THIS file only (VDOC-110): runtime-registry
+        // entries have no declaration and imported exports carry a foreign
+        // file id; both would otherwise leak registry-sized payloads and
+        // wrong-document outline locations into the four-field protocol.
+        if (!sym.decl || sym.decl->loc.file_id != fileId)
+            continue;
         std::string kindStr;
         switch (sym.kind) {
             case Symbol::Kind::Variable:
@@ -1947,9 +2031,9 @@ std::string symbolsForSource(const std::string &source, const std::string &path)
         out << sym.name << '\t' << kindStr << '\t' << typeStr << '\t' << symLine << '\n';
     }
 
-    auto types = result->sema->getTypeNames();
-    for (const auto &tn : types)
-        out << tn << '\t' << "type" << '\t' << tn << '\t' << 0 << '\n';
+    // Type names are not appended separately: user-declared types already
+    // appear in the filtered global symbols, and registry types are not part
+    // of this document (VDOC-110).
 
     return out.str();
 }
@@ -2259,12 +2343,34 @@ int8_t rt_zia_doc_sync_delta(rt_string path, rt_string deltas_json, int64_t end_
     auto it = s_mirrors.find(p);
     if (it == s_mirrors.end())
         return 0;
+    // A delta batch must move the mirror forward (VDOC-109); stale or
+    // backwards end revisions force the caller's full-sync path.
+    if (end_revision < 0 || static_cast<uint64_t>(end_revision) < it->second.revision)
+        return 0;
     std::string working = it->second.text;
-    if (!mirrorApplyDeltasJson(working, json))
+    if (!mirrorApplyDeltasJson(
+            working, json, it->second.revision, static_cast<uint64_t>(end_revision)))
         return 0;
     it->second.text = std::move(working);
     it->second.revision = static_cast<uint64_t>(end_revision);
     return 1;
+}
+
+/// @brief Whether the full editor-service bridge is linked (VDOC-113).
+/// @details Lets callers distinguish "analysis ran and found nothing" from
+///          "the weak stub returned an empty compatibility payload".
+int8_t rt_zia_service_available(void) {
+    return 1;
+}
+
+/// @brief Whether a mirror exists for @p path (VDOC-113), independent of the
+///        mirrored text being empty.
+int8_t rt_zia_doc_has(rt_string path) {
+    std::string p = toStdString(path);
+    if (p.empty())
+        return 0;
+    std::lock_guard<std::mutex> lock(s_mirrorMutex);
+    return s_mirrors.find(p) != s_mirrors.end() ? 1 : 0;
 }
 
 /// @brief Drop the mirror for @p path (document closed).
@@ -2904,6 +3010,12 @@ rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path) {
     std::ostringstream out;
     auto globals = result->sema->getGlobalSymbols();
     for (const auto &sym : globals) {
+        // Document symbols cover THIS file only (VDOC-110): runtime-registry
+        // entries have no declaration and imported exports carry a foreign
+        // file id; both would otherwise leak registry-sized payloads and
+        // wrong-document outline locations into the four-field protocol.
+        if (!sym.decl || sym.decl->loc.file_id != fileId)
+            continue;
         std::string kindStr;
         switch (sym.kind) {
             case Symbol::Kind::Variable:
@@ -2927,11 +3039,8 @@ rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path) {
         out << sym.name << '\t' << kindStr << '\t' << typeStr << '\t' << symLine << '\n';
     }
 
-    // Also include type names (classes, structs, enums)
-    auto types = result->sema->getTypeNames();
-    for (const auto &tn : types) {
-        out << tn << '\t' << "type" << '\t' << tn << '\t' << 0 << '\n';
-    }
+    // Type names are not appended separately (VDOC-110): user-declared types
+    // already appear in the filtered global symbols above.
 
     std::string s = out.str();
     return rt_string_from_bytes(s.c_str(), s.size());

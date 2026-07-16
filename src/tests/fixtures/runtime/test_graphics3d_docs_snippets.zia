@@ -35,8 +35,8 @@ func start() {
         fail("AnimController3D.Play docs snippet failed");
         return;
     }
-    AnimController3D.SetAnimationLOD(controller, 32.0, 15.0);
-    AnimController3D.SetBoneLOD(controller, knee);
+    AnimController3D.SetAnimationLod(controller, 32.0, 15.0);
+    AnimController3D.SetBoneLod(controller, knee);
 
     var solver = IKSolver3D.TwoBone(skel, hip, knee, foot);
     IKSolver3D.SetTarget(solver, Vec3.New(0.0, -1.8, 0.0));

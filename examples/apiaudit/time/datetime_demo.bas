@@ -61,8 +61,8 @@ PRINT "Format: "; Viper.Time.DateTime.Format(ts, "%Y-%m-%d %H:%M:%S")
 
 ' --- ToISO ---
 PRINT "--- ToISO ---"
-PRINT "ToISO: "; Viper.Time.DateTime.ToISO(ts)
-PRINT "ToISO(0): "; Viper.Time.DateTime.ToISO(0)
+PRINT "ToISO: "; Viper.Time.DateTime.ToIso8601(ts)
+PRINT "ToISO(0): "; Viper.Time.DateTime.ToIso8601(0)
 
 PRINT "=== DateTime Demo Complete ==="
 END

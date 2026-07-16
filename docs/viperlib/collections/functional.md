@@ -31,14 +31,14 @@ push/pop, insert/remove, and slicing operations.
 
 | Method                 | Signature               | Description                                                                           |
 |------------------------|-------------------------|---------------------------------------------------------------------------------------|
-| `Get(index)`           | `Object(Integer)`       | Returns the element at the specified index (0-based)                                  |
+| `Get(index)`           | `Object(Integer)`       | Returns the element at the specified index (0-based); traps out of bounds             |
 | `Set(index, value)`    | `Void(Integer, Object)` | Sets the element at the specified index                                               |
 | `Push(value)`          | `Void(Object)`          | Appends an element to the end                                                         |
 | `PushAll(other)`       | `Void(Seq)`             | Appends all elements of `other` onto this sequence (self-appends double the sequence) |
 | `Pop()`                | `Object()`              | Removes and returns the last element                                                  |
-| `Peek()`               | `Object()`              | Returns the last element without removing it                                          |
-| `First()`              | `Object()`              | Returns the first element                                                             |
-| `Last()`               | `Object()`              | Returns the last element                                                              |
+| `Peek()`               | `Object()`              | Returns the last element without removing it; traps when empty                        |
+| `First()`              | `Object()`              | Returns the first element; traps when empty                                           |
+| `Last()`               | `Object()`              | Returns the last element; traps when empty                                            |
 | `Insert(index, value)` | `Void(Integer, Object)` | Inserts an element at the specified position                                          |
 | `Remove(index)`        | `Object(Integer)`       | Removes and returns the element at the specified position                             |
 | `Clear()`              | `Void()`                | Removes all elements                                                                  |
@@ -49,8 +49,8 @@ push/pop, insert/remove, and slicing operations.
 | `Shuffle()`            | `Void()`                | Shuffles the elements in place (deterministic when `Viper.Math.Random.Seed` is set)   |
 | `Slice(start, end)`    | `Seq(Integer, Integer)` | Returns a new sequence with elements from start (inclusive) to end (exclusive)        |
 | `Clone()`              | `Seq()`                 | Returns a shallow copy of the sequence                                                |
-| `Sort()`               | `Void()`                | Sorts elements in ascending order (stable merge sort)                                 |
-| `SortDesc()`           | `Void()`                | Sorts elements in descending order (stable merge sort)                                |
+| `Sort()`               | `Void()`                | Stable ascending default sort; see the comparison notes below                         |
+| `SortDesc()`           | `Void()`                | Stable descending default sort; see the comparison notes below                        |
 | `Keep(pred)`           | `Seq(Function)`         | Returns new Seq with elements where predicate returns true                            |
 | `Reject(pred)`         | `Seq(Function)`         | Returns new Seq excluding elements where predicate returns true                       |
 | `Apply(fn)`            | `Seq(Function)`         | Returns new Seq with each element transformed by function                             |
@@ -71,18 +71,28 @@ push/pop, insert/remove, and slicing operations.
 | `ToStack()`            | `Stack()`                 | Returns elements as a new Stack                                                       |
 | `ToQueue()`            | `Queue()`                 | Returns elements as a new Queue                                                       |
 | `ToDeque()`            | `Deque()`                 | Returns elements as a new Deque                                                       |
-| `ToBag()`              | `Bag()`                   | Returns raw or boxed string elements as a new Bag                                      |
+| `ToBag()`              | `StringSet()`                   | Returns raw or boxed string elements as a new StringSet                                      |
 
 ### Notes
 
 - Public `Seq` constructors (`new Seq()`, `Seq.New()`, `Seq.New(size)`, and `Seq.WithCapacity(cap)`) create owning sequences, so pushed strings and objects remain valid until removed or the sequence is released.
 - `Seq.New(size)` creates a sequence with `Count == size` and null-initialized slots. Use `Seq.WithCapacity(cap)` to reserve capacity without changing the count.
-- `Cap` remains available as a compatibility alias for `Capacity`.
+- Negative sizes trap; capacity values below 1 are clamped to one slot.
 - The lower-level C helpers `rt_seq_new` and `rt_seq_with_capacity` still create borrowed-element sequences for internal runtime views; ownership mode must be selected while the sequence is empty.
 - `Pop()` and `Remove(index)` return an owned object reference. When the sequence owns elements, the removed element's retained reference is transferred to the caller.
+- `Get()`, `Peek()`, `First()`, `Last()`, and `FindWhere()` return borrowed references. Keep the
+  sequence (and the selected entry) alive while using them. `GetStr()` instead returns an owned
+  string handle.
+- `Has()` and `Find()` use the same boxed-value equality as List: boxed integers, booleans, floats,
+  and strings compare by value; other objects compare by identity. Queue, Stack, Deque, and Ring
+  membership uses this same relation.
 - `Slice()`, `Keep()`, `Reject()`, `Take()`, and `TakeWhile()` preserve owned-element mode in the returned sequence when the source sequence owns its elements; `Apply()` always returns an owning output sequence.
 - `ToBag()` accepts raw runtime strings and boxed strings; any other element type traps.
 - `Push`, `PushAll`, and capacity growth trap on length or allocation overflow instead of wrapping.
+- The default Seq comparator matches List: raw and boxed strings order lexicographically and
+  boxed integers/booleans/floats numerically, so ordinary Zia/BASIC sequences sort
+  alphabetically. Elements rank by type class first (null < numeric < string < other), which
+  keeps the order total even for mixed-type sequences.
 - Prefer `FindOption()` and `FindWhereOption()` for new code. `Find()` and `FindWhere()` remain available for compatibility with existing sentinel/null checks.
 
 ### Zia Example
@@ -198,6 +208,10 @@ NEXT i
 
 ### Sorting
 
+`Seq.Sort()` is suitable only when the sequence is known to contain raw runtime string handles or
+when its pointer fallback is explicitly acceptable. For ordinary boxed strings, convert through
+List, whose comparator understands boxed strings:
+
 ```basic
 DIM names AS Viper.Collections.Seq
 names = NEW Viper.Collections.Seq()
@@ -205,12 +219,16 @@ names.Push("Charlie")
 names.Push("Alice")
 names.Push("Bob")
 
-' Sort in ascending order
-names.Sort()
+DIM sortable AS Viper.Collections.List
+sortable = names.ToList()
+
+' List recognizes the boxed string values.
+sortable.Sort()
+names = sortable.ToSeq()
 ' names is now: Alice, Bob, Charlie
 
-' Sort in descending order
-names.SortDesc()
+sortable.SortDesc()
+names = sortable.ToSeq()
 ' names is now: Charlie, Bob, Alice
 ```
 
@@ -244,7 +262,7 @@ FOR i = 1 TO 10
 NEXT i
 
 DIM evens AS Viper.Collections.Seq
-evens = Viper.Collections.Seq.Keep(numbers, ADDRESSOF IsEven)
+evens = Viper.Collections.Seq.Filter(numbers, ADDRESSOF IsEven)
 
 DIM doubled AS Viper.Collections.Seq
 doubled = Viper.Collections.Seq.Apply(numbers, ADDRESSOF DoubleValue)
@@ -299,8 +317,8 @@ sources.
 
 | Method    | Signature       | Description                                             |
 |-----------|-----------------|---------------------------------------------------------|
-| `Next()`  | `Object()`      | Get next element and advance; returns null if exhausted |
-| `Peek()`  | `Object()`      | Get next element without advancing                      |
+| `Next()`  | `Object()`      | Get next borrowed element and advance; returns null if exhausted |
+| `Peek()`  | `Object()`      | Get the next borrowed element without advancing              |
 | `Reset()` | `Void()`        | Clear cursor/exhaustion state; does not rewind `Range` or finite `Repeat` |
 
 #### Transformations (return new LazySeq)
@@ -309,8 +327,8 @@ sources.
 |--------------------|------------------------------|--------------------------------------------------|
 | `Map(fn)`          | `LazySeq(Function)`          | Transform each element with function             |
 | `Filter(pred)`     | `LazySeq(Function)`          | Keep only elements where predicate returns true  |
-| `Take(n)`          | `LazySeq(Integer)`           | Take first n elements only                       |
-| `Drop(n)`          | `LazySeq(Integer)`           | Skip first n elements                            |
+| `Take(n)`          | `LazySeq(Integer)`           | Take first n elements; a negative limit returns null |
+| `Drop(n)`          | `LazySeq(Integer)`           | Skip first n elements; a negative limit returns null |
 | `TakeWhile(pred)`  | `LazySeq(Function)`          | Take elements while predicate is true            |
 | `DropWhile(pred)`  | `LazySeq(Function)`          | Skip elements while predicate is true            |
 | `Concat(other)`    | `LazySeq(LazySeq)`           | Concatenate with another lazy sequence           |
@@ -341,8 +359,9 @@ func start() {
     var numbers = LS.Range(1, 11, 1);
     SayInt(numbers.Count());
 
-    // Repeat yields the object supplied by the caller.
-    var values = LS.Repeat(Box.I64(7), 3);
+    // Repeat borrows the object supplied by the caller, so keep it live.
+    var seven = Box.I64(7);
+    var values = LS.Repeat(seven, 3);
     SayInt(Box.ToI64(values.Peek()));
     SayInt(values.Index);                    // 0: Peek did not consume it
     SayInt(Box.ToI64(values.Next()));
@@ -382,7 +401,7 @@ PRINT firstTwo.Count                                       ' 2
 
 | Feature               | LazySeq              | Seq                  |
 |-----------------------|----------------------|----------------------|
-| Retained elements     | None (before collection) | All elements   |
+| Retained elements     | None; collectors also borrow | All elements in public constructors |
 | Element generation    | On demand            | Upfront              |
 | Infinite sequences    | Supported            | Not possible         |
 | Random access         | No (sequential only) | O(1)                 |
@@ -395,16 +414,35 @@ PRINT firstTwo.Count                                       ' 2
   terminate on infinite sequences. Always use `Take(n)` to bound infinite sequences before
   collecting.
 - **Single-pass:** LazySeq is consumed as you iterate. Recreate `Range` and finite `Repeat`
-  sources for another pass, or use `ToSeq()` to materialize a reusable collection. `Reset()`
-  clears cursor flags but does not restore either source's original range position or repeat count.
+  sources for another pass. `ToSeq()` materializes the remaining values but does not take element
+  ownership. `Reset()` clears cursor flags but does not restore either source's original range
+  position or repeat count.
+- **Shared cursors:** A transformation retains its source LazySeq object, but it does not clone its
+  cursor. Consuming a derived pipeline also advances the original source and any sibling pipeline.
+  Concatenating a source with itself therefore does not replay it a second time.
+- **Ownership:** `Repeat` retains its value for the node's lifetime, and `ToSeq()` /
+  `ToSeqN()` return owning Seqs, so collected values are independently long-lived. `Next()` /
+  `Peek()` still return borrowed references bounded by the source's lifetime.
+- **Null ambiguity:** `Repeat(null, count)` is accepted, and `Next()` / `Peek()` also use null
+  to report exhaustion. Use `NextOption()` / `PeekOption()` when null is a legitimate element:
+  they return `Some(value)` for every yielded element (including null) and `None` only at
+  end of stream.
 - **Range values:** `Range` currently exposes each integer through transient internal storage rather
   than as a boxed runtime object. `Count()` and other operations that only count/skip values are
   safe, but do not retain, unbox, collect, or pass `Range` elements to object callbacks. Use
   `Repeat()` with explicitly boxed values when object-valued elements are required.
 - **Transformation chaining:** Transformations like `Map()`, `Filter()`, `Take()` return new
   LazySeq instances and do no work until elements are requested.
+- **Bounds and factory validation:** invalid bounds trap: a zero `Range` step, a negative
+  `Take`/`Drop` limit, and any repeat count below `-1` (only `-1` means an infinite repeat).
+- **Filtering infinite sources:** putting `Take(n)` after a filter does not bound how many source
+  elements the filter may inspect. An infinite source whose predicate never matches still does not
+  yield or terminate.
 - **Language callbacks:** The same VM callback limitation described for `Seq` applies to
   `Map()`, `Filter()`, `TakeWhile()`, `DropWhile()`, `Find()`, `FindOption()`, `Any()`, and `All()`.
+- **Explicit receiver safety:** Qualified calls such as
+  `Viper.Functional.LazySeq.Reset(value)` validate the receiver's class and trap with
+  `LazySeq: invalid LazySeq object` when passed anything that is not a LazySeq.
 
 ### Use Cases
 
@@ -430,8 +468,8 @@ A sequential cursor over a collection that provides controlled traversal with pe
 | `FromList(list)` | Live indexed view; length is captured at creation |
 | `FromRing(ring)` | Live indexed view; length is captured at creation |
 | `FromDeque(deque)` | Snapshot |
-| `FromMapKeys(map)` | Snapshot of keys in insertion order |
-| `FromMapValues(map)` | Snapshot of values in insertion order |
+| `FromMapKeys(map)` | Snapshot of keys in unspecified hash-table order |
+| `FromMapValues(map)` | Snapshot of values in the corresponding hash-table order |
 | `FromSet(set)` | Snapshot in unspecified hash order |
 | `FromStack(stack)` | Snapshot in bottom-to-top order; source stack is unchanged |
 
@@ -459,9 +497,13 @@ A sequential cursor over a collection that provides controlled traversal with pe
 - In BASIC, `Next()` and `Peek()` return values directly
 - `Skip(n)` returns the actual number of elements skipped, which may be less than n if the iterator is near the end
 - `ToSeq()` collects only the *remaining* elements from the current position onward and advances the iterator to its end
+- `ToSeq()` is registered as a typed sequence return, so chains such as `it.ToSeq().Count`
+  resolve against the returned Seq.
 - Stack iterators snapshot the stack in bottom-to-top order and restore the source stack unchanged
 - Seq, List, and Ring iterators retain a live source reference but cache its length. Avoid changing a live source while
   iterating: inserted elements do not extend `Count`, and shrinking a source can invalidate a cached position.
+- Do not store a live iterator back into its owning Seq/List/Ring. That creates a retained cycle
+  which the current Iterator implementation does not register with cycle traversal (VDOC-094).
 
 ### Zia Example
 

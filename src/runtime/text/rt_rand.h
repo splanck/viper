@@ -10,14 +10,13 @@
 // in compatibility mode and the in-tree crypto-module HMAC-DRBG in approved mode.
 //
 // Key invariants:
-//   - Uses OS-provided CSPRNG; output is suitable for security-sensitive applications.
-//   - rt_rand_bytes returns a Bytes object of the requested length.
-//   - rt_rand_i64 returns a uniformly distributed 64-bit integer.
-//   - rt_rand_range returns a value in [min, max]; traps when min > max.
+//   - Compatibility mode uses the OS CSPRNG; approved mode uses the module HMAC-DRBG.
+//   - rt_crypto_rand_bytes accepts zero and returns the requested-length Bytes object.
+//   - rt_crypto_rand_int uses rejection sampling and returns a value in [min, max].
 //
 // Ownership/Lifetime:
 //   - Returned Bytes objects are newly allocated; caller must release.
-//   - No persistent state; each call reads fresh randomness from the OS.
+//   - Approved mode and the Unix fallback retain process-global DRBG/descriptor state.
 //
 // Links: src/runtime/text/rt_rand.c (implementation), src/runtime/core/rt_string.h
 //
@@ -31,9 +30,9 @@ extern "C" {
 #endif
 
 /// @brief Generate cryptographically secure random bytes.
-/// @param count Number of bytes to generate (must be >= 1).
+/// @param count Number of bytes to generate (must be >= 0).
 /// @return A Bytes object containing the random bytes.
-/// @note Traps if count < 1.
+/// @note Zero returns an empty Bytes object; negative values trap.
 void *rt_crypto_rand_bytes(int64_t count);
 
 /// @brief Generate a cryptographically secure random integer in range [min, max].

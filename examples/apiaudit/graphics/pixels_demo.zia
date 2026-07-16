@@ -103,13 +103,13 @@ func start() {
     Say("--- RotateCW ---");
     var sq = Pixels.New(4, 2);
     sq.Set(0, 0, red);
-    var cw = sq.RotateCW();
+    var cw = sq.RotateClockwise();
     Say("RotateCW Width: " + Fmt.Int(cw.get_Width()));
     Say("RotateCW Height: " + Fmt.Int(cw.get_Height()));
 
     // --- RotateCCW ---
     Say("--- RotateCCW ---");
-    var ccw = sq.RotateCCW();
+    var ccw = sq.RotateCounterClockwise();
     Say("RotateCCW Width: " + Fmt.Int(ccw.get_Width()));
     Say("RotateCCW Height: " + Fmt.Int(ccw.get_Height()));
 

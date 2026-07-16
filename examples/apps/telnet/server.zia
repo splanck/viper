@@ -204,7 +204,7 @@ func lsCommand(path: String) -> String {
 
     var output = "Contents of: " + targetPath + "\n";
     var anyEntries = false;
-    for name in IO.Dir.ListSeq(targetPath) {
+    for name in IO.Dir.List(targetPath) {
         anyEntries = true;
         var fullPath = IO.Path.Join(targetPath, name);
         if IO.Dir.Exists(fullPath) {

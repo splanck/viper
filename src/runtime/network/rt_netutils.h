@@ -10,7 +10,7 @@
 //          interface enumeration, and IP classification.
 // Key invariants:
 //   - All functions are stateless and thread-safe.
-//   - Port checks use a brief connect+close cycle with timeout.
+//   - Port checks use a connect+close cycle and apply the timeout per resolved address.
 // Ownership/Lifetime:
 //   - Pure functions; no state, no heap allocation beyond return values.
 // Links: rt_network.h (socket primitives)
@@ -37,7 +37,7 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr);
 /// @brief Check if an IP address is in a private range (RFC 1918).
 int8_t rt_netutils_is_private_ip(rt_string ip);
 
-/// @brief Get the primary local IPv4 address (non-loopback).
+/// @brief Get the IPv4 source selected for a public UDP route, or loopback on failure.
 rt_string rt_netutils_local_ipv4(void);
 
 #ifdef __cplusplus

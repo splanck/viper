@@ -68,8 +68,8 @@ bind "../util/mathutil";
 
 /// @brief Bowling ball entity with hook physics and weight-class stats.
 class Ball {
-    hide Physics3DBody body;
-    hide Physics3DWorld world;
+    hide PhysicsBody3D body;
+    hide PhysicsWorld3D world;
     hide Boolean inWorld;
 
     hide Float mass;
@@ -108,7 +108,7 @@ class Ball {
     hide Boolean carryApplied;
 
     /// @brief One-time setup: physics body + mesh + material; defaults to MEDIUM weight.
-    expose func initBall(physWorld: Physics3DWorld) {
+    expose func initBall(physWorld: PhysicsWorld3D) {
         world = physWorld;
         inWorld = false;
         spinAmount = 0.0;
@@ -168,20 +168,20 @@ class Ball {
     ///        at construction so we have to recreate it.
     hide func recreateBody() {
         if (inWorld) {
-            Physics3DWorld.Remove(world, body);
+            PhysicsWorld3D.Remove(world, body);
         }
-        body = Physics3DBody.NewSphere(config.BALL_RADIUS,
+        body = PhysicsBody3D.Sphere(config.BALL_RADIUS,
             mass * config.BALL_MASS_PHYSICS_SCALE);
-        Physics3DBody.set_Restitution(body, config.BALL_RESTITUTION);
-        Physics3DBody.set_Friction(body, config.BALL_FRICTION);
-        Physics3DBody.set_LinearDamping(body, 0.015);
-        Physics3DBody.set_AngularDamping(body, 0.025);
-        Physics3DBody.set_UseCcd(body, true);
-        Physics3DBody.set_CollisionLayer(body, config.LAYER_BALL);
-        Physics3DBody.set_CollisionMask(body, config.MASK_BALL);
-        Physics3DBody.SetPosition(body,
+        PhysicsBody3D.set_Restitution(body, config.BALL_RESTITUTION);
+        PhysicsBody3D.set_Friction(body, config.BALL_FRICTION);
+        PhysicsBody3D.set_LinearDamping(body, 0.015);
+        PhysicsBody3D.set_AngularDamping(body, 0.025);
+        PhysicsBody3D.set_UseCcd(body, true);
+        PhysicsBody3D.set_CollisionLayer(body, config.LAYER_BALL);
+        PhysicsBody3D.set_CollisionMask(body, config.MASK_BALL);
+        PhysicsBody3D.SetPosition(body,
             config.BALL_START_X, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
-        Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
+        PhysicsBody3D.SetVelocity(body, 0.0, 0.0, 0.0);
         inWorld = false;
     }
 
@@ -241,17 +241,17 @@ class Ball {
         var forwardSpeed = lastDelivery.forwardSpeed;
         launchAngle = Atan2(sideSpeed, forwardSpeed);
 
-        Physics3DBody.SetPosition(body,
+        PhysicsBody3D.SetPosition(body,
             lastDelivery.releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET,
             config.BALL_THROW_Z);
-        Physics3DBody.SetVelocity(body, sideSpeed, 0.0, forwardSpeed);
-        Physics3DBody.SetAngularVelocity(body,
+        PhysicsBody3D.SetVelocity(body, sideSpeed, 0.0, forwardSpeed);
+        PhysicsBody3D.SetAngularVelocity(body,
             lastDelivery.revRate,
             spinAmount * config.BALL_AXIS_SPIN_SPEED,
             -sideSpeed / config.BALL_RADIUS);
 
         if (inWorld == false) {
-            Physics3DWorld.Add(world, body);
+            PhysicsWorld3D.Add(world, body);
             inWorld = true;
         }
 
@@ -270,8 +270,8 @@ class Ball {
     expose func updateMotion(dt: Float, laneFriction: Float, oilEndZ: Float) {
         if (hasBeenThrown == false || isInGutter) { return; }
 
-        var pos = Physics3DBody.get_Position(body);
-        var vel = Physics3DBody.get_Velocity(body);
+        var pos = PhysicsBody3D.get_Position(body);
+        var vel = PhysicsBody3D.get_Velocity(body);
         var x = Vec3.get_X(pos);
         var z = Vec3.get_Z(pos);
         var vx = Vec3.get_X(vel);
@@ -290,7 +290,7 @@ class Ball {
                 carry = 1.0 - (launchPower - config.CARRY_POWER_PEAK_END) * 0.25;
             }
             if (carry < 0.48) { carry = 0.48; }
-            Physics3DBody.SetVelocity(body, vx * carry,
+            PhysicsBody3D.SetVelocity(body, vx * carry,
                 Vec3.get_Y(vel), vz * carry);
             vx = vx * carry;
             vz = vz * carry;
@@ -328,7 +328,7 @@ class Ball {
                 dragForce = dragForce - vx * config.LANE_ASSIST_DAMP * edgePct;
             }
         }
-        Physics3DBody.ApplyForce(body, hookForce + dragForce + assistForce, 0.0, 0.0);
+        PhysicsBody3D.ApplyForce(body, hookForce + dragForce + assistForce, 0.0, 0.0);
 
         if (config.BUMPERS_ENABLED == 1 &&
             z > config.GUTTER_DETECT_Z && z < config.PIN_Z_OFFSET - 0.75 && Abs(x) > config.LANE_SAFE_HALF_WIDTH) {
@@ -341,8 +341,8 @@ class Ball {
             } else {
                 correctedVx = correctedVx * 0.35;
             }
-            Physics3DBody.SetPosition(body, safeX, Vec3.get_Y(pos), z);
-            Physics3DBody.SetVelocity(body, correctedVx, Vec3.get_Y(vel), vz);
+            PhysicsBody3D.SetPosition(body, safeX, Vec3.get_Y(pos), z);
+            PhysicsBody3D.SetVelocity(body, correctedVx, Vec3.get_Y(vel), vz);
             x = safeX;
             vx = correctedVx;
         }
@@ -357,7 +357,7 @@ class Ball {
         }
 
         visualSpinAngle = visualSpinAngle + speed * dt * config.SPIN_VISUAL_SPEED;
-        Physics3DBody.SetAngularVelocity(body,
+        PhysicsBody3D.SetAngularVelocity(body,
             vz / config.BALL_RADIUS,
             spinAmount * config.BALL_AXIS_SPIN_SPEED,
             -vx / config.BALL_RADIUS);
@@ -373,12 +373,12 @@ class Ball {
         if (config.BUMPERS_ENABLED == 0) { return; }
         if (hasBeenThrown == false || isInGutter) { return; }
 
-        var pos = Physics3DBody.get_Position(body);
+        var pos = PhysicsBody3D.get_Position(body);
         var x = Vec3.get_X(pos);
         var z = Vec3.get_Z(pos);
         if (z < config.BALL_THROW_Z - 0.08 || z > config.LANE_STABILIZE_END_Z) { return; }
 
-        var vel = Physics3DBody.get_Velocity(body);
+        var vel = PhysicsBody3D.get_Velocity(body);
         var vx = Vec3.get_X(vel);
         var vz = Vec3.get_Z(vel);
         var safeX = x;
@@ -393,12 +393,12 @@ class Ball {
         }
 
         var rollY = config.BALL_RADIUS + config.BALL_START_Y_OFFSET;
-        Physics3DBody.SetPosition(body, safeX, rollY, z);
+        PhysicsBody3D.SetPosition(body, safeX, rollY, z);
 
         if (vz < config.BALL_ROLL_MIN_SPEED) { vz = config.BALL_ROLL_MIN_SPEED; }
         if (vz > maxSpeed * 1.03) { vz = maxSpeed * 1.03; }
-        Physics3DBody.SetVelocity(body, vx, 0.0, vz);
-        Physics3DBody.SetAngularVelocity(body,
+        PhysicsBody3D.SetVelocity(body, vx, 0.0, vz);
+        PhysicsBody3D.SetAngularVelocity(body,
             vz / config.BALL_RADIUS,
             spinAmount * config.BALL_AXIS_SPIN_SPEED,
             -vx / config.BALL_RADIUS);
@@ -409,7 +409,7 @@ class Ball {
     expose func dampForPinDeckImpact(depth: Float) {
         if (hasBeenThrown == false || isInGutter) { return; }
 
-        var vel = Physics3DBody.get_Velocity(body);
+        var vel = PhysicsBody3D.get_Velocity(body);
         var vx = Vec3.get_X(vel);
         var vz = Vec3.get_Z(vel);
         var slowdown = config.BALL_DECK_IMPACT_SLOWDOWN - depth * 8.0;
@@ -418,7 +418,7 @@ class Ball {
         vx = vx * config.BALL_DECK_IMPACT_SIDE_DAMP;
         vz = vz * slowdown;
         if (vz < 0.35) { vz = 0.35; }
-        Physics3DBody.SetVelocity(body, vx, Vec3.get_Y(vel), vz);
+        PhysicsBody3D.SetVelocity(body, vx, Vec3.get_Y(vel), vz);
     }
 
     /// @brief Lock the ball into the gutter (clamp X, reduce collision mask
@@ -428,23 +428,23 @@ class Ball {
         var gutterSign = 1.0;
         if (side < 0) { gutterSign = -1.0; }
 
-        var pos = Physics3DBody.get_Position(body);
-        var vel = Physics3DBody.get_Velocity(body);
+        var pos = PhysicsBody3D.get_Position(body);
+        var vel = PhysicsBody3D.get_Velocity(body);
         var vz = Vec3.get_Z(vel);
         var safeX = config.LANE_WIDTH / 2.0 + config.LANE_GUTTER_W * 0.68;
-        Physics3DBody.SetPosition(body, gutterSign * safeX, Vec3.get_Y(pos), Vec3.get_Z(pos));
-        Physics3DBody.SetVelocity(body, gutterSign * 0.22, 0.0, vz * 0.9);
-        Physics3DBody.set_CollisionMask(body, config.LAYER_STATIC);
+        PhysicsBody3D.SetPosition(body, gutterSign * safeX, Vec3.get_Y(pos), Vec3.get_Z(pos));
+        PhysicsBody3D.SetVelocity(body, gutterSign * 0.22, 0.0, vz * 0.9);
+        PhysicsBody3D.set_CollisionMask(body, config.LAYER_STATIC);
     }
 
     /// @brief Release the gutter lock (reset only).
     expose func clearGutter() {
         isInGutter = false;
-        Physics3DBody.set_CollisionMask(body, config.MASK_BALL);
+        PhysicsBody3D.set_CollisionMask(body, config.MASK_BALL);
     }
 
     /// @brief Underlying physics body (for trigger callbacks).
-    expose func getBody() -> Physics3DBody {
+    expose func getBody() -> PhysicsBody3D {
         return body;
     }
 
@@ -456,25 +456,25 @@ class Ball {
         if (safeX > config.LANE_SAFE_HALF_WIDTH) { safeX = config.LANE_SAFE_HALF_WIDTH; }
         if (safeZ < config.BALL_THROW_Z) { safeZ = config.BALL_THROW_Z; }
         if (safeZ > config.GUTTER_EXIT_Z) { safeZ = config.GUTTER_EXIT_Z; }
-        Physics3DBody.SetPosition(body, safeX,
+        PhysicsBody3D.SetPosition(body, safeX,
             config.BALL_RADIUS + config.BALL_START_Y_OFFSET, safeZ);
-        Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
-        Physics3DBody.SetAngularVelocity(body, 0.0, 0.0, 0.0);
+        PhysicsBody3D.SetVelocity(body, 0.0, 0.0, 0.0);
+        PhysicsBody3D.SetAngularVelocity(body, 0.0, 0.0, 0.0);
     }
 
     /// @brief Current world position.
     expose func getPosition() -> Vec3 {
-        return Physics3DBody.get_Position(body);
+        return PhysicsBody3D.get_Position(body);
     }
 
     /// @brief Current world velocity.
     expose func getVelocity() -> Vec3 {
-        return Physics3DBody.get_Velocity(body);
+        return PhysicsBody3D.get_Velocity(body);
     }
 
     /// @brief Speed magnitude (sqrt of vx² + vy² + vz²).
     expose func getSpeed() -> Float {
-        var vel = Physics3DBody.get_Velocity(body);
+        var vel = PhysicsBody3D.get_Velocity(body);
         var vx = Vec3.get_X(vel);
         var vy = Vec3.get_Y(vel);
         var vz = Vec3.get_Z(vel);
@@ -486,7 +486,7 @@ class Ball {
     ///          the pocket at roughly 4–6°. Sampled near the head pin for
     ///          the shot-feedback HUD readout.
     expose func getTravelAngleDeg() -> Float {
-        var vel = Physics3DBody.get_Velocity(body);
+        var vel = PhysicsBody3D.get_Velocity(body);
         var vx = Vec3.get_X(vel);
         var vz = Vec3.get_Z(vel);
         if (vz < 0.05) { return 0.0; }
@@ -495,12 +495,12 @@ class Ball {
 
     /// @brief Current X coordinate.
     expose func getPosX() -> Float {
-        return Physics3DBody.get_Position(body).X;
+        return PhysicsBody3D.get_Position(body).X;
     }
 
     /// @brief Current Z coordinate.
     expose func getPosZ() -> Float {
-        return Physics3DBody.get_Position(body).Z;
+        return PhysicsBody3D.get_Position(body).Z;
     }
 
     /// @brief True once the ball has crossed past the pin deck.
@@ -570,8 +570,8 @@ class Ball {
         var emitted = 0;
         while (trailSampleTimer >= config.TRAIL_SAMPLE_SECONDS && emitted < 4) {
             trailSampleTimer = trailSampleTimer - config.TRAIL_SAMPLE_SECONDS;
-            var pos = Physics3DBody.get_Position(body);
-            var vel = Physics3DBody.get_Velocity(body);
+            var pos = PhysicsBody3D.get_Position(body);
+            var vel = PhysicsBody3D.get_Velocity(body);
             var vx = Vec3.get_X(vel);
             var vz = Vec3.get_Z(vel);
             var speed = Sqrt(vx * vx + vz * vz);
@@ -613,7 +613,7 @@ class Ball {
         var releaseX = stanceX;
         if (releaseX < -config.STANCE_MAX) { releaseX = -config.STANCE_MAX; }
         if (releaseX > config.STANCE_MAX) { releaseX = config.STANCE_MAX; }
-        Physics3DBody.SetPosition(body,
+        PhysicsBody3D.SetPosition(body,
             releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_THROW_Z);
     }
 
@@ -682,12 +682,12 @@ class Ball {
 
     /// @brief Render the ball with translation + yaw + spin rotation.
     expose func draw(canvas: Canvas3D) {
-        var pos = Physics3DBody.get_Position(body);
+        var pos = PhysicsBody3D.get_Position(body);
         var bx = Vec3.get_X(pos);
         var by = Vec3.get_Y(pos);
         var bz = Vec3.get_Z(pos);
 
-        var vel = Physics3DBody.get_Velocity(body);
+        var vel = PhysicsBody3D.get_Velocity(body);
         var vx = Vec3.get_X(vel);
         var vz = Vec3.get_Z(vel);
         var speed = Sqrt(vx * vx + vz * vz);

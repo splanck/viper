@@ -433,6 +433,39 @@ static void ik3d_quat_mul(const float *a, const float *b, float *out) {
     ik3d_quat_normalize(out);
 }
 
+/// @brief Shortest-arc quaternion rotating unit vector @p from onto unit vector @p to.
+/// @details Pure swing — the result has no twist component about @p from, which is
+///          exactly what chain-bone aiming needs (twist authored in the animation
+///          pose is preserved). Antiparallel inputs rotate 180° about a stable
+///          perpendicular axis.
+static void ik3d_quat_from_to(const float *from, const float *to, float *out) {
+    float c[3];
+    float d = ik3d_dot3(from, to);
+    ik3d_cross3(from, to, c);
+    if (d < -0.999999f) {
+        float axis[3] = {1.0f, 0.0f, 0.0f};
+        if (fabsf(from[0]) > 0.9f) {
+            axis[0] = 0.0f;
+            axis[1] = 1.0f;
+        }
+        ik3d_cross3(axis, from, c);
+        if (!ik3d_normalize3(c)) {
+            ik3d_quat_identity(out);
+            return;
+        }
+        out[0] = c[0];
+        out[1] = c[1];
+        out[2] = c[2];
+        out[3] = 0.0f;
+        return;
+    }
+    out[0] = c[0];
+    out[1] = c[1];
+    out[2] = c[2];
+    out[3] = 1.0f + d;
+    ik3d_quat_normalize(out);
+}
+
 /// @brief Decompose a row-major 4x4 matrix into translation, rotation quaternion, and scale.
 /// @details Scale is the length of each basis column; columns are divided out before
 ///          extracting the rotation so shear-free TRS matrices round-trip. Non-finite or
@@ -743,6 +776,59 @@ static void ik3d_apply_foot_orientation(rt_ik_solver3d *solver,
     ik3d_build_globals(solver->skeleton, locals, globals, bone_count);
 }
 
+/// @brief Swing-rotate @p bone in place so its child joint (currently at the
+///   position read from @p globals for @p child_bone) lands on @p child_target,
+///   preserving the bone's authored twist, translation, and scale.
+/// @details This is what makes IK visibly BEND a skinned limb: skinned vertices
+///   follow bone rotations, so translating joint origins alone (the positional
+///   FABRIK write) shears the mesh instead of articulating it. The swing is the
+///   shortest arc between the current and solved child directions, composed
+///   onto the bone's global rotation and converted back to parent-local using
+///   the same decompose/recompose path as the foot-orientation pass. Globals
+///   are rebuilt so downstream chain links see the rotation.
+static void ik3d_aim_bone_child_at(rt_ik_solver3d *solver,
+                                   float *locals,
+                                   float *globals,
+                                   int32_t bone_count,
+                                   int32_t bone,
+                                   int32_t child_bone,
+                                   const float *child_target) {
+    float origin[3], child_cur[3];
+    float v_from[3], v_to[3];
+    float arc[4];
+    float g_pos[3], g_rot[4], g_scl[3];
+    float new_global_rot[4];
+    float parent_rot[4], parent_conj[4], local_rot[4];
+    float l_pos[3], l_rot[4], l_scl[3];
+    int32_t parent;
+    if (!solver || !locals || !globals || bone < 0 || bone >= bone_count || child_bone < 0 ||
+        child_bone >= bone_count || !child_target)
+        return;
+    ik3d_global_position(globals, bone, origin);
+    ik3d_global_position(globals, child_bone, child_cur);
+    for (int lane = 0; lane < 3; lane++) {
+        v_from[lane] = child_cur[lane] - origin[lane];
+        v_to[lane] = child_target[lane] - origin[lane];
+    }
+    if (!ik3d_normalize3(v_from) || !ik3d_normalize3(v_to))
+        return;
+    ik3d_quat_from_to(v_from, v_to, arc);
+    ik3d_decompose_trs(&globals[bone * 16], g_pos, g_rot, g_scl);
+    ik3d_quat_mul(arc, g_rot, new_global_rot);
+    parent = solver->skeleton->bones[bone].parent_index;
+    if (parent >= 0 && parent < bone_count) {
+        float ppos[3], pscl[3];
+        ik3d_decompose_trs(&globals[parent * 16], ppos, parent_rot, pscl);
+    } else {
+        ik3d_quat_identity(parent_rot);
+    }
+    ik3d_quat_conjugate(parent_rot, parent_conj);
+    ik3d_quat_mul(parent_conj, new_global_rot, local_rot);
+    ik3d_decompose_trs(&locals[bone * 16], l_pos, l_rot, l_scl);
+    ik3d_build_trs(l_pos, local_rot, l_scl, &locals[bone * 16]);
+    ik3d_build_globals(solver->skeleton, locals, globals, bone_count);
+}
+
 /// @brief Solve a multi-bone chain toward the target using FABRIK, then blend by weight.
 /// @details If the target is out of reach (distance >= total chain length) the chain is
 ///          straightened toward it; otherwise FABRIK alternates backward (from the target)
@@ -861,9 +947,15 @@ static int ik3d_apply_chain(rt_ik_solver3d *solver,
     for (int32_t i = 1; i < count; i++) {
         float blended[3];
         int32_t bone = solver->chain[i];
+        int32_t parent_link = solver->chain[i - 1];
         for (int lane = 0; lane < 3; lane++)
             blended[lane] =
                 original[i][lane] + (positions[i][lane] - original[i][lane]) * solver->weight;
+        /* Two writes per link: swing the parent link so its child joint AIMS
+         * at the solved position (this is what bends the skinned limb — see
+         * ik3d_aim_bone_child_at), then pin the child's translation exactly to
+         * guard against numeric drift in segment length. */
+        ik3d_aim_bone_child_at(solver, locals, globals, bone_count, parent_link, bone, blended);
         ik3d_set_global_position(solver, locals, globals, bone_count, bone, blended);
     }
     if (solver->has_ground_normal)

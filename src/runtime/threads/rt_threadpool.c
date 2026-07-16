@@ -67,8 +67,19 @@
 typedef struct pool_task {
     void (*callback)(void *); ///< Task function pointer.
     void *arg;                ///< Argument for the callback.
+    int8_t owns_arg;          ///< 1 when the pool retains/releases the arg (VDOC-128).
     struct pool_task *next;   ///< Next task in queue.
 } pool_task;
+
+/// @brief Release a task's owned argument (no-op for borrowed args).
+static void pool_task_release_arg(pool_task *task) {
+    if (task && task->owns_arg && task->arg) {
+        if (rt_obj_release_check0(task->arg))
+            rt_obj_free(task->arg);
+        task->arg = NULL;
+        task->owns_arg = 0;
+    }
+}
 
 /// @brief Worker thread state.
 typedef struct pool_worker {
@@ -188,9 +199,11 @@ static int8_t pool_take_error_locked(pool_impl *pool, char *out, size_t out_size
     return 1;
 }
 
-/// @brief Drain the first worker-task trap message under the pool's monitor.
-/// @details Used by Wait / Shutdown callers after releasing any temporary pool
-///          retain so trap unwinding cannot leak the self-retain.
+/// @brief Drain the accumulated worker-task trap state under the pool's monitor.
+/// @details The pool counts every unobserved trap but stores only the most
+///          recently captured message. Used by Wait / Shutdown callers after
+///          releasing any temporary pool retain so trap unwinding cannot leak
+///          the self-retain.
 static int8_t pool_take_error(pool_impl *pool, char *error, size_t error_size) {
     if (error && error_size > 0)
         error[0] = '\0';
@@ -356,10 +369,11 @@ static void pool_finalizer(void *obj) {
         }
     }
 
-    // Clean up any remaining queue
+    // Clean up any remaining queue (owned args are released, VDOC-128)
     pool_task *task = pool->queue_head;
     while (task) {
         pool_task *next = task->next;
+        pool_task_release_arg(task);
         free(task);
         task = next;
     }
@@ -532,6 +546,7 @@ static void worker_entry(void *arg) {
                 trapped = 1;
             }
             rt_trap_clear_recovery();
+            pool_task_release_arg(task);
             free(task);
         }
 
@@ -582,7 +597,8 @@ static void pool_deferred_cleanup_entry(void *arg) {
 /// @param arg Opaque argument passed to @p callback.
 /// @return 1 when the task is queued, 0 when inputs are invalid, the pool is
 ///         shutting down, or allocation fails.
-int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *arg) {
+static int8_t
+threadpool_submit_impl(void *pool_obj, void (*callback)(void *), void *arg, int8_t owns_arg) {
     if (!pool_obj || !callback)
         return 0;
 
@@ -621,6 +637,9 @@ int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *a
 
     task->callback = callback;
     task->arg = arg;
+    task->owns_arg = owns_arg;
+    if (owns_arg && arg)
+        rt_obj_retain_maybe(arg);
     task->next = NULL;
 
     // Enqueue task
@@ -641,6 +660,17 @@ int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *a
     return 1;
 }
 
+int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *arg) {
+    return threadpool_submit_impl(pool_obj, callback, arg, 0);
+}
+
+/// @brief Submit a task whose runtime-managed argument the pool owns
+///        (VDOC-128): retained on acceptance, released after the callback
+///        runs OR when the task is discarded by ShutdownNow/finalization.
+int8_t rt_threadpool_submit_owned_fn(void *pool_obj, void (*callback)(void *), void *arg) {
+    return threadpool_submit_impl(pool_obj, callback, arg, 1);
+}
+
 /// @brief Submit a task through the legacy object-pointer callback API.
 /// @details Preserves the historical runtime ABI while routing actual queueing
 ///          through the typed implementation. New C code should prefer
@@ -648,6 +678,11 @@ int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *a
 ///          through `void *`.
 int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
     return rt_threadpool_submit_fn(pool_obj, (void (*)(void *))callback, arg);
+}
+
+/// @brief Owned-argument variant of @ref rt_threadpool_submit (VDOC-128).
+int8_t rt_threadpool_submit_owned(void *pool_obj, void *callback, void *arg) {
+    return rt_threadpool_submit_owned_fn(pool_obj, (void (*)(void *))callback, arg);
 }
 
 //=============================================================================
@@ -838,10 +873,11 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
     pool->shutdown_now = 1;
     pool_take_worker_handles_locked(pool, handles);
 
-    // Clear the queue
+    // Clear the queue; discarded owned args are released (VDOC-128)
     pool_task *task = pool->queue_head;
     while (task) {
         pool_task *next = task->next;
+        pool_task_release_arg(task);
         free(task);
         task = next;
     }

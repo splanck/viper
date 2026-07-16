@@ -126,7 +126,7 @@ End Sub
 ' ============================================================================
 Sub HandleInput()
     Dim key As String
-    key = Viper.Terminal.InKey()
+    key = Viper.Terminal.PollKey()
 
     If Len(key) > 0 Then
         If key = "w" Or key = "W" Then
@@ -413,7 +413,7 @@ Sub GameLoop()
 
     ' Wait for key
     Dim exitKey As String
-    exitKey = Viper.Terminal.GetKey()
+    exitKey = Viper.Terminal.ReadKey()
 End Sub
 
 ' ============================================================================
@@ -477,7 +477,7 @@ Sub ShowTitleScreen()
     Viper.Terminal.SetColor(7, 0)
 
     Dim startKey As String
-    startKey = Viper.Terminal.GetKey()
+    startKey = Viper.Terminal.ReadKey()
 End Sub
 
 ' ============================================================================

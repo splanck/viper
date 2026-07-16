@@ -15,8 +15,8 @@
 //   - Instance methods trap when passed a NULL countdown pointer.
 //
 // Ownership/Lifetime:
-//   - Countdown objects are heap-allocated; the caller is responsible for lifetime management.
-//   - No reference counting; caller must explicitly free the object when done.
+//   - Countdown objects are heap-allocated runtime objects managed through Viper's
+//     reference-counting/GC lifetime; source callers do not free them explicitly.
 //
 // Links: src/runtime/core/rt_countdown.c (implementation)
 //

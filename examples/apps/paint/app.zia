@@ -429,12 +429,12 @@ class PaintApp {
         lastMouseRight = mouseRight;
         mouseX = Viper.Input.Mouse.X();
         mouseY = Viper.Input.Mouse.Y();
-        if Viper.Input.Mouse.Left() {
+        if Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonLeft) {
             mouseDown = 1;
         } else {
             mouseDown = 0;
         }
-        if Viper.Input.Mouse.Right() {
+        if Viper.Input.Mouse.IsDown(Viper.Input.Mouse.ButtonRight) {
             mouseRight = 1;
         } else {
             mouseRight = 0;
@@ -468,7 +468,7 @@ class PaintApp {
                         Viper.Input.Mouse.WheelY(),
                         canvas.width,
                         canvas.height,
-                        boolToInt(Viper.Input.Keyboard.Ctrl()));
+                        boolToInt(Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftControl)));
         feedbackMgr.setCanvasCursor(view.contains(mouseX, mouseY));
 
         if inputActions.pressed(actions.ACT_QUIT) == 1 {
@@ -552,7 +552,7 @@ class PaintApp {
             return;
         }
 
-        var ctrl = boolToInt(Viper.Input.Keyboard.Ctrl());
+        var ctrl = boolToInt(Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftControl));
 
         if ctrl == 1 {
             if inputActions.pressed(actions.ACT_NEW) == 1 {
@@ -564,7 +564,7 @@ class PaintApp {
                 return;
             }
             if inputActions.pressed(actions.ACT_SAVE) == 1 {
-                if Viper.Input.Keyboard.Shift() {
+                if Viper.Input.Keyboard.IsDown(Viper.Input.Key.LeftShift) {
                     saveDocumentAs();
                 } else {
                     saveDocument();
@@ -867,7 +867,7 @@ class PaintApp {
             while ty < h + 2 {
                 var tx = 0;
                 while tx < w + 2 {
-                    if cap.GetRGB(tx, ty) != 0x000000 {
+                    if cap.GetRgb(tx, ty) != 0x000000 {
                         canvas.setPixel(textTool.caretX + tx - 1, textTool.caretY + ty - 1, fg);
                     }
                     tx = tx + 1;

@@ -6,8 +6,8 @@ func start() {
 
     // --- New ---
     Say("--- New ---");
-    var id1 = Uuid.New();
-    var id2 = Uuid.New();
+    var id1 = Uuid.Generate();
+    var id2 = Uuid.Generate();
     Say(id1);
     Say(id2);
 
@@ -25,7 +25,7 @@ func start() {
 
     // --- ToBytes / FromBytes ---
     Say("--- ToBytes / FromBytes ---");
-    var testId = Uuid.New();
+    var testId = Uuid.Generate();
     Say(testId);
     var bytes = Uuid.ToBytes(testId);
     var restored = Uuid.FromBytes(bytes);

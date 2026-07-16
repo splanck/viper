@@ -8,8 +8,10 @@
 // RT_SCREENFX_MAX_EFFECTS (8) slots initially and grows when more concurrent effects are needed.
 //
 // Key invariants:
-//   - Time values use fixed-point milliseconds; 1000 = 1 pixel for shake offsets.
-//   - Colors are packed as 0xRRGGBBAA.
+//   - Durations and update deltas are integer milliseconds. Shake intensity and
+//     offsets use fixed-point pixels, where 1000 = 1 pixel.
+//   - Flash/fade colors are packed as 0xRRGGBBAA; transition colors use the
+//     Canvas 0x00RRGGBB convention.
 //   - rt_screenfx_update must be called once per frame with the elapsed delta time.
 //   - Non-positive update deltas are ignored; elapsed time saturates instead of overflowing.
 //   - Initial concurrent-effect reservation is RT_SCREENFX_MAX_EFFECTS (8); storage grows on
@@ -86,9 +88,9 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt);
 /// @param intensity Maximum shake displacement in fixed-point pixels
 ///   (1000 = 1 pixel).
 /// @param duration Duration of the shake in milliseconds.
-/// @param decay Decay rate controlling how quickly intensity falls off,
-///   in the range [0, 1000] where 0 = no decay (constant intensity) and
-///   1000 = instant decay.
+/// @param decay Decay selector: values <= 0 keep constant intensity, values
+///   from 1 through 1499 use linear falloff, and values >= 1500 use quadratic
+///   falloff.
 void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int64_t decay);
 
 /// @brief Starts a full-screen color flash effect.
@@ -178,8 +180,9 @@ int64_t rt_screenfx_get_shake_y(rt_screenfx fx);
 /// The renderer should draw a filled rectangle with this color over the
 /// entire screen at the alpha returned by rt_screenfx_get_overlay_alpha().
 /// @param fx The effects manager to query.
-/// @return The overlay color in packed 0xRRGGBBAA format. Returns 0 when
-///   no flash or fade effect is active.
+/// @return The overlay RGB channels in the upper 24 bits (`0xRRGGBB00`);
+///   retrieve the current alpha separately. Returns 0 when no flash or fade
+///   effect has contributed during the latest positive update.
 int64_t rt_screenfx_get_overlay_color(rt_screenfx fx);
 
 /// @brief Retrieves the current overlay alpha intensity for flash and fade
@@ -216,7 +219,9 @@ void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t durati
 /// @brief Check if all effects have finished (none active).
 int8_t rt_screenfx_is_finished(rt_screenfx fx);
 
-/// @brief Get the progress of the current transition (0-1000 fixed-point).
+/// @brief Get the progress of the first active transition (0-999 in normal
+/// operation). Completion removes the slot during Update, after which this
+/// query returns 0; the terminal value 1000 is not observable currently.
 int64_t rt_screenfx_get_transition_progress(rt_screenfx fx);
 
 /// @brief Render all active transition overlays to a Canvas.

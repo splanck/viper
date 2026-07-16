@@ -32,6 +32,124 @@
 #define CANVAS3D_FINAL_OVERLAY_ARENA_DEFAULT_BYTES (256u * 1024u)
 #define CANVAS3D_FINAL_OVERLAY_ARENA_RETAIN_BYTES (4u * 1024u * 1024u)
 
+#define CANVAS3D_FRAME_ARENA_CHUNK_BYTES (1u * 1024u * 1024u)
+#define CANVAS3D_FRAME_ARENA_RETAIN_CHUNKS 8
+#define CANVAS3D_FRAME_ARENA_ALIGN 16u
+
+/// @brief One frame-arena chunk: bump storage with stable addresses.
+/// @details Chunks form a singly linked list; the arena grows by APPENDING
+///   chunks (never realloc), so pointers handed to recorded draw commands stay
+///   valid until the end-of-frame reset. Oversized single requests get their
+///   own exact-size chunk.
+typedef struct canvas3d_frame_arena_chunk {
+    struct canvas3d_frame_arena_chunk *next;
+    size_t used;
+    size_t capacity;
+    /* payload follows the header, CANVAS3D_FRAME_ARENA_ALIGN-aligned */
+} canvas3d_frame_arena_chunk;
+
+/// @brief Payload base address of a chunk (header rounded up to the alignment).
+static uint8_t *canvas3d_frame_arena_chunk_payload(canvas3d_frame_arena_chunk *chunk) {
+    size_t header = (sizeof(canvas3d_frame_arena_chunk) + (CANVAS3D_FRAME_ARENA_ALIGN - 1u)) &
+                    ~(size_t)(CANVAS3D_FRAME_ARENA_ALIGN - 1u);
+    return (uint8_t *)chunk + header;
+}
+
+/// @brief Allocate a chunk able to serve at least @p payload_bytes.
+static canvas3d_frame_arena_chunk *canvas3d_frame_arena_new_chunk(size_t payload_bytes) {
+    size_t header = (sizeof(canvas3d_frame_arena_chunk) + (CANVAS3D_FRAME_ARENA_ALIGN - 1u)) &
+                    ~(size_t)(CANVAS3D_FRAME_ARENA_ALIGN - 1u);
+    canvas3d_frame_arena_chunk *chunk;
+    if (payload_bytes < CANVAS3D_FRAME_ARENA_CHUNK_BYTES)
+        payload_bytes = CANVAS3D_FRAME_ARENA_CHUNK_BYTES;
+    if (payload_bytes > SIZE_MAX - header)
+        return NULL;
+    chunk = (canvas3d_frame_arena_chunk *)malloc(header + payload_bytes);
+    if (!chunk)
+        return NULL;
+    chunk->next = NULL;
+    chunk->used = 0u;
+    chunk->capacity = payload_bytes;
+    return chunk;
+}
+
+void *canvas3d_frame_arena_alloc(rt_canvas3d *c, size_t bytes) {
+    canvas3d_frame_arena_chunk *chunk;
+    if (!c || bytes == 0u)
+        return NULL;
+    bytes = (bytes + (CANVAS3D_FRAME_ARENA_ALIGN - 1u)) &
+            ~(size_t)(CANVAS3D_FRAME_ARENA_ALIGN - 1u);
+    if (bytes == 0u)
+        return NULL; /* overflow in round-up */
+    chunk = c->frame_arena_current;
+    /* Walk forward through retained chunks until one fits. */
+    while (chunk && chunk->capacity - chunk->used < bytes) {
+        if (!chunk->next)
+            break;
+        chunk = chunk->next;
+        c->frame_arena_current = chunk;
+    }
+    if (!chunk || chunk->capacity - chunk->used < bytes) {
+        canvas3d_frame_arena_chunk *grown = canvas3d_frame_arena_new_chunk(bytes);
+        if (!grown)
+            return NULL;
+        if (chunk)
+            chunk->next = grown;
+        else
+            c->frame_arena_head = grown;
+        c->frame_arena_current = grown;
+        chunk = grown;
+    }
+    {
+        uint8_t *out = canvas3d_frame_arena_chunk_payload(chunk) + chunk->used;
+        chunk->used += bytes;
+        c->frame_arena_frame_bytes += bytes;
+        return out;
+    }
+}
+
+void canvas3d_frame_arena_reset(rt_canvas3d *c) {
+    canvas3d_frame_arena_chunk *chunk;
+    int32_t kept = 0;
+    if (!c)
+        return;
+    chunk = c->frame_arena_head;
+    while (chunk) {
+        chunk->used = 0u;
+        kept++;
+        if (kept == CANVAS3D_FRAME_ARENA_RETAIN_CHUNKS && chunk->next) {
+            /* Unusual frames can chain many chunks; keep a bounded working
+             * set and release the tail. */
+            canvas3d_frame_arena_chunk *tail = chunk->next;
+            chunk->next = NULL;
+            while (tail) {
+                canvas3d_frame_arena_chunk *next = tail->next;
+                free(tail);
+                tail = next;
+            }
+            break;
+        }
+        chunk = chunk->next;
+    }
+    c->frame_arena_current = c->frame_arena_head;
+    c->frame_arena_frame_bytes = 0u;
+}
+
+void canvas3d_frame_arena_free(rt_canvas3d *c) {
+    canvas3d_frame_arena_chunk *chunk;
+    if (!c)
+        return;
+    chunk = c->frame_arena_head;
+    while (chunk) {
+        canvas3d_frame_arena_chunk *next = chunk->next;
+        free(chunk);
+        chunk = next;
+    }
+    c->frame_arena_head = NULL;
+    c->frame_arena_current = NULL;
+    c->frame_arena_frame_bytes = 0u;
+}
+
 /// @brief Round @p value up to the next power-of-two size, saturating on overflow.
 /// @details Final-overlay arena growth only happens when no recorded command points into the
 /// arena, so rounding up amortizes future HUD allocations without risking pointer invalidation.
@@ -98,12 +216,30 @@ void *canvas3d_alloc_final_overlay_arena(rt_canvas3d *c, size_t bytes, size_t al
 }
 
 /// @brief Reset retained final-overlay arena state after overlay replay.
+/// @details Growth happens HERE, from the recorded high-water mark: the
+///   allocator itself can only grow while the arena is empty, so a frame whose
+///   CUMULATIVE overlay demand exceeded capacity dropped the overflow. Without
+///   this regrow, a HUD needing more than the current arena (many small
+///   allocations, none individually over capacity) would drop geometry every
+///   frame forever. Shrinking back below the retain cap only happens when the
+///   last frame's peak no longer justifies the oversized arena.
 void canvas3d_reset_final_overlay_arena(rt_canvas3d *c) {
+    size_t peak;
     if (!c)
         return;
+    peak = c->final_overlay_arena_peak;
     c->final_overlay_arena_used = 0u;
     c->final_overlay_arena_peak = 0u;
-    if (c->final_overlay_arena_capacity > CANVAS3D_FINAL_OVERLAY_ARENA_RETAIN_BYTES) {
+    if (peak > c->final_overlay_arena_capacity) {
+        size_t requested = canvas3d_next_power_of_two_size(peak);
+        uint8_t *grown = (uint8_t *)malloc(requested);
+        if (grown) {
+            free(c->final_overlay_arena);
+            c->final_overlay_arena = grown;
+            c->final_overlay_arena_capacity = requested;
+        }
+    } else if (c->final_overlay_arena_capacity > CANVAS3D_FINAL_OVERLAY_ARENA_RETAIN_BYTES &&
+               peak <= CANVAS3D_FINAL_OVERLAY_ARENA_RETAIN_BYTES) {
         free(c->final_overlay_arena);
         c->final_overlay_arena = NULL;
         c->final_overlay_arena_capacity = 0u;
@@ -529,6 +665,7 @@ void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     c->mesh_snapshot_count = 0;
     canvas3d_mesh_snapshot_hash_clear(c);
     c->mesh_snapshot_bytes = 0u;
+    canvas3d_frame_arena_reset(c);
 }
 
 /// @brief Release every tracked transient GC object (called at end of frame).

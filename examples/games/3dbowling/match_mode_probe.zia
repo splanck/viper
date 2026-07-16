@@ -25,7 +25,7 @@
 module match_mode_probe;
 
 bind Viper.Graphics3D;
-bind Viper.Sound;
+bind Viper.Audio;
 bind Viper.Terminal;
 bind "./config";
 bind "./game";
@@ -136,7 +136,7 @@ class BowlingMatchProbe extends BowlingGame {
         var steps = 0;
         while ((gameState == config.STATE_ROLLING || gameState == config.STATE_SETTLING) &&
                steps < 2600) {
-            Physics3DWorld.Step(physWorld, config.PHYSICS_DT);
+            PhysicsWorld3D.Step(physWorld, config.PHYSICS_DT);
             if (gameState == config.STATE_ROLLING) {
                 updateRollingStep(config.PHYSICS_DT);
             } else {
@@ -169,6 +169,6 @@ func main() {
     menu.PERSISTENCE_ENABLED = false;
     var probe = new BowlingMatchProbe();
     if (probe.verify() == false) { Say("RESULT: fail"); return; }
-    Audio.Shutdown();
+    Mixer.Shutdown();
     Say("RESULT: ok");
 }

@@ -22,7 +22,7 @@ PRINT "Wrote 3 bytes: A B C"
 
 ' --- Pos ---
 PRINT "--- Pos ---"
-PRINT "Pos after write: "; Viper.IO.BinFile.get_Pos(wf)
+PRINT "Pos after write: "; Viper.IO.BinFile.get_Position(wf)
 
 ' --- Flush ---
 PRINT "--- Flush ---"

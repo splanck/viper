@@ -166,9 +166,9 @@ func start() {
     var hiddenCityCount = addCityBlock(scene, boxMesh, cityMat, "hidden_city", -13.0);
     var authoredCount = wallCount + frontCount + alleyCount + hiddenForestCount + hiddenCityCount;
 
-    var baselineStart = Clock.TicksUs();
+    var baselineStart = Clock.NowMicros();
     var baselineSnap = renderFixture(canvas, scene, camera);
-    var baselineUs = Clock.TicksUs() - baselineStart;
+    var baselineUs = Clock.NowMicros() - baselineStart;
     var baselineDraws = canvas.DrawCount;
     var baselineVisible = SceneGraph.get_VisibleNodeCount(scene);
 
@@ -182,9 +182,9 @@ func start() {
         Vec3.New(-10.0, -4.0, -24.0), Vec3.New(10.0, 10.0, -11.6));
     SceneGraph.AddVisibilityPortal(scene, frontZone, alleyZone, true);
 
-    var optimizedStart = Clock.TicksUs();
+    var optimizedStart = Clock.NowMicros();
     var optimizedSnap = renderFixture(canvas, scene, camera);
-    var optimizedUs = Clock.TicksUs() - optimizedStart;
+    var optimizedUs = Clock.NowMicros() - optimizedStart;
     var optimizedDraws = canvas.DrawCount;
     var optimizedVisible = SceneGraph.get_VisibleNodeCount(scene);
     var pvsCulled = SceneGraph.get_PvsCulledCount(scene);
@@ -278,7 +278,7 @@ func start() {
     var denseNode = SceneNode.New();
     denseNode.Name = "dense_proxy_cell_geo";
     denseNode.Mesh = denseMesh;
-    denseNode.Material = Material3D.NewColor(0.4, 0.5, 0.3);
+    denseNode.Material = Material3D.FromColor(0.4, 0.5, 0.3);
     denseScene.Add(denseNode);
     if (denseScene.Save("/tmp/viper_dense_proxy_cell.vscn") != 1) {
         fail("dense proxy cell fixture did not save");

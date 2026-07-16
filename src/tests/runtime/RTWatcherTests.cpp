@@ -11,7 +11,7 @@
 //                 events on watched directories and files.
 // Ownership/Lifetime: Uses runtime library; tests create temporary files
 //                     that are cleaned up after tests complete.
-// Links: docs/viperlib/io.md
+// Links: docs/viperlib/io/advanced.md
 //
 //===----------------------------------------------------------------------===//
 

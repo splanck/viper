@@ -161,7 +161,7 @@ static void test_toml_empty_is_valid(void) {
 }
 
 static void test_toml_comment_only_valid(void) {
-    rt_string src = rt_string_from_bytes("# just a comment\n", 18);
+    rt_string src = rt_string_from_bytes("# just a comment\n", 17);
     ASSERT(rt_toml_is_valid(src) == 1);
     rt_string_unref(src);
 }

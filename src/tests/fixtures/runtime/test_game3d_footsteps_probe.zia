@@ -28,10 +28,10 @@ func start() {
     // Tagged static floor.
     var floorEnt = Game3D.Entity3D.New();
     world.Spawn(floorEnt);
-    var shape = Collider3D.NewBox(10.0, 0.5, 10.0);
+    var shape = Collider3D.Box(10.0, 0.5, 10.0);
     shape.SurfaceType = ice;
-    var body = Physics3DBody.New(0.0);
-    body.Static = true;
+    var body = PhysicsBody3D.New(0.0);
+    body.IsStatic = true;
     body.Collider = shape;
     floorEnt.AttachBody(body);
 
@@ -69,10 +69,10 @@ func start() {
     var world2 = Game3D.World3D.New("Footsteps Probe 2", 64, 48);
     var floor2 = Game3D.Entity3D.New();
     world2.Spawn(floor2);
-    var shape2 = Collider3D.NewBox(10.0, 0.5, 10.0);
+    var shape2 = Collider3D.Box(10.0, 0.5, 10.0);
     shape2.SurfaceType = ice;
-    var body2 = Physics3DBody.New(0.0);
-    body2.Static = true;
+    var body2 = PhysicsBody3D.New(0.0);
+    body2.IsStatic = true;
     body2.Collider = shape2;
     floor2.AttachBody(body2);
     var walker2 = Game3D.Entity3D.New();

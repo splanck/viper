@@ -21,7 +21,7 @@ func start() {
     var camera = world.Camera;
 
     var ground = Game3D.Entity3D.New();
-    var groundBody = G3D.Physics3DBody.NewAABB(10.0, 0.5, 10.0, 0.0);
+    var groundBody = G3D.PhysicsBody3D.NewAABB(10.0, 0.5, 10.0, 0.0);
     ground.AttachBody(groundBody);
     ground.SetPosition(0.0, -0.5, 0.0);
     world.Spawn(ground);
@@ -37,7 +37,7 @@ func start() {
     world.SetCameraController(fps);
 
     var before = player.Position;
-    G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_KeyW(), true);
+    G3D.Canvas3D.PushSyntheticKey(canvas, Viper.Input.Key.W, true);
     world.RunFramesOnly(1, 0.1);
     var after = player.Position;
 

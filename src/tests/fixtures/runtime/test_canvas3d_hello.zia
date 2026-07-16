@@ -24,7 +24,7 @@ func start() {
     }
 
     // Test Material3D
-    var mat = Viper.Graphics3D.Material3D.NewColor(1.0, 0.3, 0.2);
+    var mat = Viper.Graphics3D.Material3D.FromColor(1.0, 0.3, 0.2);
     if (mat == null) {
         Say("FAIL: Material3D.NewColor should return a material");
         return;
@@ -44,7 +44,7 @@ func start() {
     }
 
     // Test Mesh3D.NewBox generator
-    var box = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var box = Viper.Graphics3D.Mesh3D.Box(1.0, 1.0, 1.0);
     var box_vc = Viper.Graphics3D.Mesh3D.get_VertexCount(box);
     var box_tc = Viper.Graphics3D.Mesh3D.get_TriangleCount(box);
 

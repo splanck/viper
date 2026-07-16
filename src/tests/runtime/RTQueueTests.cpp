@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_queue.h"
@@ -412,7 +413,28 @@ static void test_owns_elements_mode_change_non_empty_traps() {
     release_obj(queue);
 }
 
+static void test_has_value_equality() {
+    // VDOC-086: Has uses the same boxed-value equality as List/Seq/Set, so
+    // two separately boxed copies of a value are members of each other.
+    void *q = rt_queue_new();
+    void *a = rt_box_i64(42);
+    rt_queue_push(q, a);
+    void *b = rt_box_i64(42);
+    assert(rt_queue_has(q, b) == 1);
+
+    rt_string s1 = rt_string_from_bytes("same", 4);
+    rt_string s2 = rt_string_from_bytes("same", 4);
+    void *bs1 = rt_box_str(s1);
+    void *bs2 = rt_box_str(s2);
+    rt_queue_push(q, bs1);
+    assert(rt_queue_has(q, bs2) == 1);
+
+    void *c = rt_box_i64(43);
+    assert(rt_queue_has(q, c) == 0);
+}
+
 int main() {
+    test_has_value_equality();
     test_new_and_basic_properties();
     test_add_increases_length();
     test_fifo_order();

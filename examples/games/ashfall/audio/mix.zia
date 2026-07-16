@@ -2,7 +2,7 @@
 // audio/mix.zia — procedural combat audio + adaptive music + spatial mix
 // =============================================================================
 //
-// Ashfall ships without external audio dependencies.  The public Viper.Sound
+// Ashfall ships without external audio dependencies.  The public Viper.Audio
 // synthesizer builds a retained bank of distinct weapon, impact, movement and
 // UI cues, while World3D.Sound3D positions gameplay sounds, follows the camera,
 // attenuates by distance, applies geometry occlusion and feeds a mild reverb
@@ -14,7 +14,7 @@ module mix;
 bind Viper.Game3D;
 bind Viper.Graphics3D;
 bind Viper.Math;
-bind Viper.Sound;
+bind Viper.Audio;
 bind "../config" as config;
 bind "../core/events" as events;
 bind "../core/mathutil" as M;
@@ -98,11 +98,11 @@ class Mixer {
     expose func setup(world: World3D, headless: Boolean) {
         ready = false;
         if headless { return; }
-        if Audio.Init() == 0 { return; }
+        if Mixer.Init() == 0 { return; }
         spatial = world.Audio;
         if spatial == null { return; }
         ready = true;
-        Audio.SetMasterVolume(masterVol);
+        Mixer.SetMasterVolume(masterVol);
         spatial.Volume = 100;
         spatial.ListenerFollowCamera(true);
         spatial.SetAttenuation(2.0, 58.0);
@@ -151,10 +151,10 @@ class Mixer {
         var pad = song.AddChannel(0);
         var bass = song.AddChannel(3);
         song.SetEnvelope(pad, 180, 140, 55, 240);
-        song.SetChannelVol(pad, 20);
+        song.SetChannelVolume(pad, 20);
         song.SetDetune(pad, -7);
         song.SetEnvelope(bass, 18, 90, 58, 140);
-        song.SetChannelVol(bass, 24);
+        song.SetChannelVolume(bass, 24);
         song.AddNote(pad, 0, 45, 400);
         song.AddNote(pad, 400, 41, 400);
         song.AddNote(bass, 0, 33, 200);
@@ -171,12 +171,12 @@ class Mixer {
         var drums = song.AddChannel(4);
         song.SetSwing(7);
         song.SetEnvelope(bass, 5, 45, 66, 55);
-        song.SetChannelVol(bass, 34);
+        song.SetChannelVolume(bass, 34);
         song.SetEnvelope(pulse, 4, 36, 30, 42);
         song.SetDuty(pulse, 24);
-        song.SetChannelVol(pulse, 25);
+        song.SetChannelVolume(pulse, 25);
         song.SetEnvelope(drums, 1, 18, 0, 24);
-        song.SetChannelVol(drums, 42);
+        song.SetChannelVolume(drums, 42);
         var beat = 0;
         while beat < 800 {
             song.AddNote(bass, beat, 38, 45);
@@ -198,12 +198,12 @@ class Mixer {
         var alarm = song.AddChannel(1);
         var drums = song.AddChannel(4);
         song.SetEnvelope(bass, 3, 34, 78, 42);
-        song.SetChannelVol(bass, 42);
+        song.SetChannelVolume(bass, 42);
         song.SetEnvelope(alarm, 8, 60, 38, 80);
-        song.SetChannelVol(alarm, 28);
+        song.SetChannelVolume(alarm, 28);
         song.SetVibrato(alarm, 16, 620);
         song.SetEnvelope(drums, 1, 20, 0, 30);
-        song.SetChannelVol(drums, 50);
+        song.SetChannelVolume(drums, 50);
         var beat = 0;
         while beat < 800 {
             song.AddNote(bass, beat, 31, 75);
@@ -234,7 +234,7 @@ class Mixer {
     expose func getMappedCueCount() -> Integer { return mappedCues; }
     expose func setMasterVolume(v: Integer) {
         masterVol = M.clampi(v, 0, 100);
-        if ready { Audio.SetMasterVolume(masterVol); }
+        if ready { Mixer.SetMasterVolume(masterVol); }
     }
     expose func getMusicState() -> Integer { return musicState; }
     expose func getCombatIntensity() -> Float { return combatIntensity; }
@@ -260,7 +260,7 @@ class Mixer {
 
     hide func playFlat(clip: Sound, volume: Integer) {
         mappedCues = mappedCues + 1;
-        if ready && clip != null { clip.PlayEx(volume, 0); }
+        if ready && clip != null { clip.Play(volume, 0); }
     }
 
     hide func approach(v: Float, target: Float, step: Float) -> Float {
@@ -359,7 +359,7 @@ class Mixer {
         if bossActive { target = MUS_BOSS; }
         if musicState != MUS_VICTORY && musicState != MUS_DEFEAT { musicState = target; }
         updateMusic(dt);
-        if ready { Audio.Update(); }
+        if ready { Mixer.Update(); }
     }
 
     expose func playVictory() {

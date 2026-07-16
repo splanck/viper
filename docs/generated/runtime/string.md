@@ -13,7 +13,7 @@ Provides immutable runtime string values and common text operations.
 
 `Viper.String` exposes a registry-backed runtime surface without requiring callers to construct
 the class directly. Its public surface exposes properties such as `IsEmpty`, `Length` and
-operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
+operations including `Asc`, `CamelCase`, `Chr`, `Compare`.
 
 #### Properties
 
@@ -29,14 +29,13 @@ operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
 | <a id="viper-string-asc"></a>`Asc` | `i64()` | `Viper.String.Asc` |
 | <a id="viper-string-camelcase"></a>`CamelCase` | `str()` | `Viper.String.CamelCase` |
 | <a id="viper-string-chr"></a>`Chr` | `str(i64)` | `Viper.String.Chr` |
-| <a id="viper-string-cmp"></a>`Cmp` | `i64(str)` | `Viper.String.Cmp` |
-| <a id="viper-string-cmpnocase"></a>`CmpNoCase` | `i64(str)` | `Viper.String.CmpNoCase` |
+| <a id="viper-string-compare"></a>`Compare` | `i64(str)` | `Viper.String.Compare` |
+| <a id="viper-string-compareignorecase"></a>`CompareIgnoreCase` | `i64(str)` | `Viper.String.CompareIgnoreCase` |
 | <a id="viper-string-concat"></a>`Concat` | `str(str)` | `Viper.String.Concat` |
 | <a id="viper-string-count"></a>`Count` | `i64(str)` | `Viper.String.Count` |
 | <a id="viper-string-endswith"></a>`EndsWith` | `i1(str)` | `Viper.String.EndsWith` |
-| <a id="viper-string-flip"></a>`Flip` | `str()` | `Viper.String.Flip` |
-| <a id="viper-string-contains"></a>`Contains` | `i1(str)` | `Viper.String.Has` |
-| <a id="viper-string-has"></a>`Has` | `i1(str)` | `Viper.String.Has` |
+| <a id="viper-string-reverse"></a>`Reverse` | `str()` | `Viper.String.Reverse` |
+| <a id="viper-string-contains"></a>`Contains` | `i1(str)` | `Viper.String.Contains` |
 | <a id="viper-string-indexof"></a>`IndexOf` | `i64(str)` | `Viper.String.IndexOf` |
 | <a id="viper-string-indexoffrom"></a>`IndexOfFrom` | `i64(i64,str)` | `Viper.String.IndexOfFrom` |
 | <a id="viper-string-kebabcase"></a>`KebabCase` | `str()` | `Viper.String.KebabCase` |
@@ -50,7 +49,7 @@ operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
 | <a id="viper-string-repeat"></a>`Repeat` | `str(i64)` | `Viper.String.Repeat` |
 | <a id="viper-string-replace"></a>`Replace` | `str(str,str)` | `Viper.String.Replace` |
 | <a id="viper-string-right"></a>`Right` | `str(i64)` | `Viper.String.Right` |
-| <a id="viper-string-screamingsnake"></a>`ScreamingSnake` | `str()` | `Viper.String.ScreamingSnake` |
+| <a id="viper-string-screamingsnakecase"></a>`ScreamingSnakeCase` | `str()` | `Viper.String.ScreamingSnakeCase` |
 | <a id="viper-string-snakecase"></a>`SnakeCase` | `str()` | `Viper.String.SnakeCase` |
 | <a id="viper-string-split"></a>`Split` | `seq<str>(str)` | `Viper.String.Split` |
 | <a id="viper-string-splitfields"></a>`SplitFields` | `seq<str>(str)` | `Viper.String.SplitFields` |
@@ -62,12 +61,11 @@ operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
 | <a id="viper-string-trimend"></a>`TrimEnd` | `str()` | `Viper.String.TrimEnd` |
 | <a id="viper-string-trimstart"></a>`TrimStart` | `str()` | `Viper.String.TrimStart` |
 | <a id="viper-string-like"></a>`Like` | `i1(str)` | `Viper.String.Like` |
-| <a id="viper-string-likeci"></a>`LikeCI` | `i1(str)` | `Viper.String.LikeCI` |
+| <a id="viper-string-likeignorecase"></a>`LikeIgnoreCase` | `i1(str)` | `Viper.String.LikeIgnoreCase` |
 | <a id="viper-string-equals"></a>`Equals` | `i1(str,str)` | `Viper.String.Equals` |
 | <a id="viper-string-fromi16"></a>`FromI16` | `str(i16)` | `Viper.String.FromI16` |
 | <a id="viper-string-fromi32"></a>`FromI32` | `str(i32)` | `Viper.String.FromI32` |
 | <a id="viper-string-fromsingle"></a>`FromSingle` | `str(f64)` | `Viper.String.FromSingle` |
-| <a id="viper-string-fromstr"></a>`FromStr` | `str(str)` | `Viper.String.FromStr` |
 | <a id="viper-string-join"></a>`Join` | `str(str,obj)` | `Viper.String.Join` |
 | <a id="viper-string-capitalize"></a>`Capitalize` | `str(str)` | `Viper.String.Capitalize` |
 | <a id="viper-string-title"></a>`Title` | `str(str)` | `Viper.String.Title` |
@@ -98,12 +96,12 @@ operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
 | `Viper.String.MidLen` | `str(str,i64,i64)` | `rt_str_mid_len` |
 | `Viper.String.TrimEnd` | `str(str)` | `rt_str_rtrim` |
 | `Viper.String.Right` | `str(str,i64)` | `rt_str_right` |
-| `Viper.String.Cmp` | `i64(str,str)` | `rt_str_cmp` |
-| `Viper.String.CmpNoCase` | `i64(str,str)` | `rt_str_cmp_nocase` |
+| `Viper.String.Compare` | `i64(str,str)` | `rt_str_cmp` |
+| `Viper.String.CompareIgnoreCase` | `i64(str,str)` | `rt_str_cmp_nocase` |
 | `Viper.String.Count` | `i64(str,str)` | `rt_str_count` |
 | `Viper.String.EndsWith` | `i1(str,str)` | `rt_str_ends_with` |
-| `Viper.String.Flip` | `str(str)` | `rt_str_flip` |
-| `Viper.String.Has` | `i1(str,str)` | `rt_str_has` |
+| `Viper.String.Reverse` | `str(str)` | `rt_str_flip` |
+| `Viper.String.Contains` | `i1(str,str)` | `rt_str_has` |
 | <a id="viper-string-get-isempty"></a>`Viper.String.get_IsEmpty` | `i1(str)` | `rt_str_is_empty` |
 | `Viper.String.PadLeft` | `str(str,i64,str)` | `rt_str_pad_left` |
 | `Viper.String.PadRight` | `str(str,i64,str)` | `rt_str_pad_right` |
@@ -117,10 +115,6 @@ operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
 | `Viper.String.ToUpper` | `str(str)` | `rt_str_ucase` |
 | `Viper.String.SplitFields` | `seq<str>(str)` | `rt_str_split_fields_seq` |
 | `Viper.String.Equals` | `i1(str,str)` | `rt_str_eq` |
-| `Viper.String.FromI16` | `str(i16)` | `rt_str_i16_alloc` |
-| `Viper.String.FromI32` | `str(i32)` | `rt_str_i32_alloc` |
-| `Viper.String.FromSingle` | `str(f64)` | `rt_str_f_alloc` |
-| `Viper.String.FromStr` | `str(str)` | `rt_str_clone` |
 | `Viper.String.Join` | `str(str,obj)` | `rt_str_join` |
 | `Viper.String.Capitalize` | `str(str)` | `rt_str_capitalize` |
 | `Viper.String.Title` | `str(str)` | `rt_str_title` |
@@ -132,12 +126,12 @@ operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
 | `Viper.String.Levenshtein` | `i64(str,str)` | `rt_str_levenshtein` |
 | `Viper.String.Jaro` | `f64(str,str)` | `rt_str_jaro` |
 | `Viper.String.Like` | `i1(str,str)` | `rt_str_like` |
-| `Viper.String.LikeCI` | `i1(str,str)` | `rt_str_like_ci` |
+| `Viper.String.LikeIgnoreCase` | `i1(str,str)` | `rt_str_like_ci` |
 | `Viper.String.JaroWinkler` | `f64(str,str)` | `rt_str_jaro_winkler` |
 | `Viper.String.Hamming` | `i64(str,str)` | `rt_str_hamming` |
 | `Viper.String.CamelCase` | `str(str)` | `rt_str_camel_case` |
 | `Viper.String.PascalCase` | `str(str)` | `rt_str_pascal_case` |
 | `Viper.String.SnakeCase` | `str(str)` | `rt_str_snake_case` |
 | `Viper.String.KebabCase` | `str(str)` | `rt_str_kebab_case` |
-| `Viper.String.ScreamingSnake` | `str(str)` | `rt_str_screaming_snake` |
+| `Viper.String.ScreamingSnakeCase` | `str(str)` | `rt_str_screaming_snake` |
 

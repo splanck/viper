@@ -7,10 +7,10 @@ bind "./_support";
 // COVER: Viper.Terminal.ReadLine
 // COVER: Viper.Terminal.GetKey
 
-func start() {    var line = Viper.Terminal.ReadLine() ?? "";
+func start() {    var line = Viper.Terminal.TryReadLine() ?? "";
     assertEqStr(line, "hello", "readline");
 
-    var key = Viper.Terminal.GetKey();
+    var key = Viper.Terminal.ReadKey();
     assertNotEmpty(key, "getkey");
 
     report();

@@ -128,6 +128,10 @@ typedef struct {
      * vertex shader indexes palette[instance_id * stride + bone]. 0 keeps the
      * shared-palette behavior; non-instanced draws ignore it (instance_id = 0). */
     int32_t instance_bone_stride;
+    /* Influences 5-8 side stream (vertex_count entries, 24-byte stride) for
+     * backends with gpu_skinning_extras; import-time mesh data, cached by
+     * geometry_key/geometry_revision. NULL for standard 4-influence meshes. */
+    const vgfx3d_extra_influences_t *extra_influences;
     /* GPU morph targets (MTL-10): set by rt_morphtarget3d.c for GPU path */
     const float *morph_deltas;           /* shape_count * vertex_count * 3 floats */
     const float *morph_normal_deltas;    /* shape_count * vertex_count * 3 floats or NULL */
@@ -449,6 +453,15 @@ typedef struct vgfx3d_backend {
      * per-frame shadow slot usage to VGFX3D_CSM_SLOTS when 0, so lights never
      * receive slot indices the backend's shaders cannot resolve. */
     int8_t shadow_atlas_slots;
+
+    /* 1 = the backend's draw path consumes bone palettes directly (vertex-
+     * shader skinning). Replaces the old per-draw backend-name strcmp gate. */
+    int8_t gpu_skinning;
+
+    /* 1 = the backend's vertex stage also consumes the influences 5-8 side
+     * stream (cmd->extra_influences), so 8-weight meshes keep GPU skinning.
+     * Backends without it fall back to CPU skinning for such meshes. */
+    int8_t gpu_skinning_extras;
 
     /* Lifecycle */
     void *(*create_ctx)(vgfx_window_t win, int32_t w, int32_t h);

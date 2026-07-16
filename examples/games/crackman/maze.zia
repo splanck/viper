@@ -205,7 +205,7 @@ class Maze {
                 continue;
             }
 
-            var cost = ghostPathfinder.FindPathLength(nextX, nextY, targetX, targetY);
+            var cost = ghostPathfinder.FindPath(nextX, nextY, targetX, targetY).StepCount;
             if nextX == targetX && nextY == targetY {
                 cost = 0;
             }

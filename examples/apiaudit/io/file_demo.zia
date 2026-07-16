@@ -38,7 +38,7 @@ func start() {
     // --- Size ---
     Say("--- Size ---");
     Say("Size:");
-    SayInt(File.Size(testFile));
+    SayInt(File.SizeBytes(testFile));
 
     // --- AppendLine ---
     Say("--- AppendLine ---");

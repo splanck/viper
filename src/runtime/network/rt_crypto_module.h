@@ -25,8 +25,8 @@ extern "C" {
 /// @details COMPAT exposes the full primitive surface (legacy + experimental);
 ///          APPROVED restricts callers to the FIPS-aligned subset (AES-GCM,
 ///          SHA-2 family, HMAC-SHA2, HKDF, PBKDF2, HMAC-DRBG, ECDSA-P256,
-///          RSA-PSS) and reroutes the TLS profile through the locked-down
-///          handshake.
+///          RSA-PSS). The current public X25519-only TLS profile is rejected
+///          rather than rerouted in APPROVED mode.
 typedef enum rt_crypto_module_mode {
     RT_CRYPTO_MODULE_MODE_COMPAT = 0,   ///< Default: every primitive available.
     RT_CRYPTO_MODULE_MODE_APPROVED = 1, ///< Approved mode: legacy primitives refuse to run.
@@ -98,9 +98,9 @@ rt_crypto_module_state_t rt_crypto_module_get_state(void);
 int rt_crypto_module_is_approved_mode(void);
 
 /// @brief Pre-flight check whether @p service is callable right now.
-/// @details Always returns non-zero in COMPAT. In APPROVED returns
-///          zero for legacy/non-approved services so callers can fall
-///          back gracefully instead of trapping inside the primitive.
+/// @details Returns non-zero for services in COMPAT unless the module is pinned
+///          in ERROR. In APPROVED, returns zero for legacy/non-approved services
+///          so callers can fail or select an allowed operation.
 int rt_crypto_module_service_allowed(rt_crypto_module_service_t service);
 
 /// @brief Return a static human-readable status banner for diagnostics.
@@ -110,9 +110,8 @@ const char *rt_crypto_module_status_cstr(void);
 
 /// @brief Fill @p buf with @p len cryptographically-secure random bytes.
 /// @details In COMPAT delegates to the OS RNG (`getrandom`,
-///          `arc4random_buf`, `CryptGenRandom`). In APPROVED routes
-///          through the embedded HMAC-DRBG so output is reproducible
-///          under approved-mode reseed policy.
+///          `arc4random_buf`, `BCryptGenRandom`). In APPROVED routes through the
+///          embedded HMAC-DRBG under the module's instantiate/reseed policy.
 void rt_crypto_module_random_bytes(uint8_t *buf, size_t len);
 
 /// @brief Zia-callable wrapper: switch the module to APPROVED mode.

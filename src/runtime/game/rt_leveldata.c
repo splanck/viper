@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_leveldata.h"
+#include "rt_numeric.h"
 #include "rt_box.h"
 #include "rt_file_ext.h"
 #include "rt_json.h"
@@ -40,7 +41,7 @@ static int64_t json_val_to_i64(void *val) {
     if (tag == 0)
         return rt_unbox_i64(val); // RT_BOX_I64 = 0
     if (tag == 1)
-        return (int64_t)rt_unbox_f64(val); // RT_BOX_F64 = 1
+        return (int64_t)rt_f64_to_i64(rt_unbox_f64(val)); // RT_BOX_F64 = 1 (saturating, VDOC-037)
     return 0;
 }
 
@@ -100,7 +101,8 @@ static void leveldata_finalizer(void *obj) {
 /// @details Parses a JSON level file with "width", "height", "tileWidth", "tileHeight",
 ///          "layers" (tile data), "objects" (entity spawn points), and "properties"
 ///          (playerStartX/Y, theme). Creates a tilemap from tile layer data and stores
-///          up to 256 named objects with type, id, and position.
+///          up to 512 named objects with type, id, and position. All tile layers
+///          currently overwrite the same base Tilemap in input order (VDOC-239).
 void *rt_leveldata_load(void *path) {
     if (!path)
         return NULL;

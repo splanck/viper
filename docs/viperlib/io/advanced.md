@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Advanced IO
@@ -37,7 +37,7 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 |-------------------------|---------|-----------------------------------------------------------|
 | `Has(name)`             | Boolean | Returns true if the archive contains an entry with name   |
 | `Read(name)`            | Bytes   | Reads entry content as binary data                        |
-| `ReadStr(name)`         | String  | Reads entry content as UTF-8 string                       |
+| `ReadStr(name)`         | String  | Copies entry bytes into a runtime String; does not validate UTF-8 |
 | `Extract(name, path)`   | void    | Extracts a single entry to the specified path             |
 | `ExtractAll(dir)`       | void    | Extracts all entries to the specified directory           |
 | `Info(name)`            | Map     | Returns metadata for an entry, including size, compression, and directory flags |
@@ -66,8 +66,12 @@ Directory entries can be queried and read with a trailing slash, returning an em
 
 ### Disk Write Semantics
 
-`Create(path)` checks that the destination can be written, but it does not truncate or replace an existing file until `Finish()`. `Finish()`, `Extract()`, and `ExtractAll()` write through an exclusive temporary file in the destination directory and then atomically replace the final path. Failed writes trap and remove their temporary file.
+`Create(path)` checks that the destination can be written, but it does not truncate or replace an existing file until `Finish()`. `Finish()` and `Extract()` write through an exclusive temporary file in the destination directory and then atomically replace the final path. `ExtractAll()` applies that replacement separately to each regular file; it is not a transaction across the archive, so a later failure leaves directories and files extracted earlier in the call. Failed individual writes trap and remove their temporary file.
 Archive path arguments reject embedded NUL bytes before calling platform file APIs.
+
+`Open()` reads the complete archive file into memory. `FromBytes()` makes its own complete copy,
+and a writer buffers the complete output until `Finish()`. Entry reads and extraction also
+materialize each selected entry before returning or writing it.
 
 ### Entry Name Rules
 
@@ -122,7 +126,7 @@ func start() {
     arc.Finish();
     Say("Archive created");
 
-    // Check if it's a valid ZIP
+    // Fast signature probe; Open performs full validation
     Say("IsZip: " + Fmt.Bool(Arc.IsZip("/tmp/backup.zip")));
 
     // Open and read
@@ -193,7 +197,7 @@ arc.ExtractAll("/home/user/extracted")
 ' Work with ZIP data already loaded in memory
 DIM zipData AS Viper.Collections.Bytes = Viper.IO.File.ReadAllBytes("download.zip")
 
-' Check if it's valid ZIP data
+' Check for a ZIP signature before the full FromBytes validation
 IF Viper.IO.Archive.IsZipBytes(zipData) THEN
     DIM arc AS OBJECT = Viper.IO.Archive.FromBytes(zipData)
 
@@ -207,17 +211,20 @@ IF Viper.IO.Archive.IsZipBytes(zipData) THEN
 END IF
 ```
 
-### Validation Example
+### Signature Probe Example
 
 ```basic
-' Check if a file is a valid ZIP before opening
+' Check only the four-byte ZIP signature before opening
 IF Viper.IO.Archive.IsZip("download.zip") THEN
     DIM arc AS OBJECT = Viper.IO.Archive.Open("download.zip")
-    PRINT "Valid ZIP with"; arc.Count; "entries"
+    PRINT "Open validated a ZIP with"; arc.Count; "entries"
 ELSE
-    PRINT "Not a valid ZIP file"
+    PRINT "No recognized ZIP signature"
 END IF
 ```
+
+`IsZip()` and `IsZipBytes()` inspect only the first four bytes. A true result is not structural
+validation; `Open()` or `FromBytes()` still traps for a truncated or malformed archive.
 
 ### Error Handling
 
@@ -225,7 +232,8 @@ Archive operations trap on errors:
 
 - `Open()` traps if file doesn't exist or isn't a valid ZIP
 - `FromBytes()` traps if the buffer is not a valid ZIP archive
-- `Read()`/`ReadStr()` trap if entry doesn't exist
+- `Read()`/`ReadStr()` trap if the entry doesn't exist or its data is corrupt. `ReadStr()` does not
+  reject arbitrary byte sequences as invalid UTF-8.
 - `Extract()` traps if entry doesn't exist or destination is unwritable
 - `ExtractAll()` traps if an existing destination component under the extraction root is a symlink or reparse point
 - `Add()` traps on null data, invalid names, or duplicate names
@@ -324,7 +332,7 @@ func start() {
 
 ```basic
 ' Compress binary data
-DIM original AS OBJECT = Viper.Collections.Bytes.FromString("Hello, World!")
+DIM original AS OBJECT = Viper.Collections.Bytes.FromStr("Hello, World!")
 DIM compressed AS OBJECT = Viper.IO.Compress.Deflate(original)
 DIM restored AS OBJECT = Viper.IO.Compress.Inflate(compressed)
 
@@ -392,6 +400,8 @@ Compression traps on:
 - Level 1 emits stored blocks. Levels 2–9 use LZ77 matching plus fixed-Huffman blocks; higher levels search deeper match chains.
 - The compressor does not currently emit dynamic-Huffman blocks.
 - Decompression supports all DEFLATE block types (stored, fixed Huffman, dynamic Huffman)
+- The `*Str` decompressors copy the inflated bytes into a runtime String without validating that
+  they form UTF-8. Use the byte-returning methods plus an explicit codec when validation matters.
 
 ### Use Cases
 
@@ -442,8 +452,8 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | `Start()`       | void    | Begin watching for file system events                    |
 | `Stop()`        | void    | Stop watching for events                                 |
 | `Poll()`        | Integer | Check for event (non-blocking); returns event type or 0  |
-| `PollFor(ms)`   | Integer | Wait up to ms milliseconds for event; returns event type |
-| `EventPath()`   | String  | Get the full path for the last event, or the watched path when the backend cannot report a child path |
+| `PollFor(ms)`   | Integer | Wait using the requested platform timeout; returns event type |
+| `EventPath()`   | String  | Get the path for the last event, rooted at the supplied watch path |
 | `EventType()`   | Integer | Get the type of the last polled event                    |
 | `EventOverflowCount()` | Integer | Number of dropped events represented by the last overflow marker; otherwise 0 |
 
@@ -454,6 +464,8 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | Linux    | inotify                    |
 | macOS    | kqueue                     |
 | Windows  | ReadDirectoryChangesW      |
+
+`Start()` traps as unsupported on ViperDOS and other stub platforms.
 
 ### Zia Example
 
@@ -529,11 +541,20 @@ watcher.Stop()
 - Creating a watcher traps if the path does not exist
 - The watcher must be started with `Start()` before events can be received
 - `Poll()` returns immediately with `EventNone` if no event is pending
-- `PollFor(ms)` waits up to the specified milliseconds for an event; very large positive timeouts are clamped to the largest supported platform wait value
+- `PollFor(ms)` uses the specified milliseconds as its platform wait timeout; very large positive
+  values are clamped to the largest supported wait value. On Linux, an interrupted `poll(2)` is
+  retried with the complete original timeout, so repeated signals can extend the wall-clock wait
+  beyond the requested duration (VDOC-191).
 - A negative `PollFor` timeout waits indefinitely; zero is equivalent to non-blocking polling.
-- After receiving an event, use `EventPath()` and `EventType()` to get details
+- After receiving an event, use `EventPath()` and `EventType()` to get details. Event paths are
+  absolute only when the path passed to `New()` was absolute; relative watch paths yield relative
+  event paths.
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
-- The internal queue holds 64 events. If it overflows, a later `Poll()` returns `EventOverflow`; `EventOverflowCount()` reports how many events that marker represents. Treat it as a signal to rescan the watched directory or file state.
+- The internal queue holds 64 events. If it overflows, a later `Poll()` returns `EventOverflow`;
+  `EventOverflowCount()` reports how many events the runtime queue marker represents. Treat any
+  overflow as a signal to rescan. Linux currently ignores the kernel's `IN_Q_OVERFLOW` event, and
+  Windows reports native notification-buffer overflow with a count of zero, so the count is not a
+  complete measure of every event lost below the runtime queue (VDOC-190).
 - `Stop()` clears queued events and the last-event state. After `Stop()`, `EventType()` returns `EventNone` and `EventPath()` traps until a later successful `Poll()` after `Start()`.
 - Directory watches are non-recursive
 - On Linux and macOS, a transient descriptor/watch-limit failure during `Start()` can leave `IsWatching` false without a trap; callers that need guaranteed monitoring should check the property and fall back to rescanning.
@@ -544,13 +565,15 @@ watcher.Stop()
 ---
 
 
-## Viper.Text.JsonStream
+## Viper.Data.JsonStream
 
-Pull-based streaming JSON parser for incrementally reading one JSON text.
+Pull-based token parser for one complete JSON String. It retains that complete input while callers
+consume tokens; “streaming” refers to token-by-token traversal, not incremental input I/O. It
+admits at most 255 simultaneously open object/array containers.
 
 **Type:** Instance class
 
-**Constructor:** `Viper.Text.JsonStream.New(jsonText)`
+**Constructor:** `Viper.Data.JsonStream.New(jsonText)`
 
 The live API exposes `HasNext`, `Next`, `NextResult`, `Skip`, `Error`, typed
 token-value accessors, and the read-only `Depth` and `TokenType` properties. It

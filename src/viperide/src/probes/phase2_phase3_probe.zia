@@ -130,11 +130,11 @@ func main() {
     // searches PATH nor resolves a bare name, so a bare "viper" never starts a
     // build. ResolveCompiler must turn the default into an existing absolute path,
     // and report "" for a program that is nowhere to be found.
-    var expectedViper = Path.Abs(viperBin);
+    var expectedViper = Path.Absolute(viperBin);
     Env.SetVariable("VIPER_BINARY", viperBin);
     var resolvedViper = buildSys.ResolveCompiler("viper");
     if assertTrue(resolvedViper == expectedViper
-                  and Path.IsAbs(resolvedViper)
+                  and Path.IsAbsolute(resolvedViper)
                   and File.Exists(resolvedViper),
                   "default viper resolves to an existing absolute path") == false { return; }
     if assertTrue(buildSys.ResolveCompiler("viper_missing_binary_zzz_404") == "",
@@ -322,8 +322,7 @@ func main() {
                   "scene builds render tilemap copy") == false { return; }
     var bad = SceneDocument.LoadJson("{\"version\":1,");
     if assertTrue(bad.HasErrors()
-                  and Seq.get_Count(bad.DiagnosticRecords()) > 0
-                  and bad.LastError() != "",
+                  and Seq.get_Count(bad.DiagnosticRecords()) > 0,
                   "scene malformed json reports diagnostics") == false { return; }
 
     Dir.RemoveAll(root);

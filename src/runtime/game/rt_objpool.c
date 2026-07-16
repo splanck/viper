@@ -8,10 +8,10 @@
 // File: src/runtime/game/rt_objpool.c
 // Purpose: Fixed-capacity object pool for Viper games. Eliminates per-frame
 //   allocation churn for frequently created and destroyed game objects such as
-//   bullets, enemies, particles, and projectiles. Slots are acquired (checked
-//   out) and released (checked in) in O(1) time using an embedded free-list.
-//   Active slots are traversable in O(1) per step using an intrusive singly-
-//   linked active list maintained by acquire and release.
+//   bullets, enemies, particles, and projectiles. Slots are acquired from an
+//   embedded free list in O(1); releasing a non-head active slot scans the
+//   active list. Active slots are traversable in O(1) per step using an
+//   intrusive singly-linked list maintained by acquire and release.
 //
 // Key invariants:
 //   - The pool owns a single calloc'd slot array of fixed capacity. Capacity is
@@ -32,8 +32,8 @@
 // Ownership/Lifetime:
 //   - The pool struct is GC-managed (rt_obj_new_i64). The slot array is
 //     malloc'd separately; the GC finalizer (objpool_finalizer) frees it when
-//     the pool is collected. rt_objpool_destroy() is a documented no-op for
-//     API symmetry — do not rely on it to free memory.
+//     the pool is collected. rt_objpool_destroy() releases one object
+//     reference and frees the object when it was the last reference.
 //
 // Links: src/runtime/game/rt_objpool.h (public API),
 //        docs/viperlib/game.md (ObjectPool section)

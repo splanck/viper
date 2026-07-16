@@ -11,8 +11,8 @@ func start() {
     var canvas = Canvas3D.New("Decal Demo", 800, 600);
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
-    var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
-    var floor_mat = Material3D.NewColor(0.3, 0.3, 0.35);
+    var floor_mesh = Mesh3D.Plane(20.0, 20.0);
+    var floor_mat = Material3D.FromColor(0.3, 0.3, 0.35);
 
     // Create a simple "splash" texture (red circle on transparent background)
     var splash_tex = new Viper.Graphics.Pixels(16, 16);
@@ -37,7 +37,7 @@ func start() {
 
     // Lighting
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.85);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.15, 0.15, 0.2);
 
@@ -60,7 +60,7 @@ func start() {
 
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 
@@ -78,7 +78,7 @@ func start() {
         while (i < decals.count) {
             var decal = decals.get(i);
             Decal3D.Update(decal, 0.016);
-            if (Decal3D.get_Expired(decal) == 0) {
+            if (Decal3D.get_IsExpired(decal) == 0) {
                 Canvas3D.DrawDecal(canvas, decal);
             }
             i = i + 1;

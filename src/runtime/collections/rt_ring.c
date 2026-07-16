@@ -35,6 +35,8 @@
 
 #include "rt_ring.h"
 
+#include "rt_box.h"
+
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
@@ -601,7 +603,7 @@ int8_t rt_ring_has(void *obj, void *elem) {
 
     for (size_t i = 0; i < ring->count; i++) {
         size_t idx = (ring->head + i) % ring->capacity;
-        if (ring->items[idx] == elem)
+        if (rt_box_equal(ring->items[idx], elem))
             return 1;
     }
     return 0;

@@ -12,11 +12,13 @@
 //          string builder using the bound locale's month / day / AM-PM tables.
 //
 // Key invariants:
-//   - Letter repetition counts are clamped at 5 for year/month/day-of-week
-//     and at 2 for day-of-month / hour / minute / second. Counts exceeding
-//     the clamp emit the maximum-width form rather than trapping.
+//   - Letter run widths select CLDR-style forms: 'y' emits a 2-digit year
+//     only for count 2 (all other counts emit the full year); 'M' maps
+//     1/2/3/4/5+ to numeric/zero-padded/abbreviated/wide/narrow; 'E' maps
+//     <=3/4/5+ to abbreviated/wide/narrow; 'd', 'H', 'h', 'm', 's' zero-pad
+//     to two digits for count >= 2. Widths are not otherwise clamped.
 //   - Quoted literals use single apostrophes; a double apostrophe ('') emits
-//     a literal apostrophe. Unclosed quotes silently extend to end of pattern.
+//     a literal apostrophe. An unterminated quoted literal traps.
 //   - Pattern letters outside the supported set (y M d E H h m s a) are
 //     rejected with a trap. Supported letters are explicitly enumerated
 //     elsewhere in docs/viperlib/localization/formatting.md.

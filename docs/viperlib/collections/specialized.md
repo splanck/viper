@@ -5,7 +5,7 @@ last-verified: 2026-07-14
 ---
 
 # Specialized Structures
-> F64Buffer, I64Buffer, Bag, BloomFilter, Trie, UnionFind, BitSet, Bytes
+> F64Buffer, I64Buffer, StringSet, BloomFilter, Trie, UnionFind, BitSet, Bytes
 
 **Part of [Viper Runtime Library](../README.md) › [Collections](README.md)**
 
@@ -23,7 +23,6 @@ last-verified: 2026-07-14
 | Property | Type    | Description             |
 |----------|---------|-------------------------|
 | `Length` | Integer | Number of numeric slots |
-| `Count`  | Integer | Alias for `Length`      |
 
 ### Shared Methods
 
@@ -47,20 +46,31 @@ last-verified: 2026-07-14
 ### Notes
 
 - Values are not boxed while stored in the buffer.
-- `Slice` is a copy in v1, not a zero-copy view.
+- Negative constructor lengths trap. `Get` and `Set` also trap for negative or
+  out-of-range indexes.
+- `Slice` is an independent copy, not a view. Both bounds are clamped into
+  `[0, Length]`; a reversed or empty range returns an empty buffer.
+- `CopyFrom` changes the destination's `Length` to match the source before
+  copying its values.
 - `AddBuffer` and `Dot` trap on length mismatch.
 - `Min` and `Max` trap on empty buffers; `Sum` of an empty buffer returns zero.
 - `ToList` and `ToSeq` box values, and `FromSeq` reads boxed numeric values. `F64Buffer.FromSeq` accepts boxed floats and boxed integers; `I64Buffer.FromSeq` accepts boxed integers.
+- `I64Buffer` arithmetic currently uses unchecked signed C arithmetic in
+  `AddScalar`, `MulScalar`, `AddBuffer`, `Sum`, and `Dot`. Overflow does not
+  produce a Viper overflow trap and has no portable result; keep intermediate
+  and final values within the signed 64-bit range.
+- Buffers are not thread-safe. Synchronize access when any thread can mutate a
+  buffer.
 
 ---
 
-## Viper.Collections.Bag
+## Viper.Collections.StringSet
 
 A set data structure for storing unique strings. Efficiently handles membership testing, set operations (union,
 intersection, difference), and enumeration.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Bag()`
+**Constructor:** `NEW Viper.Collections.StringSet()`
 
 ### Properties
 
@@ -77,21 +87,31 @@ intersection, difference), and enumeration.
 | `Remove(str)`   | `Boolean(String)` | Remove a string; returns true if removed, false if not found |
 | `Has(str)`      | `Boolean(String)` | Check if string is in the bag                                |
 | `Clear()`       | `Void()`          | Remove all strings from the bag                              |
+| `Clone()`       | `StringSet()`           | Return an independent copy                                   |
 | `Items()`       | `Seq()`           | Get all strings as a Seq (order undefined)                   |
-| `Union(other)`     | `Bag(Bag)`        | Return new bag with union of both bags                       |
-| `Intersect(other)` | `Bag(Bag)`        | Return new bag with intersection of both bags                |
-| `Diff(other)`   | `Bag(Bag)`        | Return new bag with elements in this but not other           |
+| `Union(other)`     | `StringSet(StringSet)`        | Return new bag with union of both bags                       |
+| `Intersect(other)` | `StringSet(StringSet)`        | Return new bag with intersection of both bags                |
+| `Diff(other)`   | `StringSet(StringSet)`        | Return new bag with elements in this but not other           |
 | `ToSeq()`        | `Seq()`           | Return all strings as a Seq (same as Items)                    |
 | `ToSet()`        | `Set()`           | Return all strings as a new Set                                |
 
 ### Notes
 
-- Strings are stored by value (copied into the bag)
-- Order of strings returned by `Items()` is not guaranteed (hash table)
+- Strings are stored by value (copied into the bag). The full runtime byte
+  length participates in hashing and equality; a null string argument is
+  treated as the empty string.
+- Order of strings returned by `Items()` is not guaranteed (hash-table order).
 - `Items()` and `ToSeq()` return independent snapshots containing copied strings.
-- Set operations (`Union`, `Intersect`, `Diff`) return new bags; originals are unchanged
-- Uses FNV-1a hash function for O(1) average-case operations
-- Automatically resizes when load factor exceeds 75%
+- `Clone` and the set operations (`Union`, `Intersect`, `Diff`) return new bags;
+  their inputs are unchanged.
+- The implementation uses FNV-1a hashing and separate chaining for average
+  O(1) membership, insertion, and removal. It grows after the next insertion
+  would exceed a 75% load factor.
+- `ToSet()` boxes each string on conversion, so the resulting `Set` uses normal boxed-string
+  value equality: `bag.ToSet().Has(Box.Str("apple"))` is true whenever the bag contains
+  `"apple"`.
+- Bags are not thread-safe. Concurrent reads are safe only while no thread can
+  mutate the bag.
 
 ### Zia Example
 
@@ -103,7 +123,7 @@ bind Viper.Collections;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var fruits = new Bag();
+    var fruits = new StringSet();
     fruits.Add("apple");
     fruits.Add("banana");
     fruits.Add("cherry");
@@ -126,7 +146,7 @@ func start() {
 
 ```basic
 ' Create and populate a bag
-DIM fruits AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
+DIM fruits AS Viper.Collections.StringSet = NEW Viper.Collections.StringSet()
 fruits.Add("apple")
 fruits.Add("banana")
 fruits.Add("cherry")
@@ -146,26 +166,26 @@ PRINT removed              ' Output: 1 (was removed)
 PRINT fruits.Has("banana") ' Output: 0 (no longer present)
 
 ' Set operations
-DIM bagA AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
+DIM bagA AS Viper.Collections.StringSet = NEW Viper.Collections.StringSet()
 bagA.Add("a")
 bagA.Add("b")
 bagA.Add("c")
 
-DIM bagB AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
+DIM bagB AS Viper.Collections.StringSet = NEW Viper.Collections.StringSet()
 bagB.Add("b")
 bagB.Add("c")
 bagB.Add("d")
 
 ' Union: elements in either bag
-DIM merged AS Viper.Collections.Bag = bagA.Union(bagB)
+DIM merged AS Viper.Collections.StringSet = bagA.Union(bagB)
 PRINT merged.Count           ' Output: 4 (a, b, c, d)
 
 ' Intersection: elements in both bags
-DIM common AS Viper.Collections.Bag = bagA.Intersect(bagB)
+DIM common AS Viper.Collections.StringSet = bagA.Intersect(bagB)
 PRINT common.Count           ' Output: 2 (b, c)
 
 ' Difference: elements in A but not B
-DIM diff AS Viper.Collections.Bag = bagA.Diff(bagB)
+DIM diff AS Viper.Collections.StringSet = bagA.Diff(bagB)
 PRINT diff.Count             ' Output: 1 (a only)
 
 ' Enumerate all elements
@@ -200,7 +220,7 @@ expected number of elements and desired false positive rate
 
 | Property | Type    | Description                          |
 |----------|---------|--------------------------------------|
-| `Count`  | Integer | Number of elements added to the filter |
+| `Count`  | Integer | Number of non-null `Add` operations; duplicates count again |
 
 ### Methods
 
@@ -210,18 +230,30 @@ expected number of elements and desired false positive rate
 | `MightContain(str)` | `Boolean(String)`    | Check if string might be in the filter (false positives possible) |
 | `Clear()`           | `Void()`             | Remove all elements from the filter                            |
 | `FalsePositiveRate()` | `Float()`          | Get the estimated current false positive rate                  |
-| `Merge(other)`      | `Integer(BloomFilter)` | Merge another filter's bits into this one; returns 1 on success |
+| `Merge(other)`      | `Integer(BloomFilter)` | OR in a compatible filter; return 1 on success or 0 if incompatible |
 
 ### Notes
 
 - `MightContain` returning true means the element *may* be present; returning false means it is *definitely* not present
-- `FalsePositiveRate()` estimates the current false positive rate from the fraction of bits currently set, so duplicate additions do not inflate the estimate
-- `Fpr()` remains available as a compatibility alias for
+- `Count` is an operation count, not a distinct-element count. Adding the same
+  non-null string again increments it, although the filter bits may not change.
+- `FalsePositiveRate()` estimates the current false positive rate from the fraction of bits currently set, so duplicate additions do not inflate the estimate.
+- `FalsePositiveRate()` remains available as a compatibility alias for
   `FalsePositiveRate()`.
-- `Merge` combines two filters that were created with the same capacity and false positive rate parameters. Merging a filter with itself is a no-op that leaves `Count` unchanged.
-- After `Clear()`, `MightContain` returns false for all elements
-- Invalid false-positive rates such as NaN, infinity, or values outside `(0, 1)` are sanitized to a safe default
-- Sizing and item-count overflow trap instead of wrapping
+- `Merge` requires matching *derived* bit and hash counts. Filters created with
+  different inputs can therefore be compatible if those inputs round to the
+  same configuration. A successful non-self merge sums both operation counts,
+  including overlapping or duplicate additions; merging a filter with itself
+  is a no-op that leaves `Count` unchanged.
+- Strings are hashed over their full runtime byte length. A null string is
+  ignored by `Add` and is always rejected by `MightContain`.
+- After `Clear()`, `MightContain` returns false for all elements.
+- A non-finite or non-positive false-positive rate becomes `0.01`; a rate of
+  `1.0` or greater becomes `0.5`.
+- Adding more than the expected number of items can raise the false-positive
+  rate above the requested target. Sizing and item-count overflow trap instead
+  of wrapping.
+- Bloom filters are not thread-safe.
 
 ### Zia Example
 
@@ -332,6 +364,7 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 | `LongestPrefix(str)`  | `String(String)`     | Find the longest key that is a prefix of the given string            |
 | `WithPrefix(prefix)`  | `Seq(String)`        | Get all keys that start with the given prefix                        |
 | `Keys()`              | `Seq()`              | Get all keys as a Seq                                                |
+| `Clone()`             | `Trie()`             | Copy the trie structure while sharing retained values                |
 | `Remove(key)`         | `Boolean(String)`    | Remove a key-value pair; returns true if found                       |
 | `Clear()`             | `Void()`             | Remove all entries                                                   |
 
@@ -340,10 +373,25 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 - `Has` checks for an exact key, not a prefix; use `HasPrefix` for prefix existence checks
 - `LongestPrefix` finds the longest stored key that is a prefix of the input string (useful for routing)
 - `WithPrefix` returns all keys that start with the given prefix, including exact matches
-- Trie keys and prefixes use the full runtime string byte length; embedded NUL bytes are part of the key
-- `LongestPrefix()` returns an owned copied string. `WithPrefix()` and `Keys()` return owning snapshots of copied strings, including when the requested prefix is longer than the default internal buffer size.
+- Trie keys and prefixes use the full runtime string byte length; embedded NUL bytes are part of the key. A null key is treated as the empty key.
+- `Get()` returns a borrowed value. A missing key and a present key storing null
+  both return null, so use `Has()` when that distinction matters. The trie
+  retains stored values until overwrite, removal, clear, or destruction.
+- `LongestPrefix()` returns an owned copied string, or an owned empty string
+  when no key matches. Because the empty key is valid, an empty-key match has
+  the same return value as no match; use `Has("")` if that distinction matters.
+- `WithPrefix()` and `Keys()` return owning snapshots of copied strings in
+  ascending byte-lexicographic order, including when the requested prefix is
+  longer than the default internal buffer size.
+- `Clone()` deep-copies the node structure but shares and retains the stored
+  values. Structural changes to either trie do not affect the other.
 - Deep key traversal, cloning, clearing, and finalization use iterative walks rather than recursive C calls.
-- Removing a key does not affect other keys that share the same prefix
+- Removing a key does not affect other keys that share the same prefix. Removed
+  branches are not pruned, so their node memory remains until `Clear()` or trie
+  destruction.
+- Every node contains 256 child pointers, making this implementation fast for
+  byte traversal but comparatively memory-heavy for sparse key sets.
+- Tries are not thread-safe.
 
 ### Zia Example
 
@@ -450,7 +498,8 @@ PRINT t.IsEmpty                 ' 1
 
 - **Autocomplete:** Find all words matching a typed prefix with `WithPrefix`
 - **URL routing:** Match URL paths to handlers using `LongestPrefix`
-- **IP routing tables:** Longest prefix matching for network routing
+- **Textual routing prefixes:** Match byte-string route prefixes (this is not a
+  CIDR or bit-prefix routing implementation)
 - **Spell checking:** Check if partial words exist as prefixes of known words
 - **Dictionary lookup:** Efficient storage and retrieval of string-keyed data
 
@@ -478,18 +527,25 @@ elements belong to the same group and supports merging groups.
 |-----------------------|----------------------------|-----------------------------------------------------------------|
 | `Find(x)`            | `Integer(Integer)`         | Find the representative (root) of element x's set, or `-1` for an invalid element |
 | `FindRootOption(x)`  | `Option[Integer](Integer)` | Find the representative root as `Some(root)`, or `None` for an invalid element |
-| `Union(x, y)`        | `Integer(Integer, Integer)`| Merge the sets containing x and y; returns 1 if merged, 0 if already same set |
+| `Union(x, y)`        | `Integer(Integer, Integer)`| Merge the sets containing x and y; returns 1 if merged, otherwise 0 |
 | `Connected(x, y)`    | `Boolean(Integer, Integer)`| Check if x and y are in the same set                            |
 | `SetSize(x)`         | `Integer(Integer)`         | Get the size of the set containing element x                    |
+| `Clear()`            | `Void()`                   | Compatibility alias for `Reset()`                               |
 | `Reset()`            | `Void()`                   | Reset all elements to individual sets                           |
 
 ### Notes
 
-- Elements are identified by integers from 0 to size-1
-- Uses path compression and union by rank for near-O(1) amortized operations
+- Elements are identified by integers from 0 to effective-size minus one. The
+  effective size is one when the constructor argument is zero.
+- Uses path compression and union by rank for near-O(1) amortized operations.
 - Prefer `FindRootOption()` for new code that accepts user-provided element indexes. `Find()` remains available for compatibility with existing `-1` checks.
-- `Union` returns 0 if the elements are already in the same set (no operation performed)
-- `Reset` restores the structure to its initial state with `Count` equal to size
+- `Union` returns 0 both when the elements are already in the same set and when
+  either index is invalid. `Connected` returns false for invalid indexes, and
+  `SetSize` returns zero.
+- `Reset` (and its `Clear` alias) restores the structure to its initial state
+  with `Count` equal to the effective size.
+- Union-find objects are not thread-safe; even `Find` can mutate parent links
+  through path compression.
 
 ### Zia Example
 
@@ -523,7 +579,7 @@ func start() {
     SayInt(uf.SetSize(0));                       // 4 ({0,1,2,3})
     SayInt(uf.SetSize(4));                       // 1 ({4} alone)
 
-    var root = uf.FindRootOption(3);
+    var root = uf.FindRoot(3);
     if root.IsSome {
         SayInt(root.UnwrapI64());                // representative root
     }
@@ -543,7 +599,7 @@ uf = Viper.Collections.UnionFind.New(6)
 PRINT uf.Count               ' 6 (each element is its own set)
 
 ' Find representative
-DIM root AS OBJECT = uf.FindRootOption(0)
+DIM root AS OBJECT = uf.FindRoot(0)
 IF root.IsSome THEN
     PRINT root.UnwrapI64()   ' 0 (own representative)
 END IF
@@ -600,7 +656,7 @@ set operations on integer-indexed elements.
 **Type:** Instance (obj)
 **Constructor:** `Viper.Collections.BitSet.New(size)` - creates a BitSet with the given number of bits
 
-`size = 0` uses the default capacity. Negative sizes trap.
+`size = 0` creates 64 logical bits. Negative sizes trap.
 
 ### Properties
 
@@ -614,11 +670,11 @@ set operations on integer-indexed elements.
 
 | Method        | Signature              | Description                                            |
 |---------------|------------------------|--------------------------------------------------------|
-| `Set(index)`  | `Void(Integer)`        | Set bit at index to 1                                  |
-| `Clear(index)`| `Void(Integer)`        | Clear bit at index (set to 0)                          |
+| `Set(index)`  | `Void(Integer)`        | Set bit to 1; auto-grow for a non-negative index       |
+| `Clear(index)`| `Void(Integer)`        | Clear a bit; negative/out-of-range indexes are no-ops  |
 | `ClearAll()`  | `Void()`               | Clear all bits to 0                                    |
-| `Get(index)`  | `Boolean(Integer)`     | Get value of bit at index                              |
-| `Toggle(index)` | `Void(Integer)`      | Flip bit at index (0 becomes 1, 1 becomes 0)          |
+| `Get(index)`  | `Boolean(Integer)`     | Get a bit; return false outside the logical length     |
+| `Toggle(index)` | `Void(Integer)`      | Flip a bit; auto-grow for a non-negative index        |
 | `SetAll()`    | `Void()`               | Set all bits to 1                                      |
 | `And(other)`  | `BitSet(BitSet)`       | Return new BitSet with bitwise AND of both sets        |
 | `Or(other)`   | `BitSet(BitSet)`       | Return new BitSet with bitwise OR of both sets         |
@@ -628,10 +684,20 @@ set operations on integer-indexed elements.
 
 ### Notes
 
-- The bitset auto-grows when setting or toggling beyond the current length
-- Bitwise operations (`And`, `Or`, `Xor`, `Not`) return new BitSet instances; originals are unchanged
-- `ToString()` returns a binary string with the most significant bit on the left
-- Indices are zero-based; index 0 is the least significant bit
+- The bitset auto-grows when setting or toggling beyond the current logical
+  `Length`; negative indexes are ignored. `Get` returns false outside the
+  current length, and `Clear` is a no-op there.
+- `And`, `Or`, and `Xor` return new BitSets whose length is the longer input's
+  length; missing bits in the shorter input are zero. `Not` preserves the input
+  length. The originals are unchanged.
+- `ToString()` places the most significant set bit on the left, suppresses
+  leading zeroes, and always returns at least `"0"`. It is not a fixed-width
+  rendering of `Length`.
+- Indices are zero-based; index 0 is the least significant bit.
+- Auto-growth may allocate spare backing capacity, but it is never observable: `SetAll`,
+  `Count`, and the binary operations work strictly within the logical `Length`, so
+  `Count <= Length` always holds regardless of growth history.
+- BitSets are not thread-safe.
 
 ### Zia Example
 
@@ -735,9 +801,9 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 **Constructors:**
 
 - `NEW Viper.Collections.Bytes(length)` - Create zero-filled byte array
-- `Viper.Collections.Bytes.FromStr(str)` - Create from string (UTF-8 bytes)
-- `Viper.Collections.Bytes.FromHex(hex)` - Create from hexadecimal string
-- `Viper.Collections.Bytes.FromBase64(b64)` - Decode RFC 4648 Base64 string (traps on invalid input)
+- `Viper.Collections.Bytes.FromStr(str)` - Copy the runtime string's exact byte sequence
+- `Viper.Collections.Bytes.FromHex(hex)` - Decode a strict hexadecimal string
+- `Viper.Collections.Bytes.FromBase64(b64)` - Decode strict, padded RFC 4648 Base64 (traps on invalid input)
 
 ### Properties
 
@@ -751,14 +817,14 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 | Method                                   | Signature                 | Description                                                           |
 |------------------------------------------|---------------------------|-----------------------------------------------------------------------|
 | `Get(index)`                             | `Integer(Integer)`        | Get byte value (0-255) at index                                       |
-| `Set(index, value)`                      | `Void(Integer, Integer)`  | Set byte value at index (clamped to 0-255)                            |
-| `Slice(start, end)`                      | `Bytes(Integer, Integer)` | Create new byte array from range [start, end)                         |
-| `Copy(dstOffset, src, srcOffset, count)` | `Void(...)`               | Copy bytes between arrays                                             |
-| `ToStr()`                                | `String()`                | Convert to string (interprets as UTF-8)                               |
+| `Set(index, value)`                      | `Void(Integer, Integer)`  | Store the low 8 bits of value at index                                |
+| `Slice(start, end)`                      | `Bytes(Integer, Integer)` | Copy the clamped range `[start, end)`                                 |
+| `Copy(dstOffset, src, srcOffset, count)` | `Void(Integer, Bytes, Integer, Integer)` | Copy into this array; overlap is supported              |
+| `ToStr()`                                | `String()`                | Copy all bytes into a runtime string without validation               |
 | `ToHex()`                                | `String()`                | Convert to lowercase hexadecimal string                               |
 | `ToBase64()`                             | `String()`                | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
-| `Fill(value)`                            | `Void(Integer)`           | Set all bytes to value                                                |
-| `Find(value)`                            | `Integer(Integer)`        | Find first occurrence (-1 if not found)                               |
+| `Fill(value)`                            | `Void(Integer)`           | Set all bytes to the low 8 bits of value                              |
+| `Find(value)`                            | `Integer(Integer)`        | Find the low-8-bit value (-1 if not found)                            |
 | `FindOption(value)`                      | `Option[Integer](Integer)` | Find first occurrence as `Some(index)`, or `None` if not found        |
 | `Clone()`                                | `Bytes()`                 | Create independent copy                                               |
 | `ReadI16LE(offset)`                      | `Integer(Integer)`        | Read 16-bit signed integer at offset (little-endian)                  |
@@ -776,11 +842,30 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 
 ### Notes
 
-- `FromHex()` and `FromBase64()` validate the full runtime string byte length. Embedded NUL bytes do not truncate parsing.
-- `Copy()` traps when source or destination arguments are not Bytes objects, when ranges overflow, or when ranges exceed bounds.
-- `ReadI16*()` and `ReadI32*()` sign-extend into the returned Integer. Values with the high bit set return negative numbers.
+- `Length` is fixed after construction. `Get`, `Set`, and every binary
+  read/write trap when their required bytes fall outside the array.
+- Byte-valued operations truncate with `value & 255`; they do not saturate.
+  For example, setting `256` stores `0`, and setting `-1` stores `255`.
+- `Slice()` clamps both bounds into `[0, Length]` and returns an independent
+  copy. Reversed or empty ranges return an empty Bytes object.
+- `FromHex()` accepts uppercase or lowercase digits but requires an even number
+  of digits and accepts no separators or whitespace. `FromBase64()` requires
+  the standard alphabet, a multiple-of-four length, canonical padding bits,
+  and `=` padding where needed; it does not accept whitespace or the URL-safe
+  alphabet. Both parse the full runtime string byte length, so embedded NUL
+  bytes do not truncate validation.
+- `ToStr()` does not validate UTF-8. It creates a runtime string containing the
+  exact bytes, including embedded NULs or malformed UTF-8.
+- `Copy()` uses overlap-safe `memmove`. It traps for invalid Bytes operands,
+  negative counts, arithmetic overflow, or out-of-bounds non-empty ranges. A
+  zero-byte copy is a no-op and does not validate either offset.
+- `ReadI16*()` and `ReadI32*()` sign-extend into the returned Integer. Values with the high bit set return negative numbers. The I64 readers return the corresponding signed 64-bit bit pattern.
+- I16 and I32 writes keep only the low 16 or 32 bits respectively; I64 writes
+  store all 64 bits.
 - Negative byte-array lengths trap. Raw byte inputs larger than the maximum runtime `Bytes` length, or null raw inputs with non-zero length, are rejected before allocation.
 - Prefer `FindOption()` for new code. `Find()` remains available for compatibility with existing `-1` checks.
+- Bytes objects are not thread-safe for concurrent mutation. Concurrent reads
+  are safe only while no thread writes the object.
 
 ### Zia Example
 

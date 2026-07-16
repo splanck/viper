@@ -17,11 +17,11 @@ func start() {
     SayInt(rl.get_Available());
 
     Say("--- TryAcquireN ---");
-    SayBool(rl.TryAcquireN(5));
+    SayBool(rl.TryAcquire(5));
     SayInt(rl.get_Available());
 
     Say("--- TryAcquireN exceed ---");
-    SayBool(rl.TryAcquireN(100));
+    SayBool(rl.TryAcquire(100));
     SayInt(rl.get_Available());
 
     Say("--- Reset ---");

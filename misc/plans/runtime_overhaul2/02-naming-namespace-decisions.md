@@ -91,8 +91,8 @@ Decision: `Viper.Text` owns text algorithms, formatting, regex/patterns,
 wrapping, codecs, and string utilities. `Viper.Data` owns structured data
 formats and serializers: `Json`, `Xml`, `Yaml`, `Toml`, `Csv`, and `Ini`.
 
-Migration consequence: current `Viper.Text.Json`, `Viper.Text.Csv`,
-`Viper.Text.Toml`, and `Viper.Text.Ini` should either move to `Viper.Data.*`
+Migration consequence: current `Viper.Data.Json`, `Viper.Data.Csv`,
+`Viper.Data.Toml`, and `Viper.Data.Ini` should either move to `Viper.Data.*`
 or become legacy facades.
 
 ### Graphics, Game, And GUI
@@ -115,7 +115,7 @@ many positional methods.
 ### Input
 
 Decision: `Viper.Input.Key` is the canonical key constant domain. Deprecate
-`Viper.Input.Keyboard.Key*` constants and `Viper.Game3D.Keys`.
+`Viper.Input.Keyboard.Key*` constants and `Viper.Input.Key`.
 
 Add canonical companion domains:
 

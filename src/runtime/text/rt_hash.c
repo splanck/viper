@@ -6,19 +6,16 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_hash.c
-// Purpose: Implements the Viper.Crypto.Hash runtime — cryptographic digest
-//          functions (MD5, SHA-1, SHA-224, SHA-256, SHA-384, SHA-512), HMAC
-//          variants over each of those, CRC32 checksum, and the new constant-
-//          time equality helpers `ConstantTimeEquals` / `ConstantTimeEqualsBytes`
-//          used by Password.Verify and any application code comparing MAC
-//          tags or session IDs.
+// Purpose: Implements the Viper.Crypto.Hash runtime — MD5, SHA-1, SHA-256,
+//          matching HMAC variants, CRC32, keyed SipHash-2-4, and fixed-time
+//          equality helpers for digest/MAC comparisons.
 //
 // Key invariants:
 //   - MD5 and SHA-1 are included for legacy compatibility only; they are
 //     cryptographically broken and must not be used for security.
 //   - All public hash functions produce lowercase hex-encoded output.
-//   - CRC32 lookup table is initialized once on first use (safe in practice;
-//     callers must externally synchronize if called concurrently before init).
+//   - CRC32 lookup-table initialization uses atomic once-state and is safe for
+//     concurrent first use.
 //   - Input may be a string or rt_bytes; both paths produce identical digests.
 //   - All hash state is stack-allocated; no per-call heap allocation.
 //   - The HMAC helpers (hmac_hash_*) dispatch on `hmac_hash_alg_t` so the
@@ -1426,7 +1423,7 @@ static int8_t fixed_time_eq(const uint8_t *a, size_t a_len, const uint8_t *b, si
     return diff == 0 ? 1 : 0;
 }
 
-/// @brief Public Viper.Crypto.Hash.ConstantTimeEquals — branch-free string equality.
+/// @brief Public Viper.Crypto.Hash.ConstantTimeEquals — fixed-time same-length string equality.
 /// @details Compares two `rt_string` payloads in time independent of the
 ///          first differing byte position, so an attacker timing the
 ///          comparison can't learn how many leading bytes of a guess were
@@ -1444,7 +1441,7 @@ int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
     return fixed_time_eq(a_data, a_len, b_data, b_len);
 }
 
-/// @brief Public Viper.Crypto.Hash.ConstantTimeEqualsBytes — branch-free byte-array equality.
+/// @brief Public Viper.Crypto.Hash.ConstantTimeEqualsBytes — fixed-time same-length byte equality.
 /// @details Same semantics as rt_hash_constant_time_equals but for raw byte
 ///          arrays. NULL is treated as an empty byte array; invalid non-empty
 ///          Bytes objects trap instead of being silently compared as empty.

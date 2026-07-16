@@ -33,6 +33,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_deque.h"
+
+#include "rt_box.h"
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
 #include "rt_object.h"
@@ -479,7 +481,7 @@ int8_t rt_deque_has(void *obj, void *elem) {
 
     for (int64_t i = 0; i < d->len; i++) {
         int64_t idx = (d->front + i) % d->cap;
-        if (d->data[idx] == elem)
+        if (rt_box_equal(d->data[idx], elem))
             return 1;
     }
     return 0;

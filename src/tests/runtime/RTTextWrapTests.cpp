@@ -396,10 +396,39 @@ static void test_hang() {
 // Entry Point
 //=============================================================================
 
+static void test_utf8_boundaries_preserved() {
+    printf("Testing TextWrapper UTF-8 boundaries (VDOC-046):\n");
+
+    // Force-breaking must not split a multi-byte sequence: "\xC3\xA9" is é.
+    {
+        rt_string text = rt_const_cstr("\xC3\xA9\xC3\xA9");
+        rt_string result = rt_textwrap_wrap(text, 1);
+        test_result("Wrap keeps codepoints whole",
+                    strcmp(rt_string_cstr(result), "\xC3\xA9\n\xC3\xA9") == 0);
+    }
+
+    // Truncation backs the kept prefix up to a codepoint boundary.
+    {
+        rt_string text = rt_const_cstr("a\xC3\xA9");
+        rt_string suffix = rt_const_cstr("");
+        rt_string result = rt_textwrap_truncate_with(text, 2, suffix);
+        test_result("Truncate ends on boundary", strcmp(rt_string_cstr(result), "a") == 0);
+    }
+
+    // Shorten never starts the tail slice inside a codepoint.
+    {
+        rt_string text = rt_const_cstr("\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9");
+        rt_string result = rt_textwrap_shorten(text, 7);
+        test_result("Shorten keeps whole codepoints",
+                    strcmp(rt_string_cstr(result), "\xC3\xA9...\xC3\xA9") == 0);
+    }
+}
+
 int main() {
     printf("=== RT TextWrapper Tests ===\n\n");
 
     test_wrap();
+    test_utf8_boundaries_preserved();
     test_indent();
     test_dedent();
     test_truncate();

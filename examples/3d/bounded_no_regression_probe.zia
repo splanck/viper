@@ -28,7 +28,7 @@ class BoundedSceneCapture {
         playerX = Vec3.get_X(playerPos);
         playerY = Vec3.get_Y(playerPos);
         playerZ = Vec3.get_Z(playerPos);
-        grounded = game.getCharacter().Grounded();
+        grounded = game.getCharacter().IsGrounded();
         floatingOrigin = world.FloatingOrigin;
         entityCount = world.EntityCount;
         bodyCount = world.BodyCount;

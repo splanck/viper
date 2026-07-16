@@ -5,23 +5,23 @@ DIM ini_text AS STRING
 ini_text = "[server]" + CHR$(10) + "host=localhost" + CHR$(10) + "port=8080" + CHR$(10) + "[db]" + CHR$(10) + "name=mydb"
 
 DIM ini AS OBJECT
-ini = Viper.Text.Ini.Parse(ini_text)
-PRINT "ini has server: "; Viper.Text.Ini.HasSection(ini, "server")
-PRINT "ini has missing: "; Viper.Text.Ini.HasSection(ini, "missing")
-PRINT "ini get host: "; Viper.Text.Ini.Get(ini, "server", "host")
-PRINT "ini get port: "; Viper.Text.Ini.Get(ini, "server", "port")
-PRINT "ini get db name: "; Viper.Text.Ini.Get(ini, "db", "name")
+ini = Viper.Data.Ini.Parse(ini_text)
+PRINT "ini has server: "; Viper.Data.Ini.HasSection(ini, "server")
+PRINT "ini has missing: "; Viper.Data.Ini.HasSection(ini, "missing")
+PRINT "ini get host: "; Viper.Data.Ini.Get(ini, "server", "host")
+PRINT "ini get port: "; Viper.Data.Ini.Get(ini, "server", "port")
+PRINT "ini get db name: "; Viper.Data.Ini.Get(ini, "db", "name")
 
 ' --- Ini: Set and Format ---
-Viper.Text.Ini.Set(ini, "server", "debug", "true")
-PRINT "ini get debug: "; Viper.Text.Ini.Get(ini, "server", "debug")
+Viper.Data.Ini.Set(ini, "server", "debug", "true")
+PRINT "ini get debug: "; Viper.Data.Ini.Get(ini, "server", "debug")
 
 DIM formatted AS STRING
-formatted = Viper.Text.Ini.Format(ini)
+formatted = Viper.Data.Ini.Format(ini)
 PRINT "ini format nonempty: "; (LEN(formatted) > 0)
 
 ' --- Ini: Remove ---
-Viper.Text.Ini.Remove(ini, "server", "debug")
+Viper.Data.Ini.Remove(ini, "server", "debug")
 
 ' --- Template: Render with Map ---
 DIM tmap AS Viper.Collections.Map

@@ -149,7 +149,7 @@ func start() {
 
     // --- TransformVec ---
     Say("--- TransformVec ---");
-    var tv = Mat4.TransformVec(tr, pt);
+    var tv = Mat4.TransformVector(tr, pt);
     Say("Translate(1,2,3) * Vec(1,0,0) X:");
     SayNum(tv.X);
     Say("Translate(1,2,3) * Vec(1,0,0) Y:");
@@ -170,9 +170,9 @@ func start() {
     // --- Det ---
     Say("--- Det ---");
     Say("Det(Identity):");
-    SayNum(Mat4.Det(id));
+    SayNum(Mat4.Determinant(id));
     Say("Det(Scale(2,3,4)):");
-    SayNum(Mat4.Det(sc));
+    SayNum(Mat4.Determinant(sc));
 
     // --- Inverse ---
     Say("--- Inverse ---");
@@ -201,7 +201,7 @@ func start() {
 
     // --- Ortho ---
     Say("--- Ortho ---");
-    var ortho = Mat4.Ortho(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
+    var ortho = Mat4.Orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
     Say("Ortho(-1,1,-1,1,0.1,100) [0,0]:");
     SayNum(Mat4.Get(ortho, 0, 0));
     Say("Ortho [1,1]:");

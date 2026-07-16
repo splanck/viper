@@ -101,11 +101,12 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt) {
                     // (either as an object method call or emit a more specific error).
                 }
             }
-            visitExpr(*me->base);
         }
-        for (auto &arg : me->args)
-            if (arg)
-                visitExpr(*arg);
+        // Full expression analysis: resolves the runtime/OOP method, validates
+        // argument compatibility (including object-parameter checks), and reports
+        // unknown methods on resolved receivers. Unresolvable receivers still fall
+        // through silently, preserving the BUG-120 leniency for late-bound locals.
+        visitExpr(*stmt.call);
         return;
     }
 

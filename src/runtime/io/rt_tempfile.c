@@ -6,27 +6,24 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_tempfile.c
-// Purpose: Temporary file creation and management utilities for the
-//          Viper.IO.TempFile class. Creates uniquely named files in the
-//          system temporary directory using OS-provided entropy to generate
-//          unpredictable identifiers.
+// Purpose: Temporary-path and temporary-file helpers backing the static
+//          Viper.IO.TempFile API. Creates names in the system temporary
+//          directory using the shared platform entropy adapter.
 //
 // Key invariants:
-//   - Temporary file names are generated using cryptographically random bytes
-//     (CryptGenRandom on Windows, /dev/urandom on Unix) to avoid collisions.
+//   - Temporary file names use the runtime's cross-platform entropy helper and
+//     exclusive creation where an actual file is requested.
 //   - Files are created in the platform temp directory (GetTempPath on Windows,
 //     $TMPDIR or /tmp on Unix).
-//   - The optional auto-delete flag causes the file to be deleted on finalize.
 //   - Generated IDs are hex-encoded for filesystem compatibility.
 //   - All functions trap on allocation failure or file creation errors.
 //
 // Ownership/Lifetime:
-//   - TempFile objects are heap-allocated and managed by the runtime GC.
-//   - The path string is retained by the object and released on finalize.
-//   - If auto-delete is enabled, the underlying file is deleted at finalize time.
+//   - Each call returns a fresh runtime String containing a path.
+//   - There is no TempFile handle or finalizer; callers remove created files.
 //
 // Links: src/runtime/io/rt_tempfile.h (public API),
-//        src/runtime/io/rt_dir.h (used to resolve temp directory path),
+//        src/runtime/io/rt_dir.h (used to resolve the temporary directory),
 //        src/runtime/io/rt_path.h (path join for constructing temp file names)
 //
 //===----------------------------------------------------------------------===//

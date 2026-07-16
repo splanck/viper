@@ -12,9 +12,10 @@
 //          and ReadDirectoryChangesW on Windows.
 //
 // Key invariants:
-//   - Each watcher instance holds exactly one OS watch handle/descriptor.
-//   - Events are delivered via a callback registered at construction time.
-//   - Watcher objects must be stopped before being freed to avoid use-after-free.
+//   - A watcher owns the descriptors/handles required by its platform backend.
+//   - Events are queued internally and consumed through Poll/PollFor.
+//   - Explicit Stop releases resources promptly; the finalizer also stops an
+//     active watcher and clears queued event strings.
 //   - A stub implementation is provided for unsupported platforms (ViperDOS).
 //   - All public functions guard against NULL watcher handles.
 //
@@ -211,7 +212,8 @@ static void rt_watcher_finalize(void *obj) {
 /// they still fire on siblings in the parent dir — we filter those
 /// out by checking the event's leaf name against `watch_leaf_name`
 /// and returning NULL for mismatches. For directory watches the name
-/// is joined onto `watch_dir_path` to yield an absolute-style path;
+/// is joined onto `watch_dir_path`; the result is absolute only when
+/// the caller supplied an absolute watch path.
 /// empty names (e.g., the self-event) become the watched path itself.
 static rt_string watcher_event_path_from_relative(rt_watcher_impl *w, const char *path) {
     if (!w)
@@ -236,14 +238,13 @@ static rt_string watcher_event_path_from_relative(rt_watcher_impl *w, const char
 }
 #endif
 
-/// @brief Push an event into the ring buffer, reporting overflow before dropping events.
+/// @brief Push an event into the ring buffer, replacing its newest slot with an overflow marker
+/// when the queue is already full.
 ///
-/// The queue is a fixed-size ring of 64 events; if the producer
-/// outpaces the consumer, older events are discarded rather than
-/// growing unbounded — file-system events are advisory, so dropping
-/// is better than stalling the OS event thread. Takes ownership of
-/// the passed-in `path` string (already `_ref`'d by the caller); the
-/// discarded old event's path is released.
+/// The queue is a fixed-size ring of 64 events. Once full, the newest
+/// queued event and the incoming event are represented by an overflow
+/// marker in that newest slot; older queued events remain available.
+/// Takes ownership of the passed-in `path` string.
 static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_string path) {
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         int64_t overflow_slot =
@@ -738,7 +739,7 @@ void rt_watcher_start(void *obj) {
 
 /// @brief Stop watching: tear down the platform-specific descriptor (inotify_rm_watch + close /
 /// close(kqueue) / CancelIo + CloseHandle). Idempotent — no-op on already-stopped watchers.
-/// Pending events in the queue are NOT drained; they're released via the finalizer.
+/// Pending and last-event state are cleared before returning.
 void rt_watcher_stop(void *obj) {
     if (!obj)
         return;
@@ -854,7 +855,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     return RT_WATCH_EVENT_NONE;
 }
 
-/// @brief Read the absolute path of the most recently polled event. **Traps** if no `_poll` call
+/// @brief Read the path of the most recently polled event. **Traps** if no `_poll` call
 /// has succeeded yet — the contract is "poll then ask"; not safe to call out of order.
 rt_string rt_watcher_event_path(void *obj) {
     if (!obj) {

@@ -62,6 +62,7 @@
 #include "rt_path3d.h"
 #include "rt_physics3d.h"
 #include "rt_postfx3d.h"
+#include "rt_ragdoll3d.h"
 #include "rt_raycast3d.h"
 #include "rt_result.h"
 #include "rt_scene3d.h"

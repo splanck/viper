@@ -30,20 +30,17 @@
 /// @details
 /// `Viper.Math.Bits` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `And`, `Clear`,
-/// `Count`, `CountLeadingZeros`.
+/// `CountOnes`, `CountLeadingZeros`.
 RT_CLASS_BEGIN("Viper.Math.Bits", Bits, "obj", none)
     RT_METHOD("And", "i64(i64,i64)", BitsAnd)
     RT_METHOD("Clear", "i64(i64,i64)", BitsClear)
-    RT_METHOD("Count", "i64(i64)", BitsCount)
+    RT_METHOD("CountOnes", "i64(i64)", BitsCount)
     RT_METHOD("CountLeadingZeros", "i64(i64)", BitsCountLeadingZeros)
     RT_METHOD("CountTrailingZeros", "i64(i64)", BitsCountTrailingZeros)
     RT_METHOD("Flip", "i64(i64)", BitsFlip)
     RT_METHOD("Get", "i1(i64,i64)", BitsGet)
-    RT_METHOD("LeadZ", "i64(i64)", BitsLeadZ)
     RT_METHOD("Not", "i64(i64)", BitsNot)
     RT_METHOD("Or", "i64(i64,i64)", BitsOr)
-    RT_METHOD("Rotl", "i64(i64,i64)", BitsRotl)
-    RT_METHOD("Rotr", "i64(i64,i64)", BitsRotr)
     RT_METHOD("RotateLeft", "i64(i64,i64)", BitsRotateLeft)
     RT_METHOD("RotateRight", "i64(i64,i64)", BitsRotateRight)
     RT_METHOD("Set", "i64(i64,i64)", BitsSet)
@@ -52,8 +49,6 @@ RT_CLASS_BEGIN("Viper.Math.Bits", Bits, "obj", none)
     RT_METHOD("Shr", "i64(i64,i64)", BitsShr)
     RT_METHOD("Swap", "i64(i64)", BitsSwap)
     RT_METHOD("Toggle", "i64(i64,i64)", BitsToggle)
-    RT_METHOD("TrailZ", "i64(i64)", BitsTrailZ)
-    RT_METHOD("Ushr", "i64(i64,i64)", BitsUshr)
     RT_METHOD("Xor", "i64(i64,i64)", BitsXor)
 RT_CLASS_END()
 
@@ -61,41 +56,40 @@ RT_CLASS_END()
 /// @summary Provides efficient byte array.
 /// @details
 /// Create `Viper.Collections.Bytes` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Length` and operations including `Clone`, `Copy`, `Fill`, `Find`.
-RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj", BytesNew)
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Length` and operations including `Clone`, `Copy`, `Fill`, `Find`.
+RT_CLASS_BEGIN("Viper.Collections.Bytes", Bytes, "obj(i64)", BytesNew)
     RT_PROP("IsEmpty", "i1", BytesIsEmpty, none)
     RT_PROP("Length", "i64", BytesLen, none)
     RT_METHOD("Clone", "obj()", BytesClone)
     RT_METHOD("Copy", "void(i64,obj,i64,i64)", BytesCopy)
     RT_METHOD("Fill", "void(i64)", BytesFill)
-    RT_METHOD("Find", "i64(i64)", BytesFind)
-    RT_METHOD("FindOption", "obj<Viper.Option>(i64)", BytesFindOption)
+    RT_METHOD("Find", "obj<Viper.Option>(i64)", BytesFindOption)
     RT_METHOD("Get", "i64(i64)", BytesGet)
-    RT_METHOD("ReadI16BE", "i64(i64)", BytesReadI16BE)
-    RT_METHOD("ReadI16LE", "i64(i64)", BytesReadI16LE)
-    RT_METHOD("ReadI32BE", "i64(i64)", BytesReadI32BE)
-    RT_METHOD("ReadI32LE", "i64(i64)", BytesReadI32LE)
-    RT_METHOD("ReadI64BE", "i64(i64)", BytesReadI64BE)
-    RT_METHOD("ReadI64LE", "i64(i64)", BytesReadI64LE)
+    RT_METHOD("ReadI16BigEndian", "i64(i64)", BytesReadI16BE)
+    RT_METHOD("ReadI16LittleEndian", "i64(i64)", BytesReadI16LE)
+    RT_METHOD("ReadI32BigEndian", "i64(i64)", BytesReadI32BE)
+    RT_METHOD("ReadI32LittleEndian", "i64(i64)", BytesReadI32LE)
+    RT_METHOD("ReadI64BigEndian", "i64(i64)", BytesReadI64BE)
+    RT_METHOD("ReadI64LittleEndian", "i64(i64)", BytesReadI64LE)
     RT_METHOD("Set", "void(i64,i64)", BytesSet)
     RT_METHOD("Slice", "obj(i64,i64)", BytesSlice)
     RT_METHOD("ToBase64", "str()", BytesToBase64)
     RT_METHOD("ToHex", "str()", BytesToHex)
     RT_METHOD("ToStr", "str()", BytesToStr)
-    RT_METHOD("WriteI16BE", "void(i64,i64)", BytesWriteI16BE)
-    RT_METHOD("WriteI16LE", "void(i64,i64)", BytesWriteI16LE)
-    RT_METHOD("WriteI32BE", "void(i64,i64)", BytesWriteI32BE)
-    RT_METHOD("WriteI32LE", "void(i64,i64)", BytesWriteI32LE)
-    RT_METHOD("WriteI64BE", "void(i64,i64)", BytesWriteI64BE)
-    RT_METHOD("WriteI64LE", "void(i64,i64)", BytesWriteI64LE)
+    RT_METHOD("WriteI16BigEndian", "void(i64,i64)", BytesWriteI16BE)
+    RT_METHOD("WriteI16LittleEndian", "void(i64,i64)", BytesWriteI16LE)
+    RT_METHOD("WriteI32BigEndian", "void(i64,i64)", BytesWriteI32BE)
+    RT_METHOD("WriteI32LittleEndian", "void(i64,i64)", BytesWriteI32LE)
+    RT_METHOD("WriteI64BigEndian", "void(i64,i64)", BytesWriteI64BE)
+    RT_METHOD("WriteI64LittleEndian", "void(i64,i64)", BytesWriteI64LE)
 RT_CLASS_END()
 
 // Viper.Collections.F64Buffer - packed double-precision numeric buffer
 /// @summary Provides packed double-precision numeric buffer.
 /// @details
 /// Create `Viper.Collections.F64Buffer` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Length` and operations including `FromSeq`, `Get`, `Set`, `Fill`.
 RT_CLASS_BEGIN("Viper.Collections.F64Buffer", F64Buffer, "obj(i64)", F64BufNew)
     RT_PROP("Length", "i64", F64BufLen, none)
@@ -120,7 +114,7 @@ RT_CLASS_END()
 /// @summary Provides packed 64-bit integer numeric buffer.
 /// @details
 /// Create `Viper.Collections.I64Buffer` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Length` and operations including `FromSeq`, `Get`, `Set`, `Fill`.
 RT_CLASS_BEGIN("Viper.Collections.I64Buffer", I64Buffer, "obj(i64)", I64BufNew)
     RT_PROP("Length", "i64", I64BufLen, none)
@@ -145,8 +139,8 @@ RT_CLASS_END()
 /// @summary Provides bidirectional string-to-string map.
 /// @details
 /// Create `Viper.Collections.BiMap` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Count` and operations including `Clear`, `GetByKey`, `GetByValue`, `HasKey`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `GetByKey`, `GetByValue`, `HasKey`.
 RT_CLASS_BEGIN("Viper.Collections.BiMap", BiMap, "obj", BiMapNew)
     RT_PROP("IsEmpty", "i1", BiMapIsEmpty, none)
     RT_PROP("Count", "i64", BiMapLen, none)
@@ -156,7 +150,6 @@ RT_CLASS_BEGIN("Viper.Collections.BiMap", BiMap, "obj", BiMapNew)
     RT_METHOD("HasKey", "i1(str)", BiMapHasKey)
     RT_METHOD("HasValue", "i1(str)", BiMapHasValue)
     RT_METHOD("Keys", "seq<str>()", BiMapKeys)
-    RT_METHOD("Put", "void(str,str)", BiMapPut)
     RT_METHOD("Set", "void(str,str)", BiMapSet)
     RT_METHOD("RemoveByKey", "i1(str)", BiMapRemoveByKey)
     RT_METHOD("RemoveByValue", "i1(str)", BiMapRemoveByValue)
@@ -167,21 +160,21 @@ RT_CLASS_END()
 /// @summary Provides arbitrary-size bit array.
 /// @details
 /// Create `Viper.Collections.BitSet` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Length`, `Count` and operations including `And`, `Clear`, `ClearAll`, `Get`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Length`, `Count` and operations including `And`, `ClearBit`, `Clear`, `GetBit`.
 RT_CLASS_BEGIN("Viper.Collections.BitSet", BitSet, "obj(i64)", BitSetNew)
     RT_PROP("IsEmpty", "i1", BitSetIsEmpty, none)
     RT_PROP("Length", "i64", BitSetLen, none)
     RT_PROP("Count", "i64", BitSetCount, none)
     RT_METHOD("And", "obj(obj)", BitSetAnd)
-    RT_METHOD("Clear", "void(i64)", BitSetClear)
-    RT_METHOD("ClearAll", "void()", BitSetClearAll)
-    RT_METHOD("Get", "i1(i64)", BitSetGet)
+    RT_METHOD("ClearBit", "void(i64)", BitSetClear)
+    RT_METHOD("Clear", "void()", BitSetClearAll)
+    RT_METHOD("GetBit", "i1(i64)", BitSetGet)
     RT_METHOD("Not", "obj()", BitSetNot)
     RT_METHOD("Or", "obj(obj)", BitSetOr)
-    RT_METHOD("Set", "void(i64)", BitSetSet)
+    RT_METHOD("SetBit", "void(i64)", BitSetSet)
     RT_METHOD("SetAll", "void()", BitSetSetAll)
-    RT_METHOD("Toggle", "void(i64)", BitSetToggle)
+    RT_METHOD("ToggleBit", "void(i64)", BitSetToggle)
     RT_METHOD("ToString", "str()", BitSetToString)
     RT_METHOD("Xor", "obj(obj)", BitSetXor)
 RT_CLASS_END()
@@ -190,13 +183,12 @@ RT_CLASS_END()
 /// @summary Provides probabilistic set membership.
 /// @details
 /// Create `Viper.Collections.BloomFilter` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
-/// `Count` and operations including `Add`, `Clear`, `Fpr`, `FalsePositiveRate`.
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Count` and operations including `Add`, `Clear`, `FalsePositiveRate`, `Merge`.
 RT_CLASS_BEGIN("Viper.Collections.BloomFilter", BloomFilter, "obj(i64,f64)", BloomFilterNew)
     RT_PROP("Count", "i64", BloomFilterLen, none)
     RT_METHOD("Add", "void(str)", BloomFilterAdd)
     RT_METHOD("Clear", "void()", BloomFilterClear)
-    RT_METHOD("Fpr", "f64()", BloomFilterFpr)
     RT_METHOD("FalsePositiveRate", "f64()", BloomFilterFalsePositiveRate)
     RT_METHOD("Merge", "i64(obj)", BloomFilterMerge)
     RT_METHOD("MightContain", "i1(str)", BloomFilterMightContain)
@@ -206,16 +198,14 @@ RT_CLASS_END()
 /// @summary Provides disjoint set data structure.
 /// @details
 /// Create `Viper.Collections.UnionFind` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
-/// `Count` and operations including `Connected`, `Find`, `FindRootOption`, `Clear`.
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Count` and operations including `IsConnected`, `FindRoot`, `Clear`, `ComponentSize`.
 RT_CLASS_BEGIN("Viper.Collections.UnionFind", UnionFind, "obj(i64)", UnionFindNew)
     RT_PROP("Count", "i64", UnionFindLen, none)
-    RT_METHOD("Connected", "i1(i64,i64)", UnionFindConnected)
-    RT_METHOD("Find", "i64(i64)", UnionFindFind)
-    RT_METHOD("FindRootOption", "obj<Viper.Option>(i64)", UnionFindFindRootOption)
+    RT_METHOD("IsConnected", "i1(i64,i64)", UnionFindConnected)
+    RT_METHOD("FindRoot", "obj<Viper.Option>(i64)", UnionFindFindRootOption)
     RT_METHOD("Clear", "void()", UnionFindReset)
-    RT_METHOD("Reset", "void()", UnionFindReset)
-    RT_METHOD("SetSize", "i64(i64)", UnionFindSetSize)
+    RT_METHOD("ComponentSize", "i64(i64)", UnionFindSetSize)
     RT_METHOD("Union", "i64(i64,i64)", UnionFindUnion)
 RT_CLASS_END()
 
@@ -261,16 +251,16 @@ RT_CLASS_END()
 /// @details
 /// `Viper.Collections.FrozenSet` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
-/// `IsEmpty`, `Count` and operations including `Diff`, `Equals`, `Has`, `Intersect`.
+/// `IsEmpty`, `Count` and operations including `Difference`, `Equals`, `Has`, `Intersect`.
 RT_CLASS_BEGIN("Viper.Collections.FrozenSet", FrozenSet, "obj(obj)", none)
     RT_PROP("IsEmpty", "i1", FrozenSetIsEmpty, none)
     RT_PROP("Count", "i64", FrozenSetLen, none)
-    RT_METHOD("Diff", "obj<Viper.Collections.FrozenSet>(obj)", FrozenSetDiff)
+    RT_METHOD("Difference", "obj<Viper.Collections.FrozenSet>(obj)", FrozenSetDiff)
     RT_METHOD("Equals", "i1(obj)", FrozenSetEquals)
     RT_METHOD("Has", "i1(str)", FrozenSetHas)
     RT_METHOD("Intersect", "obj<Viper.Collections.FrozenSet>(obj)", FrozenSetIntersect)
     RT_METHOD("IsSubset", "i1(obj)", FrozenSetIsSubset)
-    RT_METHOD("Items", "seq<str>()", FrozenSetItems)
+    RT_METHOD("ToSeq", "seq<str>()", FrozenSetItems)
     RT_METHOD("Union", "obj<Viper.Collections.FrozenSet>(obj)", FrozenSetUnion)
 RT_CLASS_END()
 
@@ -296,7 +286,7 @@ RT_CLASS_END()
 /// @summary Provides memory-efficient sparse array.
 /// @details
 /// Create `Viper.Collections.SparseArray` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Count` and operations including `Clear`, `Get`, `Has`, `Indices`.
 RT_CLASS_BEGIN("Viper.Collections.SparseArray", SparseArray, "obj", SparseNew)
     RT_PROP("Count", "i64", SparseLen, none)
@@ -331,20 +321,19 @@ RT_CLASS_END()
 /// @summary Provides set of unique strings.
 /// @details
 /// Create `Viper.Collections.Bag` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Count` and operations including `Clear`, `Clone`, `Diff`, `Add`.
-RT_CLASS_BEGIN("Viper.Collections.Bag", Bag, "obj", BagNew)
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Difference`, `Add`.
+RT_CLASS_BEGIN("Viper.Collections.StringSet", Bag, "obj", BagNew)
     RT_PROP("IsEmpty", "i1", BagIsEmpty, none)
     RT_PROP("Count", "i64", BagLen, none)
     RT_METHOD("Clear", "void()", BagClear)
-    RT_METHOD("Clone", "obj<Viper.Collections.Bag>()", BagClone)
-    RT_METHOD("Diff", "obj<Viper.Collections.Bag>(obj)", BagDiff)
+    RT_METHOD("Clone", "obj<Viper.Collections.StringSet>()", BagClone)
+    RT_METHOD("Difference", "obj<Viper.Collections.StringSet>(obj)", BagDiff)
     RT_METHOD("Add", "i1(str)", BagAdd)
     RT_METHOD("Has", "i1(str)", BagHas)
-    RT_METHOD("Intersect", "obj<Viper.Collections.Bag>(obj)", BagIntersect)
-    RT_METHOD("Items", "seq<str>()", BagItems)
+    RT_METHOD("Intersect", "obj<Viper.Collections.StringSet>(obj)", BagIntersect)
     RT_METHOD("Remove", "i1(str)", BagRemove)
-    RT_METHOD("Union", "obj<Viper.Collections.Bag>(obj)", BagUnion)
+    RT_METHOD("Union", "obj<Viper.Collections.StringSet>(obj)", BagUnion)
     RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", BagToSeq)
     RT_METHOD("ToSet", "obj<Viper.Collections.Set>()", BagToSet)
 RT_CLASS_END()
@@ -354,19 +343,19 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Collections.CountMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `IsEmpty`, `Count`, `Total` and operations including `Clear`, `Dec`, `Get`, `Has`.
+/// `IsEmpty`, `Count`, `Total` and operations including `Clear`, `Decrement`, `Get`, `Has`.
 RT_CLASS_BEGIN("Viper.Collections.CountMap", CountMap, "obj", CountMapNew)
     RT_PROP("IsEmpty", "i1", CountMapIsEmpty, none)
     RT_PROP("Count", "i64", CountMapLen, none)
     RT_PROP("Total", "i64", CountMapTotal, none)
     RT_METHOD("Clear", "void()", CountMapClear)
-    RT_METHOD("Dec", "i64(str)", CountMapDec)
+    RT_METHOD("Decrement", "i64(str)", CountMapDec)
     RT_METHOD("Get", "i64(str)", CountMapGet)
     RT_METHOD("Has", "i1(str)", CountMapHas)
-    RT_METHOD("Inc", "i64(str)", CountMapInc)
-    RT_METHOD("IncBy", "i64(str,i64)", CountMapIncBy)
+    RT_METHOD("Increment", "i64(str)", CountMapInc)
+    RT_METHOD("IncrementBy", "i64(str,i64)", CountMapIncBy)
     RT_METHOD("Keys", "seq<str>()", CountMapKeys)
-    RT_METHOD("MostCommon", "obj(i64)", CountMapMostCommon)
+    RT_METHOD("MostCommon", "seq<str>(i64)", CountMapMostCommon)
     RT_METHOD("Remove", "i1(str)", CountMapRemove)
     RT_METHOD("Set", "void(str,i64)", CountMapSet)
 RT_CLASS_END()
@@ -375,21 +364,20 @@ RT_CLASS_END()
 /// @summary Provides generic set of unique objects.
 /// @details
 /// Create `Viper.Collections.Set` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Count` and operations including `Clear`, `Clone`, `Diff`, `Intersect`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Difference`, `Intersect`.
 RT_CLASS_BEGIN("Viper.Collections.Set", Set, "obj", SetNew)
     RT_PROP("IsEmpty", "i1", SetIsEmpty, none)
     RT_PROP("Count", "i64", SetLen, none)
     RT_METHOD("Clear", "void()", SetClear)
     RT_METHOD("Clone", "obj<Viper.Collections.Set>()", SetClone)
-    RT_METHOD("Diff", "obj<Viper.Collections.Set>(obj)", SetDiff)
+    RT_METHOD("Difference", "obj<Viper.Collections.Set>(obj)", SetDiff)
     RT_METHOD("Intersect", "obj<Viper.Collections.Set>(obj)", SetIntersect)
     RT_METHOD("Remove", "i1(obj)", SetRemove)
     RT_METHOD("Has", "i1(obj)", SetHas)
     RT_METHOD("IsDisjoint", "i1(obj)", SetIsDisjoint)
     RT_METHOD("IsSubset", "i1(obj)", SetIsSubset)
     RT_METHOD("IsSuperset", "i1(obj)", SetIsSuperset)
-    RT_METHOD("Items", "obj<Viper.Collections.Seq>()", SetItems)
     RT_METHOD("Union", "obj<Viper.Collections.Set>(obj)", SetUnion)
     RT_METHOD("Add", "i1(obj)", SetAdd)
     RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", SetToSeq)
@@ -407,18 +395,18 @@ RT_FUNC(SortedSetHas,       rt_sortedset_has,        "Viper.Collections.SortedSe
 RT_FUNC(SortedSetFirst,     rt_sortedset_first,      "Viper.Collections.SortedSet.First",      "str(obj)")
 RT_FUNC(SortedSetLast,      rt_sortedset_last,       "Viper.Collections.SortedSet.Last",       "str(obj)")
 RT_FUNC(SortedSetFloor,     rt_sortedset_floor,      "Viper.Collections.SortedSet.Floor",      "str(obj,str)")
-RT_FUNC(SortedSetCeil,      rt_sortedset_ceil,       "Viper.Collections.SortedSet.Ceil",       "str(obj,str)")
+RT_FUNC(SortedSetCeil,      rt_sortedset_ceil,       "Viper.Collections.SortedSet.Ceiling",       "str(obj,str)")
 RT_FUNC(SortedSetLower,     rt_sortedset_lower,      "Viper.Collections.SortedSet.Lower",      "str(obj,str)")
 RT_FUNC(SortedSetHigher,    rt_sortedset_higher,     "Viper.Collections.SortedSet.Higher",     "str(obj,str)")
 RT_FUNC(SortedSetAt,        rt_sortedset_at,         "Viper.Collections.SortedSet.At",         "str(obj,i64)")
 RT_FUNC(SortedSetIndexOf,   rt_sortedset_index_of,   "Viper.Collections.SortedSet.IndexOf",    "i64(obj,str)")
-RT_FUNC(SortedSetItems,     rt_sortedset_items,      "Viper.Collections.SortedSet.Items",      "seq<str>(obj)")
-RT_FUNC(SortedSetRange,     rt_sortedset_range,      "Viper.Collections.SortedSet.Range",      "obj(obj,str,str)")
-RT_FUNC(SortedSetTake,      rt_sortedset_take,       "Viper.Collections.SortedSet.Take",       "obj(obj,i64)")
-RT_FUNC(SortedSetSkip,      rt_sortedset_skip,       "Viper.Collections.SortedSet.Skip",       "obj(obj,i64)")
+RT_FUNC(SortedSetItems,     rt_sortedset_items,      "Viper.Collections.SortedSet.ToSeq",      "seq<str>(obj)")
+RT_FUNC(SortedSetRange,     rt_sortedset_range,      "Viper.Collections.SortedSet.Range",      "seq<str>(obj,str,str)")
+RT_FUNC(SortedSetTake,      rt_sortedset_take,       "Viper.Collections.SortedSet.Take",       "seq<str>(obj,i64)")
+RT_FUNC(SortedSetSkip,      rt_sortedset_skip,       "Viper.Collections.SortedSet.Skip",       "seq<str>(obj,i64)")
 RT_FUNC(SortedSetUnion,     rt_sortedset_union,      "Viper.Collections.SortedSet.Union",      "obj(obj,obj)")
 RT_FUNC(SortedSetIntersect, rt_sortedset_intersect,  "Viper.Collections.SortedSet.Intersect",  "obj(obj,obj)")
-RT_FUNC(SortedSetDiff,      rt_sortedset_diff,       "Viper.Collections.SortedSet.Diff",       "obj(obj,obj)")
+RT_FUNC(SortedSetDiff,      rt_sortedset_diff,       "Viper.Collections.SortedSet.Difference",       "obj(obj,obj)")
 RT_FUNC(SortedSetIsSubset,  rt_sortedset_is_subset,  "Viper.Collections.SortedSet.IsSubset",   "i1(obj,obj)")
 
 // SortedSet aliases (backward compatibility)
@@ -438,18 +426,18 @@ RT_CLASS_BEGIN("Viper.Collections.SortedSet", SortedSet, "obj", SortedSetNew)
     RT_METHOD("First", "str()", SortedSetFirst)
     RT_METHOD("Last", "str()", SortedSetLast)
     RT_METHOD("Floor", "str(str)", SortedSetFloor)
-    RT_METHOD("Ceil", "str(str)", SortedSetCeil)
+    RT_METHOD("Ceiling", "str(str)", SortedSetCeil)
     RT_METHOD("Lower", "str(str)", SortedSetLower)
     RT_METHOD("Higher", "str(str)", SortedSetHigher)
     RT_METHOD("At", "str(i64)", SortedSetAt)
     RT_METHOD("IndexOf", "i64(str)", SortedSetIndexOf)
-    RT_METHOD("Items", "seq<str>()", SortedSetItems)
-    RT_METHOD("Range", "obj(str,str)", SortedSetRange)
-    RT_METHOD("Take", "obj(i64)", SortedSetTake)
-    RT_METHOD("Skip", "obj(i64)", SortedSetSkip)
+    RT_METHOD("ToSeq", "seq<str>()", SortedSetItems)
+    RT_METHOD("Range", "seq<str>(str,str)", SortedSetRange)
+    RT_METHOD("Take", "seq<str>(i64)", SortedSetTake)
+    RT_METHOD("Skip", "seq<str>(i64)", SortedSetSkip)
     RT_METHOD("Union", "obj(obj)", SortedSetUnion)
     RT_METHOD("Intersect", "obj(obj)", SortedSetIntersect)
-    RT_METHOD("Diff", "obj(obj)", SortedSetDiff)
+    RT_METHOD("Difference", "obj(obj)", SortedSetDiff)
     RT_METHOD("IsSubset", "i1(obj)", SortedSetIsSubset)
 RT_CLASS_END()
 
@@ -458,14 +446,13 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Collections.List` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
-/// `IsEmpty` and operations including `Push`, `Pop`, `Clear`, `Find`.
+/// `IsEmpty` and operations including `Push`, `Pop`, `Clear`, `FindOption`.
 RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
     RT_PROP("Count", "i64", ListGetLen, none)
     RT_PROP("IsEmpty", "i1", ListIsEmpty, none)
     RT_METHOD("Push", "void(obj)", ListPush)
     RT_METHOD("Pop", "obj()", ListPop)
     RT_METHOD("Clear", "void()", ListClear)
-    RT_METHOD("Find", "i64(obj)", ListFind)
     RT_METHOD("FindOption", "obj<Viper.Option>(obj)", ListFindOption)
     RT_METHOD("Has", "i1(obj)", ListHas)
     RT_METHOD("Insert", "void(i64,obj)", ListInsert)
@@ -492,9 +479,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Collections.LruCache` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Cap`, `Capacity`, `IsEmpty` and operations including `Clear`, `Get`, `Has`, `Keys`.
+/// `Capacity`, `IsEmpty`, `Count` and operations including `Clear`, `Get`, `Has`, `Keys`.
 RT_CLASS_BEGIN("Viper.Collections.LruCache", LruCache, "obj(i64)", LruCacheNew)
-    RT_PROP("Cap", "i64", LruCacheCap, none)
     RT_PROP("Capacity", "i64", LruCacheCapacity, none)
     RT_PROP("IsEmpty", "i1", LruCacheIsEmpty, none)
     RT_PROP("Count", "i64", LruCacheLen, none)
@@ -503,7 +489,6 @@ RT_CLASS_BEGIN("Viper.Collections.LruCache", LruCache, "obj(i64)", LruCacheNew)
     RT_METHOD("Has", "i1(str)", LruCacheHas)
     RT_METHOD("Keys", "seq<str>()", LruCacheKeys)
     RT_METHOD("Peek", "obj(str)", LruCachePeek)
-    RT_METHOD("Put", "void(str,obj)", LruCachePut)
     RT_METHOD("Set", "void(str,obj)", LruCacheSet)
     RT_METHOD("Remove", "i1(str)", LruCacheRemove)
     RT_METHOD("RemoveOldest", "i1()", LruCacheRemoveOldest)
@@ -514,8 +499,8 @@ RT_CLASS_END()
 /// @summary Provides key-value dictionary (string keys).
 /// @details
 /// Create `Viper.Collections.Map` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Count` and operations including `Clear`, `Clone`, `Get`, `GetOr`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `GetOr`.
 RT_CLASS_BEGIN("Viper.Collections.Map", Map, "obj", MapNew)
     RT_PROP("IsEmpty", "i1", MapIsEmpty, none)
     RT_PROP("Count", "i64", MapLen, none)
@@ -566,7 +551,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Collections.MultiMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `IsEmpty`, `KeyCount`, `Count` and operations including `Clear`, `CountFor`, `Get`, `GetFirst`.
+/// `IsEmpty`, `KeyCount`, `Count` and operations including `Clear`, `CountFor`, `Get`,
+/// `GetFirst`.
 RT_CLASS_BEGIN("Viper.Collections.MultiMap", MultiMap, "obj", MultiMapNew)
     RT_PROP("IsEmpty", "i1", MultiMapIsEmpty, none)
     RT_PROP("KeyCount", "i64", MultiMapKeyCount, none)
@@ -578,16 +564,15 @@ RT_CLASS_BEGIN("Viper.Collections.MultiMap", MultiMap, "obj", MultiMapNew)
     RT_METHOD("Has", "i1(str)", MultiMapHas)
     RT_METHOD("Keys", "seq<str>()", MultiMapKeys)
     RT_METHOD("Add", "void(str,obj)", MultiMapAdd)
-    RT_METHOD("Put", "void(str,obj)", MultiMapPut)
     RT_METHOD("RemoveAll", "i1(str)", MultiMapRemoveAll)
 RT_CLASS_END()
 
 // Viper.Collections.Queue - FIFO collection
-/// @summary Provides fIFO collection.
+/// @summary Provides FIFO collection.
 /// @details
 /// Create `Viper.Collections.Queue` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
 RT_CLASS_BEGIN("Viper.Collections.Queue", Queue, "obj", QueueNew)
     RT_PROP("IsEmpty", "i1", QueueIsEmpty, none)
     RT_PROP("Count", "i64", QueueLen, none)
@@ -597,18 +582,18 @@ RT_CLASS_BEGIN("Viper.Collections.Queue", Queue, "obj", QueueNew)
     RT_METHOD("Peek", "obj()", QueuePeek)
     RT_METHOD("Push", "void(obj)", QueuePush)
     RT_METHOD("Pop", "obj()", QueuePop)
+    RT_METHOD("SetOwnsElements", "void(i1)", QueueSetOwnsElements)
     RT_METHOD("ToList", "obj<Viper.Collections.List>()", QueueToList)
     RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", QueueToSeq)
-    RT_METHOD("TryPop", "obj()", QueueTryPop)
-    RT_METHOD("TryPopOption", "obj<Viper.Option>()", QueueTryPopOption)
+    RT_METHOD("TryPop", "obj<Viper.Option>()", QueueTryPopOption)
 RT_CLASS_END()
 
 // Viper.Collections.Heap - priority queue (binary heap)
 /// @summary Provides priority queue (binary heap).
 /// @details
 /// Create `Viper.Collections.Heap` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `IsMax`, `Count` and operations including `Clear`, `Peek`, `Pop`, `Push`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `IsMax`, `Count` and operations including `Clear`, `Peek`, `Pop`, `Push`.
 RT_CLASS_BEGIN("Viper.Collections.Heap", Heap, "obj", HeapNew)
     RT_PROP("IsEmpty", "i1", HeapIsEmpty, none)
     RT_PROP("IsMax", "i1", HeapIsMax, none)
@@ -617,21 +602,18 @@ RT_CLASS_BEGIN("Viper.Collections.Heap", Heap, "obj", HeapNew)
     RT_METHOD("Peek", "obj()", HeapPeek)
     RT_METHOD("Pop", "obj()", HeapPop)
     RT_METHOD("Push", "void(i64,obj)", HeapPush)
-    RT_METHOD("ToSeq", "obj()", HeapToSeq)
-    RT_METHOD("TryPeek", "obj()", HeapTryPeek)
-    RT_METHOD("TryPop", "obj()", HeapTryPop)
-    RT_METHOD("TryPeekOption", "obj<Viper.Option>()", HeapTryPeekOption)
-    RT_METHOD("TryPopOption", "obj<Viper.Option>()", HeapTryPopOption)
+    RT_METHOD("ToSeq", "seq<obj>()", HeapToSeq)
+    RT_METHOD("TryPeek", "obj<Viper.Option>()", HeapTryPeekOption)
+    RT_METHOD("TryPop", "obj<Viper.Option>()", HeapTryPopOption)
 RT_CLASS_END()
 
 // Viper.Collections.Ring - fixed-size circular buffer
 /// @summary Provides fixed-size circular buffer.
 /// @details
 /// Create `Viper.Collections.Ring` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Cap`,
-/// `Capacity`, `First` and operations including `Clear`, `Clone`, `Get`, `Has`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Capacity`, `First`, `IsEmpty` and operations including `Clear`, `Clone`, `Get`, `Has`.
 RT_CLASS_BEGIN("Viper.Collections.Ring", Ring, "obj", RingNew)
-    RT_PROP("Cap", "i64", RingCap, none)
     RT_PROP("Capacity", "i64", RingCapacity, none)
     RT_PROP("First", "obj", RingFirst, none)
     RT_PROP("IsEmpty", "i1", RingIsEmpty, none)
@@ -655,17 +637,16 @@ RT_CLASS_END()
 /// @summary Provides dynamic sequence/array.
 /// @details
 /// Create `Viper.Collections.Seq` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Cap`,
-/// `Capacity`, `IsEmpty` and operations including `Clear`, `Clone`, `Drop`, `Find`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Capacity`, `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Drop`,
+/// `FindOption`.
 RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
-    RT_PROP("Cap", "i64", SeqCap, none)
     RT_PROP("Capacity", "i64", SeqCapacity, none)
     RT_PROP("IsEmpty", "i1", SeqIsEmpty, none)
     RT_PROP("Count", "i64", SeqLen, none)
     RT_METHOD("Clear", "void()", SeqClear)
     RT_METHOD("Clone", "obj<Viper.Collections.Seq>()", SeqClone)
     RT_METHOD("Drop", "obj<Viper.Collections.Seq>(i64)", SeqDrop)
-    RT_METHOD("Find", "i64(obj)", SeqFind)
     RT_METHOD("FindOption", "obj<Viper.Option>(obj)", SeqFindOption)
     RT_METHOD("First", "obj()", SeqFirst)
     RT_METHOD("Get", "obj(i64)", SeqGet)
@@ -676,7 +657,7 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_METHOD("Pop", "obj()", SeqPop)
     RT_METHOD("Push", "void(obj)", SeqPush)
     RT_METHOD("PushAll", "void(obj)", SeqPushAll)
-    RT_METHOD("Remove", "obj(i64)", SeqRemove)
+    RT_METHOD("RemoveAt", "obj(i64)", SeqRemove)
     RT_METHOD("Reverse", "void()", SeqReverse)
     RT_METHOD("Set", "void(i64,obj)", SeqSet)
     RT_METHOD("Shuffle", "void()", SeqShuffle)
@@ -685,14 +666,13 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_METHOD("SortDesc", "void()", SeqSortDesc)
     RT_METHOD("Take", "obj<Viper.Collections.Seq>(i64)", SeqTake)
     // Functional operations (predicate/transform passed as function pointer)
-    RT_METHOD("Keep", "obj<Viper.Collections.Seq>(obj)", SeqKeep)
+    RT_METHOD("Filter", "obj<Viper.Collections.Seq>(obj)", SeqKeep)
     RT_METHOD("Reject", "obj<Viper.Collections.Seq>(obj)", SeqReject)
-    RT_METHOD("Apply", "obj<Viper.Collections.Seq>(obj)", SeqApply)
+    RT_METHOD("Map", "obj<Viper.Collections.Seq>(obj)", SeqApply)
     RT_METHOD("All", "i1(obj)", SeqAll)
     RT_METHOD("Any", "i1(obj)", SeqAny)
     RT_METHOD("None", "i1(obj)", SeqNone)
     RT_METHOD("CountWhere", "i64(obj)", SeqCountWhere)
-    RT_METHOD("FindWhere", "obj(obj)", SeqFindWhere)
     RT_METHOD("FindWhereOption", "obj<Viper.Option>(obj)", SeqFindWhereOption)
     RT_METHOD("TakeWhile", "obj<Viper.Collections.Seq>(obj)", SeqTakeWhile)
     RT_METHOD("DropWhile", "obj<Viper.Collections.Seq>(obj)", SeqDropWhile)
@@ -702,15 +682,15 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_METHOD("ToStack", "obj<Viper.Collections.Stack>()", SeqToStack)
     RT_METHOD("ToQueue", "obj<Viper.Collections.Queue>()", SeqToQueue)
     RT_METHOD("ToDeque", "obj<Viper.Collections.Deque>()", SeqToDeque)
-    RT_METHOD("ToBag", "obj<Viper.Collections.Bag>()", SeqToBag)
+    RT_METHOD("ToStringSet", "obj<Viper.Collections.StringSet>()", SeqToBag)
 RT_CLASS_END()
 
 // Viper.Collections.Stack - LIFO collection
-/// @summary Provides lIFO collection.
+/// @summary Provides LIFO collection.
 /// @details
 /// Create `Viper.Collections.Stack` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Has`, `Peek`.
 RT_CLASS_BEGIN("Viper.Collections.Stack", Stack, "obj", StackNew)
     RT_PROP("IsEmpty", "i1", StackIsEmpty, none)
     RT_PROP("Count", "i64", StackLen, none)
@@ -720,18 +700,18 @@ RT_CLASS_BEGIN("Viper.Collections.Stack", Stack, "obj", StackNew)
     RT_METHOD("Peek", "obj()", StackPeek)
     RT_METHOD("Pop", "obj()", StackPop)
     RT_METHOD("Push", "void(obj)", StackPush)
+    RT_METHOD("SetOwnsElements", "void(i1)", StackSetOwnsElements)
     RT_METHOD("ToList", "obj<Viper.Collections.List>()", StackToList)
     RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", StackToSeq)
-    RT_METHOD("TryPop", "obj()", StackTryPop)
-    RT_METHOD("TryPopOption", "obj<Viper.Option>()", StackTryPopOption)
+    RT_METHOD("TryPop", "obj<Viper.Option>()", StackTryPopOption)
 RT_CLASS_END()
 
 // Viper.Collections.Iterator - unified collection iterator
 /// @summary Provides unified collection iterator.
 /// @details
 /// `Viper.Collections.Iterator` exposes a registry-backed runtime surface without requiring callers
-/// to construct the class directly. Its public surface exposes properties such as `Index`, `Count`
-/// and operations including `HasNext`, `Next`, `Peek`, `Reset`.
+/// to construct the class directly. Its public surface exposes properties such as `Index`,
+/// `Count` and operations including `HasNext`, `Next`, `Peek`, `Reset`.
 RT_CLASS_BEGIN("Viper.Collections.Iterator", Iterator, "obj", none)
     RT_PROP("Index", "i64", IterIndex, none)
     RT_PROP("Count", "i64", IterLen, none)
@@ -739,7 +719,7 @@ RT_CLASS_BEGIN("Viper.Collections.Iterator", Iterator, "obj", none)
     RT_METHOD("Next", "obj()", IterNext)
     RT_METHOD("Peek", "obj()", IterPeek)
     RT_METHOD("Reset", "void()", IterReset)
-    RT_METHOD("ToSeq", "obj()", IterToSeq)
+    RT_METHOD("ToSeq", "seq<obj>()", IterToSeq)
     RT_METHOD("Skip", "i64(i64)", IterSkip)
 RT_CLASS_END()
 
@@ -748,11 +728,11 @@ RT_CLASS_END()
 /// @details
 /// Create `Viper.Collections.TreeMap` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `IsEmpty`, `Count` and operations including `Ceil`, `Clear`, `Remove`, `First`.
-RT_CLASS_BEGIN("Viper.Collections.TreeMap", TreeMap, "obj", TreeMapNew)
+/// `IsEmpty`, `Count` and operations including `Ceiling`, `Clear`, `Remove`, `First`.
+RT_CLASS_BEGIN("Viper.Collections.SortedMap", TreeMap, "obj", TreeMapNew)
     RT_PROP("IsEmpty", "i1", TreeMapIsEmpty, none)
     RT_PROP("Count", "i64", TreeMapLen, none)
-    RT_METHOD("Ceil", "str(str)", TreeMapCeil)
+    RT_METHOD("Ceiling", "str(str)", TreeMapCeil)
     RT_METHOD("Clear", "void()", TreeMapClear)
     RT_METHOD("Remove", "i1(str)", TreeMapRemove)
     RT_METHOD("First", "str()", TreeMapFirst)
@@ -769,8 +749,8 @@ RT_CLASS_END()
 /// @summary Provides prefix tree for string keys.
 /// @details
 /// Create `Viper.Collections.Trie` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
-/// `Count` and operations including `Clear`, `Clone`, `Get`, `Has`.
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `Has`.
 RT_CLASS_BEGIN("Viper.Collections.Trie", Trie, "obj", TrieNew)
     RT_PROP("IsEmpty", "i1", TrieIsEmpty, none)
     RT_PROP("Count", "i64", TrieLen, none)
@@ -781,6 +761,7 @@ RT_CLASS_BEGIN("Viper.Collections.Trie", Trie, "obj", TrieNew)
     RT_METHOD("HasPrefix", "i1(str)", TrieHasPrefix)
     RT_METHOD("Keys", "seq<str>()", TrieKeys)
     RT_METHOD("LongestPrefix", "str(str)", TrieLongestPrefix)
+    RT_METHOD("LongestPrefixOption", "obj<Viper.Option>(str)", TrieLongestPrefixOption)
     RT_METHOD("Set", "void(str,obj)", TrieSet)
     RT_METHOD("Remove", "i1(str)", TrieRemove)
     RT_METHOD("WithPrefix", "seq<str>(str)", TrieWithPrefix)
@@ -791,13 +772,11 @@ RT_CLASS_END()
 /// @details
 /// `Viper.Core.Convert` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `ToDouble`,
-/// `ToInt64`, `NumToInt`, `ToString_Double`.
+/// `ToInt64`, `NumToInt`, `ToStringDouble`.
 RT_CLASS_BEGIN("Viper.Core.Convert", Convert, "obj", none)
     RT_METHOD("ToDouble", "f64(str)", ToDouble)
     RT_METHOD("ToInt64", "i64(str)", ToInt64)
     RT_METHOD("NumToInt", "i64(f64)", NumToInt)
-    RT_METHOD("ToString_Double", "str(f64)", ToStringDbl)
-    RT_METHOD("ToString_Int", "str(i64)", ToStringInt)
     RT_METHOD("ToStringDouble", "str(f64)", ToStringDoubleCanonical)
     RT_METHOD("ToStringInt", "str(i64)", ToStringIntCanonical)
 RT_CLASS_END()
@@ -806,60 +785,50 @@ RT_CLASS_END()
 /// @summary Provides modern hash/HMAC helpers plus legacy compatibility mirrors.
 /// @details
 /// `Viper.Crypto.Hash` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes operations including `CRC32`,
-/// `CRC32Bytes`, `MD5`, `MD5Bytes`.
+/// construct the class directly. Its public surface exposes operations including `Sha256`,
+/// `Sha256Bytes`, `HmacSha256`, `HmacSha256Bytes`.
 RT_CLASS_BEGIN("Viper.Crypto.Hash", Hash, "obj", none)
-    RT_METHOD("CRC32", "i64(str)", HashCRC32)
-    RT_METHOD("CRC32Bytes", "i64(obj)", HashCRC32Bytes)
-    RT_METHOD("MD5", "str(str)", HashMD5)
-    RT_METHOD("MD5Bytes", "str(obj)", HashMD5Bytes)
-    RT_METHOD("SHA1", "str(str)", HashSHA1)
-    RT_METHOD("SHA1Bytes", "str(obj)", HashSHA1Bytes)
-    RT_METHOD("SHA256", "str(str)", HashSHA256)
-    RT_METHOD("SHA256Bytes", "str(obj)", HashSHA256Bytes)
-    RT_METHOD("HmacMD5", "str(str,str)", HashHmacMD5)
-    RT_METHOD("HmacMD5Bytes", "str(obj,obj)", HashHmacMD5Bytes)
-    RT_METHOD("HmacSHA1", "str(str,str)", HashHmacSHA1)
-    RT_METHOD("HmacSHA1Bytes", "str(obj,obj)", HashHmacSHA1Bytes)
-    RT_METHOD("HmacSHA256", "str(str,str)", HashHmacSHA256)
-    RT_METHOD("HmacSHA256Bytes", "str(obj,obj)", HashHmacSHA256Bytes)
+    RT_METHOD("Sha256", "str(str)", HashSHA256)
+    RT_METHOD("Sha256Bytes", "str(obj)", HashSHA256Bytes)
+    RT_METHOD("HmacSha256", "str(str,str)", HashHmacSHA256)
+    RT_METHOD("HmacSha256Bytes", "str(obj,obj)", HashHmacSHA256Bytes)
     RT_METHOD("ConstantTimeEquals", "i1(str,str)", HashConstantTimeEquals)
     RT_METHOD("ConstantTimeEqualsBytes", "i1(obj,obj)", HashConstantTimeEqualsBytes)
-    RT_METHOD("Fast", "i64(str)", HashFast)
-    RT_METHOD("FastBytes", "i64(obj)", HashFastBytes)
-    RT_METHOD("FastInt", "i64(i64)", HashFastInt)
+    RT_METHOD("NonCryptoFast", "i64(str)", HashFast)
+    RT_METHOD("NonCryptoFastBytes", "i64(obj)", HashFastBytes)
+    RT_METHOD("NonCryptoFastInt", "i64(i64)", HashFastInt)
 RT_CLASS_END()
 
 // Viper.Crypto.Legacy.Hash - compatibility hashes and checksums
 /// @summary Provides compatibility hashes and checksums.
 /// @details
 /// `Viper.Crypto.Legacy.Hash` exposes a registry-backed runtime surface without requiring callers
-/// to construct the class directly. Its public surface exposes operations including `CRC32`,
-/// `CRC32Bytes`, `MD5`, `MD5Bytes`.
+/// to construct the class directly. Its public surface exposes operations including `Crc32`,
+/// `Crc32Bytes`, `Md5`, `Md5Bytes`.
 RT_CLASS_BEGIN("Viper.Crypto.Legacy.Hash", LegacyHash, "obj", none)
-    RT_METHOD("CRC32", "i64(str)", LegacyHashCRC32)
-    RT_METHOD("CRC32Bytes", "i64(obj)", LegacyHashCRC32Bytes)
-    RT_METHOD("MD5", "str(str)", LegacyHashMD5)
-    RT_METHOD("MD5Bytes", "str(obj)", LegacyHashMD5Bytes)
-    RT_METHOD("SHA1", "str(str)", LegacyHashSHA1)
-    RT_METHOD("SHA1Bytes", "str(obj)", LegacyHashSHA1Bytes)
-    RT_METHOD("HmacMD5", "str(str,str)", LegacyHashHmacMD5)
-    RT_METHOD("HmacMD5Bytes", "str(obj,obj)", LegacyHashHmacMD5Bytes)
-    RT_METHOD("HmacSHA1", "str(str,str)", LegacyHashHmacSHA1)
-    RT_METHOD("HmacSHA1Bytes", "str(obj,obj)", LegacyHashHmacSHA1Bytes)
+    RT_METHOD("Crc32", "i64(str)", LegacyHashCRC32)
+    RT_METHOD("Crc32Bytes", "i64(obj)", LegacyHashCRC32Bytes)
+    RT_METHOD("Md5", "str(str)", LegacyHashMD5)
+    RT_METHOD("Md5Bytes", "str(obj)", LegacyHashMD5Bytes)
+    RT_METHOD("Sha1", "str(str)", LegacyHashSHA1)
+    RT_METHOD("Sha1Bytes", "str(obj)", LegacyHashSHA1Bytes)
+    RT_METHOD("HmacMd5", "str(str,str)", LegacyHashHmacMD5)
+    RT_METHOD("HmacMd5Bytes", "str(obj,obj)", LegacyHashHmacMD5Bytes)
+    RT_METHOD("HmacSha1", "str(str,str)", LegacyHashHmacSHA1)
+    RT_METHOD("HmacSha1Bytes", "str(obj,obj)", LegacyHashHmacSHA1Bytes)
 RT_CLASS_END()
 
 // Viper.Crypto.KeyDerive - key derivation functions
 /// @summary Provides key derivation functions.
 /// @details
 /// `Viper.Crypto.KeyDerive` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes operations including `Pbkdf2SHA256`,
-/// `Pbkdf2SHA256Str`, `ScryptSHA256`, `ScryptSHA256Str`.
+/// construct the class directly. Its public surface exposes operations including `Pbkdf2Sha256`,
+/// `Pbkdf2Sha256Encoded`, `Scrypt`, `ScryptEncoded`.
 RT_CLASS_BEGIN("Viper.Crypto.KeyDerive", KeyDerive, "obj", none)
-    RT_METHOD("Pbkdf2SHA256", "obj(str,obj,i64,i64)", KeyDerivePbkdf2SHA256)
-    RT_METHOD("Pbkdf2SHA256Str", "str(str,obj,i64,i64)", KeyDerivePbkdf2SHA256Str)
-    RT_METHOD("ScryptSHA256", "obj(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256)
-    RT_METHOD("ScryptSHA256Str", "str(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256Str)
+    RT_METHOD("Pbkdf2Sha256", "obj(str,obj,i64,i64)", KeyDerivePbkdf2SHA256)
+    RT_METHOD("Pbkdf2Sha256Encoded", "str(str,obj,i64,i64)", KeyDerivePbkdf2SHA256Str)
+    RT_METHOD("Scrypt", "obj(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256)
+    RT_METHOD("ScryptEncoded", "str(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256Str)
 RT_CLASS_END()
 
 // Viper.Crypto.Password - secure password hashing
@@ -882,7 +851,7 @@ RT_CLASS_END()
 /// @details
 /// `Viper.Crypto.Rand` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Bytes`, `Int`.
-RT_CLASS_BEGIN("Viper.Crypto.Rand", CryptoRand, "obj", none)
+RT_CLASS_BEGIN("Viper.Crypto.SecureRandom", CryptoRand, "obj", none)
     RT_METHOD("Bytes", "obj<Viper.Collections.Bytes>(i64)", CryptoRandBytes)
     RT_METHOD("Int", "i64(i64,i64)", CryptoRandInt)
 RT_CLASS_END()
@@ -892,11 +861,9 @@ RT_CLASS_END()
 /// @details
 /// `Viper.Crypto.Module` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including
-/// `EnableApprovedMode`, `DisableApprovedMode`, `IsApprovedMode`, `EnableApprovedModeForProcess`.
-RT_CLASS_BEGIN("Viper.Crypto.Module", CryptoModule, "obj", none)
-    RT_METHOD("EnableApprovedMode", "i1()", CryptoModuleEnableApprovedMode)
-    RT_METHOD("DisableApprovedMode", "void()", CryptoModuleDisableApprovedMode)
-    RT_METHOD("IsApprovedMode", "i1()", CryptoModuleIsApprovedMode)
+/// `EnableApprovedModeForProcess`, `DisableApprovedModeForProcess`, `IsApprovedModeForProcess`,
+/// `Status`.
+RT_CLASS_BEGIN("Viper.Crypto.Compliance", CryptoModule, "obj", none)
     RT_METHOD("EnableApprovedModeForProcess", "i1()", CryptoModuleEnableApprovedModeForProcess)
     RT_METHOD("DisableApprovedModeForProcess", "void()", CryptoModuleDisableApprovedModeForProcess)
     RT_METHOD("IsApprovedModeForProcess", "i1()", CryptoModuleIsApprovedModeForProcess)
@@ -911,30 +878,30 @@ RT_CLASS_END()
 /// `Decrypt`, `DecryptResult`, `TryDecrypt`.
 RT_CLASS_BEGIN("Viper.Crypto.Cipher", Cipher, "obj", none)
     // Password-based encryption (key derived from password)
-    RT_METHOD("Encrypt", "obj(obj,str)", CipherEncrypt)
+    RT_METHOD("Encrypt", "obj<Viper.Collections.Bytes>(obj,str)", CipherEncrypt)
     RT_METHOD("Decrypt", "obj(obj,str)", CipherDecrypt)
     RT_METHOD("DecryptResult", "obj<Viper.Result>(obj,str)", CipherDecryptResult)
     RT_METHOD("TryDecrypt", "obj<Viper.Option>(obj,str)", CipherTryDecrypt)
-    RT_METHOD("EncryptAAD", "obj(obj,str,obj)", CipherEncryptAAD)
-    RT_METHOD("DecryptAAD", "obj(obj,str,obj)", CipherDecryptAAD)
-    RT_METHOD("DecryptAADResult", "obj<Viper.Result>(obj,str,obj)", CipherDecryptAADResult)
-    RT_METHOD("TryDecryptAAD", "obj<Viper.Option>(obj,str,obj)", CipherTryDecryptAAD)
+    RT_METHOD("EncryptAad", "obj<Viper.Collections.Bytes>(obj,str,obj)", CipherEncryptAAD)
+    RT_METHOD("DecryptAad", "obj(obj,str,obj)", CipherDecryptAAD)
+    RT_METHOD("DecryptAadResult", "obj<Viper.Result>(obj,str,obj)", CipherDecryptAADResult)
+    RT_METHOD("TryDecryptAad", "obj<Viper.Option>(obj,str,obj)", CipherTryDecryptAAD)
     // Key-based encryption (uses raw 32-byte key)
-    RT_METHOD("EncryptWithKey", "obj(obj,obj)", CipherEncryptWithKey)
+    RT_METHOD("EncryptWithKey", "obj<Viper.Collections.Bytes>(obj,obj)", CipherEncryptWithKey)
     RT_METHOD("DecryptWithKey", "obj(obj,obj)", CipherDecryptWithKey)
     RT_METHOD("DecryptWithKeyResult", "obj<Viper.Result>(obj,obj)", CipherDecryptWithKeyResult)
     RT_METHOD("TryDecryptWithKey", "obj<Viper.Option>(obj,obj)", CipherTryDecryptWithKey)
-    RT_METHOD("EncryptWithKeyAAD", "obj(obj,obj,obj)", CipherEncryptWithKeyAAD)
-    RT_METHOD("DecryptWithKeyAAD", "obj(obj,obj,obj)", CipherDecryptWithKeyAAD)
-    RT_METHOD("DecryptWithKeyAADResult", "obj<Viper.Result>(obj,obj,obj)", CipherDecryptWithKeyAADResult)
-    RT_METHOD("TryDecryptWithKeyAAD", "obj<Viper.Option>(obj,obj,obj)", CipherTryDecryptWithKeyAAD)
+    RT_METHOD("EncryptWithKeyAad", "obj<Viper.Collections.Bytes>(obj,obj,obj)", CipherEncryptWithKeyAAD)
+    RT_METHOD("DecryptWithKeyAad", "obj(obj,obj,obj)", CipherDecryptWithKeyAAD)
+    RT_METHOD("DecryptWithKeyAadResult", "obj<Viper.Result>(obj,obj,obj)", CipherDecryptWithKeyAADResult)
+    RT_METHOD("TryDecryptWithKeyAad", "obj<Viper.Option>(obj,obj,obj)", CipherTryDecryptWithKeyAAD)
     // Key utilities
-    RT_METHOD("GenerateKey", "obj()", CipherGenerateKey)
+    RT_METHOD("GenerateKey", "obj<Viper.Collections.Bytes>()", CipherGenerateKey)
     RT_METHOD("DeriveKey", "obj(str,obj)", CipherDeriveKey)
 RT_CLASS_END()
 
 // Viper.Crypto.Tls - TLS 1.3 secure connections
-/// @summary Provides tLS 1.3 secure connections.
+/// @summary Provides TLS 1.3 secure connections.
 /// @details
 /// `Viper.Crypto.Tls` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Host`, `Port`,
@@ -961,20 +928,19 @@ RT_CLASS_BEGIN("Viper.Crypto.Tls", Tls, "obj", none)
     RT_METHOD("RecvStr", "str(i64)", TlsRecvStr)
     RT_METHOD("RecvLine", "str()", TlsRecvLine)
     // Error and close
-    RT_METHOD("Error", "str()", TlsError)
     RT_METHOD("Close", "void()", TlsClose)
 RT_CLASS_END()
 
 // Viper.Time.DateTime - static utility class
-/// @summary Provides Date Time functionality for time and scheduling workflows.
-/// @details
-/// `Viper.Time.DateTime` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes operations including `AddDays`,
-/// `AddSeconds`, `Create`, `Day`.
+/// @summary Reads, converts, parses, and formats Unix timestamps.
+/// @details Timestamps use signed Unix seconds except `NowMs`. Component access and `Create` use
+/// the host local zone; `ToISO` uses UTC, and named-zone operations use Viper's embedded subset.
+/// Parsing uses legacy numeric sentinels plus `TryParseOption`; checked arithmetic traps on
+/// signed overflow.
 RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("AddDays", "i64(i64,i64)", DateTimeAddDays)
     RT_METHOD("AddSeconds", "i64(i64,i64)", DateTimeAddSeconds)
-    RT_METHOD("Create", "i64(i64,i64,i64,i64,i64,i64)", DateTimeCreate)
+    RT_METHOD("FromParts", "i64(i64,i64,i64,i64,i64,i64)", DateTimeCreate)
     RT_METHOD("Day", "i64(i64)", DateTimeDay)
     RT_METHOD("DayOfWeek", "i64(i64)", DateTimeDayOfWeek)
     RT_METHOD("Diff", "i64(i64,i64)", DateTimeDiff)
@@ -986,23 +952,21 @@ RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("Now", "i64()", DateTimeNow)
     RT_METHOD("NowMs", "i64()", DateTimeNowMs)
     RT_METHOD("Second", "i64(i64)", DateTimeSecond)
-    RT_METHOD("ToISO", "str(i64)", DateTimeToISO)
-    RT_METHOD("ToLocal", "str(i64)", DateTimeToLocal)
+    RT_METHOD("ToIso8601", "str(i64)", DateTimeToISO)
+    RT_METHOD("FormatLocal", "str(i64)", DateTimeToLocal)
     RT_METHOD("ToZone", "str(i64,obj)", DateTimeToZone)
     RT_METHOD("Year", "i64(i64)", DateTimeYear)
-    RT_METHOD("ParseISO", "i64(str)", DateTimeParseISO)
+    RT_METHOD("ParseIso8601", "i64(str)", DateTimeParseISO)
     RT_METHOD("ParseDate", "i64(str)", DateTimeParseDate)
     RT_METHOD("ParseTime", "i64(str)", DateTimeParseTime)
-    RT_METHOD("TryParse", "i64(str)", DateTimeTryParse)
-    RT_METHOD("TryParseOption", "obj<Viper.Option>(str)", DateTimeTryParseOption)
+    RT_METHOD("TryParse", "obj<Viper.Option>(str)", DateTimeTryParseOption)
 RT_CLASS_END()
 
 // Viper.Time.TimeZone - deterministic IANA named-zone lookup
-/// @summary Provides deterministic IANA named-zone lookup.
-/// @details
-/// `Viper.Time.TimeZone` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes a property such as `Name` and
-/// operations including `Find`, `OffsetAt`, `IsDstAt`.
+/// @summary Resolves Viper's deterministic embedded IANA-zone subset.
+/// @details `Find` is exact and traps for an empty or unknown name. Returned handles point at
+/// process-lifetime static data. Transition coverage is deliberately limited; `OffsetAt` and
+/// `IsDstAt` keep the first/last configured rules outside each zone's embedded window.
 RT_CLASS_BEGIN("Viper.Time.TimeZone", TimeZone, "obj", none)
     RT_METHOD("Find", "obj(str)", TimeZoneFind)
     RT_PROP("Name", "str", TimeZoneName, none)
@@ -1011,11 +975,10 @@ RT_CLASS_BEGIN("Viper.Time.TimeZone", TimeZone, "obj", none)
 RT_CLASS_END()
 
 // Viper.Time.Duration - time interval/duration type
-/// @summary Provides time interval/duration type.
-/// @details
-/// `Viper.Time.Duration` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes properties such as `Days`, `Hours`,
-/// `Minutes` and operations including `FromMillis`, `FromSeconds`, `FromMinutes`, `FromHours`.
+/// @summary Manipulates signed 64-bit millisecond duration values.
+/// @details Duration is a scalar rather than a heap object. Factories and arithmetic use checked
+/// signed math; component accessors use the magnitude, while total accessors preserve the sign
+/// and truncate whole-unit conversions toward zero. Formatting returns owned strings.
 RT_CLASS_BEGIN("Viper.Time.Duration", Duration, "obj", none)
     // Creation
     RT_METHOD("FromMillis", "i64(i64)", DurationFromMillis)
@@ -1023,7 +986,7 @@ RT_CLASS_BEGIN("Viper.Time.Duration", Duration, "obj", none)
     RT_METHOD("FromMinutes", "i64(i64)", DurationFromMinutes)
     RT_METHOD("FromHours", "i64(i64)", DurationFromHours)
     RT_METHOD("FromDays", "i64(i64)", DurationFromDays)
-    RT_METHOD("Create", "i64(i64,i64,i64,i64,i64)", DurationCreate)
+    RT_METHOD("FromParts", "i64(i64,i64,i64,i64,i64)", DurationCreate)
     RT_METHOD("Zero", "i64()", DurationZero)
     // Total conversions
     RT_METHOD("TotalMillis", "i64(i64)", DurationTotalMillis)
@@ -1044,19 +1007,18 @@ RT_CLASS_BEGIN("Viper.Time.Duration", Duration, "obj", none)
     RT_METHOD("Mul", "i64(i64,i64)", DurationMul)
     RT_METHOD("Div", "i64(i64,i64)", DurationDiv)
     RT_METHOD("Abs", "i64(i64)", DurationAbs)
-    RT_METHOD("Neg", "i64(i64)", DurationNeg)
-    RT_METHOD("Cmp", "i64(i64,i64)", DurationCmp)
+    RT_METHOD("Negate", "i64(i64)", DurationNeg)
+    RT_METHOD("Compare", "i64(i64,i64)", DurationCmp)
     // Formatting
     RT_METHOD("ToString", "str(i64)", DurationToString)
-    RT_METHOD("ToISO", "str(i64)", DurationToISO)
+    RT_METHOD("ToIso8601", "str(i64)", DurationToISO)
 RT_CLASS_END()
 
 // Viper.Time.RelativeTime - human-readable relative time formatting
-/// @summary Provides human-readable relative time formatting.
-/// @details
-/// `Viper.Time.RelativeTime` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes operations including `Format`,
-/// `FormatFrom`, `FormatDuration`, `FormatShort`.
+/// @summary Formats timestamps and millisecond durations as compact English relative text.
+/// @details Timestamp forms use fixed second/minute/hour/day/30-day-month/365-day-year buckets.
+/// `FormatDuration` emits whole-second multi-unit text and discards sub-second precision. These
+/// helpers are hard-coded English and are separate from the localization formatters.
 RT_CLASS_BEGIN("Viper.Time.RelativeTime", RelativeTime, "obj", none)
     RT_METHOD("Format", "str(i64)", RelTimeFormat)
     RT_METHOD("FormatFrom", "str(i64,i64)", RelTimeFormatFrom)
@@ -1065,11 +1027,10 @@ RT_CLASS_BEGIN("Viper.Time.RelativeTime", RelativeTime, "obj", none)
 RT_CLASS_END()
 
 // Viper.Time.DateRange - date interval type
-/// @summary Provides date interval type.
-/// @details
-/// Create `Viper.Time.DateRange` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Start`,
-/// `End` and operations including `Contains`, `Days`, `Duration`, `Hours`.
+/// @summary Represents a normalized closed range of integer Unix seconds.
+/// @details `New` swaps reversed endpoints. Containment includes both endpoints; duration queries
+/// use `End - Start`. `Intersection` returns null for disjoint ranges, while `Union` returns null
+/// unless the ranges overlap or are adjacent by one second.
 RT_CLASS_BEGIN("Viper.Time.DateRange", DateRange, "obj", DateRangeNew)
     RT_PROP("Start", "i64", DateRangeStart, none)
     RT_PROP("End", "i64", DateRangeEnd, none)
@@ -1103,11 +1064,12 @@ RT_CLASS_END()
 /// @summary Provides Char constants and static operations for text processing workflows.
 /// @details
 /// `Viper.Text.Char` is a static runtime surface and does not require an instance. Its public
-/// surface exposes operations including `IsIdentifierStart`, `IsIdentifierPart`, `IsAlnum`.
+/// Its public surface exposes operations including `IsIdentifierStart`, `IsIdentifierPart`,
+/// `IsAlphanumeric`.
 RT_CLASS_BEGIN("Viper.Text.Char", TextChar, "none", none)
     RT_METHOD("IsIdentifierStart", "i1(str)", TextCharIsIdentStart)
     RT_METHOD("IsIdentifierPart",  "i1(str)", TextCharIsIdentPart)
-    RT_METHOD("IsAlnum",           "i1(str)", TextCharIsAlnum)
+    RT_METHOD("IsAlphanumeric",           "i1(str)", TextCharIsAlnum)
 RT_CLASS_END()
 
 //=============================================================================

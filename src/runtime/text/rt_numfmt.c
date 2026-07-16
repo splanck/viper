@@ -29,6 +29,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_numfmt.h"
+#include "rt_format.h"
 #include "rt_internal.h"
 #include "rt_numfmt_internal.h"
 #include "rt_string_builder.h"
@@ -50,52 +51,27 @@ static uint64_t abs_i64_magnitude(int64_t n) {
     return (uint64_t)(-(n + 1)) + 1;
 }
 
-static char *numfmt_alloc_buffer(int needed) {
-    if (needed < 0) {
-        rt_trap("NumberFormat: formatting failed");
-        needed = 0;
-    }
 
-    char *buf = (char *)malloc((size_t)needed + 1);
-    if (!buf) {
-        rt_trap("NumberFormat: memory allocation failed");
-        return NULL;
-    }
-    return buf;
-}
-
-static rt_string numfmt_finish_buffer(char *buf, int written, int needed) {
-    if (!buf)
-        return rt_string_from_bytes("", 0);
-    if (written < 0 || written > needed) {
-        free(buf);
-        rt_trap("NumberFormat: formatting failed");
-        return rt_string_from_bytes("", 0);
-    }
-
-    rt_string result = rt_string_from_bytes(buf, (size_t)written);
-    free(buf);
-    return result;
-}
 
 static rt_string numfmt_fixed(double value, int decimals) {
-    int needed = snprintf(NULL, 0, "%.*f", decimals, value);
-    char *buf = numfmt_alloc_buffer(needed);
-    if (!buf)
+    // C-locale conversion: InvariantNumberFormat output must not inherit the
+    // embedding process's LC_NUMERIC decimal separator (VDOC-041). A fixed
+    // buffer covers the worst case (%f of ~1e308 plus 20 decimals ≈ 335 bytes).
+    char buf[512];
+    int written = rt_format_snprintf_c_locale(buf, sizeof(buf), "%.*f", decimals, value);
+    if (written < 0 || (size_t)written >= sizeof(buf))
         return rt_string_from_bytes("", 0);
-    int written = snprintf(buf, (size_t)needed + 1, "%.*f", decimals, value);
-    return numfmt_finish_buffer(buf, written, needed);
+    return rt_string_from_bytes(buf, (size_t)written);
 }
 
 static rt_string numfmt_percent_fixed(double value, int decimals) {
-    int needed =
-        decimals == 0 ? snprintf(NULL, 0, "%.0f%%", value) : snprintf(NULL, 0, "%.1f%%", value);
-    char *buf = numfmt_alloc_buffer(needed);
-    if (!buf)
+    char buf[512];
+    int written = decimals == 0
+                      ? rt_format_snprintf_c_locale(buf, sizeof(buf), "%.0f%%", value)
+                      : rt_format_snprintf_c_locale(buf, sizeof(buf), "%.1f%%", value);
+    if (written < 0 || (size_t)written >= sizeof(buf))
         return rt_string_from_bytes("", 0);
-    int written = decimals == 0 ? snprintf(buf, (size_t)needed + 1, "%.0f%%", value)
-                                : snprintf(buf, (size_t)needed + 1, "%.1f%%", value);
-    return numfmt_finish_buffer(buf, written, needed);
+    return rt_string_from_bytes(buf, (size_t)written);
 }
 
 static rt_string numfmt_nonfinite(double value, const char *suffix) {

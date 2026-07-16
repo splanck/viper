@@ -25,7 +25,7 @@ result = Viper.String.Trim("")
 PRINT "Trim(''): '"; result; "'"
 
 ' String.Flip on empty
-result = Viper.String.Flip("")
+result = Viper.String.Reverse("")
 PRINT "Flip(''): '"; result; "'"
 
 ' String.Left/Right on empty
@@ -98,13 +98,13 @@ PRINT "IndexOf('', ''): "; num
 PRINT ""
 PRINT "=== Has Tests ==="
 
-flag = Viper.String.Has("hello", "")
+flag = Viper.String.Contains("hello", "")
 PRINT "Has('hello', ''): "; flag
 
-flag = Viper.String.Has("", "x")
+flag = Viper.String.Contains("", "x")
 PRINT "Has('', 'x'): "; flag
 
-flag = Viper.String.Has("", "")
+flag = Viper.String.Contains("", "")
 PRINT "Has('', ''): "; flag
 
 ' === Replace edge cases ===

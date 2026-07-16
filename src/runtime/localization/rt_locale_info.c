@@ -96,11 +96,12 @@ rt_string rt_locale_info_text_direction(void *locale) {
     return loc_info_str(d->text_direction);
 }
 
-/// @brief Return the first day of the week for @p locale as a 1-based integer.
-/// @details Follows ISO 8601 convention: 1 = Monday … 7 = Sunday.
+/// @brief Return the first day of the week for @p locale as a 0-based index.
+/// @details 0 = Sunday … 6 = Saturday, matching the locale-data schema and the
+///          months/days array convention (en-US default is 0/Sunday).
 ///          The value is read from `first_day_of_week` in the bound locale data.
-/// @param locale Opaque Locale handle; may be NULL.
-/// @return First day index (1–7), or 0 if the locale data does not specify one.
+/// @param locale Opaque Locale handle; may be NULL (invariant data is used).
+/// @return First day index (0–6).
 int64_t rt_locale_info_first_day_of_week(void *locale) {
     const rt_locale_data_t *d = rt_locale_get_data(locale);
     return (int64_t)d->first_day_of_week;

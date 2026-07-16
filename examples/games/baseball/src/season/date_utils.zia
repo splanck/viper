@@ -22,7 +22,7 @@ bind "../model/player";
 
 // Convert (year, month, day) to integer days-since-epoch via DateOnly.
 func toDays(year: Integer, month: Integer, day: Integer) -> Integer {
-    return DO.Create(year, month, day).ToDays();
+    return DO.FromParts(year, month, day).ToDays();
 }
 
 // Add a delta to a days-since-epoch value and return the result. Used by

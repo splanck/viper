@@ -8,7 +8,7 @@ func start() {
 
     // Test Ring with explicit capacity
     var ring = new Viper.Collections.Ring(16);
-    if (ring.Cap != 16) {
+    if (ring.Capacity != 16) {
         Say("FAIL: Ring(16).Cap should be 16");
         passed = false;
     }
@@ -18,7 +18,7 @@ func start() {
     }
 
     var defaultRing = new Viper.Collections.Ring();
-    if (defaultRing.Cap <= 0) {
+    if (defaultRing.Capacity <= 0) {
         Say("FAIL: default Ring capacity should be positive");
         passed = false;
     }

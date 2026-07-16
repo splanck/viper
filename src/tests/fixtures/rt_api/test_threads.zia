@@ -6,11 +6,11 @@ bind Viper.Terminal;
 func start() {
     var cq = new Viper.Threads.ConcurrentQueue();
     SayBool(cq.IsEmpty);
-    cq.Enqueue("a");
-    cq.Enqueue("b");
-    cq.Enqueue("c");
+    cq.Push("a");
+    cq.Push("b");
+    cq.Push("c");
     SayInt(cq.Count);
-    cq.Dequeue();
+    cq.Pop();
     SayInt(cq.Count);
     cq.Clear();
     SayBool(cq.IsEmpty);
@@ -75,7 +75,7 @@ func start() {
     var th = new Viper.Threads.Throttler(100);
     SayInt(th.Interval);
     SayInt(th.Count);
-    SayBool(th.Try());
+    SayBool(th.TryAcquire());
     SayInt(th.Count);
 
     var sched = new Viper.Threads.Scheduler();

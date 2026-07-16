@@ -207,7 +207,11 @@ typedef unsigned int GLbitfield;
 #define GL_LINE 0x1B01
 #define GL_FILL 0x1B02
 #define GL_INVALID_INDEX 0xFFFFFFFFu
+/* ARB_clip_control / GL 4.5 */
+#define GL_LOWER_LEFT 0x8CA1
+#define GL_ZERO_TO_ONE 0x935F
 
+typedef void (*PFNGLCLIPCONTROLPROC)(GLenum, GLenum);
 typedef void (*PFNGLCLEARPROC)(GLbitfield);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat, GLfloat, GLfloat, GLfloat);
 typedef void (*PFNGLCLEARDEPTHPROC)(double);
@@ -337,6 +341,8 @@ static struct {
     PFNGLCREATESHADERPROC CreateShader;
     PFNGLSHADERSOURCEPROC ShaderSource;
     PFNGLCOMPILESHADERPROC CompileShader;
+    /* Optional (GL >= 4.5 / ARB_clip_control); NULL when unavailable. */
+    PFNGLCLIPCONTROLPROC ClipControl;
     PFNGLGETSHADERIVPROC GetShaderiv;
     PFNGLGETSHADERINFOLOGPROC GetShaderInfoLog;
     PFNGLCREATEPROGRAMPROC CreateProgram;
@@ -1278,6 +1284,10 @@ static int load_gl(void) {
     LOADP(CreateShader);
     LOADP(ShaderSource);
     LOADP(CompileShader);
+    /* Optional: ARB_clip_control (GL 4.5). NULL is fine — the backend keeps
+     * the fixed [-1,1] depth mapping when the entry point is absent. */
+    gl.ClipControl =
+        (PFNGLCLIPCONTROLPROC)glx.GetProcAddress((const unsigned char *)"glClipControl");
     LOADP(GetShaderiv);
     LOADP(GetShaderInfoLog);
     LOADP(CreateProgram);
@@ -1382,17 +1392,43 @@ fail: {
 
 #include "vgfx3d_backend_opengl_shaders.inc"
 
+/* Set once at context init, before any shader compiles: non-zero when
+ * glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE) is active for this context.
+ * Injects the depth-convention macros into every GLSL compile so shader
+ * bodies stay convention-agnostic (VIPER_DEPTH_TO_NDC + the VS z remap). */
+static int gl_zero_to_one_clip = 0;
+
 /// @brief Compile a GLSL shader from one-or-more source strings.
 ///
 /// `src_count` allows splicing multiple strings (e.g., a #version
-/// preamble + the body) into a single compile. On compile failure
-/// dumps the GLSL info log to stderr and deletes the shader.
+/// preamble + the body) into a single compile. The depth-convention
+/// prologue is spliced immediately after the leading #version part
+/// (GLSL requires #version first). On compile failure dumps the GLSL
+/// info log to stderr and deletes the shader.
 /// Returns the shader handle, or 0 on failure.
 static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei src_count) {
+    const char *spliced[20];
+    const char *prologue = gl_zero_to_one_clip
+                               ? "#define VIPER_DEPTH_ZERO_TO_ONE 1\n"
+                                 "#define VIPER_DEPTH_TO_NDC(d) (d)\n"
+                               : "#define VIPER_DEPTH_TO_NDC(d) ((d) * 2.0 - 1.0)\n";
     GLuint shader = gl.CreateShader(type);
     if (!shader)
         return 0;
-    gl.ShaderSource(shader, src_count, src, NULL);
+    if (src_count > 0 && src_count < (GLsizei)(sizeof(spliced) / sizeof(spliced[0]))) {
+        GLsizei out = 0;
+        GLsizei start = 0;
+        if (strncmp(src[0], "#version", 8) == 0) {
+            spliced[out++] = src[0];
+            start = 1;
+        }
+        spliced[out++] = prologue;
+        for (GLsizei i = start; i < src_count; i++)
+            spliced[out++] = src[i];
+        gl.ShaderSource(shader, out, spliced, NULL);
+    } else {
+        gl.ShaderSource(shader, src_count, src, NULL);
+    }
     gl.CompileShader(shader);
     GLint ok = 0;
     gl.GetShaderiv(shader, GL_COMPILE_STATUS, &ok);
@@ -1736,6 +1772,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
      * stay standard (Less, clear 1, pinned in gl_shadow_begin). */
     .reversed_z = 1,
     .name = "opengl",
+    .gpu_skinning = 1,
     .create_ctx = gl_create_ctx,
     .destroy_ctx = gl_destroy_ctx,
     .clear = gl_clear,

@@ -67,12 +67,12 @@ func start() {
     var canvas = Canvas3D.New("Sprite3D Demo", 800, 600);
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
-    var floor_mesh = Mesh3D.NewPlane(30.0, 30.0);
-    var floor_mat = Material3D.NewColor(0.25, 0.4, 0.2);
+    var floor_mesh = Mesh3D.Plane(30.0, 30.0);
+    var floor_mat = Material3D.FromColor(0.25, 0.4, 0.2);
 
     // Lighting
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.85);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.85);
     Canvas3D.SetLight(canvas, 0, sun);
     Canvas3D.SetAmbient(canvas, 0.2, 0.2, 0.25);
 
@@ -111,7 +111,7 @@ func start() {
 
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.4, 0.6, 0.9);
 

@@ -7,5 +7,5 @@ FOR i = 0 TO 19999999
     IF i MOD 5 = 0 THEN count = count + 3
     IF i MOD 7 = 0 THEN count = count + 5
 NEXT i
-Viper.System.Environment.EndProgram(count)
+Viper.System.Environment.Exit(count)
 END

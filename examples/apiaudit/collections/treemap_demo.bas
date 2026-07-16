@@ -1,4 +1,4 @@
-' treemap_demo.bas - Comprehensive API audit for Viper.Collections.TreeMap
+' treemap_demo.bas - Comprehensive API audit for Viper.Collections.SortedMap
 ' Tests: New, Set, Get, Has, Drop, Clear, Len, IsEmpty,
 '        Keys, Values, First, Last, Floor, Ceil
 
@@ -6,8 +6,8 @@ PRINT "=== TreeMap API Audit ==="
 
 ' --- New ---
 PRINT "--- New ---"
-DIM tm AS Viper.Collections.TreeMap
-tm = Viper.Collections.TreeMap.New()
+DIM tm AS Viper.Collections.SortedMap
+tm = Viper.Collections.SortedMap.New()
 PRINT tm.Count       ' 0
 PRINT tm.IsEmpty   ' 1
 

@@ -60,6 +60,7 @@ static void world3d_finalizer(void *obj) {
     free(w->query_broadphase_entries);
     free(w->query_hits_scratch);
     w->query_hits_scratch = NULL;
+    world3d_step_scratch_free_all(w);
     if (w->solver_pool) {
         /* Same owned-pool teardown as the software rasterizer: drain, then drop
          * the runtime object reference. */
@@ -197,6 +198,10 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->broadphase_entries = NULL;
     w->broadphase_sort_scratch = NULL;
     w->query_broadphase_entries = NULL;
+    for (int32_t scratch_slot = 0; scratch_slot < PH3D_WORLD_SCRATCH_SLOTS; scratch_slot++) {
+        w->step_scratch[scratch_slot] = NULL;
+        w->step_scratch_capacity[scratch_slot] = 0;
+    }
     w->broadphase_world_revision = 1;
     w->solver_iterations = PH3D_DEFAULT_SOLVER_ITERATIONS;
     w->position_iterations = PH3D_DEFAULT_POSITION_ITERATIONS;
@@ -404,75 +409,109 @@ void rt_world3d_step(void *obj, double dt) {
              * displacements small; this pass makes the guarantee exact. The
              * bounding sphere over-approximates non-spherical colliders
              * (conservative — clipping early is safe; the regular contact
-             * solve takes over at the surface). */
+             * solve takes over at the surface).
+             *
+             * Per-body catch-up: when the global substep cap
+             * (PH3D_MAX_CCD_SUBSTEPS) left THIS body moving more than its CCD
+             * threshold per substep, its advance is subdivided into swept
+             * segments here — the whole world integrates once and only the
+             * fast body pays for extra sweeps. Unclamped bodies always take
+             * exactly one segment, keeping their trajectories bit-identical
+             * to the single-sweep path. */
             if (b->use_ccd && b->motion_mode == PH3D_MODE_DYNAMIC && !b->is_sleeping) {
-                double delta[3] = {
+                double first_delta[3] = {
                     b->velocity[0] * sub_dt,
                     b->velocity[1] * sub_dt,
                     b->velocity[2] * sub_dt,
                 };
-                double move_len = vec3_len(delta);
+                double move_len = vec3_len(first_delta);
                 double threshold = body3d_ccd_threshold(b);
                 if (isfinite(move_len) && threshold > 1e-6 && move_len > threshold * 0.5) {
-                    double bmin[3];
-                    double bmax[3];
-                    body_aabb(b, bmin, bmax);
-                    double radius =
-                        0.5 * fmax(bmax[0] - bmin[0], fmax(bmax[1] - bmin[1], bmax[2] - bmin[2]));
-                    double toi = 1.0;
-                    double normal[3] = {0.0, 1.0, 0.0};
-                    if (radius > 1e-6 &&
-                        world3d_ccd_sweep_sphere_raw(
-                            w, b->position, radius, delta, b, sub_dt, &toi, normal) &&
-                        toi < 1.0) {
-                        /* Speculative clip: stop the NORMAL component of the
-                         * translation just before the surface, but carry the
-                         * full tangential component. A body rolling or sliding
-                         * along a surface it is barely separated from sweeps
-                         * into it every substep with toi ~= 0; clipping the
-                         * whole delta would freeze its tangential motion (the
-                         * bowling-ball-stalls-on-the-lane failure). Head-on
-                         * impacts have no tangential part, so the thin-wall
-                         * anti-tunneling guarantee is unchanged. */
-                        double dn =
-                            delta[0] * normal[0] + delta[1] * normal[1] + delta[2] * normal[2];
-                        double clipped_n = dn * toi;
-                        if (dn < 0.0) {
-                            /* Small skin keeps the narrowphase from starting
-                             * embedded next substep. */
-                            clipped_n += 1e-3;
-                            if (clipped_n > 0.0)
-                                clipped_n = 0.0;
+                    int32_t segments = 1;
+                    int clipped_any = 0;
+                    if (move_len > threshold) {
+                        double seg_f = ceil(move_len / threshold);
+                        segments = (isfinite(seg_f) && seg_f >= 1.0)
+                                       ? (seg_f >= 64.0 ? 64 : (int32_t)seg_f)
+                                       : 1;
+                    }
+                    double seg_dt = sub_dt / (double)segments;
+                    for (int32_t seg = 0; seg < segments; seg++) {
+                        double delta[3] = {
+                            b->velocity[0] * seg_dt,
+                            b->velocity[1] * seg_dt,
+                            b->velocity[2] * seg_dt,
+                        };
+                        double bmin[3];
+                        double bmax[3];
+                        body_aabb(b, bmin, bmax);
+                        double radius = 0.5 * fmax(bmax[0] - bmin[0],
+                                                   fmax(bmax[1] - bmin[1], bmax[2] - bmin[2]));
+                        double toi = 1.0;
+                        double normal[3] = {0.0, 1.0, 0.0};
+                        if (radius > 1e-6 &&
+                            world3d_ccd_sweep_sphere_raw(
+                                w, b->position, radius, delta, b, seg_dt, &toi, normal) &&
+                            toi < 1.0) {
+                            /* Speculative clip: stop the NORMAL component of the
+                             * translation just before the surface, but carry the
+                             * full tangential component. A body rolling or sliding
+                             * along a surface it is barely separated from sweeps
+                             * into it every substep with toi ~= 0; clipping the
+                             * whole delta would freeze its tangential motion (the
+                             * bowling-ball-stalls-on-the-lane failure). Head-on
+                             * impacts have no tangential part, so the thin-wall
+                             * anti-tunneling guarantee is unchanged. */
+                            double dn =
+                                delta[0] * normal[0] + delta[1] * normal[1] + delta[2] * normal[2];
+                            double clipped_n = dn * toi;
+                            if (dn < 0.0) {
+                                /* Small skin keeps the narrowphase from starting
+                                 * embedded next substep. */
+                                clipped_n += 1e-3;
+                                if (clipped_n > 0.0)
+                                    clipped_n = 0.0;
+                            }
+                            ph3d_vec3_accumulate_state(
+                                b->position,
+                                (delta[0] - dn * normal[0]) + normal[0] * clipped_n,
+                                (delta[1] - dn * normal[1]) + normal[1] * clipped_n,
+                                (delta[2] - dn * normal[2]) + normal[2] * clipped_n);
+                            /* Reflect the approaching normal component by the
+                             * body's restitution (matches what the solver would
+                             * do); the tangential component is preserved so the
+                             * body slides. If the contact persists next substep,
+                             * the solver sees a separating/neutral velocity and
+                             * adds no double bounce. Later segments re-derive
+                             * their delta from the reflected velocity. */
+                            double vn = b->velocity[0] * normal[0] + b->velocity[1] * normal[1] +
+                                        b->velocity[2] * normal[2];
+                            if (vn < 0.0) {
+                                double e = b->restitution;
+                                if (!isfinite(e) || e < 0.0)
+                                    e = 0.0;
+                                if (e > 1.0)
+                                    e = 1.0;
+                                double impulse = -(1.0 + e) * vn;
+                                ph3d_vec3_accumulate_state(b->velocity,
+                                                           normal[0] * impulse,
+                                                           normal[1] * impulse,
+                                                           normal[2] * impulse);
+                            }
+                            w->ccd_toi_count++;
+                            clipped_any = 1;
+                        } else if (segments > 1) {
+                            ph3d_vec3_accumulate_state(b->position, delta[0], delta[1], delta[2]);
                         }
-                        ph3d_vec3_accumulate_state(
-                            b->position,
-                            (delta[0] - dn * normal[0]) + normal[0] * clipped_n,
-                            (delta[1] - dn * normal[1]) + normal[1] * clipped_n,
-                            (delta[2] - dn * normal[2]) + normal[2] * clipped_n);
-                        /* Reflect the approaching normal component by the
-                         * body's restitution (matches what the solver would
-                         * do); the tangential component is preserved so the
-                         * body slides. If the contact persists next substep,
-                         * the solver sees a separating/neutral velocity and
-                         * adds no double bounce. */
-                        double vn = b->velocity[0] * normal[0] + b->velocity[1] * normal[1] +
-                                    b->velocity[2] * normal[2];
-                        if (vn < 0.0) {
-                            double e = b->restitution;
-                            if (!isfinite(e) || e < 0.0)
-                                e = 0.0;
-                            if (e > 1.0)
-                                e = 1.0;
-                            double impulse = -(1.0 + e) * vn;
-                            ph3d_vec3_accumulate_state(b->velocity,
-                                                       normal[0] * impulse,
-                                                       normal[1] * impulse,
-                                                       normal[2] * impulse);
-                        }
-                        w->ccd_toi_count++;
+                        /* segments == 1 with no hit: leave position untouched
+                         * and fall through to the shared plain-advance path
+                         * below — identical op order to the pre-segment code. */
+                    }
+                    if (clipped_any || segments > 1) {
                         quat_integrate(b->orientation, b->angular_velocity, sub_dt);
                         ph3d_vec3_sanitize_state(b->position);
-                        ph3d_vec3_sanitize_state(b->velocity);
+                        if (clipped_any)
+                            ph3d_vec3_sanitize_state(b->velocity);
                         quat_normalize(b->orientation);
                         body3d_touch_broadphase_moved(b);
                         continue;

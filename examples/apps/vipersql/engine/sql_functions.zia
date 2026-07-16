@@ -139,7 +139,7 @@ func parseDateTimeArg(val: SqlValue) -> Integer {
         return val.intValue;
     }
     var s = val.toString();
-    return DateTime.TryParse(s);
+    return DateTime.TryParse(s).UnwrapOrI64(0);
 }
 
 // fmtDateParts and fmtTimeParts are defined in types.zia
@@ -354,7 +354,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         if arg.kind == SQL_TEXT {
-            return sqlText(String.Flip(arg.textValue));
+            return sqlText(String.Reverse(arg.textValue));
         }
     }
 
@@ -618,7 +618,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         var s = arg.toString();
-        var hash = LegacyHash.MD5(s);
+        var hash = Viper.Crypto.Legacy.Hash.Md5(s);
         return sqlText(String.ToLower(hash));
     }
 
@@ -627,7 +627,7 @@ func evalStringFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         var s = arg.toString();
-        var hash = CryptoHash.SHA256(s);
+        var hash = CryptoHash.Sha256(s);
         return sqlText(String.ToLower(hash));
     }
 
@@ -966,7 +966,7 @@ func evalMathFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var v = 0.0;
         if arg.kind == SQL_REAL { v = arg.realValue; }
         else { v = stringToNumber(arg.textValue); }
-        var tr = Trunc(v);
+        var tr = Truncate(v);
         var ti = stringToInt(Fmt.Num(tr));
         return sqlInteger(ti);
     }
@@ -1374,8 +1374,8 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var y2 = DateTime.Year(ts2);
         var m2 = DateTime.Month(ts2);
         var d2 = DateTime.Day(ts2);
-        var noon1 = DateTime.Create(y1, m1, d1, 12, 0, 0);
-        var noon2 = DateTime.Create(y2, m2, d2, 12, 0, 0);
+        var noon1 = DateTime.FromParts(y1, m1, d1, 12, 0, 0);
+        var noon2 = DateTime.FromParts(y2, m2, d2, 12, 0, 0);
         var diffSecs = DateTime.Diff(noon1, noon2);
         if diffSecs >= 0 {
             return sqlInteger((diffSecs + 43200) / 86400);
@@ -1410,7 +1410,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var arg = args.get(0);
         if arg.kind == SQL_NULL { return sqlNull(); }
         var secs = sqlToInt(arg);
-        return sqlText(DateTime.ToLocal(secs));
+        return sqlText(DateTime.FormatLocal(secs));
     }
 
     // DATE_PART(field, source) — same as EXTRACT but function syntax
@@ -1431,7 +1431,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if field == "DOY" {
             // Day of year: count days from Jan 1
             var y = DateTime.Year(ts);
-            var jan1 = DateTime.Create(y, 1, 1, 0, 0, 0);
+            var jan1 = DateTime.FromParts(y, 1, 1, 0, 0, 0);
             var diffSecs = DateTime.Diff(ts, jan1);
             return sqlInteger(diffSecs / 86400 + 1);
         }
@@ -1442,7 +1442,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if field == "WEEK" || field == "ISOWEEK" {
             // ISO week: day of year / 7 + 1 (simplified)
             var y = DateTime.Year(ts);
-            var jan1 = DateTime.Create(y, 1, 1, 0, 0, 0);
+            var jan1 = DateTime.FromParts(y, 1, 1, 0, 0, 0);
             var diffSecs = DateTime.Diff(ts, jan1);
             var doy = diffSecs / 86400;
             return sqlInteger(doy / 7 + 1);
@@ -1464,14 +1464,14 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var mi = DateTime.Minute(ts);
         var s = DateTime.Second(ts);
         if field == "YEAR" {
-            return sqlTimestamp(DateTime.Create(y, 1, 1, 0, 0, 0));
+            return sqlTimestamp(DateTime.FromParts(y, 1, 1, 0, 0, 0));
         }
         if field == "QUARTER" {
             var qm = ((m - 1) / 3) * 3 + 1;
-            return sqlTimestamp(DateTime.Create(y, qm, 1, 0, 0, 0));
+            return sqlTimestamp(DateTime.FromParts(y, qm, 1, 0, 0, 0));
         }
         if field == "MONTH" {
-            return sqlTimestamp(DateTime.Create(y, m, 1, 0, 0, 0));
+            return sqlTimestamp(DateTime.FromParts(y, m, 1, 0, 0, 0));
         }
         if field == "WEEK" {
             // Truncate to Monday of the current week
@@ -1480,20 +1480,20 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
             var daysBack = dow;
             if dow == 0 { daysBack = 6; }  // Sunday → back 6 days to Monday
             else { daysBack = dow - 1; }
-            var mondayTs = DateTime.AddDays(DateTime.Create(y, m, d, 0, 0, 0), 0 - daysBack);
+            var mondayTs = DateTime.AddDays(DateTime.FromParts(y, m, d, 0, 0, 0), 0 - daysBack);
             return sqlTimestamp(mondayTs);
         }
         if field == "DAY" {
-            return sqlTimestamp(DateTime.Create(y, m, d, 0, 0, 0));
+            return sqlTimestamp(DateTime.FromParts(y, m, d, 0, 0, 0));
         }
         if field == "HOUR" {
-            return sqlTimestamp(DateTime.Create(y, m, d, h, 0, 0));
+            return sqlTimestamp(DateTime.FromParts(y, m, d, h, 0, 0));
         }
         if field == "MINUTE" {
-            return sqlTimestamp(DateTime.Create(y, m, d, h, mi, 0));
+            return sqlTimestamp(DateTime.FromParts(y, m, d, h, mi, 0));
         }
         if field == "SECOND" {
-            return sqlTimestamp(DateTime.Create(y, m, d, h, mi, s));
+            return sqlTimestamp(DateTime.FromParts(y, m, d, h, mi, s));
         }
         return sqlNull();
     }
@@ -1598,7 +1598,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var y = sqlToInt(args.get(0));
         var m = sqlToInt(args.get(1));
         var d = sqlToInt(args.get(2));
-        var ts = DateTime.Create(y, m, d, 12, 0, 0);
+        var ts = DateTime.FromParts(y, m, d, 12, 0, 0);
         return sqlDate(ts);
     }
 
@@ -1615,7 +1615,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var h = sqlToInt(args.get(3));
         var mi = sqlToInt(args.get(4));
         var s = sqlToInt(args.get(5));
-        return sqlTimestamp(DateTime.Create(y, m, d, h, mi, s));
+        return sqlTimestamp(DateTime.FromParts(y, m, d, h, mi, s));
     }
 
     // MAKE_INTERVAL(days => N, hours => N, ...) — simplified: MAKE_INTERVAL(secs)
@@ -1686,7 +1686,7 @@ func evalDateFunc(name: String, args: List[SqlValue]) -> SqlValue? {
 
     // TIMEOFDAY() — current time as text
     if name == "TIMEOFDAY" {
-        return sqlText(DateTime.ToLocal(DateTime.Now()));
+        return sqlText(DateTime.FormatLocal(DateTime.Now()));
     }
 
     return null;
@@ -1712,7 +1712,7 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if args.get(0).kind == SQL_NULL || args.get(1).kind == SQL_NULL { return sqlNull(); }
         var text = args.get(0).toString();
         var pat = args.get(1).toString();
-        var result = Pattern.Find(text, pat);
+        var result = Pattern.Find(text, pat).UnwrapOrStr("");
         if Viper.String.get_Length(result) == 0 { return sqlNull(); }
         return sqlText(result);
     }
@@ -1727,11 +1727,11 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var pos = 0;
         var maxIter = 1000;
         while pos < Viper.String.get_Length(text) && maxIter > 0 {
-            var m = Pattern.FindFrom(text, pat, pos);
+            var m = Pattern.FindFrom(text, pat, pos).UnwrapOrStr("");
             if Viper.String.get_Length(m) == 0 { pos = Viper.String.get_Length(text); }
             else {
                 matches.add(m);
-                var mpos = Pattern.FindPos(String.Substring(text, pos, Viper.String.get_Length(text) - pos), pat);
+                var mpos = Pattern.FindPos(String.Substring(text, pos, Viper.String.get_Length(text) - pos), pat).UnwrapOrI64(0 - 1);
                 if mpos < 0 { pos = Viper.String.get_Length(text); }
                 else { pos = pos + mpos + Viper.String.get_Length(m); }
             }
@@ -1778,11 +1778,11 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var maxIter = 1000;
         while pos < Viper.String.get_Length(text) && maxIter > 0 {
             var sub = String.Substring(text, pos, Viper.String.get_Length(text) - pos);
-            var m = Pattern.Find(sub, pat);
+            var m = Pattern.Find(sub, pat).UnwrapOrStr("");
             if Viper.String.get_Length(m) == 0 { pos = Viper.String.get_Length(text); }
             else {
                 count = count + 1;
-                var mpos = Pattern.FindPos(sub, pat);
+                var mpos = Pattern.FindPos(sub, pat).UnwrapOrI64(0 - 1);
                 pos = pos + mpos + Viper.String.get_Length(m);
             }
             maxIter = maxIter - 1;
@@ -1800,13 +1800,13 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         var remaining = text;
         var maxIter = 1000;
         while Viper.String.get_Length(remaining) > 0 && maxIter > 0 {
-            var mpos = Pattern.FindPos(remaining, pat);
+            var mpos = Pattern.FindPos(remaining, pat).UnwrapOrI64(0 - 1);
             if mpos < 0 {
                 parts.add(remaining);
                 remaining = "";
             } else {
                 parts.add(String.Substring(remaining, 0, mpos));
-                var m = Pattern.Find(remaining, pat);
+                var m = Pattern.Find(remaining, pat).UnwrapOrStr("");
                 remaining = String.Substring(remaining, mpos + Viper.String.get_Length(m), Viper.String.get_Length(remaining) - mpos - Viper.String.get_Length(m));
             }
             maxIter = maxIter - 1;
@@ -1828,7 +1828,7 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if args.get(0).kind == SQL_NULL || args.get(1).kind == SQL_NULL { return sqlNull(); }
         var text = args.get(0).toString();
         var pat = args.get(1).toString();
-        var result = Pattern.Find(text, pat);
+        var result = Pattern.Find(text, pat).UnwrapOrStr("");
         if Viper.String.get_Length(result) == 0 { return sqlNull(); }
         return sqlText(result);
     }
@@ -1838,7 +1838,7 @@ func evalRegexFunc(name: String, args: List[SqlValue]) -> SqlValue? {
         if args.get(0).kind == SQL_NULL || args.get(1).kind == SQL_NULL { return sqlNull(); }
         var text = args.get(0).toString();
         var pat = args.get(1).toString();
-        var pos = Pattern.FindPos(text, pat);
+        var pos = Pattern.FindPos(text, pat).UnwrapOrI64(0 - 1);
         if pos < 0 { return sqlInteger(0); }
         return sqlInteger(pos + 1);
     }

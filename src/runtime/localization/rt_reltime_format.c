@@ -226,15 +226,15 @@ typedef struct {
 /// @brief Choose the largest unit whose threshold @p abs_ms reaches and the
 ///        integer count in that unit (CLDR-style coarsening; month≈30d,
 ///        year≈365d), e.g. 90 min → {hour, 1}.
-static unit_pick_t pick_unit(int64_t abs_ms) {
+static unit_pick_t pick_unit(uint64_t abs_ms) {
     unit_pick_t p;
-    const int64_t MS_SEC = 1000LL;
-    const int64_t MS_MIN = 60LL * MS_SEC;
-    const int64_t MS_HOUR = 60LL * MS_MIN;
-    const int64_t MS_DAY = 24LL * MS_HOUR;
-    const int64_t MS_WEEK = 7LL * MS_DAY;
-    const int64_t MS_MONTH = 30LL * MS_DAY;
-    const int64_t MS_YEAR = 365LL * MS_DAY;
+    const uint64_t MS_SEC = 1000ULL;
+    const uint64_t MS_MIN = 60ULL * MS_SEC;
+    const uint64_t MS_HOUR = 60ULL * MS_MIN;
+    const uint64_t MS_DAY = 24ULL * MS_HOUR;
+    const uint64_t MS_WEEK = 7ULL * MS_DAY;
+    const uint64_t MS_MONTH = 30ULL * MS_DAY;
+    const uint64_t MS_YEAR = 365ULL * MS_DAY;
 
     if (abs_ms >= MS_YEAR) {
         p.unit = UNIT_YEAR;
@@ -275,8 +275,9 @@ static unit_pick_t pick_unit(int64_t abs_ms) {
 // Plural category -> unit string lookup
 //===----------------------------------------------------------------------===//
 
-/// @brief Select the unit phrase for plural category @p cat, falling back
-///        through "other" then any non-empty form so output is never empty.
+/// @brief Select the unit phrase for plural category @p cat, falling back to
+///        the "other" form (then the empty string) when the category form is
+///        absent.
 static const char *unit_plural_form(const rt_locdata_reltime_unit_t *u, rt_plural_category_t cat) {
     const char *result = NULL;
     switch (cat) {
@@ -363,9 +364,9 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
 /// @param data Locale data supplying native digit glyphs.
 /// @param n Integer count to append.
 /// @return 1 on success, 0 when formatting or append work failed.
-static int append_localized_int(rt_string_builder *sb, const rt_locale_data_t *data, int64_t n) {
+static int append_localized_int(rt_string_builder *sb, const rt_locale_data_t *data, uint64_t n) {
     char num[32];
-    int k = snprintf(num, sizeof(num), "%lld", (long long)n);
+    int k = snprintf(num, sizeof(num), "%llu", (unsigned long long)n);
     if (k <= 0)
         return 0;
     if ((size_t)k >= sizeof(num))
@@ -391,7 +392,7 @@ static int append_localized_int(rt_string_builder *sb, const rt_locale_data_t *d
 static int expand_template(rt_string_builder *sb,
                            const char *tmpl,
                            const rt_locale_data_t *data,
-                           int64_t n,
+                           uint64_t n,
                            const char *unit_form) {
     if (!tmpl || !*tmpl)
         return 1;
@@ -424,10 +425,12 @@ static int expand_template(rt_string_builder *sb,
 ///          coarsest unit (@ref pick_unit), resolves the plural form for that
 ///          count, selects the past (duration >= 0, "ago") vs. future
 ///          (duration < 0, "in") template at the requested @p style, and
-///          expands it. INT64_MIN is clamped to avoid negation overflow.
+///          expands it. Magnitudes are tracked unsigned so INT64_MIN keeps
+///          its exact absolute value (VDOC-073).
 static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration, rtf_style_t style) {
     int is_past = duration >= 0;
-    int64_t abs_ms = duration < 0 ? (duration == INT64_MIN ? INT64_MAX : -duration) : duration;
+    uint64_t abs_ms = duration == INT64_MIN ? (uint64_t)INT64_MAX + 1
+                                            : (uint64_t)(duration < 0 ? -duration : duration);
     if (abs_ms < 1000) {
         const char *now = fmt->data->reltime.now ? fmt->data->reltime.now : "now";
         return rt_string_from_bytes(now, strlen(now));
@@ -519,13 +522,19 @@ rt_string rt_reltimefmt_numeric(void *self, int64_t value, rt_string unit) {
     rt_reltimefmt_inst_t *fmt = as_fmt(self);
 
     int is_past = value >= 0;
-    int64_t count = value < 0 ? (value == INT64_MIN ? INT64_MAX : -value) : value;
+    // Track the magnitude unsigned so INT64_MIN keeps its exact absolute
+    // value (VDOC-073).
+    uint64_t count = value == INT64_MIN ? (uint64_t)INT64_MAX + 1
+                                        : (uint64_t)(value < 0 ? -value : value);
     if (count == 0) {
         const char *now = fmt->data->reltime.now ? fmt->data->reltime.now : "now";
         return rt_string_from_bytes(now, strlen(now));
     }
 
-    rt_plural_category_t cat = rt_plural_rules_select_cardinal_int(fmt->data, count);
+    // Plural selection is signed; clamp the one value beyond INT64_MAX
+    // (categories for magnitudes this large are indistinguishable).
+    int64_t plural_n = count > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)count;
+    rt_plural_category_t cat = rt_plural_rules_select_cardinal_int(fmt->data, plural_n);
     const rt_locdata_reltime_unit_t *units =
         fmt->style == RTF_STYLE_SHORT ? fmt->data->reltime.short_units : fmt->data->reltime.units;
     const rt_locdata_reltime_unit_t *ud = &units[(int)u];

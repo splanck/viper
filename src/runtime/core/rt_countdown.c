@@ -16,8 +16,8 @@
 //   - A countdown in the STOPPED state accumulates no elapsed time.
 //   - Elapsed time is the sum of accumulated milliseconds from completed
 //     intervals plus the current running interval (if any).
-//   - HasExpired returns true when elapsed >= interval_ms and the timer was
-//     started; a stopped, never-started countdown is not considered expired.
+//   - HasExpired returns true when elapsed >= interval_ms. A never-started
+//     positive countdown is not expired, while a zero interval is immediately expired.
 //   - Countdown objects are not thread-safe; callers must synchronize externally.
 //
 // Ownership/Lifetime:
@@ -157,7 +157,8 @@ static int64_t countdown_timespec_to_ms(struct timespec ts) {
 /// @return Milliseconds since unspecified epoch.
 static int64_t get_timestamp_ms(void) {
 #if defined(_WIN32)
-    // Benign race: QPC frequency is constant; duplicate init is harmless.
+    // The constant result makes duplicate queries semantically equivalent, but
+    // this unsynchronized shared write is still a C data race (VDOC-224).
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
         return countdown_tick_count_ms();

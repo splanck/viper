@@ -185,7 +185,7 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr) {
 }
 
 /// @brief Returns 1 if `ip` is in an RFC 1918 private range (10/8, 172.16/12, 192.168/16) or
-/// loopback (127/8). Used for "should I trust this peer?" checks before processing requests.
+/// loopback (127/8). This is classification only, not a complete trust or special-use check.
 int8_t rt_netutils_is_private_ip(rt_string ip) {
     const char *ip_str = rt_string_cstr(ip);
     if (!ip_str)
@@ -216,8 +216,8 @@ int8_t rt_netutils_is_private_ip(rt_string ip) {
 /// @brief Discover the IPv4 address of the interface the OS would route to the public internet.
 /// Trick: open a UDP socket, "connect" it to 8.8.8.8:53 (no actual packets sent — UDP connect is
 /// just a routing table lookup), then `getsockname` to read which local IP the kernel assigned.
-/// Returns "127.0.0.1" if anything fails (e.g. completely offline machine). More accurate than
-/// walking interfaces because it picks the *active* one.
+/// Returns "127.0.0.1" if anything fails (e.g. a completely offline machine). This chooses the
+/// route for one destination rather than enumerating interfaces or defining a stable primary IP.
 rt_string rt_netutils_local_ipv4(void) {
     rt_net_init_wsa();
 

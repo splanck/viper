@@ -58,10 +58,10 @@ PRINT "YesNo(FALSE): "; Viper.Text.Fmt.YesNo(FALSE)
 
 ' --- Size ---
 PRINT "--- Size ---"
-PRINT "Size(500): "; Viper.Text.Fmt.Size(500)
-PRINT "Size(1024): "; Viper.Text.Fmt.Size(1024)
-PRINT "Size(1048576): "; Viper.Text.Fmt.Size(1048576)
-PRINT "Size(1073741824): "; Viper.Text.Fmt.Size(1073741824)
+PRINT "Size(500): "; Viper.Text.Fmt.SizeBytes(500)
+PRINT "Size(1024): "; Viper.Text.Fmt.SizeBytes(1024)
+PRINT "Size(1048576): "; Viper.Text.Fmt.SizeBytes(1048576)
+PRINT "Size(1073741824): "; Viper.Text.Fmt.SizeBytes(1073741824)
 
 ' --- Hex ---
 PRINT "--- Hex ---"

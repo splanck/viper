@@ -4,7 +4,7 @@ bind Viper.Game3D as Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
 bind Viper.Math as Math;
-bind Viper.Sound as Sound;
+bind Viper.Audio as Sound;
 bind Viper.Terminal as Terminal;
 
 func fail(message: String) {
@@ -37,7 +37,7 @@ func start() {
     var world = Game3D.World3D.New("Game3D Docs Snippets", 96, 64);
     world.OnResize(96, 64);
     var canvas = world.Canvas;
-    Canvas3D.SetDTMax(canvas, 50);
+    Canvas3D.SetMaxDeltaTime(canvas, 50);
 
     Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
     Game3D.Lighting.Studio(world);

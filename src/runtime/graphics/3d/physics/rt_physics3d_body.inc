@@ -174,6 +174,9 @@ void rt_body3d_set_position(void *o, double x, double y, double z) {
         ph3d_vec3_sanitize_state(b->position);
         body3d_touch_broadphase_moved(b);
         body3d_wake_if_dynamic(b);
+        /* A teleported static/kinematic anchor must re-activate sleeping joint
+         * partners so the constraint re-solves against the new pose. */
+        world3d_wake_joint_partners(b->owner_world, b);
     }
 }
 
@@ -237,6 +240,7 @@ void rt_body3d_set_orientation(void *o, void *quat) {
      * that swings the body outside its fat bounds still forces a rebuild. */
     body3d_touch_broadphase_moved(b);
     body3d_wake_if_dynamic(b);
+    world3d_wake_joint_partners(b->owner_world, b);
 }
 
 /// @brief `Body3D.GetOrientation` — fresh `Quat` of the body's orientation.

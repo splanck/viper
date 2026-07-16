@@ -96,13 +96,13 @@ PRINT "FlipV(0,3): "; fv.Get(0, 3)
 PRINT "--- RotateCW ---"
 DIM sq AS OBJECT = Viper.Graphics.Pixels.New(4, 2)
 sq.Set(0, 0, red)
-DIM cw AS OBJECT = sq.RotateCW()
+DIM cw AS OBJECT = sq.RotateClockwise()
 PRINT "RotateCW Width: "; cw.Width
 PRINT "RotateCW Height: "; cw.Height
 
 ' --- RotateCCW ---
 PRINT "--- RotateCCW ---"
-DIM ccw AS OBJECT = sq.RotateCCW()
+DIM ccw AS OBJECT = sq.RotateCounterClockwise()
 PRINT "RotateCCW Width: "; ccw.Width
 PRINT "RotateCCW Height: "; ccw.Height
 

@@ -11,8 +11,8 @@
 
 Provides Manifest constants and static operations for project tooling.
 
-`Viper.Project.Manifest` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `ParseText`, `ParseFile`.
+`Viper.Project.Manifest` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `ParseText`, `ParseFile`.
 
 #### Methods
 

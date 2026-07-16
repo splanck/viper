@@ -16,7 +16,8 @@
 //     walks so deeply nested keys do not overflow the C stack.
 //
 // Ownership/Lifetime:
-//   - Trie objects are heap-allocated; caller is responsible for lifetime management.
+//   - Trie objects are GC-managed (rt_obj_new_i64) with a runtime finalizer;
+//     callers must not free them directly.
 //   - String keys are used as-is; internal nodes store individual bytes.
 //
 // Links: src/runtime/collections/rt_trie.c (implementation), src/runtime/core/rt_string.h
@@ -81,6 +82,10 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix);
 /// @param str String to match against.
 /// @return Longest matching prefix key, or empty string if none.
 rt_string rt_trie_longest_prefix(void *obj, rt_string str);
+
+/// @brief LongestPrefix as an Option: Some(prefix) on any match (including the
+///        empty key), None when no stored key is a prefix.
+void *rt_trie_longest_prefix_option(void *obj, rt_string str);
 
 /// @brief Remove a key.
 /// @param obj Trie pointer.

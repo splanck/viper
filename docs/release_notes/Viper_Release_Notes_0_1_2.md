@@ -591,7 +591,7 @@ Compile to native:
 - Complete test coverage for all components
 - Comprehensive error recovery
 - Performance optimization and benchmarking
-- Production-grade documentation
+- Reference documentation
 
 ### Near Term (v0.2.x - v0.9.x)
 

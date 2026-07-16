@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-30
+last-verified: 2026-07-14
 ---
 
 # Data Formats
@@ -11,9 +11,10 @@ last-verified: 2026-05-30
 
 ---
 
-## Viper.Text.Json
+## Viper.Data.Json
 
-JSON parsing and formatting per ECMA-404/RFC 8259.
+JSON value-tree parsing and formatting targeting ECMA-404/[RFC 8259](https://www.rfc-editor.org/rfc/rfc8259.html),
+with the validation and runtime-value limitations called out below.
 
 **Type:** Static utility class
 
@@ -25,11 +26,10 @@ JSON parsing and formatting per ECMA-404/RFC 8259.
 | `ParseObject(text)` | `Map(String)`       | Parse JSON, expecting an object (returns a typed `Map`) |
 | `ParseArray(text)`  | `Object(String)`    | Parse JSON, expecting an array (Seq)             |
 | `Format(value)`     | `String(Object)`    | Format value as compact JSON string              |
-| `Stringify(value)`  | `String(Object)`    | Alias for `Format(value)`                        |
 | `FormatPretty(v,n)` | `String(Object,Int)`| Format with indentation (n spaces)               |
 | `IsValid(text)`     | `Boolean(String)`   | Check if string is valid JSON                    |
-| `TypeOf(value)`     | `String(Object)`    | Get type: "null", "bool", "int", "float", "str", "array", "object" |
-| `NewObject()`       | `Object()`          | Create an empty JSON object backed by `Map`      |
+| `TypeOf(value)`     | `String(Object)`    | Get type: `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, `"object"`, or `"unknown"` |
+| `NewObject()`       | `Map()`             | Create an empty JSON object backed by `Map`      |
 | `Has(obj,key)`      | `Boolean(Object,String)` | Check object key existence                 |
 | `GetStr(obj,key)`   | `String(Object,String)` | Read a string object field                  |
 | `GetInt(obj,key)`   | `Integer(Object,String)` | Read a numeric object field as an integer   |
@@ -44,12 +44,16 @@ JSON values are returned as native Viper types:
 
 | JSON Type   | Viper Type         | Access Method                      |
 |-------------|--------------------|------------------------------------|
-| null        | null               | Check with `value = NULL`          |
-| boolean     | Boolean (boxed)    | `Viper.Unbox.I1(value)`            |
-| number      | Double (boxed)      | `GetInt` coerces to integer, `Viper.Unbox.F64(value)` returns the raw parsed number |
-| string      | String (boxed)     | `Viper.Unbox.Str(value)`           |
-| array       | Seq                | `value.Get(index)`, `value.Length`    |
-| object      | Map                | `value.Get(key)`, `value.Keys()`   |
+| null        | `NULL`             | Check with `value = NULL` |
+| boolean     | boxed Boolean      | Use a typed map/path helper, or `Viper.Core.Box.ToI1(value)` |
+| number      | boxed Double       | Use `Viper.Core.Box.ToF64(value)`; `GetInt` truncates to an integer |
+| string      | runtime String     | Use `Map.GetStr`, `Seq.GetStr`, or `JsonPath.GetStr` |
+| array       | `Seq`              | Use `Count` and `Get(index)` |
+| object      | `Map`              | Use `Count`, `Get(key)`, and `Keys()` |
+
+JSON numbers are always parsed as boxed IEEE-754 doubles, including integer-looking tokens such
+as `1`. JSON strings are runtime string handles, not `Box.Str` values, so the strict
+`Viper.Core.Box.ToStr` unboxer is not the general accessor for parsed JSON strings.
 
 ### Zia Example
 
@@ -57,7 +61,7 @@ JSON values are returned as native Viper types:
 module JsonDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Json as Json;
+bind Viper.Data.Json as Json;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -73,24 +77,24 @@ func start() {
 ```basic
 ' Parse JSON
 DIM json AS STRING = "{""name"": ""Alice"", ""age"": 30, ""active"": true}"
-DIM data AS OBJECT = Viper.Text.Json.Parse(json)
+DIM data AS OBJECT = Viper.Data.Json.Parse(json)
 
-' Access values with the typed JSON helpers
-DIM name AS STRING = Viper.Text.Json.GetStr(data, "name")
-DIM age AS INTEGER = Viper.Text.Json.GetInt(data, "age")
+' The Json class aliases resolve in BASIC and Zia alike
+DIM name AS STRING = Viper.Data.Json.GetStr(data, "name")
+DIM age AS INTEGER = Viper.Data.Json.GetInt(data, "age")
 PRINT "Name: "; name   ' Output: Alice
 PRINT "Age: "; age     ' Output: 30
 
 ' Check type
-DIM valueType AS STRING = Viper.Text.Json.TypeOf(Viper.Collections.Map.Get(data, "active"))
-PRINT valueType        ' Output: "bool"
+DIM valueType AS STRING = Viper.Data.Json.TypeOf(Viper.Collections.Map.Get(data, "active"))
+PRINT valueType        ' Output: "boolean"
 
 ' Format with pretty printing
 DIM config AS OBJECT = Viper.Collections.Map.New()
 config.Set("debug", Viper.Core.Box.I1(true))
 config.Set("port", Viper.Core.Box.I64(8080))
 
-DIM formattedJson AS STRING = Viper.Text.Json.FormatPretty(config, 2)
+DIM formattedJson AS STRING = Viper.Data.Json.FormatPretty(config, 2)
 PRINT formattedJson
 ' Output:
 ' {
@@ -99,8 +103,8 @@ PRINT formattedJson
 ' }
 
 ' Validate JSON
-IF Viper.Text.Json.IsValid(json) THEN
-    DIM parsed AS OBJECT = Viper.Text.Json.Parse(json)
+IF Viper.Data.Json.IsValid(json) THEN
+    DIM parsed AS OBJECT = Viper.Data.Json.Parse(json)
 END IF
 ```
 
@@ -115,14 +119,25 @@ END IF
 
 - `Parse`, `ParseObject`, `ParseArray`, and `IsValid` use the runtime string byte length, not C-string truncation.
 - Invalid escapes, malformed UTF-16 surrogate pairs, raw control characters inside strings, trailing content, leading-zero numbers, and out-of-range/non-finite numbers are rejected.
-- `IsValid` mirrors the parser for string escapes, number range checks, and nesting-depth limits.
-- `Format` escapes embedded `NUL` and other control bytes as JSON escapes, and traps on cyclic `Seq`/`Map` object graphs instead of recursing indefinitely.
+- `IsValid` and `JsonStream` mirror the parser's raw UTF-8 validation (overlong encodings,
+  surrogates, bad continuation bytes, and code points above U+10FFFF are rejected), so
+  `IsValid(text)` never accepts input that `Parse(text)` traps on. `Format` emits stored string
+  bytes unchanged — output-side validation would break the binary-safe runtime String model.
+- `Format` escapes embedded `NUL` and other control bytes as JSON escapes, and traps on cyclic
+  `Seq`/`Map` object graphs instead of recursing indefinitely. Unsupported runtime objects and
+  non-finite boxed doubles are emitted as JSON `null`.
+- Converting a boxed double through `Json.GetInt`/`Map.GetInt` truncates toward zero with
+  defined saturation: values above/below the signed 64-bit range clamp to the range limits and
+  NaN converts to 0, identically on every platform.
+- The `Get*`, `Set*`, and `Has` entries on the `Json` class surface are aliases for the
+  registered `Viper.Collections.Map` functions. Both Zia and BASIC resolve them by their `Json`
+  names; calling the concrete `Map` functions directly is equivalent.
 
 ---
 
-## Viper.Text.JsonPath
+## Viper.Data.JsonPath
 
-JSONPath-like query expressions for navigating parsed JSON objects. Works with objects returned by `Viper.Text.Json.Parse()`.
+JSONPath-like query expressions for navigating parsed JSON objects. Works with objects returned by `Viper.Data.Json.Parse()`.
 
 **Type:** Static utility class
 
@@ -133,9 +148,9 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 | `Get(root, path)`           | `Object(Object, String)`    | Get value at path, or NULL if not found              |
 | `GetOr(root, path, default)`| `Object(Object, String, Object)` | Get value at path, or default if not found      |
 | `Has(root, path)`           | `Boolean(Object, String)`   | Check if path exists in the object                   |
-| `Query(root, path)`         | `Seq(Object, String)`       | Get all values matching a wildcard path              |
-| `GetStr(root, path)`        | `String(Object, String)`    | Get string value at path, or empty string            |
-| `GetInt(root, path)`        | `Integer(Object, String)`   | Get integer value at path, or 0                      |
+| `Query(root, path)`         | `Object(Object, String)`    | Return a `Seq` of values matching a wildcard path    |
+| `GetStr(root, path)`        | `String(Object, String)`    | Get scalar text at path, or empty string             |
+| `GetInt(root, path)`        | `Integer(Object, String)`   | Convert scalar value at path to integer, or 0        |
 
 ### Path Syntax
 
@@ -146,15 +161,35 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 | `key[0]`         | Array element by index                | `"items[0]"`         |
 | `key1.key2[0].x` | Mixed object/array access             | `"users[0].name"`    |
 | `key.*`          | Wildcard (all children)               | `"users.*.name"`     |
+| `$` / `$.key`    | Optional root selector                | `"$.user.name"`      |
+| `key[-1]`        | Negative index counted from the end   | `"items[-1]"`        |
+| `["key"]`       | Quoted map key                         | `"[\"display.name\"]"` |
 
 ### Notes
 
-- `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
+- `GetStr()` retains string values and converts integer, double, and boolean boxes to text. It
+  returns a new empty string for missing paths or containers/unsupported values.
 - `GetOr()` returns a retained value when the path is found, and retains the supplied default when it is returned.
-- `GetInt()` accepts parsed numeric boxes and numeric strings.
-- `Get()`, `Has()`, `GetStr()`, `GetInt()`, and `Query()` also accept a raw JSON string root and parse it internally for the lookup.
-- Wildcards traverse both arrays and object maps, and safely skip scalar values that cannot contain the next segment.
+- `GetInt()` accepts integer/double/boolean boxes and integer strings. Representable doubles are
+  truncated toward zero; missing or incompatible values produce `0`. An out-of-range double is
+  currently converted with a C cast and can produce platform-dependent results; see
+  [VDOC-037](../../documentation-review-findings.md#vdoc-037--json-derived-integer-accessors-have-undefined-out-of-range-conversion).
+- `Get()`, `Has()`, `GetStr()`, `GetInt()`, and `Query()` also accept raw JSON source text as the
+  root and parse it internally. A parsed JSON string scalar has the same runtime representation as
+  source text and therefore cannot be used unambiguously as a root.
+- `Has()` distinguishes a present JSON `null` member (true) from a missing path (false), and
+  `GetOr()` substitutes its default only when the path is missing — a stored JSON `null` is
+  returned as `NULL` rather than replaced.
+- `Query()` supports one wildcard segment. It traverses arrays and object maps and safely skips
+  scalar values that cannot contain the remaining path.
 - `Query()` returns an owned sequence that retains the matched values it contains.
+- The registry return is a typed sequence, so member access resolves directly on the result.
+- Recursive descent (`..`), slices, filters, unions, and escaped quoted-key syntax are not
+  implemented, despite broader syntax still named in the implementation header; see
+  [VDOC-022](../../documentation-review-findings.md#vdoc-022--the-jsonpath-source-contract-overstates-the-implemented-syntax).
+- Path parsing uses a C-string terminator rather than the runtime String length. An embedded `NUL`
+  therefore discards the rest of the path and can select a different member; see
+  [VDOC-038](../../documentation-review-findings.md#vdoc-038--jsonpath-ignores-path-bytes-after-an-embedded-nul).
 
 ### Zia Example
 
@@ -162,8 +197,8 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 module JsonPathDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Json as Json;
-bind Viper.Text.JsonPath as JP;
+bind Viper.Data.Json as Json;
+bind Viper.Data.JsonPath as JP;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -184,32 +219,32 @@ func start() {
 ```basic
 ' Parse a JSON document
 DIM json AS STRING = "{""user"": {""name"": ""Alice"", ""scores"": [95, 87, 92]}}"
-DIM data AS OBJECT = Viper.Text.Json.Parse(json)
+DIM data AS OBJECT = Viper.Data.Json.Parse(json)
 
 ' Simple path access
-DIM name AS STRING = Viper.Text.JsonPath.GetStr(data, "user.name")
+DIM name AS STRING = Viper.Data.JsonPath.GetStr(data, "user.name")
 PRINT name  ' Output: "Alice"
 
 ' Array access
-DIM first AS INTEGER = Viper.Text.JsonPath.GetInt(data, "user.scores[0]")
+DIM first AS INTEGER = Viper.Data.JsonPath.GetInt(data, "user.scores[0]")
 PRINT first  ' Output: 95
 
 ' Check existence
-IF Viper.Text.JsonPath.Has(data, "user.email") THEN
+IF Viper.Data.JsonPath.Has(data, "user.email") THEN
     PRINT "Has email"
 ELSE
     PRINT "No email field"  ' Output: "No email field"
 END IF
 
-' Default values
-DIM email AS OBJECT = Viper.Text.JsonPath.GetOr(data, "user.email", Viper.Core.Box.Str("unknown"))
-PRINT Viper.Unbox.Str(email)  ' Output: "unknown"
+' Default values (the missing path returns the boxed integer default)
+DIM rankValue AS OBJECT = Viper.Data.JsonPath.GetOr(data, "user.rank", Viper.Core.Box.I64(-1))
+PRINT Viper.Core.Box.ToI64(rankValue)  ' Output: -1
 
 ' Wildcard queries
 DIM api AS STRING = "{""users"": [{""name"": ""Alice""}, {""name"": ""Bob""}]}"
-DIM apiData AS OBJECT = Viper.Text.Json.Parse(api)
-DIM names AS OBJECT = Viper.Text.JsonPath.Query(apiData, "users.*.name")
-PRINT names.Length     ' Output: 2
+DIM apiData AS OBJECT = Viper.Data.Json.Parse(api)
+DIM names AS Viper.Collections.Seq = Viper.Data.JsonPath.Query(apiData, "users.*.name")
+PRINT names.Count     ' Output: 2
 ```
 
 ### Use Cases
@@ -220,9 +255,10 @@ PRINT names.Length     ' Output: 2
 
 ---
 
-## Viper.Text.JsonStream
+## Viper.Data.JsonStream
 
-SAX-style streaming JSON parser for processing large or incremental JSON data without loading the entire document into memory. Uses a pull-based token stream.
+Pull-based JSON tokenizer for processing a complete JSON string without building the parsed
+`Map`/`Seq` value tree.
 
 **Type:** Instance class (requires `New(json)`)
 
@@ -230,7 +266,7 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 
 | Method       | Signature             | Description                           |
 |--------------|-----------------------|---------------------------------------|
-| `New(json)`  | `JsonStream(String)`  | Create a streaming parser from a JSON string |
+| `New(json)`  | `JsonStream(String)`  | Create a tokenizer that retains the complete JSON string |
 
 ### Properties
 
@@ -271,12 +307,17 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 
 ### Notes
 
-- Pull-based: call `NextResult()` to advance when parsing untrusted JSON; use `Next()` only when you want the legacy integer-token path
-- Use `Skip()` to efficiently skip over objects or arrays you don't need
-- `Depth` tracks nesting level for structural navigation
-- More memory-efficient than `Json.Parse()` for large documents
-- Tokens are consumed in order — no random access
-- `NextResult()` returns `Err(message)` on malformed JSON, avoiding a separate `Error()` side-channel read
+- Pull-based: call `NextResult()` to advance when parsing untrusted JSON; use `Next()` only when
+  you want the legacy integer-token path.
+- `Skip()` scans through the current container without allocating its value tree. Primitive tokens
+  are already consumed, so `Skip()` is a no-op on them.
+- `Depth` is the number of currently open objects/arrays after the current token is consumed.
+- The tokenizer retains the entire input string and scratch storage for decoded strings. It uses
+  less additional memory than `Json.Parse()` because it does not allocate a value tree, but it is
+  not an incremental/feed parser.
+- Tokens are consumed in order; there is no random access.
+- `NextResult()` returns `Err(message)` on malformed JSON, avoiding a separate `Error()`
+  side-channel read. Normal tokens, including `TOK_END`, are returned as `Ok(token)`.
 - The parser enforces JSON separators and container state: missing commas/colons, mismatched closers, trailing commas, and multiple top-level values produce `TOK_ERROR`
 - Number parsing rejects leading zeroes, incomplete fractions/exponents, NaN, Infinity, and overflow
 - Strings reject raw control characters and invalid UTF-16 surrogate pairs
@@ -287,7 +328,7 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 module JsonStreamDemo;
 
 bind Viper.Terminal;
-bind JS = Viper.Text.JsonStream;
+bind JS = Viper.Data.JsonStream;
 
 func start() {
     var s = JS.New("{\"name\":\"Alice\",\"age\":30,\"active\":true}");
@@ -330,7 +371,7 @@ func start() {
 ```basic
 ' Stream through a JSON document
 DIM json AS STRING = "{""name"": ""Alice"", ""scores"": [95, 87, 92]}"
-DIM stream AS OBJECT = NEW Viper.Text.JsonStream(json)
+DIM stream AS OBJECT = NEW Viper.Data.JsonStream(json)
 
 DO WHILE stream.HasNext()
     DIM nextToken AS OBJECT = stream.NextResult()
@@ -364,17 +405,18 @@ LOOP
 
 | Scenario                        | Recommendation              |
 |---------------------------------|-----------------------------|
-| Small JSON (< 100 KB)          | Use `Json.Parse()` (simpler)|
-| Large JSON (> 1 MB)            | Use `JsonStream` (less memory) |
-| Need only specific fields       | Use `JsonStream` with `Skip()` |
-| Need full random access         | Use `Json.Parse()`          |
-| Processing JSON line-by-line    | Use `JsonStream`            |
+| Need a navigable value tree     | Use `Json.Parse()` |
+| Want to avoid allocating a value tree | Use `JsonStream` |
+| Need only selected containers   | Use `JsonStream` with `Skip()` |
+| Need incremental input chunks   | Neither API supports feeds; buffer a complete value first |
+| Processing JSON Lines           | Create a separate parser for each line/value |
 
 ---
 
-## Viper.Text.Csv
+## Viper.Data.Csv
 
-RFC 4180-compliant CSV parsing and formatting.
+CSV parsing and formatting with [RFC 4180](https://www.rfc-editor.org/rfc/rfc4180.html)-style
+quoting plus configurable-delimiter and line-ending extensions.
 
 **Type:** Static utility class
 
@@ -384,8 +426,8 @@ RFC 4180-compliant CSV parsing and formatting.
 |---------------------------------|-----------------------|-------------------------------------------------------------------|
 | `ParseLine(line)`               | `Seq(String)`         | Parse a single CSV line into fields using comma delimiter         |
 | `ParseLineWith(line, delim)`    | `Seq(String, String)` | Parse a single CSV line with custom delimiter                     |
-| `Parse(text)`                   | `Seq(String)`         | Parse multi-line CSV text into rows (each row is a Seq of fields) |
-| `ParseWith(text, delim)`        | `Seq(String, String)` | Parse multi-line CSV with custom delimiter                        |
+| `Parse(text)`                   | `Object(String)`      | Parse CSV text into a `Seq` of row `Seq` values                   |
+| `ParseWith(text, delim)`        | `Object(String, String)` | Parse CSV text with a custom delimiter into row `Seq` values   |
 | `FormatLine(fields)`            | `String(Seq)`         | Format a Seq of fields into a CSV line                            |
 | `FormatLineWith(fields, delim)` | `String(Seq, String)` | Format fields with custom delimiter                               |
 | `Format(rows)`                  | `String(Seq)`         | Format a Seq of rows into multi-line CSV text                     |
@@ -394,21 +436,28 @@ RFC 4180-compliant CSV parsing and formatting.
 
 ### Notes
 
-- **RFC 4180 Compliance:**
-    - Fields containing delimiters, quotes, or newlines are automatically quoted
-    - Embedded quotes are escaped by doubling (`""`)
-    - Newlines within quoted fields are preserved
-    - Leading/trailing whitespace in fields is preserved
-- Custom delimiter uses the first character and must not be `"`, CR, LF, or NUL
+- **Quoting rules:**
+    - Fields containing delimiters, quotes, CR, or LF are automatically quoted.
+    - Embedded quotes are escaped by doubling (`""`).
+    - Newlines within quoted fields are preserved.
+    - Leading/trailing whitespace in fields is preserved.
+- Parsing accepts CRLF, LF, and CR record endings. Multi-row formatting emits LF after every row,
+  including the last, so output is not strict RFC 4180 CRLF. Row widths are not required to match.
+- A custom delimiter must contain exactly one byte and cannot be `"`, CR, LF, or NUL.
 - A null or empty custom delimiter falls back to comma
 - Empty fields are supported (adjacent delimiters create empty strings)
-- Null fields passed to formatters are emitted as empty fields
+- Null fields passed to formatters are emitted as empty fields; other non-string fields use the
+  runtime's generic object-to-string conversion
 - Runtime string byte length is used, so embedded `NUL` bytes are preserved
 - Parse functions return `Seq` objects (use `Count`, `Get(index)` to access)
+- `Parse`/`ParseWith` are registered as `seq<obj>` (a sequence of row Seqs), so member access
+  such as `rows.Count` resolves directly.
 - `IsValid` uses the default comma delimiter and returns false for malformed quoting without trapping
 - `ParseLine` accepts exactly one CSV record; use `Parse` / `ParseWith` for multi-record text
 - Malformed quoted fields trap on unterminated quotes or non-delimiter characters after the closing quote
 - Quotes inside unquoted fields are rejected as malformed CSV
+- Custom delimiters must be exactly one byte; an empty delimiter selects the comma default and a
+  longer delimiter traps.
 
 ### Zia Example
 
@@ -416,7 +465,7 @@ RFC 4180-compliant CSV parsing and formatting.
 module CsvDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Csv as Csv;
+bind Viper.Data.Csv as Csv;
 bind Viper.Text.Fmt as Fmt;
 bind Viper.Collections.Seq as Seq;
 
@@ -438,36 +487,36 @@ func start() {
 
 ```basic
 ' Parse a simple CSV line
-DIM fields AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine("name,age,city")
+DIM fields AS Viper.Collections.Seq = Viper.Data.Csv.ParseLine("name,age,city")
 PRINT fields.Count  ' Output: 3
 PRINT Viper.Collections.Seq.GetStr(fields, 0) ' Output: "name"
 
 ' Parse with quoted fields
 DIM quote AS STRING = CHR$(34)
-DIM row AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine( _
+DIM row AS Viper.Collections.Seq = Viper.Data.Csv.ParseLine( _
     quote + "John Doe" + quote + ",30," + quote + "New York" + quote)
 PRINT Viper.Collections.Seq.GetStr(row, 0)    ' Output: John Doe
 PRINT Viper.Collections.Seq.GetStr(row, 2)    ' Output: New York
 
 ' Handle embedded quotes (doubled)
-DIM quoted AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine( _
+DIM quoted AS Viper.Collections.Seq = Viper.Data.Csv.ParseLine( _
     quote + "He said " + quote + quote + "Hello" + quote + quote + quote)
 PRINT Viper.Collections.Seq.GetStr(quoted, 0) ' Output: He said "Hello"
 
 ' Parse multi-line CSV
 DIM csv AS STRING = "name,age" + CHR$(10) + "Alice,25" + CHR$(10) + "Bob,30"
-DIM rows AS OBJECT = Viper.Text.Csv.Parse(csv)
+DIM rows AS Viper.Collections.Seq = Viper.Data.Csv.Parse(csv)
 PRINT rows.Count    ' Output: 3
 
 ' Format fields into CSV
-DIM data AS OBJECT = Viper.Collections.Seq.New()
+DIM data AS Viper.Collections.Seq = NEW Viper.Collections.Seq()
 data.Push("Hello, World")
 data.Push("Simple")
-DIM line AS STRING = Viper.Text.Csv.FormatLine(data)
+DIM line AS STRING = Viper.Data.Csv.FormatLine(data)
 PRINT line          ' Output: "Hello, World",Simple
 
 ' Use tab delimiter
-DIM tsv AS OBJECT = Viper.Text.Csv.ParseLineWith("a	b	c", CHR$(9))
+DIM tsv AS Viper.Collections.Seq = Viper.Data.Csv.ParseLineWith("a	b	c", CHR$(9))
 PRINT tsv.Count     ' Output: 3
 ```
 
@@ -480,9 +529,12 @@ PRINT tsv.Count     ' Output: 3
 
 ---
 
-## Viper.Text.Toml
+## Viper.Data.Toml
 
-TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
+Permissive parser and formatter for a practical subset of TOML (Tom's Obvious Minimal Language).
+The current published specification is [TOML 1.1.0](https://toml.io/en/v1.1.0); this runtime's
+older source contract says 1.0, but the accepted language is not a conformance implementation of
+either version.
 
 **Type:** Static utility class
 
@@ -490,24 +542,49 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 
 | Method                | Signature              | Description                                    |
 |-----------------------|------------------------|------------------------------------------------|
-| `Parse(text)`         | `Map(String)`          | Parse TOML text into nested Maps               |
-| `IsValid(text)`       | `Boolean(String)`      | Check if text is valid TOML                    |
-| `Format(map)`         | `String(Map)`          | Format a Map as TOML text                      |
-| `Get(root, keyPath)`  | `Object(Map, String)`  | Get value using dotted key path                |
-| `GetStr(root, keyPath)` | `String(Map, String)` | Get string value using dotted key path, or empty string |
+| `Parse(text)`         | `Object(String)`       | Parse accepted TOML-like text into a Map       |
+| `IsValid(text)`       | `Boolean(String)`      | Check whether the runtime parser accepts text  |
+| `Format(map)`         | `String(Object)`       | Format a Map using the supported TOML subset   |
+| `Get(root, keyPath)`  | `Object(Object, String)` | Get a value through nested Maps              |
+| `GetStr(root, keyPath)` | `String(Object, String)` | Get a string value, or an empty string       |
 
 ### Notes
 
-- **Parse output:** Returns a Map where keys are strings and values are strings, Maps (for sections), or Seqs (for arrays).
-- **Dotted paths:** `Get()` and `GetStr()` support dotted key paths like `"server.host"` to navigate into nested sections.
-- Dotted section headers such as `[server.database.primary]` create nested Maps for each path part.
-- **Format:** Converts a Map back to TOML text format, including string values, boxed numeric/boolean values, arrays, and section Maps.
+- **Parse output:** Keys and all scalar values—including numbers, booleans, and date/time-looking
+  tokens—are runtime strings. Tables and inline tables become Maps; arrays become Seqs; arrays of
+  tables become Seqs of Maps.
+- **Dotted paths:** `Get()` and `GetStr()` split the lookup path on dots to navigate nested section
+  Maps, such as `"server.host"`. There is no escaping for a literal dot in a key.
+- Dotted section headers such as `[server.database.primary]` and dotted assignment keys such as
+  `server.host = "localhost"` both create nested Maps, so the dotted getters reach them. Quoted
+  keys (`"a.b" = ...`) keep their literal spelling, dots included; keys with a leading or trailing
+  dot are rejected.
+- **Format:** Formats top-level values and nested section Maps recursively (dotted `[a.b.c]`
+  headers). It supports strings, boxed integers/doubles/booleans, nested arrays, and maps in
+  value position as inline tables.
+- Boxed doubles use `%.17g` with a float-token guard: whole-valued doubles emit as `1.0` (not the
+  integer token `1`), so the value keeps its float type on reparse.
 - `Format()` quotes keys and string values when needed so scalar values are not misinterpreted as Maps.
 - `Format()` uses runtime string byte lengths and escapes embedded `NUL` and other control bytes as TOML basic-string escapes instead of truncating at the first `NUL`.
 - `Get()` and `GetStr()` use the runtime byte length of the dotted path; embedded `NUL` bytes inside a path segment are part of that segment, not a terminator.
-- Invalid TOML returns NULL from `Parse()` rather than trapping.
-- Missing closing section or array brackets, trailing junk after section headers, duplicate keys, scalar/table conflicts, and overly deep section paths are invalid.
+- Syntax errors recognized by the parser return NULL from `Parse()` rather than trapping. However,
+  arbitrary bare values such as `x = alpha` are accepted even though TOML 1.0 does not permit them,
+  so `IsValid()` is only an acceptance probe for this parser. See
+  [VDOC-024](../../documentation-review-findings.md#vdoc-024--the-toml-parser-is-not-the-v10-parser-described-by-its-source-contract).
+- Missing closing section or array brackets, trailing junk after section headers, duplicate keys,
+  scalar/table conflicts, and section paths deeper than 200 components are rejected.
 - `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
+- Formatting emits nested tables recursively as dotted `[a.b.c]` section headers, and maps in
+  value position (such as inside arrays) as inline tables, so `Format(Parse(text))` preserves
+  nested configuration. Formatting depth is bounded (200 levels); exceeding it yields an empty
+  string.
+- Formatting depth is bounded (200 levels); cyclic or deeper containers fail closed with an empty
+  string instead of recursing without bound.
+- The parser validates the input is NUL-free, well-formed UTF-8 before parsing; malformed byte
+  sequences make `Parse` return NULL and `IsValid` report false.
+- TOML and YAML numeric formatting uses the process numeric locale rather than an isolated C
+  locale when called outside the VM's locale initialization; see
+  [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
 
 ### Zia Example
 
@@ -515,7 +592,7 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 module TomlDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Toml as Toml;
+bind Viper.Data.Toml as Toml;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -535,23 +612,22 @@ DIM config AS STRING = "[server]" + CHR$(10) + _
                        "[database]" + CHR$(10) + _
                        "url = ""postgres://localhost/mydb"""
 
-DIM data AS OBJECT = Viper.Text.Toml.Parse(config)
+DIM data AS OBJECT = Viper.Data.Toml.Parse(config)
 
-' Access nested values using dotted path
-DIM host AS OBJECT = Viper.Text.Toml.Get(data, "server.host")
-PRINT Viper.Unbox.Str(host)  ' Output: "localhost"
+' Access nested scalar values using the string getter
+DIM host AS STRING = Viper.Data.Toml.GetStr(data, "server.host")
+PRINT host  ' Output: "localhost"
 
-' Or use GetStr for convenience (returns string directly)
-DIM port AS STRING = Viper.Text.Toml.GetStr(data, "server.port")
+DIM port AS STRING = Viper.Data.Toml.GetStr(data, "server.port")
 PRINT port  ' Output: "8080"
 
 ' Validate before parsing
-IF Viper.Text.Toml.IsValid(config) THEN
-    DIM parsed AS OBJECT = Viper.Text.Toml.Parse(config)
+IF Viper.Data.Toml.IsValid(config) THEN
+    DIM parsed AS OBJECT = Viper.Data.Toml.Parse(config)
 END IF
 
 ' Format back to TOML
-DIM formattedToml AS STRING = Viper.Text.Toml.Format(data)
+DIM formattedToml AS STRING = Viper.Data.Toml.Format(data)
 PRINT formattedToml
 ```
 
@@ -563,9 +639,10 @@ PRINT formattedToml
 
 ---
 
-## Viper.Text.Ini
+## Viper.Data.Ini
 
-INI configuration file parsing and manipulation. Parses standard INI format with `[section]` headers and `key=value` pairs into a nested Map structure.
+INI-style configuration parsing and manipulation. The accepted dialect uses `[section]` headers,
+`key=value` pairs, and whole-line `;`/`#` comments.
 
 **Type:** Static utility class
 
@@ -573,20 +650,29 @@ INI configuration file parsing and manipulation. Parses standard INI format with
 
 | Method                          | Signature                          | Description                                              |
 |---------------------------------|------------------------------------|----------------------------------------------------------|
-| `Parse(text)`                   | `Map(String)`                      | Parse INI text into a Map of Maps (section -> key -> value) |
-| `Format(doc)`                   | `String(Map)`                      | Format a Map of Maps back to INI text                    |
-| `Get(doc, section, key)`        | `String(Map, String, String)`      | Get a value from a section, or empty string if not found |
-| `Set(doc, section, key, value)` | `Void(Map, String, String, String)` | Set a value in a section (creates section if needed)    |
-| `HasSection(doc, section)`      | `Boolean(Map, String)`             | Check if a section exists                                |
-| `Sections(doc)`                 | `Seq(Map)`                         | Get all section names as a Seq                           |
-| `Remove(doc, section, key)`     | `Boolean(Map, String, String)`     | Remove a key from a section; returns true if found       |
+| `Parse(text)`                   | `Object(String)`                    | Parse into a Map of section Maps                         |
+| `Format(doc)`                   | `String(Object)`                    | Format a Map of Maps back to INI-style text              |
+| `Get(doc, section, key)`        | `String(Object, String, String)`    | Get a value, or empty string if not found                |
+| `Set(doc, section, key, value)` | `Void(Object, String, String, String)` | Set a value, creating the section if needed           |
+| `HasSection(doc, section)`      | `Boolean(Object, String)`           | Check if a section exists                                |
+| `Sections(doc)`                 | `Object(Object)`                    | Return a `Seq` containing all section names              |
+| `Remove(doc, section, key)`     | `Boolean(Object, String, String)`   | Remove a key; return true if it was present              |
 
 ### Notes
 
-- `Parse` returns a Map where each key is a section name and each value is a Map of key-value string pairs
-- Entries that appear before any section header are stored under the empty string key `""`
-- `Set` creates the section automatically if it does not already exist
-- `Remove` returns true (1) if the key was found and removed, false (0) if not found
+- `Parse` returns a Map where each key is a case-sensitive section name and each value is a Map of
+  case-sensitive key/value strings.
+- The empty-string default section is created lazily: entries before the first named section are
+  stored there, and `Sections()` includes its `""` name only when such entries exist. NULL input
+  and an empty string both produce the same empty document.
+- Leading/trailing whitespace around lines, section names, keys, and values is trimmed. Duplicate
+  keys keep the last value.
+- Only whole-line comments are recognized. Inline `;` and `#` bytes remain part of a value.
+- Lines without `=` and malformed section lines are silently ignored; this API has no validation or
+  parse-error result.
+- `Set` creates the section automatically if it does not already exist.
+- `Remove` returns true (1) if the key was found and removed, false (0) if not found.
+- `Sections()` is registered as `seq<str>`, so member access resolves directly on the result.
 - `Parse` and `Format` use runtime string byte lengths, so embedded `NUL` bytes in keys and values are preserved.
 - `Format` writes values verbatim; INI has no escaping layer, so consumers that require text-only INI should avoid control bytes.
 
@@ -596,7 +682,7 @@ INI configuration file parsing and manipulation. Parses standard INI format with
 module IniDemo;
 
 bind Viper.Terminal;
-bind Viper.Text.Ini as Ini;
+bind Viper.Data.Ini as Ini;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
@@ -618,35 +704,35 @@ func start() {
 ' Parse an INI configuration string
 DIM text AS STRING = "[app]" + CHR$(10) + "name=MyApp" + CHR$(10) + "version=1.0" + CHR$(10)
 text = text + "[db]" + CHR$(10) + "host=localhost"
-DIM doc AS OBJECT = Viper.Text.Ini.Parse(text)
+DIM doc AS OBJECT = Viper.Data.Ini.Parse(text)
 
 ' Read values
-DIM name AS STRING = Viper.Text.Ini.Get(doc, "app", "name")
+DIM name AS STRING = Viper.Data.Ini.Get(doc, "app", "name")
 PRINT name  ' Output: "MyApp"
 
-DIM host AS STRING = Viper.Text.Ini.Get(doc, "db", "host")
+DIM host AS STRING = Viper.Data.Ini.Get(doc, "db", "host")
 PRINT host  ' Output: "localhost"
 
 ' Missing keys return empty string
-DIM missing AS STRING = Viper.Text.Ini.Get(doc, "db", "port")
+DIM missing AS STRING = Viper.Data.Ini.Get(doc, "db", "port")
 PRINT missing  ' Output: ""
 
 ' Check if section exists
-IF Viper.Text.Ini.HasSection(doc, "app") THEN
+IF Viper.Data.Ini.HasSection(doc, "app") THEN
     PRINT "app section exists"
 END IF
 
 ' List all sections
-DIM sections AS Viper.Collections.Seq = Viper.Text.Ini.Sections(doc)
-PRINT sections.Count  ' Output: 2
+DIM sections AS Viper.Collections.Seq = Viper.Data.Ini.Sections(doc)
+PRINT sections.Count  ' Output: 3 ("", "app", and "db")
 
 ' Modify and format back to INI text
-Viper.Text.Ini.Set(doc, "db", "port", "5432")
-DIM formattedIni AS STRING = Viper.Text.Ini.Format(doc)
+Viper.Data.Ini.Set(doc, "db", "port", "5432")
+DIM formattedIni AS STRING = Viper.Data.Ini.Format(doc)
 PRINT formattedIni
 
 ' Remove a key
-DIM removed AS INTEGER = Viper.Text.Ini.Remove(doc, "db", "port")
+DIM removed AS INTEGER = Viper.Data.Ini.Remove(doc, "db", "port")
 PRINT removed  ' Output: 1 (true)
 ```
 
@@ -660,7 +746,9 @@ PRINT removed  ' Output: 1 (true)
 
 ## Viper.Data.Serialize
 
-Unified serialization interface for converting data between JSON, XML, YAML, TOML, and CSV formats. Provides format-agnostic parsing, formatting, validation, and round-trip conversion with auto-detection.
+Unified facade for parsing, formatting, heuristically detecting, and projecting values among JSON,
+XML, YAML, TOML, and CSV representations. Cross-format conversion is intentionally lossy for
+formats with different data models.
 
 **Type:** Static utility class
 
@@ -671,8 +759,8 @@ Unified serialization interface for converting data between JSON, XML, YAML, TOM
 | `FORMAT_JSON`  | 0     | JSON (RFC 8259)  |
 | `FORMAT_XML`   | 1     | XML (subset)     |
 | `FORMAT_YAML`  | 2     | YAML (1.2 subset)|
-| `FORMAT_TOML`  | 3     | TOML (v1.0)      |
-| `FORMAT_CSV`   | 4     | CSV (RFC 4180)   |
+| `FORMAT_TOML`  | 3     | Runtime's permissive TOML subset |
+| `FORMAT_CSV`   | 4     | CSV with RFC 4180-style quoting  |
 
 ### Methods
 
@@ -694,13 +782,37 @@ Unified serialization interface for converting data between JSON, XML, YAML, TOM
 
 ### Notes
 
-- **Auto-detection heuristics:** valid JSON objects/arrays and JSON-looking `{`/`[` text → JSON, `<` → XML, standalone `---` → YAML, valid `[section]`/`key = value` → TOML, valid `key: value` → YAML, first-line commas → CSV; unknown plain text returns `-1`
+- **Auto-detection heuristics:** after leading ASCII whitespace, a valid JSON object/array and then
+  any JSON-looking `{`/`[` text → JSON; `<` → XML; a prefix of `---` → YAML; an accepted
+  `[section]` or `key = value` first line → TOML; an accepted `key: value` first line → YAML; a
+  first-line comma → CSV. Unknown plain text returns `-1`. Detection is a best-effort guess, not
+  content-type proof.
 - Prefer `ParseResult()` and `AutoParseResult()` for user-provided input; failures are returned as `Err(message)`
-- `Parse()` and `AutoParse()` remain available for compatibility and return NULL on error; check `Error()` after those calls for details
-- `Convert()` is a convenience for `Format(Parse(text, from), to)` with built-in projections for XML, TOML, and CSV.
-- XML conversion preserves element attributes under an `@attrs` mapping and element text under `@text` when mixed with attributes or child elements.
-- All returned strings are newly allocated
-- Dispatches to the format-specific parsers (Json, Xml, Yaml, Toml, Csv) internally
+- `ParseResult()` returns `Ok(NULL)` for a valid JSON/YAML null value; `Parse()` cannot distinguish
+  that success from an error without consulting `Error()`.
+- `Parse()` and `AutoParse()` remain available for compatibility and return NULL on error; check
+  `Error()` immediately after the call for details. Error state is thread-local.
+- `Convert()` is `Format(Parse(text, from), to)` plus generic projections. It preserves neither
+  source spelling nor all source semantics: TOML scalar types currently parse as strings, XML
+  declarations/DTDs are discarded, and CSV has no nested object model.
+- XML-to-generic conversion groups repeated sibling tags into a Seq, preserves attributes under
+  `@attrs`, and stores text under `@text` when attributes or child elements are also present.
+  Generic-to-XML conversion wraps the value in `<root>`, turns Map keys into sanitized child tag
+  names, and turns Seq elements into `<item>` children.
+- TOML output wraps a non-Map value under `items` (Seq) or `value` (scalar). CSV output maps a Map
+  to two-column key/value rows, a flat Seq to one-column rows, and a scalar to one cell.
+- `FormatPretty()` applies indentation to JSON, XML, and YAML. TOML and CSV ignore the indent
+  argument. Values below 1 select two spaces before dispatch.
+- `FormatName()` returns lowercase `json`, `xml`, `yaml`, `toml`, or `csv`; unknown values return
+  `unknown`. `FormatFromName()` is case-insensitive and also accepts `yml`.
+- `FormatFromName()` currently compares a NUL-terminated view, so a runtime String such as
+  `json\0suffix` is incorrectly accepted as `json`. Generic-to-XML projection likewise truncates
+  Map keys at an embedded `NUL`; see
+  [VDOC-043](../../documentation-review-findings.md#vdoc-043--serialize-name-and-xml-key-processing-truncates-at-embedded-nul).
+- `MimeType()` returns `application/json`, `application/xml`, `application/yaml`,
+  `application/toml`, or `text/csv`; unknown values return `application/octet-stream`.
+- All returned strings are newly allocated. The facade dispatches to the format-specific runtime
+  backends internally.
 
 ### BASIC Example
 
@@ -734,6 +846,7 @@ DIM pretty AS STRING = Viper.Data.Serialize.FormatPretty(data, 0, 2)
 PRINT pretty
 
 ' Validate before parsing
+DIM userInput AS STRING = "{""enabled"": true}"
 IF Viper.Data.Serialize.IsValid(userInput, 0) THEN
     DIM safeResult AS OBJECT = Viper.Data.Serialize.ParseResult(userInput, 0)
     IF safeResult.IsOk THEN
@@ -748,14 +861,15 @@ END IF
 - **API flexibility:** Accept data in any supported format
 - **Auto-detection:** Process files without knowing their format in advance
 - **Validation:** Check input format before processing
-- **Round-trip:** Parse → modify → reformat data
+- **Projection:** Parse → modify → reformat data when the supported models overlap
 
 ---
 
 ## Viper.Data.Xml
 
-XML document model with a mutable node tree. Supports parsing, navigation, attribute access, child manipulation, and
-XPath-lite path queries. All node values are opaque objects.
+Mutable node tree for a practical subset of
+[XML 1.0 Fifth Edition](https://www.w3.org/TR/xml/). It supports parsing, navigation, attributes,
+child manipulation, and simple slash-path queries. All node values are opaque objects.
 
 **Type:** Static utility class
 
@@ -766,7 +880,7 @@ XPath-lite path queries. All node values are opaque objects.
 | `Parse(xml)`       | `Object(String)`         | Parse an XML string; returns document node or NULL |
 | `ParseResult(xml)` | `Result(String)`         | Parse as `Ok(document)` or `Err(message)`       |
 | `Error()`          | `String()`               | Compatibility diagnostic after legacy parse calls |
-| `IsValid(xml)`     | `Boolean(String)`        | True if the string is well-formed XML            |
+| `IsValid(xml)`     | `Boolean(String)`        | True if the runtime's XML subset accepts the string |
 
 ### Node Creation
 
@@ -794,19 +908,19 @@ XPath-lite path queries. All node values are opaque objects.
 | `HasAttr(n, name)`        | `Boolean(Object, String)`         | True if attribute exists                  |
 | `SetAttr(n, name, value)` | `Void(Object, String, String)`    | Set or add attribute                      |
 | `RemoveAttr(n, name)`     | `Boolean(Object, String)`         | Remove attribute; true if present         |
-| `AttrNames(n)`            | `Seq(Object)`                     | Sequence of attribute name strings        |
+| `AttrNames(n)`            | `Object(Object)`                  | Return a `Seq` of attribute name strings  |
 
 ### Navigation
 
 | Method                  | Signature                    | Description                                        |
 |-------------------------|------------------------------|----------------------------------------------------|
-| `Children(n)`           | `Seq(Object)`                | All child nodes as a sequence                      |
+| `Children(n)`           | `Object(Object)`             | Return a `Seq` containing all child nodes          |
 | `ChildCount(n)`         | `Integer(Object)`            | Number of child nodes                              |
 | `ChildAt(n, i)`         | `Object(Object, Integer)`    | Child at index i (0-based)                         |
 | `Child(n, tag)`         | `Object(Object, String)`     | First child element with given tag, or NULL        |
-| `ChildrenByTag(n, tag)` | `Seq(Object, String)`        | All child elements with given tag                  |
-| `Parent(n)`             | `Object(Object)`             | Parent node, or NULL for root                      |
-| `Root(n)`               | `Object(Object)`             | Document root starting from any node               |
+| `ChildrenByTag(n, tag)` | `Object(Object, String)`     | Return a `Seq` of child elements with given tag    |
+| `Parent(n)`             | `Object(Object)`             | Parent node, or NULL for a detached/document node  |
+| `Root(n)`               | `Object(Object)`             | Document element starting from any node            |
 
 ### Search
 
@@ -814,7 +928,7 @@ XPath-lite path queries. All node values are opaque objects.
 |-------------------|--------------------------|---------------------------------------------------------|
 | `Find(n, path)`   | `Object(Object, String)` | Find first node matching a simple path (e.g. "a/b/c")  |
 | `FindOption(n, path)` | `Option[Object](Object, String)` | Find first matching node as `Some(node)`, or `None` |
-| `FindAll(n, path)`| `Seq(Object, String)`    | Find all nodes matching the path                        |
+| `FindAll(n, path)`| `Object(Object, String)` | Return a `Seq` of all nodes matching the path            |
 
 ### Mutation
 
@@ -822,7 +936,7 @@ XPath-lite path queries. All node values are opaque objects.
 |---------------------------|----------------------------------|-----------------------------------|
 | `Append(n, child)`        | `Void(Object, Object)`           | Append child to node              |
 | `Insert(n, i, child)`     | `Void(Object, Integer, Object)`  | Insert child at index i           |
-| `Remove(n, child)`        | `Void(Object, Object)`           | Remove specific child node        |
+| `Remove(n, child)`        | `Boolean(Object, Object)`        | Remove a child; true if it was present |
 | `RemoveAt(n, i)`          | `Void(Object, Integer)`          | Remove child at index i           |
 | `SetText(n, text)`        | `Void(Object, String)`           | Replace all children with a single text node |
 
@@ -841,13 +955,29 @@ XPath-lite path queries. All node values are opaque objects.
 - `Parse` remains available for compatibility and returns a document node on success or NULL on error. Use `Root(doc)` to get the document element.
 - Check `Error()` after a legacy `Parse` NULL return for a diagnostic message.
 - Prefer `FindOption()` for new search code. `Find()` remains available for compatibility with existing NULL checks.
-- XML parsing enforces one document element, matching closing tags, valid XML names, unique attributes, and valid entity references.
-- Element, attribute, comment, and CDATA creation/mutation validate XML name/content rules and report errors instead of creating malformed trees.
+- Parsing supports elements, attributes, text, comments, CDATA, processing instructions, and
+  DOCTYPE declarations. Processing instructions and DOCTYPE contents are validated only for a
+  terminator and are discarded rather than represented in the node tree.
+- XML parsing enforces one document element, matching closing tags, its byte-oriented XML-name
+  rules, unique attributes, legal control characters, and recognized entity references.
+- Only the five predefined named entities and numeric character references are decoded. General
+  entities declared by a DTD are not expanded, so some well-formed XML 1.0 documents are rejected.
+  The parser also does not validate DTDs, namespaces, or UTF-8 byte sequences as a full XML
+  processor would; `IsValid` therefore checks acceptance by this practical subset, not XML 1.0
+  conformance.
+- Formatting a parsed tree cannot reproduce discarded declarations, processing instructions, or
+  DOCTYPE content.
+- Element, attribute, comment, and CDATA creation/mutation validate the runtime's name/content
+  rules and report errors instead of creating malformed trees for ordinary NUL-free inputs.
+  Embedded NUL in a programmatically supplied name is an open exception; see
+  [VDOC-032](../../documentation-review-findings.md#vdoc-032--xml-name-validation-stops-at-an-embedded-nul).
 - Path syntax for `Find`/`FindAll`: slash-separated tag names from the given node or its direct children (e.g. `"books/book/title"`). A path without `/` remains a recursive tag search.
 - Attribute and child mutations are performed in-place on the node object.
 - `Append` and `Insert` reject non-node children, document children, cycles, and children that already have a parent.
 - `Append` and `Insert` retain the child; callers may keep using the child handle or release their own reference after insertion.
 - `TextContent` is useful for extracting all readable text from a subtree.
+- `AttrNames`, `Children`, `ChildrenByTag`, and `FindAll` are registered as typed sequences
+  (`seq<str>` for names, `seq<obj>` for nodes), so member access resolves directly.
 
 ### Zia Example
 
@@ -922,8 +1052,8 @@ PRINT Viper.Data.Xml.FormatPretty(root, 2)
 DIM items AS STRING = "<items><item key=""a"" val=""1""/><item key=""b"" val=""2""/></items>"
 DIM irResult AS OBJECT = Viper.Data.Xml.ParseResult(items)
 DIM ir AS OBJECT = irResult.Unwrap()
-DIM allItems AS OBJECT = Viper.Data.Xml.ChildrenByTag(Viper.Data.Xml.Root(ir), "item")
-FOR i = 0 TO allItems.Length - 1
+DIM allItems AS Viper.Collections.Seq = Viper.Data.Xml.ChildrenByTag(Viper.Data.Xml.Root(ir), "item")
+FOR i = 0 TO allItems.Count - 1
     DIM it AS OBJECT = allItems.Get(i)
     PRINT Viper.Data.Xml.Attr(it, "key"); "="; Viper.Data.Xml.Attr(it, "val")
 NEXT
@@ -933,8 +1063,9 @@ NEXT
 
 ## Viper.Data.Yaml
 
-YAML 1.2 parser and formatter. Converts YAML text to/from Viper objects (maps, sequences, scalars). The object
-model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, maps, and sequences.
+Parser and formatter for a practical subset of the
+[YAML 1.2.2](https://yaml.org/spec/1.2.2/) core schema. It converts supported YAML text to/from
+Viper strings, integers, doubles, booleans, NULL, Maps, and Seqs.
 
 **Type:** Static utility class
 
@@ -945,8 +1076,8 @@ model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, ma
 | `Parse(yaml)`             | `Object(String)`                 | Parse YAML string; returns value or NULL on error     |
 | `ParseResult(yaml)`       | `Result(String)`                 | Parse as `Ok(value)` or `Err(message)`                |
 | `Error()`                 | `String()`                       | Compatibility diagnostic after legacy parse calls     |
-| `IsValid(yaml)`           | `Boolean(String)`                | True if the string is valid YAML                      |
-| `Format(obj)`             | `String(Object)`                 | Format a value as compact YAML                        |
+| `IsValid(yaml)`           | `Boolean(String)`                | True if the runtime's YAML subset accepts the string  |
+| `Format(obj)`             | `String(Object)`                 | Format a value as block YAML with two-space indentation |
 | `FormatIndent(obj, spaces)` | `String(Object, Integer)`      | Format with given indentation level                   |
 | `TypeOf(obj)`             | `String(Object)`                 | Value type string (see below)                         |
 
@@ -961,18 +1092,40 @@ model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, ma
 | `"string"`    | String scalar                                 |
 | `"sequence"`  | Ordered list (YAML sequence)                  |
 | `"mapping"`   | Key-value pairs (YAML mapping)                |
+| `"unknown"`   | Unsupported runtime object type               |
 
 ### Notes
 
 - Prefer `ParseResult` for user-provided YAML; it distinguishes valid YAML null (`Ok(NULL)`) from parse failure (`Err(message)`).
 - `Parse` remains available for compatibility and returns NULL both for valid YAML null and for parse failure; check `Error()` after legacy calls when NULL is ambiguous.
-- The returned object uses the same representation as `Viper.Text.Json.Parse` — use `Map`, `Seq`, and scalar
+- The returned object uses the same representation as `Viper.Data.Json.Parse` — use `Map`, `Seq`, and scalar
   accessors to traverse the parsed value.
 - Explicit multi-document YAML streams separated by `---` parse as a sequence of documents.
-- Anchors, aliases, custom tags, and merge keys are not supported.
-- Flow collections (`[]` and `{}`), quoted keys, comments after scalars, and common quoted-string escapes are supported.
-- `Format` round-trips losslessly for all scalar types, sequences, and mappings by quoting ambiguous scalars and escaping multiline strings exactly.
+- Empty input is valid and maps to YAML null.
+- Anchors, aliases, custom tags, merge keys, directives, and the full YAML schema system are not
+  implemented. Anchor/alias syntax (`&name`, `*name` at the start of an unquoted token) is
+  rejected with an explicit parse error rather than misparsed; quoted or mid-token `&`/`*`
+  characters remain ordinary string content.
+- Block and flow collections (`[]` and `{}`), quoted keys, whole-line/after-scalar comments,
+  literal/folded block scalars, and common quoted-string escapes are supported.
+- `Format` uses block-style collections and quotes ambiguous string scalars. `FormatIndent` uses
+  the requested width from 1 through 8, changes values below 1 to 2, and clamps values above 8.
+- The formatter is not lossless for every runtime scalar: `%g` formatting can round doubles, and
+  string/key formatting stops at an embedded `NUL`. See
+  [VDOC-027](../../documentation-review-findings.md#vdoc-027--yaml-format-can-lose-double-precision-and-string-bytes).
+- A plain scalar with an embedded `NUL` can be classified from only its numeric prefix while the
+  remaining bytes are ignored—for example, `1\0garbage` is accepted as integer `1`. See
+  [VDOC-039](../../documentation-review-findings.md#vdoc-039--yaml-numeric-scalar-parsing-ignores-bytes-after-an-embedded-nul).
+- The parser validates the input is well-formed UTF-8 before parsing; malformed byte sequences
+  make `Parse` return NULL and `IsValid` report false.
+- Finite double formatting depends on the process numeric locale when the runtime is embedded
+  without the VM's locale initialization; see
+  [VDOC-041](../../documentation-review-findings.md#vdoc-041--toml-and-yaml-numeric-emission-is-locale-sensitive).
+- Formatting depth is bounded (200 levels, matching the parser); cyclic or deeper containers fail
+  closed with an empty string instead of recursing without bound.
 - YAML scalars with no explicit type tag are auto-typed for null, numbers, and YAML 1.2 booleans (`true`/`false`); legacy YAML 1.1 words such as `yes`, `no`, `on`, and `off` remain strings.
+- Decimal, hexadecimal (`0x`), and octal (`0o`) integers are recognized. `.inf`, `-.inf`, and
+  `.nan` are floating-point values; bare C spellings such as `inf` and `nan` remain strings.
 - Tabs in indentation, unexpected over-indentation, invalid quoted-string escapes, and malformed flow collections are rejected.
 
 ### Zia Example

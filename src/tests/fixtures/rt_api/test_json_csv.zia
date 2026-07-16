@@ -1,32 +1,32 @@
 module TestJsonCsv;
-bind Viper.Text.Json;
+bind Viper.Data.Json;
 bind Viper.Text.Uuid;
 bind Viper.Text.Version;
 bind Viper.Collections.Map;
 bind Viper.Terminal;
 
 func start() {
-    var j = Viper.Text.Json.Parse("{\"name\":\"viper\",\"ver\":1}");
+    var j = Viper.Data.Json.Parse("{\"name\":\"viper\",\"ver\":1}");
     Say(Viper.Collections.Map.GetStr(j, "name"));
     SayInt(Viper.Collections.Map.GetInt(j, "ver"));
     SayBool(Viper.Collections.Map.Has(j, "name"));
     SayBool(Viper.Collections.Map.Has(j, "missing"));
-    var js = Viper.Text.Json.Format(j);
-    SayBool(Viper.String.Has(js, "viper"));
+    var js = Viper.Data.Json.Format(j);
+    SayBool(Viper.String.Contains(js, "viper"));
 
-    var j2 = Viper.Text.Json.NewObject();
+    var j2 = Viper.Data.Json.NewObject();
     Viper.Collections.Map.SetStr(j2, "key", "value");
     Viper.Collections.Map.SetInt(j2, "num", 42);
     Viper.Collections.Map.SetBool(j2, "flag", true);
     Say(Viper.Collections.Map.GetStr(j2, "key"));
     SayInt(Viper.Collections.Map.GetInt(j2, "num"));
     SayBool(Viper.Collections.Map.GetBool(j2, "flag"));
-    Say(Viper.Text.Json.Format(j2));
+    Say(Viper.Data.Json.Format(j2));
 
     // Uuid
-    var u1 = Viper.Text.Uuid.New();
-    SayBool(Viper.String.Has(u1, "-"));
-    var u2 = Viper.Text.Uuid.New();
+    var u1 = Viper.Text.Uuid.Generate();
+    SayBool(Viper.String.Contains(u1, "-"));
+    var u2 = Viper.Text.Uuid.Generate();
     SayBool(u1 != u2);
 
     // Version

@@ -70,28 +70,28 @@ func testMap() {
 }
 
 func testBag() {
-    var b = Viper.Collections.Bag.New();
-    assertEqInt(Viper.Collections.Bag.get_Count(b), 0, "bag new empty");
+    var b = Viper.Collections.StringSet.New();
+    assertEqInt(Viper.Collections.StringSet.get_Count(b), 0, "bag new empty");
 
     // Put/Has
-    assertTrue(Viper.Collections.Bag.Add(b, "x"), "bag put new");
-    assertFalse(Viper.Collections.Bag.Add(b, "x"), "bag put duplicate");
-    assertTrue(Viper.Collections.Bag.Has(b, "x"), "bag has");
-    assertEqInt(Viper.Collections.Bag.get_Count(b), 1, "bag put len");
+    assertTrue(Viper.Collections.StringSet.Add(b, "x"), "bag put new");
+    assertFalse(Viper.Collections.StringSet.Add(b, "x"), "bag put duplicate");
+    assertTrue(Viper.Collections.StringSet.Has(b, "x"), "bag has");
+    assertEqInt(Viper.Collections.StringSet.get_Count(b), 1, "bag put len");
 
     // Add more
-    Viper.Collections.Bag.Add(b, "y");
-    Viper.Collections.Bag.Add(b, "z");
-    assertEqInt(Viper.Collections.Bag.get_Count(b), 3, "bag multi len");
+    Viper.Collections.StringSet.Add(b, "y");
+    Viper.Collections.StringSet.Add(b, "z");
+    assertEqInt(Viper.Collections.StringSet.get_Count(b), 3, "bag multi len");
 
     // Drop
-    assertTrue(Viper.Collections.Bag.Remove(b, "y"), "bag drop existing");
-    assertFalse(Viper.Collections.Bag.Remove(b, "missing"), "bag drop missing");
-    assertEqInt(Viper.Collections.Bag.get_Count(b), 2, "bag drop len");
+    assertTrue(Viper.Collections.StringSet.Remove(b, "y"), "bag drop existing");
+    assertFalse(Viper.Collections.StringSet.Remove(b, "missing"), "bag drop missing");
+    assertEqInt(Viper.Collections.StringSet.get_Count(b), 2, "bag drop len");
 
     // Clear
-    Viper.Collections.Bag.Clear(b);
-    assertEqInt(Viper.Collections.Bag.get_Count(b), 0, "bag clear");
+    Viper.Collections.StringSet.Clear(b);
+    assertEqInt(Viper.Collections.StringSet.get_Count(b), 0, "bag clear");
 }
 
 func testStack() {
@@ -169,23 +169,23 @@ func testHeap() {
 }
 
 func testTreeMap() {
-    var tm = Viper.Collections.TreeMap.New();
-    assertEqInt(Viper.Collections.TreeMap.get_Count(tm), 0, "treemap new empty");
+    var tm = Viper.Collections.SortedMap.New();
+    assertEqInt(Viper.Collections.SortedMap.get_Count(tm), 0, "treemap new empty");
 
     // Set/Has (values must be objects)
-    Viper.Collections.TreeMap.Set(tm, "b", "two");
-    Viper.Collections.TreeMap.Set(tm, "a", "one");
-    Viper.Collections.TreeMap.Set(tm, "c", "three");
-    assertEqInt(Viper.Collections.TreeMap.get_Count(tm), 3, "treemap set len");
-    assertTrue(Viper.Collections.TreeMap.Has(tm, "a"), "treemap has");
+    Viper.Collections.SortedMap.Set(tm, "b", "two");
+    Viper.Collections.SortedMap.Set(tm, "a", "one");
+    Viper.Collections.SortedMap.Set(tm, "c", "three");
+    assertEqInt(Viper.Collections.SortedMap.get_Count(tm), 3, "treemap set len");
+    assertTrue(Viper.Collections.SortedMap.Has(tm, "a"), "treemap has");
 
     // Remove
-    assertTrue(Viper.Collections.TreeMap.Remove(tm, "b"), "treemap remove");
-    assertEqInt(Viper.Collections.TreeMap.get_Count(tm), 2, "treemap remove len");
+    assertTrue(Viper.Collections.SortedMap.Remove(tm, "b"), "treemap remove");
+    assertEqInt(Viper.Collections.SortedMap.get_Count(tm), 2, "treemap remove len");
 
     // Clear
-    Viper.Collections.TreeMap.Clear(tm);
-    assertEqInt(Viper.Collections.TreeMap.get_Count(tm), 0, "treemap clear");
+    Viper.Collections.SortedMap.Clear(tm);
+    assertEqInt(Viper.Collections.SortedMap.get_Count(tm), 0, "treemap clear");
 }
 
 func testBytes() {
@@ -222,7 +222,7 @@ func testBytes() {
 
     // Find
     var smallBuf = Viper.Collections.Bytes.FromStr("abcabc");
-    assertGt(Viper.Collections.Bytes.Find(smallBuf, 98), -1, "bytes find");  // 98 = 'b'
+    assertGt(Viper.Collections.Bytes.Find(smallBuf, 98).UnwrapOrI64(0 - 1), -1, "bytes find");  // 98 = 'b'
 }
 
 func testList() {

@@ -492,8 +492,9 @@ int8_t rt_udp_is_bound(void *obj) {
 //=============================================================================
 
 /// @brief Send a Bytes payload as a single UDP datagram to `(host, port)`. Caps payload at the
-/// IPv4 UDP max of 65507 bytes (65535 IP MTU − 20 IP header − 8 UDP header) to avoid silent
-/// kernel fragmentation. Resolves `host` through `getaddrinfo`, supporting IPv4, IPv6, and DNS.
+/// IPv4 UDP max of 65507 bytes (65535 IP packet − 20 IP header − 8 UDP header); large permitted
+/// datagrams can still be fragmented or rejected according to the path MTU. Resolves `host`
+/// through `getaddrinfo`, supporting IPv4, IPv6, and DNS.
 /// Returns the byte count actually sent. Traps with specific kinds for EMSGSIZE, host-not-found,
 /// and generic send errors so callers can distinguish recoverable failures.
 int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
@@ -773,8 +774,8 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
     return rt_udp_recv_from(obj, max_bytes);
 }
 
-/// @brief Read the source IPv4 of the most recently received datagram. Empty until the first
-/// successful `recv*`.
+/// @brief Read the numeric IPv4 or IPv6 source of the most recently received datagram. Empty until
+/// the first successful `recv*`.
 rt_string rt_udp_sender_host(void *obj) {
     if (!obj) {
         rt_trap("Network: NULL socket");

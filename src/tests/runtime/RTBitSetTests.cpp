@@ -320,7 +320,37 @@ static void test_negative_index() {
     rt_release_obj(bs);
 }
 
+static void test_staged_growth_bounds() {
+    // VDOC-104: growth doubling allocates spare capacity words; they must
+    // stay invisible to SetAll/Count and binary operations must not write
+    // past the result's logical size.
+    void *bs = rt_bitset_new(64);
+    rt_bitset_set(bs, 64);  // grow to 2 words
+    rt_bitset_set(bs, 128); // doubles allocation to 4 words, logical 129 bits
+
+    assert(rt_bitset_len(bs) == 129);
+    rt_bitset_set_all(bs);
+    assert(rt_bitset_count(bs) == 129); // not 193
+
+    // Binary ops between two staged-grown operands: result stays in bounds
+    // and semantically correct.
+    void *other = rt_bitset_new(64);
+    rt_bitset_set(other, 64);
+    rt_bitset_set(other, 128);
+
+    void *anded = rt_bitset_and(bs, other);
+    assert(rt_bitset_len(anded) == 129);
+    assert(rt_bitset_count(anded) == 2); // bits 64 and 128
+
+    void *ored = rt_bitset_or(bs, other);
+    assert(rt_bitset_count(ored) == 129);
+
+    void *xored = rt_bitset_xor(bs, other);
+    assert(rt_bitset_count(xored) == 127);
+}
+
 int main() {
+    test_staged_growth_bounds();
     test_new_bitset();
     test_negative_size_traps();
     test_set_and_get();

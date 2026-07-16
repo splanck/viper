@@ -35,6 +35,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_convert_coll.h"
+
+#include "rt_box.h"
 #include "rt_bag.h"
 #include "rt_deque.h"
 #include "rt_internal.h"
@@ -411,8 +413,15 @@ void *rt_bag_to_set(void *bag) {
 
     int64_t len = rt_seq_len(items);
     for (int64_t i = 0; i < len; i++) {
-        void *elem = rt_seq_get(items, i);
-        rt_set_add(set, elem);
+        void *elem = rt_seq_get(items, i); // borrowed from the snapshot Seq
+        // Bag items are raw runtime strings; box them so Set membership uses
+        // boxed-string value equality like every other Set entry (VDOC-102).
+        void *entry = elem;
+        if (rt_string_is_handle(elem))
+            entry = rt_box_str((rt_string)elem);
+        rt_set_add(set, entry); // Set retains its own reference
+        if (entry != elem && rt_obj_release_check0(entry))
+            rt_obj_free(entry);
     }
     // Release the intermediate Seq from rt_bag_items
     if (rt_obj_release_check0(items))

@@ -8,17 +8,19 @@
 // File: src/runtime/system/rt_machine.c
 // Purpose: Implements system information queries for the Viper.System.Machine class.
 //          Provides CPU count, hostname, OS name/version, architecture,
-//          total/available memory, and process ID using platform-specific APIs.
+//          total/free-memory estimates, page/pointer size, and endianness using
+//          platform-specific APIs.
 //
 // Key invariants:
-//   - CPU count queries use GetSystemInfo (Win32), sysconf (POSIX), or fall
-//     back to 1 if the platform provides no API.
+//   - CPU count queries use GetSystemInfo (Win32), sysctl/sysconf (POSIX).
+//     Linux/generic POSIX fall back to 1; the macOS sysconf fallback can return -1.
 //   - OS name strings are statically determined at compile time from predefined
-//     macros (_WIN32, __APPLE__, __linux__) and never change at runtime.
+//     platform macros, including ViperDOS, and never change at runtime.
 //   - Hostname is queried fresh on each call; it is not cached.
 //   - Memory queries use GlobalMemoryStatusEx (Win32) or sysinfo (Linux) or
 //     host_statistics64 (macOS).
-//   - All functions return safe defaults (0, empty string) on query failure.
+//   - Query failures use API-specific fallbacks such as 0, 1, 4096, empty, or
+//     "unknown"; the macOS core-count fallback currently leaks sysconf's -1.
 //
 // Ownership/Lifetime:
 //   - All returned rt_string values are fresh allocations owned by the caller.
@@ -99,8 +101,8 @@ rt_string rt_machine_os(void) {
 }
 
 /// @brief Return the OS version string in the platform's native format. Per-OS source:
-///   - **Windows:** `GetVersionExA` → `"major.minor.build"` (deprecated but stable for VPN-style
-///   versions).
+///   - **Windows:** `GetVersionExA` → `"major.minor.build"`; this deprecated API can report a
+///   compatibility version depending on the embedding executable's manifest.
 ///   - **macOS:** `sysctlbyname("kern.osproductversion")` (e.g. "14.5"); falls back to
 ///   `uname.release`.
 ///   - **Linux:** Parses `VERSION_ID=` from `/etc/os-release` (e.g. "22.04"); falls back to
@@ -301,8 +303,9 @@ rt_string rt_machine_temp(void) {
 // ============================================================================
 
 /// @brief Return the number of logical CPU cores. Win32: `GetSystemInfo.dwNumberOfProcessors`.
-/// macOS: `sysctlbyname("hw.logicalcpu")` (falls back to `sysconf(_SC_NPROCESSORS_ONLN)`).
-/// Linux/other: `sysconf(_SC_NPROCESSORS_ONLN)`. Returns 1 as the safe minimum on failure.
+/// macOS: `sysctlbyname("hw.logicalcpu")` (falls back to the raw
+/// `sysconf(_SC_NPROCESSORS_ONLN)` result, including -1 on failure).
+/// Linux/other: `sysconf(_SC_NPROCESSORS_ONLN)`, with 1 as the safe minimum.
 int64_t rt_machine_cores(void) {
 #ifdef _WIN32
     SYSTEM_INFO sysinfo;

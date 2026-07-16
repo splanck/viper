@@ -29,7 +29,7 @@ RT_FUNC(Game3DLayersDebris,  rt_game3d_layers_debris,  "Viper.Game3D.Layers.get_
 /// @summary Provides Layers constants and static operations for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.Layers` is a static runtime surface and does not require an instance. Its public
-/// surface exposes properties such as `World`, `Dynamic`, `Player`.
+/// Its public surface exposes properties such as `World`, `Dynamic`, `Player`.
 RT_CLASS_BEGIN("Viper.Game3D.Layers", Game3DLayers, "none", none)
     RT_PROP("World", "i64", Game3DLayersWorld, none)
     RT_PROP("Dynamic", "i64", Game3DLayersDynamic, none)
@@ -44,8 +44,8 @@ RT_FUNC(Game3DBodyShapeCapsule, rt_game3d_body_shape_capsule, "Viper.Game3D.Body
 
 /// @summary Provides Body Shape constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.BodyShape` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Box`, `Sphere`, `Capsule`.
+/// `Viper.Game3D.BodyShape` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Box`, `Sphere`, `Capsule`.
 RT_CLASS_BEGIN("Viper.Game3D.BodyShape", Game3DBodyShape, "none", none)
     RT_PROP("Box", "i64", Game3DBodyShapeBox, none)
     RT_PROP("Sphere", "i64", Game3DBodyShapeSphere, none)
@@ -60,7 +60,8 @@ RT_FUNC(Game3DSyncTwoWayKinematic, rt_game3d_sync_mode_two_way_kinematic, "Viper
 /// @summary Provides Sync Mode constants and static operations for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.SyncMode` is a static runtime surface and does not require an instance. Its public
-/// surface exposes properties such as `NodeFromBody`, `BodyFromNode`, `NodeFromAnimRootMotion`.
+/// Its public surface exposes properties such as `NodeFromBody`, `BodyFromNode`,
+/// `NodeFromAnimRootMotion`.
 RT_CLASS_BEGIN("Viper.Game3D.SyncMode", Game3DSyncMode, "none", none)
     RT_PROP("NodeFromBody", "i64", Game3DSyncNodeFromBody, none)
     RT_PROP("BodyFromNode", "i64", Game3DSyncBodyFromNode, none)
@@ -74,8 +75,8 @@ RT_FUNC(Game3DAlphaBlend,  rt_game3d_alpha_mode_blend,  "Viper.Game3D.AlphaMode.
 
 /// @summary Provides Alpha Mode constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.AlphaMode` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Opaque`, `Mask`, `Blend`.
+/// `Viper.Game3D.AlphaMode` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Opaque`, `Mask`, `Blend`.
 RT_CLASS_BEGIN("Viper.Game3D.AlphaMode", Game3DAlphaMode, "none", none)
     RT_PROP("Opaque", "i64", Game3DAlphaOpaque, none)
     RT_PROP("Mask", "i64", Game3DAlphaMask, none)
@@ -91,8 +92,8 @@ RT_FUNC(Game3DShadingUnlit,    rt_game3d_shading_model_unlit,    "Viper.Game3D.S
 
 /// @summary Provides Shading Model constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.ShadingModel` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Phong`, `Toon`, `Pbr`.
+/// `Viper.Game3D.ShadingModel` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Phong`, `Toon`, `Pbr`.
 RT_CLASS_BEGIN("Viper.Game3D.ShadingModel", Game3DShadingModel, "none", none)
     RT_PROP("Phong", "i64", Game3DShadingPhong, none)
     RT_PROP("Toon", "i64", Game3DShadingToon, none)
@@ -108,8 +109,8 @@ RT_FUNC(Game3DQualityCinematic,   rt_game3d_quality_cinematic,   "Viper.Game3D.Q
 
 /// @summary Provides Quality Level constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.QualityLevel` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Performance`, `Balanced`, `Cinematic`.
+/// `Viper.Game3D.QualityLevel` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Performance`, `Balanced`, `Cinematic`.
 RT_CLASS_BEGIN("Viper.Game3D.QualityLevel", Game3DQualityLevel, "none", none)
     RT_PROP("Performance", "i64", Game3DQualityPerformance, none)
     RT_PROP("Balanced", "i64", Game3DQualityBalanced, none)
@@ -123,8 +124,8 @@ RT_FUNC(Game3DCollisionAny,   rt_game3d_collision_any,   "Viper.Game3D.Collision
 
 /// @summary Provides Collision Phase constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.CollisionPhase` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Enter`, `Stay`, `Exit`.
+/// `Viper.Game3D.CollisionPhase` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Enter`, `Stay`, `Exit`.
 RT_CLASS_BEGIN("Viper.Game3D.CollisionPhase", Game3DCollisionPhase, "none", none)
     RT_PROP("Enter", "i64", Game3DCollisionEnter, none)
     RT_PROP("Stay", "i64", Game3DCollisionStay, none)
@@ -132,216 +133,10 @@ RT_CLASS_BEGIN("Viper.Game3D.CollisionPhase", Game3DCollisionPhase, "none", none
     RT_PROP("Any", "i64", Game3DCollisionAny, none)
 RT_CLASS_END()
 
-RT_FUNC(Game3DKeyW,      rt_game3d_key_w,      "Viper.Game3D.Keys.get_KeyW",      "i64()")
-RT_FUNC(Game3DKeyA,      rt_game3d_key_a,      "Viper.Game3D.Keys.get_KeyA",      "i64()")
-RT_FUNC(Game3DKeyS,      rt_game3d_key_s,      "Viper.Game3D.Keys.get_KeyS",      "i64()")
-RT_FUNC(Game3DKeyD,      rt_game3d_key_d,      "Viper.Game3D.Keys.get_KeyD",      "i64()")
-RT_FUNC(Game3DKeySpace,  rt_game3d_key_space,  "Viper.Game3D.Keys.get_Space",  "i64()")
-RT_FUNC(Game3DKeyEscape, rt_game3d_key_escape, "Viper.Game3D.Keys.get_Escape", "i64()")
-RT_FUNC(Game3DKeyShift,  rt_game3d_key_shift,  "Viper.Game3D.Keys.get_Shift",  "i64()")
-RT_FUNC(Game3DKeyCtrl,   rt_game3d_key_ctrl,   "Viper.Game3D.Keys.get_Ctrl",   "i64()")
-RT_FUNC(Game3DKeyUp,     rt_game3d_key_up,     "Viper.Game3D.Keys.get_Up",     "i64()")
-RT_FUNC(Game3DKeyDown,   rt_game3d_key_down,   "Viper.Game3D.Keys.get_Down",   "i64()")
-RT_FUNC(Game3DKeyLeft,   rt_game3d_key_left,   "Viper.Game3D.Keys.get_Left",   "i64()")
-RT_FUNC(Game3DKeyRight,  rt_game3d_key_right,  "Viper.Game3D.Keys.get_Right",  "i64()")
-RT_FUNC(Game3DKeyF11,    rt_game3d_key_f11,    "Viper.Game3D.Keys.get_KeyF11",    "i64()")
 
 // Full keyboard coverage: remaining letters, digits, function, navigation,
 // modifier, punctuation, and numpad keys (backing already in rt_input).
-RT_FUNC(Game3DKeyB, rt_game3d_key_b, "Viper.Game3D.Keys.get_KeyB", "i64()")
-RT_FUNC(Game3DKeyC, rt_game3d_key_c, "Viper.Game3D.Keys.get_KeyC", "i64()")
-RT_FUNC(Game3DKeyE, rt_game3d_key_e, "Viper.Game3D.Keys.get_KeyE", "i64()")
-RT_FUNC(Game3DKeyF, rt_game3d_key_f, "Viper.Game3D.Keys.get_KeyF", "i64()")
-RT_FUNC(Game3DKeyG, rt_game3d_key_g, "Viper.Game3D.Keys.get_KeyG", "i64()")
-RT_FUNC(Game3DKeyH, rt_game3d_key_h, "Viper.Game3D.Keys.get_KeyH", "i64()")
-RT_FUNC(Game3DKeyI, rt_game3d_key_i, "Viper.Game3D.Keys.get_KeyI", "i64()")
-RT_FUNC(Game3DKeyJ, rt_game3d_key_j, "Viper.Game3D.Keys.get_KeyJ", "i64()")
-RT_FUNC(Game3DKeyK, rt_game3d_key_k, "Viper.Game3D.Keys.get_KeyK", "i64()")
-RT_FUNC(Game3DKeyL, rt_game3d_key_l, "Viper.Game3D.Keys.get_KeyL", "i64()")
-RT_FUNC(Game3DKeyM, rt_game3d_key_m, "Viper.Game3D.Keys.get_KeyM", "i64()")
-RT_FUNC(Game3DKeyN, rt_game3d_key_n, "Viper.Game3D.Keys.get_KeyN", "i64()")
-RT_FUNC(Game3DKeyO, rt_game3d_key_o, "Viper.Game3D.Keys.get_KeyO", "i64()")
-RT_FUNC(Game3DKeyP, rt_game3d_key_p, "Viper.Game3D.Keys.get_KeyP", "i64()")
-RT_FUNC(Game3DKeyQ, rt_game3d_key_q, "Viper.Game3D.Keys.get_KeyQ", "i64()")
-RT_FUNC(Game3DKeyR, rt_game3d_key_r, "Viper.Game3D.Keys.get_KeyR", "i64()")
-RT_FUNC(Game3DKeyT, rt_game3d_key_t, "Viper.Game3D.Keys.get_KeyT", "i64()")
-RT_FUNC(Game3DKeyU, rt_game3d_key_u, "Viper.Game3D.Keys.get_KeyU", "i64()")
-RT_FUNC(Game3DKeyV, rt_game3d_key_v, "Viper.Game3D.Keys.get_KeyV", "i64()")
-RT_FUNC(Game3DKeyX, rt_game3d_key_x, "Viper.Game3D.Keys.get_KeyX", "i64()")
-RT_FUNC(Game3DKeyY, rt_game3d_key_y, "Viper.Game3D.Keys.get_KeyY", "i64()")
-RT_FUNC(Game3DKeyZ, rt_game3d_key_z, "Viper.Game3D.Keys.get_KeyZ", "i64()")
-RT_FUNC(Game3DKey0, rt_game3d_key_0, "Viper.Game3D.Keys.get_Key0", "i64()")
-RT_FUNC(Game3DKey1, rt_game3d_key_1, "Viper.Game3D.Keys.get_Key1", "i64()")
-RT_FUNC(Game3DKey2, rt_game3d_key_2, "Viper.Game3D.Keys.get_Key2", "i64()")
-RT_FUNC(Game3DKey3, rt_game3d_key_3, "Viper.Game3D.Keys.get_Key3", "i64()")
-RT_FUNC(Game3DKey4, rt_game3d_key_4, "Viper.Game3D.Keys.get_Key4", "i64()")
-RT_FUNC(Game3DKey5, rt_game3d_key_5, "Viper.Game3D.Keys.get_Key5", "i64()")
-RT_FUNC(Game3DKey6, rt_game3d_key_6, "Viper.Game3D.Keys.get_Key6", "i64()")
-RT_FUNC(Game3DKey7, rt_game3d_key_7, "Viper.Game3D.Keys.get_Key7", "i64()")
-RT_FUNC(Game3DKey8, rt_game3d_key_8, "Viper.Game3D.Keys.get_Key8", "i64()")
-RT_FUNC(Game3DKey9, rt_game3d_key_9, "Viper.Game3D.Keys.get_Key9", "i64()")
-RT_FUNC(Game3DKeyF1, rt_game3d_key_f1, "Viper.Game3D.Keys.get_KeyF1", "i64()")
-RT_FUNC(Game3DKeyF2, rt_game3d_key_f2, "Viper.Game3D.Keys.get_KeyF2", "i64()")
-RT_FUNC(Game3DKeyF3, rt_game3d_key_f3, "Viper.Game3D.Keys.get_KeyF3", "i64()")
-RT_FUNC(Game3DKeyF4, rt_game3d_key_f4, "Viper.Game3D.Keys.get_KeyF4", "i64()")
-RT_FUNC(Game3DKeyF5, rt_game3d_key_f5, "Viper.Game3D.Keys.get_KeyF5", "i64()")
-RT_FUNC(Game3DKeyF6, rt_game3d_key_f6, "Viper.Game3D.Keys.get_KeyF6", "i64()")
-RT_FUNC(Game3DKeyF7, rt_game3d_key_f7, "Viper.Game3D.Keys.get_KeyF7", "i64()")
-RT_FUNC(Game3DKeyF8, rt_game3d_key_f8, "Viper.Game3D.Keys.get_KeyF8", "i64()")
-RT_FUNC(Game3DKeyF9, rt_game3d_key_f9, "Viper.Game3D.Keys.get_KeyF9", "i64()")
-RT_FUNC(Game3DKeyF10, rt_game3d_key_f10, "Viper.Game3D.Keys.get_KeyF10", "i64()")
-RT_FUNC(Game3DKeyF12, rt_game3d_key_f12, "Viper.Game3D.Keys.get_KeyF12", "i64()")
-RT_FUNC(Game3DKeyEnter, rt_game3d_key_enter, "Viper.Game3D.Keys.get_Enter", "i64()")
-RT_FUNC(Game3DKeyTab, rt_game3d_key_tab, "Viper.Game3D.Keys.get_Tab", "i64()")
-RT_FUNC(Game3DKeyBackspace, rt_game3d_key_backspace, "Viper.Game3D.Keys.get_Backspace", "i64()")
-RT_FUNC(Game3DKeyInsert, rt_game3d_key_insert, "Viper.Game3D.Keys.get_Insert", "i64()")
-RT_FUNC(Game3DKeyDelete, rt_game3d_key_delete, "Viper.Game3D.Keys.get_Delete", "i64()")
-RT_FUNC(Game3DKeyHome, rt_game3d_key_home, "Viper.Game3D.Keys.get_Home", "i64()")
-RT_FUNC(Game3DKeyEnd, rt_game3d_key_end, "Viper.Game3D.Keys.get_End", "i64()")
-RT_FUNC(Game3DKeyPageup, rt_game3d_key_pageup, "Viper.Game3D.Keys.get_PageUp", "i64()")
-RT_FUNC(Game3DKeyPagedown, rt_game3d_key_pagedown, "Viper.Game3D.Keys.get_PageDown", "i64()")
-RT_FUNC(Game3DKeyAlt, rt_game3d_key_alt, "Viper.Game3D.Keys.get_Alt", "i64()")
-RT_FUNC(Game3DKeyLshift, rt_game3d_key_lshift, "Viper.Game3D.Keys.get_LShift", "i64()")
-RT_FUNC(Game3DKeyRshift, rt_game3d_key_rshift, "Viper.Game3D.Keys.get_RShift", "i64()")
-RT_FUNC(Game3DKeyLctrl, rt_game3d_key_lctrl, "Viper.Game3D.Keys.get_LCtrl", "i64()")
-RT_FUNC(Game3DKeyRctrl, rt_game3d_key_rctrl, "Viper.Game3D.Keys.get_RCtrl", "i64()")
-RT_FUNC(Game3DKeyLalt, rt_game3d_key_lalt, "Viper.Game3D.Keys.get_LAlt", "i64()")
-RT_FUNC(Game3DKeyRalt, rt_game3d_key_ralt, "Viper.Game3D.Keys.get_RAlt", "i64()")
-RT_FUNC(Game3DKeyQuote, rt_game3d_key_quote, "Viper.Game3D.Keys.get_Quote", "i64()")
-RT_FUNC(Game3DKeyComma, rt_game3d_key_comma, "Viper.Game3D.Keys.get_Comma", "i64()")
-RT_FUNC(Game3DKeyMinus, rt_game3d_key_minus, "Viper.Game3D.Keys.get_Minus", "i64()")
-RT_FUNC(Game3DKeyPeriod, rt_game3d_key_period, "Viper.Game3D.Keys.get_Period", "i64()")
-RT_FUNC(Game3DKeySlash, rt_game3d_key_slash, "Viper.Game3D.Keys.get_Slash", "i64()")
-RT_FUNC(Game3DKeySemicolon, rt_game3d_key_semicolon, "Viper.Game3D.Keys.get_Semicolon", "i64()")
-RT_FUNC(Game3DKeyEquals, rt_game3d_key_equals, "Viper.Game3D.Keys.get_Equals", "i64()")
-RT_FUNC(Game3DKeyLbracket, rt_game3d_key_lbracket, "Viper.Game3D.Keys.get_LBracket", "i64()")
-RT_FUNC(Game3DKeyBackslash, rt_game3d_key_backslash, "Viper.Game3D.Keys.get_Backslash", "i64()")
-RT_FUNC(Game3DKeyRbracket, rt_game3d_key_rbracket, "Viper.Game3D.Keys.get_RBracket", "i64()")
-RT_FUNC(Game3DKeyGrave, rt_game3d_key_grave, "Viper.Game3D.Keys.get_Grave", "i64()")
-RT_FUNC(Game3DKeyNum0, rt_game3d_key_num0, "Viper.Game3D.Keys.get_Num0", "i64()")
-RT_FUNC(Game3DKeyNum1, rt_game3d_key_num1, "Viper.Game3D.Keys.get_Num1", "i64()")
-RT_FUNC(Game3DKeyNum2, rt_game3d_key_num2, "Viper.Game3D.Keys.get_Num2", "i64()")
-RT_FUNC(Game3DKeyNum3, rt_game3d_key_num3, "Viper.Game3D.Keys.get_Num3", "i64()")
-RT_FUNC(Game3DKeyNum4, rt_game3d_key_num4, "Viper.Game3D.Keys.get_Num4", "i64()")
-RT_FUNC(Game3DKeyNum5, rt_game3d_key_num5, "Viper.Game3D.Keys.get_Num5", "i64()")
-RT_FUNC(Game3DKeyNum6, rt_game3d_key_num6, "Viper.Game3D.Keys.get_Num6", "i64()")
-RT_FUNC(Game3DKeyNum7, rt_game3d_key_num7, "Viper.Game3D.Keys.get_Num7", "i64()")
-RT_FUNC(Game3DKeyNum8, rt_game3d_key_num8, "Viper.Game3D.Keys.get_Num8", "i64()")
-RT_FUNC(Game3DKeyNum9, rt_game3d_key_num9, "Viper.Game3D.Keys.get_Num9", "i64()")
-RT_FUNC(Game3DKeyNumdot, rt_game3d_key_numdot, "Viper.Game3D.Keys.get_NumDot", "i64()")
-RT_FUNC(Game3DKeyNumdiv, rt_game3d_key_numdiv, "Viper.Game3D.Keys.get_NumDiv", "i64()")
-RT_FUNC(Game3DKeyNummul, rt_game3d_key_nummul, "Viper.Game3D.Keys.get_NumMul", "i64()")
-RT_FUNC(Game3DKeyNumsub, rt_game3d_key_numsub, "Viper.Game3D.Keys.get_NumSub", "i64()")
-RT_FUNC(Game3DKeyNumadd, rt_game3d_key_numadd, "Viper.Game3D.Keys.get_NumAdd", "i64()")
-RT_FUNC(Game3DKeyNumenter, rt_game3d_key_numenter, "Viper.Game3D.Keys.get_NumEnter", "i64()")
 
-/// @summary Provides Keys constants and static operations for Game3D worlds and gameplay systems.
-/// @details
-/// `Viper.Game3D.Keys` is a static runtime surface and does not require an instance. Its public
-/// surface exposes properties such as `KeyW`, `KeyA`, `KeyS`.
-RT_CLASS_BEGIN("Viper.Game3D.Keys", Game3DKeys, "none", none)
-    RT_PROP("KeyW", "i64", Game3DKeyW, none)
-    RT_PROP("KeyA", "i64", Game3DKeyA, none)
-    RT_PROP("KeyS", "i64", Game3DKeyS, none)
-    RT_PROP("KeyD", "i64", Game3DKeyD, none)
-    RT_PROP("Space", "i64", Game3DKeySpace, none)
-    RT_PROP("Escape", "i64", Game3DKeyEscape, none)
-    RT_PROP("Shift", "i64", Game3DKeyShift, none)
-    RT_PROP("Ctrl", "i64", Game3DKeyCtrl, none)
-    RT_PROP("Up", "i64", Game3DKeyUp, none)
-    RT_PROP("Down", "i64", Game3DKeyDown, none)
-    RT_PROP("Left", "i64", Game3DKeyLeft, none)
-    RT_PROP("Right", "i64", Game3DKeyRight, none)
-    RT_PROP("KeyF11", "i64", Game3DKeyF11, none)
-    // Full keyboard coverage (letters / digits / function / navigation /
-    // modifiers / punctuation / numpad).
-    RT_PROP("KeyB", "i64", Game3DKeyB, none)
-    RT_PROP("KeyC", "i64", Game3DKeyC, none)
-    RT_PROP("KeyE", "i64", Game3DKeyE, none)
-    RT_PROP("KeyF", "i64", Game3DKeyF, none)
-    RT_PROP("KeyG", "i64", Game3DKeyG, none)
-    RT_PROP("KeyH", "i64", Game3DKeyH, none)
-    RT_PROP("KeyI", "i64", Game3DKeyI, none)
-    RT_PROP("KeyJ", "i64", Game3DKeyJ, none)
-    RT_PROP("KeyK", "i64", Game3DKeyK, none)
-    RT_PROP("KeyL", "i64", Game3DKeyL, none)
-    RT_PROP("KeyM", "i64", Game3DKeyM, none)
-    RT_PROP("KeyN", "i64", Game3DKeyN, none)
-    RT_PROP("KeyO", "i64", Game3DKeyO, none)
-    RT_PROP("KeyP", "i64", Game3DKeyP, none)
-    RT_PROP("KeyQ", "i64", Game3DKeyQ, none)
-    RT_PROP("KeyR", "i64", Game3DKeyR, none)
-    RT_PROP("KeyT", "i64", Game3DKeyT, none)
-    RT_PROP("KeyU", "i64", Game3DKeyU, none)
-    RT_PROP("KeyV", "i64", Game3DKeyV, none)
-    RT_PROP("KeyX", "i64", Game3DKeyX, none)
-    RT_PROP("KeyY", "i64", Game3DKeyY, none)
-    RT_PROP("KeyZ", "i64", Game3DKeyZ, none)
-    RT_PROP("Key0", "i64", Game3DKey0, none)
-    RT_PROP("Key1", "i64", Game3DKey1, none)
-    RT_PROP("Key2", "i64", Game3DKey2, none)
-    RT_PROP("Key3", "i64", Game3DKey3, none)
-    RT_PROP("Key4", "i64", Game3DKey4, none)
-    RT_PROP("Key5", "i64", Game3DKey5, none)
-    RT_PROP("Key6", "i64", Game3DKey6, none)
-    RT_PROP("Key7", "i64", Game3DKey7, none)
-    RT_PROP("Key8", "i64", Game3DKey8, none)
-    RT_PROP("Key9", "i64", Game3DKey9, none)
-    RT_PROP("KeyF1", "i64", Game3DKeyF1, none)
-    RT_PROP("KeyF2", "i64", Game3DKeyF2, none)
-    RT_PROP("KeyF3", "i64", Game3DKeyF3, none)
-    RT_PROP("KeyF4", "i64", Game3DKeyF4, none)
-    RT_PROP("KeyF5", "i64", Game3DKeyF5, none)
-    RT_PROP("KeyF6", "i64", Game3DKeyF6, none)
-    RT_PROP("KeyF7", "i64", Game3DKeyF7, none)
-    RT_PROP("KeyF8", "i64", Game3DKeyF8, none)
-    RT_PROP("KeyF9", "i64", Game3DKeyF9, none)
-    RT_PROP("KeyF10", "i64", Game3DKeyF10, none)
-    RT_PROP("KeyF12", "i64", Game3DKeyF12, none)
-    RT_PROP("Enter", "i64", Game3DKeyEnter, none)
-    RT_PROP("Tab", "i64", Game3DKeyTab, none)
-    RT_PROP("Backspace", "i64", Game3DKeyBackspace, none)
-    RT_PROP("Insert", "i64", Game3DKeyInsert, none)
-    RT_PROP("Delete", "i64", Game3DKeyDelete, none)
-    RT_PROP("Home", "i64", Game3DKeyHome, none)
-    RT_PROP("End", "i64", Game3DKeyEnd, none)
-    RT_PROP("PageUp", "i64", Game3DKeyPageup, none)
-    RT_PROP("PageDown", "i64", Game3DKeyPagedown, none)
-    RT_PROP("Alt", "i64", Game3DKeyAlt, none)
-    RT_PROP("LShift", "i64", Game3DKeyLshift, none)
-    RT_PROP("RShift", "i64", Game3DKeyRshift, none)
-    RT_PROP("LCtrl", "i64", Game3DKeyLctrl, none)
-    RT_PROP("RCtrl", "i64", Game3DKeyRctrl, none)
-    RT_PROP("LAlt", "i64", Game3DKeyLalt, none)
-    RT_PROP("RAlt", "i64", Game3DKeyRalt, none)
-    RT_PROP("Quote", "i64", Game3DKeyQuote, none)
-    RT_PROP("Comma", "i64", Game3DKeyComma, none)
-    RT_PROP("Minus", "i64", Game3DKeyMinus, none)
-    RT_PROP("Period", "i64", Game3DKeyPeriod, none)
-    RT_PROP("Slash", "i64", Game3DKeySlash, none)
-    RT_PROP("Semicolon", "i64", Game3DKeySemicolon, none)
-    RT_PROP("Equals", "i64", Game3DKeyEquals, none)
-    RT_PROP("LBracket", "i64", Game3DKeyLbracket, none)
-    RT_PROP("Backslash", "i64", Game3DKeyBackslash, none)
-    RT_PROP("RBracket", "i64", Game3DKeyRbracket, none)
-    RT_PROP("Grave", "i64", Game3DKeyGrave, none)
-    RT_PROP("Num0", "i64", Game3DKeyNum0, none)
-    RT_PROP("Num1", "i64", Game3DKeyNum1, none)
-    RT_PROP("Num2", "i64", Game3DKeyNum2, none)
-    RT_PROP("Num3", "i64", Game3DKeyNum3, none)
-    RT_PROP("Num4", "i64", Game3DKeyNum4, none)
-    RT_PROP("Num5", "i64", Game3DKeyNum5, none)
-    RT_PROP("Num6", "i64", Game3DKeyNum6, none)
-    RT_PROP("Num7", "i64", Game3DKeyNum7, none)
-    RT_PROP("Num8", "i64", Game3DKeyNum8, none)
-    RT_PROP("Num9", "i64", Game3DKeyNum9, none)
-    RT_PROP("NumDot", "i64", Game3DKeyNumdot, none)
-    RT_PROP("NumDiv", "i64", Game3DKeyNumdiv, none)
-    RT_PROP("NumMul", "i64", Game3DKeyNummul, none)
-    RT_PROP("NumSub", "i64", Game3DKeyNumsub, none)
-    RT_PROP("NumAdd", "i64", Game3DKeyNumadd, none)
-    RT_PROP("NumEnter", "i64", Game3DKeyNumenter, none)
-RT_CLASS_END()
 
 RT_FUNC(Game3DMouseLeft,   rt_game3d_mouse_left,   "Viper.Game3D.MouseButtons.get_Left",   "i64()")
 RT_FUNC(Game3DMouseRight,  rt_game3d_mouse_right,  "Viper.Game3D.MouseButtons.get_Right",  "i64()")
@@ -351,8 +146,8 @@ RT_FUNC(Game3DMouseX2,     rt_game3d_mouse_x2,     "Viper.Game3D.MouseButtons.ge
 
 /// @summary Provides Mouse Buttons constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.MouseButtons` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Left`, `Right`, `Middle`.
+/// `Viper.Game3D.MouseButtons` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Left`, `Right`, `Middle`.
 RT_CLASS_BEGIN("Viper.Game3D.MouseButtons", Game3DMouseButtons, "none", none)
     RT_PROP("Left", "i64", Game3DMouseLeft, none)
     RT_PROP("Right", "i64", Game3DMouseRight, none)
@@ -372,7 +167,7 @@ RT_FUNC(Game3DLayerMaskIncludes, rt_game3d_layermask_includes,  "Viper.Game3D.La
 /// @summary Provides Layer Mask functionality for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.LayerMask` exposes a registry-backed runtime surface without requiring callers to
-/// construct the class directly. Its public surface exposes a property such as `Bits` and
+/// construct the class directly. Its public surface exposes properties such as `Bits` and
 /// operations including `None`, `All`, `Of`, `Include`.
 RT_CLASS_BEGIN("Viper.Game3D.LayerMask", Game3DLayerMask, "obj", none)
     RT_PROP("Bits", "i64", Game3DLayerMaskGetBits, Game3DLayerMaskSetBits)
@@ -408,8 +203,8 @@ RT_FUNC(Game3DInputGetPadLookSens,     rt_game3d_input_get_pad_look_sensitivity,
 /// @details
 /// Create `Viper.Game3D.Input3D` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `LookSensitivity`, `PadBound`, `PadLookSensitivity` and operations including `Update`, `IsDown`,
-/// `Pressed`, `Released`.
+/// `LookSensitivity`, `PadBound`, `PadLookSensitivity` and operations including `Update`,
+/// `IsDown`, `Pressed`, `Released`.
 RT_CLASS_BEGIN("Viper.Game3D.Input3D", Game3DInput3D, "obj", Game3DInputNew)
     RT_PROP("LookSensitivity", "f64", Game3DInputGetLookSensitivity, Game3DInputSetLookSensitivity)
     RT_METHOD("Update", "void()", Game3DInputUpdate)
@@ -567,7 +362,7 @@ RT_CLASS_END()
 
 RT_FUNC(Game3DAudioGetListener,              rt_game3d_audio_get_listener,                    "Viper.Game3D.Sound3D.get_Listener",              "obj<Viper.Graphics3D.SoundListener3D>(obj)")
 RT_FUNC(Game3DAudioGetFollowsCamera,         rt_game3d_audio_get_listener_follows_camera,     "Viper.Game3D.Sound3D.get_ListenerFollowsCamera", "i1(obj)")
-RT_FUNC(Game3DAudioGetRefDistance,           rt_game3d_audio_get_ref_distance,                "Viper.Game3D.Sound3D.get_RefDistance",           "f64(obj)")
+RT_FUNC(Game3DAudioGetRefDistance,           rt_game3d_audio_get_ref_distance,                "Viper.Game3D.Sound3D.get_ReferenceDistance",           "f64(obj)")
 RT_FUNC(Game3DAudioGetMaxDistance,           rt_game3d_audio_get_max_distance,                "Viper.Game3D.Sound3D.get_MaxDistance",           "f64(obj)")
 RT_FUNC(Game3DAudioGetVolume,                rt_game3d_audio_get_volume,                      "Viper.Game3D.Sound3D.get_Volume",                "i64(obj)")
 RT_FUNC(Game3DAudioSetVolume,                rt_game3d_audio_set_volume,                      "Viper.Game3D.Sound3D.set_Volume",                "void(obj,i64)")
@@ -575,8 +370,8 @@ RT_FUNC(Game3DAudioGetSourceCount,           rt_game3d_audio_get_source_count,  
 RT_FUNC(Game3DAudioListenerFollowCamera,     rt_game3d_audio_listener_follow_camera,          "Viper.Game3D.Sound3D.ListenerFollowCamera",      "void(obj,i1)")
 RT_FUNC(Game3DAudioSetListenerPose,          rt_game3d_audio_set_listener_pose,               "Viper.Game3D.Sound3D.SetListenerPose",           "void(obj,obj,obj,obj)")
 RT_FUNC(Game3DAudioSetAttenuation,           rt_game3d_audio_set_attenuation,                 "Viper.Game3D.Sound3D.SetAttenuation",            "void(obj,f64,f64)")
-RT_FUNC(Game3DAudioLoad,                     rt_game3d_audio_load,                            "Viper.Game3D.Sound3D.Load",                      "obj<Viper.Sound.Sound>(obj,str)")
-RT_FUNC(Game3DAudioLoadAsset,                rt_game3d_audio_load_asset,                      "Viper.Game3D.Sound3D.LoadAsset",                 "obj<Viper.Sound.Sound>(obj,str)")
+RT_FUNC(Game3DAudioLoad,                     rt_game3d_audio_load,                            "Viper.Game3D.Sound3D.Load",                      "obj<Viper.Audio.Sound>(obj,str)")
+RT_FUNC(Game3DAudioLoadAsset,                rt_game3d_audio_load_asset,                      "Viper.Game3D.Sound3D.LoadAsset",                 "obj<Viper.Audio.Sound>(obj,str)")
 RT_FUNC(Game3DAudioPlayAt,                   rt_game3d_audio_play_at,                         "Viper.Game3D.Sound3D.PlayAt",                    "obj<Viper.Graphics3D.SoundSource3D>(obj,obj,obj)")
 RT_FUNC(Game3DAudioPlayAttached,             rt_game3d_audio_play_attached,                   "Viper.Game3D.Sound3D.PlayAttached",              "obj<Viper.Graphics3D.SoundSource3D>(obj,obj,obj)")
 RT_FUNC(Game3DAudioPlay2D,                   rt_game3d_audio_play2d,                          "Viper.Game3D.Sound3D.Play2D",                    "i64(obj,obj)")
@@ -593,20 +388,20 @@ RT_FUNC(Game3DAudioPlayDialogue,             rt_game3d_audio_play_dialogue,     
 /// @details
 /// `Viper.Game3D.Sound3D` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Listener`,
-/// `ListenerFollowsCamera`, `RefDistance` and operations including `ListenerFollowCamera`,
+/// `ListenerFollowsCamera`, `ReferenceDistance` and operations including `ListenerFollowCamera`,
 /// `SetListenerPose`, `SetAttenuation`, `Load`.
 RT_CLASS_BEGIN("Viper.Game3D.Sound3D", Game3DSound3D, "obj", none)
     RT_PROP("Listener", "obj<Viper.Graphics3D.SoundListener3D>", Game3DAudioGetListener, none)
     RT_PROP("ListenerFollowsCamera", "i1", Game3DAudioGetFollowsCamera, none)
-    RT_PROP("RefDistance", "f64", Game3DAudioGetRefDistance, none)
+    RT_PROP("ReferenceDistance", "f64", Game3DAudioGetRefDistance, none)
     RT_PROP("MaxDistance", "f64", Game3DAudioGetMaxDistance, none)
     RT_PROP("Volume", "i64", Game3DAudioGetVolume, Game3DAudioSetVolume)
     RT_PROP("SourceCount", "i64", Game3DAudioGetSourceCount, none)
     RT_METHOD("ListenerFollowCamera", "void(i1)", Game3DAudioListenerFollowCamera)
     RT_METHOD("SetListenerPose", "void(obj,obj,obj)", Game3DAudioSetListenerPose)
     RT_METHOD("SetAttenuation", "void(f64,f64)", Game3DAudioSetAttenuation)
-    RT_METHOD("Load", "obj<Viper.Sound.Sound>(str)", Game3DAudioLoad)
-    RT_METHOD("LoadAsset", "obj<Viper.Sound.Sound>(str)", Game3DAudioLoadAsset)
+    RT_METHOD("Load", "obj<Viper.Audio.Sound>(str)", Game3DAudioLoad)
+    RT_METHOD("LoadAsset", "obj<Viper.Audio.Sound>(str)", Game3DAudioLoadAsset)
     RT_METHOD("PlayAt", "obj<Viper.Graphics3D.SoundSource3D>(obj,obj)", Game3DAudioPlayAt)
     RT_METHOD("PlayAttached", "obj<Viper.Graphics3D.SoundSource3D>(obj,obj)", Game3DAudioPlayAttached)
     RT_METHOD("Play2D", "i64(obj)", Game3DAudioPlay2D)
@@ -685,8 +480,8 @@ RT_FUNC(Game3DMinimapDraw,         rt_game3d_minimap_draw,                   "Vi
 
 /// @summary Provides Render Pass constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.RenderPass` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `Shadow`, `Opaque`, `Transparent`.
+/// `Viper.Game3D.RenderPass` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `Shadow`, `Opaque`, `Transparent`.
 RT_CLASS_BEGIN("Viper.Game3D.RenderPass", Game3DRenderPass, "none", none)
     RT_PROP("Shadow", "i64", Game3DRenderPassShadow, none)
     RT_PROP("Opaque", "i64", Game3DRenderPassOpaque, none)
@@ -698,8 +493,8 @@ RT_CLASS_END()
 
 /// @summary Provides Hitch Source constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.HitchSource` is a static runtime surface and does not require an instance. Its
-/// public surface exposes properties such as `StreamCommit`, `FrameTotal`.
+/// `Viper.Game3D.HitchSource` is a static runtime surface and does not require an instance.
+/// Its public surface exposes properties such as `StreamCommit`, `FrameTotal`.
 RT_CLASS_BEGIN("Viper.Game3D.HitchSource", Game3DHitchSource, "none", none)
     RT_PROP("StreamCommit", "i64", Game3DHitchSrcStreamCommit, none)
     RT_PROP("FrameTotal", "i64", Game3DHitchSrcFrameTotal, none)
@@ -708,7 +503,7 @@ RT_CLASS_END()
 /// @summary Provides Minimap 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.Minimap3D` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes a property such as
+/// object with the instance members below. Its public surface exposes properties such as
 /// `MarkerCount` and operations including `SetMapImage`, `SetTrackedEntity`, `SetViewport`,
 /// `SetCompass`.
 RT_CLASS_BEGIN("Viper.Game3D.Minimap3D", Game3DMinimap3D, "obj", Game3DMinimapNew)
@@ -737,7 +532,7 @@ RT_FUNC(Game3DReverbZoneSetPriority, rt_game3d_reverbzone_set_priority, "Viper.G
 /// @summary Provides Reverb Zone 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.ReverbZone3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes a property such as
+/// returned object with the instance members below. Its public surface exposes properties such as
 /// `Priority` and operations including `WithReverb`.
 RT_CLASS_BEGIN("Viper.Game3D.ReverbZone3D", Game3DReverbZone3D, "obj", Game3DReverbZoneNew)
     RT_METHOD("WithReverb", "obj(f64,f64,f64)", Game3DReverbZoneWithReverb)
@@ -745,8 +540,8 @@ RT_CLASS_BEGIN("Viper.Game3D.ReverbZone3D", Game3DReverbZone3D, "obj", Game3DRev
 RT_CLASS_END()
 
 RT_FUNC(Game3DAmbientBedNew,          rt_game3d_ambientbed_new,             "Viper.Game3D.AmbientBed3D.New",                   "obj(obj<Viper.Game3D.World3D>)")
-RT_FUNC(Game3DAmbientBedAddZone,      rt_game3d_ambientbed_add_zone,        "Viper.Game3D.AmbientBed3D.AddZone",               "obj(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Sound.Sound>,i64)")
-RT_FUNC(Game3DAmbientBedSetDefault,   rt_game3d_ambientbed_set_default,     "Viper.Game3D.AmbientBed3D.SetDefault",            "obj(obj,obj<Viper.Sound.Sound>,i64)")
+RT_FUNC(Game3DAmbientBedAddZone,      rt_game3d_ambientbed_add_zone,        "Viper.Game3D.AmbientBed3D.AddZone",               "obj(obj,obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Audio.Sound>,i64)")
+RT_FUNC(Game3DAmbientBedSetDefault,   rt_game3d_ambientbed_set_default,     "Viper.Game3D.AmbientBed3D.SetDefault",            "obj(obj,obj<Viper.Audio.Sound>,i64)")
 RT_FUNC(Game3DAmbientBedGetCrossfade, rt_game3d_ambientbed_get_crossfade,   "Viper.Game3D.AmbientBed3D.get_CrossfadeSeconds",  "f64(obj)")
 RT_FUNC(Game3DAmbientBedSetCrossfade, rt_game3d_ambientbed_set_crossfade,   "Viper.Game3D.AmbientBed3D.set_CrossfadeSeconds",  "void(obj,f64)")
 RT_FUNC(Game3DAmbientBedActiveZone,   rt_game3d_ambientbed_get_active_zone, "Viper.Game3D.AmbientBed3D.get_ActiveZone",        "i64(obj)")
@@ -757,8 +552,8 @@ RT_FUNC(Game3DAmbientBedActiveZone,   rt_game3d_ambientbed_get_active_zone, "Vip
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `CrossfadeSeconds`, `ActiveZone` and operations including `AddZone`, `SetDefault`.
 RT_CLASS_BEGIN("Viper.Game3D.AmbientBed3D", Game3DAmbientBed3D, "obj", Game3DAmbientBedNew)
-    RT_METHOD("AddZone", "obj(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Sound.Sound>,i64)", Game3DAmbientBedAddZone)
-    RT_METHOD("SetDefault", "obj(obj<Viper.Sound.Sound>,i64)", Game3DAmbientBedSetDefault)
+    RT_METHOD("AddZone", "obj(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>,obj<Viper.Audio.Sound>,i64)", Game3DAmbientBedAddZone)
+    RT_METHOD("SetDefault", "obj(obj<Viper.Audio.Sound>,i64)", Game3DAmbientBedSetDefault)
     RT_PROP("CrossfadeSeconds", "f64", Game3DAmbientBedGetCrossfade, Game3DAmbientBedSetCrossfade)
     RT_PROP("ActiveZone", "i64", Game3DAmbientBedActiveZone, none)
 RT_CLASS_END()
@@ -776,8 +571,9 @@ RT_FUNC(Game3DEffectsClear,             rt_game3d_effects_clear,               "
 /// @summary Provides Effect Registry 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// `Viper.Game3D.EffectRegistry3D` exposes a registry-backed runtime surface without requiring
-/// callers to construct the class directly. Its public surface exposes properties such as `PostFx`,
-/// `Count`, `ParticlesCount` and operations including `AddParticles`, `AddDecal`, `Update`, `Draw`.
+/// callers to construct the class directly. Its public surface exposes properties such as
+/// `PostFx`, `Count`, `ParticlesCount` and operations including `AddParticles`, `AddDecal`,
+/// `Update`, `Draw`.
 RT_CLASS_BEGIN("Viper.Game3D.EffectRegistry3D", Game3DEffectRegistry3D, "obj", none)
     RT_PROP("PostFx", "obj<Viper.Graphics3D.PostFX3D>", Game3DEffectsGetPostFx, none)
     RT_PROP("Count", "i64", Game3DEffectsGetCount, none)
@@ -798,8 +594,8 @@ RT_FUNC(Game3DEffects3DImpactDecal, rt_game3d_effects3d_impact_decal, "Viper.Gam
 
 /// @summary Provides Effects 3D constants and static operations for Game3D worlds and gameplay systems.
 /// @details
-/// `Viper.Game3D.Effects3D` is a static runtime surface and does not require an instance. Its
-/// public surface exposes operations including `Explosion`, `Sparks`, `Dust`, `Smoke`.
+/// `Viper.Game3D.Effects3D` is a static runtime surface and does not require an instance.
+/// Its public surface exposes operations including `Explosion`, `Sparks`, `Dust`, `Smoke`.
 RT_CLASS_BEGIN("Viper.Game3D.Effects3D", Game3DEffects3D, "none", none)
     RT_METHOD("Explosion", "obj<Viper.Graphics3D.Particles3D>(obj,obj)", Game3DEffects3DExplosion)
     RT_METHOD("Sparks", "obj<Viper.Graphics3D.Particles3D>(obj,obj,obj)", Game3DEffects3DSparks)
@@ -819,7 +615,7 @@ RT_FUNC(Game3DCharacterControllerGetGravity,   rt_game3d_character_controller_ge
 RT_FUNC(Game3DCharacterControllerSetGravity,   rt_game3d_character_controller_set_gravity,    "Viper.Game3D.CharacterController3D.set_Gravity",    "void(obj,f64)")
 RT_FUNC(Game3DCharacterControllerUpdate,       rt_game3d_character_controller_update,         "Viper.Game3D.CharacterController3D.Update",         "void(obj,obj,obj,f64)")
 RT_FUNC(Game3DCharacterControllerTeleport,     rt_game3d_character_controller_teleport,       "Viper.Game3D.CharacterController3D.Teleport",       "void(obj,f64,f64,f64)")
-RT_FUNC(Game3DCharacterControllerGrounded,     rt_game3d_character_controller_grounded,       "Viper.Game3D.CharacterController3D.Grounded",       "i1(obj)")
+RT_FUNC(Game3DCharacterControllerGrounded,     rt_game3d_character_controller_grounded,       "Viper.Game3D.CharacterController3D.IsGrounded",       "i1(obj)")
 RT_FUNC(Game3DCharacterControllerGetCrouchHeight, rt_game3d_character_controller_get_crouch_height, "Viper.Game3D.CharacterController3D.get_CrouchHeight", "f64(obj)")
 RT_FUNC(Game3DCharacterControllerSetCrouchHeight, rt_game3d_character_controller_set_crouch_height, "Viper.Game3D.CharacterController3D.set_CrouchHeight", "void(obj,f64)")
 RT_FUNC(Game3DCharacterControllerSetCrouching,    rt_game3d_character_controller_set_crouching,     "Viper.Game3D.CharacterController3D.SetCrouching",     "i1(obj,i1)")
@@ -836,9 +632,9 @@ RT_FUNC(Game3DCharacterControllerProbeVault,      rt_game3d_character_controller
 /// @summary Provides Character Controller 3D functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.CharacterController3D` values through its registered constructor and use
-/// the returned object with the instance members below. Its public surface exposes properties such
-/// as `Character`, `Entity`, `Speed` and operations including `Update`, `Teleport`, `Grounded`,
-/// `SetCrouching`.
+/// the returned object with the instance members below. Its public surface exposes properties
+/// such as `Character`, `Entity`, `Speed` and operations including `Update`, `Teleport`,
+/// `IsGrounded`, `SetCrouching`.
 RT_CLASS_BEGIN("Viper.Game3D.CharacterController3D", Game3DCharacterController3D, "obj", Game3DCharacterControllerNew)
     RT_PROP("Character", "obj<Viper.Graphics3D.Character3D>", Game3DCharacterControllerGetCharacter, none)
     RT_PROP("Entity", "obj<Viper.Game3D.Entity3D>", Game3DCharacterControllerGetEntity, none)
@@ -850,7 +646,7 @@ RT_CLASS_BEGIN("Viper.Game3D.CharacterController3D", Game3DCharacterController3D
     RT_PROP("RidePlatforms", "i1", Game3DCharacterControllerGetRidePlatforms, Game3DCharacterControllerSetRidePlatforms)
     RT_METHOD("Update", "void(obj,obj,f64)", Game3DCharacterControllerUpdate)
     RT_METHOD("Teleport", "void(f64,f64,f64)", Game3DCharacterControllerTeleport)
-    RT_METHOD("Grounded", "i1()", Game3DCharacterControllerGrounded)
+    RT_METHOD("IsGrounded", "i1()", Game3DCharacterControllerGrounded)
     RT_METHOD("SetCrouching", "i1(i1)", Game3DCharacterControllerSetCrouching)
     RT_METHOD("IsCrouching", "i1()", Game3DCharacterControllerIsCrouching)
     RT_METHOD("IsSliding", "i1()", Game3DCharacterControllerIsSliding)
@@ -874,8 +670,8 @@ RT_FUNC(Game3DFirstPersonLateUpdate,         rt_game3d_first_person_controller_l
 /// @summary Provides First Person Controller functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.FirstPersonController` values through its registered constructor and use
-/// the returned object with the instance members below. Its public surface exposes properties such
-/// as `Character`, `Speed`, `LookSensitivity` and operations including `CaptureMouse`,
+/// the returned object with the instance members below. Its public surface exposes properties
+/// such as `Character`, `Speed`, `LookSensitivity` and operations including `CaptureMouse`,
 /// `ReleaseMouse`, `Update`, `LateUpdate`.
 RT_CLASS_BEGIN("Viper.Game3D.FirstPersonController", Game3DFirstPersonController, "obj", Game3DFirstPersonNew)
     RT_PROP("Character", "obj<Viper.Game3D.CharacterController3D>", Game3DFirstPersonGetCharacter, Game3DFirstPersonSetCharacter)
@@ -1002,8 +798,8 @@ RT_FUNC(Game3DThirdPersonSetLockTarget,      rt_game3d_thirdperson_controller_se
 /// @summary Provides Third Person Controller functionality for Game3D worlds and gameplay systems.
 /// @details
 /// Create `Viper.Game3D.ThirdPersonController` values through its registered constructor and use
-/// the returned object with the instance members below. Its public surface exposes properties such
-/// as `Target`, `Character`, `Distance` and operations including `Update`, `LateUpdate`.
+/// the returned object with the instance members below. Its public surface exposes properties
+/// such as `Target`, `Character`, `Distance` and operations including `Update`, `LateUpdate`.
 RT_CLASS_BEGIN("Viper.Game3D.ThirdPersonController", Game3DThirdPersonController, "obj", Game3DThirdPersonNew)
     RT_PROP("Target", "obj<Viper.Game3D.Entity3D>", Game3DThirdPersonGetTarget, Game3DThirdPersonSetTarget)
     RT_PROP("Character", "obj<Viper.Game3D.CharacterController3D>", Game3DThirdPersonGetCharacter, Game3DThirdPersonSetCharacter)

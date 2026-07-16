@@ -379,7 +379,7 @@ class RidgeboundWaterSky {
             i = i + 1;
         }
 
-        Mesh3D.CalcTangents(mesh);
+        Mesh3D.CalculateTangents(mesh);
         return mesh;
     }
 

@@ -27,12 +27,12 @@ func buildPostFXForQuality(canvas: Canvas3D, quality: Integer) {
     // never actually ran). DOF + motion blur are intentionally omitted: they soften
     // the distant snow-capped peaks and read poorly under constant mouse-look.
     if (q >= 1 && Canvas3D.BackendSupports(canvas, "gpu_postfx")) {
-        PostFX3D.AddSSAO(fx, 0.70, 0.90, 16);
+        PostFX3D.AddSsao(fx, 0.70, 0.90, 16);
     }
     // Screen-space reflections add local shoreline/tree detail to reflective
     // water where the GPU path supports them; the cubemap remains the fallback.
     if (q >= 2 && Canvas3D.BackendSupports(canvas, "ssr")) {
-        PostFX3D.AddSSR(fx, 0.55, 0.35);
+        PostFX3D.AddSsr(fx, 0.55, 0.35);
     }
     // CPU-safe chain — runs on every backend, software included.
     var exposure = config.POSTFX_EXPOSURE;
@@ -57,7 +57,7 @@ func buildPostFXForQuality(canvas: Canvas3D, quality: Integer) {
     // reprojection ghosts the dense foliage under quick camera rotation (the same
     // reason DOF/motion-blur are omitted above). TAA is showcased on the slower
     // cinematic bowling camera instead, where it converges cleanly.
-    PostFX3D.AddFXAA(fx);
+    PostFX3D.AddFxaa(fx);
     Canvas3D.SetPostFX(canvas, fx);
 }
 
@@ -123,7 +123,7 @@ class RidgeboundEffects {
         var i = 0;
         while (i < decals.count()) {
             Decal3D.Update(decals.get(i), dt);
-            if (Decal3D.get_Expired(decals.get(i)) != false) {
+            if (Decal3D.get_IsExpired(decals.get(i)) != false) {
                 decals.removeAt(i);
             } else {
                 i = i + 1;

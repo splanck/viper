@@ -3,7 +3,7 @@ module breakpoints;
 bind "../core/document";
 bind "../editor/editor_engine";
 
-bind Ini = Viper.Text.Ini;
+bind Ini = Viper.Data.Ini;
 bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
@@ -187,7 +187,7 @@ class BreakpointStore {
 
     expose func Save() {
         if settingsPath == "" { return; }
-        Dir.MakeAll(Path.Dir(settingsPath));
+        Dir.MakeAll(Path.Directory(settingsPath));
         var content = "";
         if IO.File.Exists(settingsPath) {
             content = IO.File.ReadAllText(settingsPath);

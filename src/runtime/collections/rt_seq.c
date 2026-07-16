@@ -1166,13 +1166,10 @@ void rt_seq_clear(void *obj) {
 
 /// @brief Finds the first occurrence of an element in the Seq.
 ///
-/// Searches for an element by pointer equality (identity comparison, not
-/// value equality). Returns the index of the first match, or -1 if not found.
-///
-/// **Comparison semantics:**
-/// This function compares pointers, not values. Two strings with the same
-/// content but different memory addresses will NOT match. For value-based
-/// comparison, iterate manually and compare values.
+/// Searches with boxed-value equality (rt_box_equal): boxed integers,
+/// booleans, floats, and strings compare by content; non-boxed objects
+/// compare by identity. Returns the index of the first match, or -1 if
+/// not found.
 ///
 /// **Example:**
 /// ```

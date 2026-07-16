@@ -73,7 +73,7 @@ class Game {
     hide Game3D.World3D world;
     hide G3D.Canvas3D canvas;
     hide G3D.Camera3D camera;
-    hide G3D.Physics3DWorld phys;
+    hide G3D.PhysicsWorld3D phys;
     hide Game3D.Input3D input;
     hide Boolean graphicsUp;
     hide Boolean fullscreenWanted;
@@ -338,13 +338,13 @@ class Game {
         var launchFullscreen = fullscreen && fullscreenWanted;
         if launchFullscreen { launchFullscreen = menuSys.fullscreenOn(); }
         if hl {
-            world = Game3D.World3D.NewWithCamera(config.WINDOW_TITLE, 160, 90,
+            world = Game3D.World3D.WithCamera(config.WINDOW_TITLE, 160, 90,
                 config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
         } else if launchFullscreen {
             world = Game3D.World3D.NewFullscreenWithHorizontalCamera(config.WINDOW_TITLE,
                 config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
         } else {
-            world = Game3D.World3D.NewWithCamera(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT,
+            world = Game3D.World3D.WithCamera(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT,
                 config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
         }
         canvas = world.Canvas;
@@ -450,13 +450,13 @@ class Game {
     hide func setupObjectiveBeacon() {
         objBeaconMesh = G3D.Mesh3D.Box(0.16, 2.2, 0.16);
         objBeaconTopMesh = G3D.Mesh3D.Sphere(0.34, 12);
-        objBeaconMat = G3D.Material3D.NewColor(1.0, 0.68, 0.24);
+        objBeaconMat = G3D.Material3D.FromColor(1.0, 0.68, 0.24);
         G3D.Material3D.SetEmissiveColor(objBeaconMat, 1.0, 0.62, 0.18);
         objBeaconMat.EmissiveIntensity = 2.4;
-        objReadyMat = G3D.Material3D.NewColor(0.55, 1.0, 0.72);
+        objReadyMat = G3D.Material3D.FromColor(0.55, 1.0, 0.72);
         G3D.Material3D.SetEmissiveColor(objReadyMat, 0.55, 1.0, 0.72);
         objReadyMat.EmissiveIntensity = 3.0;
-        objEnemyMat = G3D.Material3D.NewColor(1.0, 0.25, 0.18);
+        objEnemyMat = G3D.Material3D.FromColor(1.0, 0.25, 0.18);
         G3D.Material3D.SetEmissiveColor(objEnemyMat, 1.0, 0.25, 0.18);
         objEnemyMat.EmissiveIntensity = 2.8;
         objBeaconReady = true;
@@ -890,7 +890,7 @@ class Game {
     expose func getEnemies() -> ai_core.EnemyManager { return enemies; }
     // Probe helper: physics world handle for diagnostic counters
     // (query-broadphase rebuilds, broadphase fallbacks).
-    expose func getPhys() -> G3D.Physics3DWorld { return phys; }
+    expose func getPhys() -> G3D.PhysicsWorld3D { return phys; }
     expose func devViewOffX() -> Float { return vm.getOffX(); }
     expose func devViewOffY() -> Float { return vm.getOffY(); }
     expose func devViewOffZ() -> Float { return vm.getOffZ(); }
@@ -1497,7 +1497,7 @@ class Game {
 
     // Step the physics world one fixed increment (called after tickSim).
     expose func stepPhysics(dt: Float) {
-        if graphicsUp { G3D.Physics3DWorld.Step(phys, dt); }
+        if graphicsUp { G3D.PhysicsWorld3D.Step(phys, dt); }
     }
 
     hide func updateDiag() {
@@ -1679,9 +1679,9 @@ class Game {
     // --- The interactive loop (assumes boot() already ran) -------------------
     expose func run() {
         var accum = 0.0;
-        while running && world.Tick() {
+        while running && world.Update() {
             handleMouseCapture();
-            var frameDt = world.Dt;
+            var frameDt = world.DeltaTime;
             if frameDt > 0.1 { frameDt = 0.1; }
             accum = accum + frameDt;
             var steps = 0;

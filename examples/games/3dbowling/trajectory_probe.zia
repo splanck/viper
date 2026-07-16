@@ -32,30 +32,30 @@ var lastShotMask: Integer = 0;
 var lastLaunchVX: Float = 0.0;
 var lastLaunchVZ: Float = 0.0;
 
-func processImpacts(world: Physics3DWorld, pinMgr: PinManager, rackArmed: Boolean) -> Boolean {
-    var count = Physics3DWorld.get_CollisionEventCount(world);
+func processImpacts(world: PhysicsWorld3D, pinMgr: PinManager, rackArmed: Boolean) -> Boolean {
+    var count = PhysicsWorld3D.get_CollisionEventCount(world);
     impactBatch.reset(rackArmed);
     // Pass one establishes cascade eligibility for the whole step. Event
     // ordering may never decide whether an earlier pin-pin hit is accepted.
     for (var i: Integer = 0; i < count; i = i + 1) {
-        var evt = Physics3DWorld.GetCollisionEvent(world, i);
+        var evt = PhysicsWorld3D.GetCollisionEvent(world, i);
         var bodyA = CollisionEvent3D.get_BodyA(evt);
         var bodyB = CollisionEvent3D.get_BodyB(evt);
-        var layerA = Physics3DBody.get_CollisionLayer(bodyA);
-        var layerB = Physics3DBody.get_CollisionLayer(bodyB);
+        var layerA = PhysicsBody3D.get_CollisionLayer(bodyA);
+        var layerB = PhysicsBody3D.get_CollisionLayer(bodyB);
         impactBatch.scanPair(layerA, layerB,
             CollisionEvent3D.get_IsTrigger(evt));
     }
     impactBatch.finishScan();
     for (var i: Integer = 0; i < count; i = i + 1) {
-        var evt = Physics3DWorld.GetCollisionEvent(world, i);
+        var evt = PhysicsWorld3D.GetCollisionEvent(world, i);
         if (CollisionEvent3D.get_IsTrigger(evt)) { continue; }
         var bodyA = CollisionEvent3D.get_BodyA(evt);
         var bodyB = CollisionEvent3D.get_BodyB(evt);
-        var layerA = Physics3DBody.get_CollisionLayer(bodyA);
-        var layerB = Physics3DBody.get_CollisionLayer(bodyB);
-        var posA = Physics3DBody.get_Position(bodyA);
-        var posB = Physics3DBody.get_Position(bodyB);
+        var layerA = PhysicsBody3D.get_CollisionLayer(bodyA);
+        var layerB = PhysicsBody3D.get_CollisionLayer(bodyB);
+        var posA = PhysicsBody3D.get_Position(bodyA);
+        var posB = PhysicsBody3D.get_Position(bodyB);
         var point = new Vec3(
             (Vec3.get_X(posA) + Vec3.get_X(posB)) * 0.5,
             (Vec3.get_Y(posA) + Vec3.get_Y(posB)) * 0.5,
@@ -104,14 +104,14 @@ func updateGutter(ballObj: Ball, sawBallPin: Boolean) {
 }
 
 func checkIdleRack() -> Boolean {
-    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var world = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var laneObj = new LaneBuilder();
     laneObj.initLane(world, config.OIL_HOUSE);
     var pinMgr = new PinManager();
     pinMgr.initPins(world);
 
     for (var step: Integer = 0; step < 240; step = step + 1) {
-        Physics3DWorld.Step(world, config.PHYSICS_DT);
+        PhysicsWorld3D.Step(world, config.PHYSICS_DT);
         pinMgr.updateKnockdowns(config.PHYSICS_DT);
     }
 
@@ -128,7 +128,7 @@ func checkIdleRack() -> Boolean {
 }
 
 func checkBallRoll() -> Boolean {
-    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var world = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var laneObj = new LaneBuilder();
     laneObj.initLane(world, config.OIL_HOUSE);
     var ballObj = new Ball();
@@ -141,12 +141,12 @@ func checkBallRoll() -> Boolean {
     for (var step: Integer = 0; step < 80; step = step + 1) {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(config.PHYSICS_DT, friction, laneObj.getOilEndZ());
-        Physics3DWorld.Step(world, config.PHYSICS_DT);
+        PhysicsWorld3D.Step(world, config.PHYSICS_DT);
         ballObj.stabilizeLaneRoll();
     }
 
     var vel = ballObj.getVelocity();
-    var ang = Physics3DBody.get_AngularVelocity(ballObj.getBody());
+    var ang = PhysicsBody3D.get_AngularVelocity(ballObj.getBody());
     var vx = Vec3.get_X(vel);
     var vz = Vec3.get_Z(vel);
     var ax = Vec3.get_X(ang);
@@ -167,7 +167,7 @@ func checkBallRoll() -> Boolean {
 
 func runShot(label: String, stance: Float, target: Float, power: Float,
              spin: Float, releaseOffset: Float, rackSeed: Integer) -> Integer {
-    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var world = PhysicsWorld3D.New(0.0, config.GRAVITY_Y, 0.0);
     var laneObj = new LaneBuilder();
     laneObj.initLane(world, config.OIL_HOUSE);
     var pinMgr = new PinManager();
@@ -194,7 +194,7 @@ func runShot(label: String, stance: Float, target: Float, power: Float,
     while (step < 1800 && ballObj.getPosZ() < config.PIN_Z_OFFSET + 2.0 && ballObj.gutterBall() == false) {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(config.PHYSICS_DT, friction, laneObj.getOilEndZ());
-        Physics3DWorld.Step(world, config.PHYSICS_DT);
+        PhysicsWorld3D.Step(world, config.PHYSICS_DT);
         ballObj.stabilizeLaneRoll();
         var lanePos = ballObj.getPosition();
         if (ballObj.getPosZ() < config.LANE_STABILIZE_END_Z && Vec3.get_Y(lanePos) < minLaneY) {
@@ -215,7 +215,7 @@ func runShot(label: String, stance: Float, target: Float, power: Float,
 
     var settle = 0;
     while (settle < 360) {
-        Physics3DWorld.Step(world, config.PHYSICS_DT);
+        PhysicsWorld3D.Step(world, config.PHYSICS_DT);
         processImpacts(world, pinMgr, sawBallPin);
         pinMgr.updateKnockdowns(config.PHYSICS_DT);
         settle = settle + 1;

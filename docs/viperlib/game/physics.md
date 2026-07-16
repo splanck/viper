@@ -363,8 +363,8 @@ and impulse-based collision resolution.
 |-------------------------|-----------------------|-------------------------------------|
 | `ApplyForce(fx, fy)`    | `Void(Double,Double)` | Apply force (accumulated until step)|
 | `ApplyImpulse(ix, iy)`  | `Void(Double,Double)` | Apply instant velocity change       |
-| `SetPos(x, y)`          | `Void(Double,Double)` | Set body position                   |
-| `SetVel(vx, vy)`        | `Void(Double,Double)` | Set body velocity                   |
+| `SetPosition(x, y)`          | `Void(Double,Double)` | Set body position                   |
+| `SetVelocity(vx, vy)`        | `Void(Double,Double)` | Set body velocity                   |
 
 ### Circle Bodies And Joints
 
@@ -404,7 +404,7 @@ Analytic projectile helper for preview arcs, lobbed attacks, and trajectory test
 - **Static bodies** (mass = 0) are immovable — use for floors, walls, platforms
 - **Dynamic bodies** (mass > 0) are affected by gravity, forces, and collisions
 - `ContactCount` and `Contact*` methods expose contacts from the latest step; the list is cleared at the start of every `Step` and when bodies are removed
-- `SetPos(x, y)` is a teleport: it updates the previous-position state too, so the next step does not treat the teleport as swept motion
+- `SetPosition(x, y)` is a teleport: it updates the previous-position state too, so the next step does not treat the teleport as swept motion
 - `Step(dt)` performs integration, joint solving, AABB/circle collision detection, and shape-aware swept checks for fast AABB and circle bodies
 - Swept collisions resolve at time of impact, then advance the remaining part of the step using the post-collision velocity
 - `Step(dt)` clears previous contacts, then no-ops for `dt <= 0` and for non-finite values
@@ -454,8 +454,8 @@ func start() {
     }
 
     // Direct position/velocity control
-    ball.SetPos(100.0, 100.0);
-    ball.SetVel(0.0, 0.0);
+    ball.SetPosition(100.0, 100.0);
+    ball.SetVelocity(0.0, 0.0);
 
     // Change gravity
     world.SetGravity(0.0, 0.0);
@@ -565,7 +565,7 @@ func start() {
     Say("Items: " + Fmt.Int(qt.get_ItemCount()));
 
     // Query for items in a region
-    var result = qt.QueryRectResult(50, 50, 250, 250);
+    var result = qt.QueryRect(50, 50, 250, 250);
     Say("QueryRect found: " + Fmt.Int(result.Count));
     var i = 0;
     while i < result.Count {
@@ -594,7 +594,7 @@ tree.Insert(2, enemy1X * 1000, enemy1Y * 1000, 32000, 32000)
 tree.Insert(3, enemy2X * 1000, enemy2Y * 1000, 32000, 32000)
 
 ' Query for objects near player
-DIM hits AS OBJECT = tree.QueryPointResult(playerX * 1000, playerY * 1000, 50000)
+DIM hits AS OBJECT = tree.QueryPoint(playerX * 1000, playerY * 1000, 50000)
 FOR i = 0 TO hits.Count - 1
     DIM id AS INTEGER = hits.GetId(i)
     IF id <> 1 THEN  ' Not the player
@@ -629,7 +629,7 @@ DO WHILE slot >= 0
     DIM by AS INTEGER = bulletY(slot) * 1000
 
     ' Find enemies within bullet radius
-    DIM hits AS OBJECT = tree.QueryPointResult(bx, by, 20000)
+    DIM hits AS OBJECT = tree.QueryPoint(bx, by, 20000)
     FOR i = 0 TO hits.Count - 1
         DIM enemyId AS INTEGER = hits.GetId(i)
         IF BulletHitsEnemy(slot, enemyId) THEN

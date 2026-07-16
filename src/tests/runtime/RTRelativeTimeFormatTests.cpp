@@ -252,6 +252,13 @@ static void test_numeric() {
     EXPECT_TRAP(rt_reltimefmt_numeric(f, 1, bad));
     rt_string_unref(bad);
     test_result("Numeric with unknown unit traps", true);
+
+    // VDOC-073: INT64_MIN keeps its exact magnitude (2^63, not 2^63 - 1).
+    rt_string sec_min = S("second");
+    test_result("Numeric(INT64_MIN, second) exact magnitude",
+                eq(rt_reltimefmt_numeric(f, INT64_MIN, sec_min),
+                   "in 9223372036854775808 seconds"));
+    rt_string_unref(sec_min);
 }
 
 //=============================================================================

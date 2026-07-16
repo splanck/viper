@@ -6,9 +6,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_csv.c
-// Purpose: Implements CSV parsing and formatting for the Viper.Text.Csv class,
-//          compliant with RFC 4180. Handles quoted fields, doubled-quote escaping,
-//          and CRLF/LF/CR line endings. Supports a configurable field delimiter.
+// Purpose: Implements CSV parsing and formatting for the Viper.Data.Csv class,
+//          following RFC 4180 quoting rules. Handles quoted fields, doubled-quote
+//          escaping, and CRLF/LF/CR line endings. Supports a configurable
+//          single-byte field delimiter. Deviations from strict RFC 4180:
+//          multi-row Format emits LF (not CRLF) row endings, unequal per-row
+//          field counts are accepted, and LF/CR line endings are parsed as
+//          extensions.
 //
 // Key invariants:
 //   - Fields containing the delimiter, a double-quote, or a newline must be

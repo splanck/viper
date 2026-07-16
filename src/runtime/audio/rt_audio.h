@@ -181,6 +181,10 @@ void rt_audio_set_group_ducking(rt_string trigger_group,
 ///          but playback will fail until a new handle is loaded.
 int64_t rt_sound_is_handle(void *sound);
 
+/// @brief True when the wrapper's backend Sound is attached to the live audio
+///        context (stricter than rt_sound_is_handle; false after Shutdown).
+int64_t rt_sound_is_playable(void *sound);
+
 //=========================================================================
 // Music Streaming
 //=========================================================================

@@ -14,6 +14,9 @@
 //   - Output reads are non-blocking and incremental.
 //   - Poll/IsRunning reap the process once and preserve the exit code.
 //   - Destroy is idempotent and closes all OS handles.
+//   - A non-null environment sequence replaces the complete child environment.
+//   - The Windows explicit-environment path currently passes a UTF-16 block
+//     without CREATE_UNICODE_ENVIRONMENT (VDOC-212).
 //
 // Ownership/Lifetime:
 //   - Handles are rt_obj_new_i64-allocated and GC-managed.
@@ -838,6 +841,8 @@ static rt_process_impl *process_start_impl(rt_string program,
     si.startup.StartupInfo.hStdOutput = stdout_write;
     si.startup.StartupInfo.hStdError = stderr_write;
 
+    // BUG(VDOC-212): env_block is UTF-16, but this call omits
+    // CREATE_UNICODE_ENVIRONMENT and can interpret it as an ANSI block.
     BOOL ok = CreateProcessW(wprogram,
                              wcmdline,
                              NULL,

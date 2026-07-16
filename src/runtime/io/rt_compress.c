@@ -8,14 +8,14 @@
 // File: src/runtime/io/rt_compress.c
 // Purpose: Implements RFC 1951 DEFLATE and RFC 1952 GZIP compression and
 //          decompression without external dependencies. Uses LZ77 with a 32KB
-//          sliding window and Huffman coding (fixed or dynamic) to compress
+//          sliding window and stored or fixed-Huffman blocks to compress
 //          data at configurable levels (1-9).
 //
 // Key invariants:
 //   - Compression level 6 is the default; levels 1-9 are supported.
 //   - Decompression accepts both raw DEFLATE and GZIP-wrapped streams.
-//   - Block type 0 (stored), type 1 (fixed Huffman), and type 2 (dynamic) are
-//     all produced and consumed correctly.
+//   - Compression produces block type 0 (stored) or type 1 (fixed Huffman).
+//     Decompression consumes type 0, type 1, and type 2 (dynamic) blocks.
 //   - CRC32 is computed and validated for GZIP streams.
 //   - All functions are thread-safe (no global mutable state).
 //
@@ -1285,8 +1285,8 @@ void *rt_compress_gunzip(void *data) {
 
 /// @brief `Compress.DeflateStr(text)` — string convenience wrapper.
 ///
-/// Encodes `text` as UTF-8, deflates at the default level, and
-/// returns the bytes. Useful for compressing JSON / log payloads.
+/// Copies the runtime String bytes, deflates them at the default level, and
+/// returns the result. Useful for compressing JSON / log payloads.
 ///
 /// @param text Source string.
 /// @return Owned `rt_bytes` of the compressed stream.
@@ -1301,10 +1301,10 @@ void *rt_compress_deflate_str(rt_string text) {
     return compress_run_string_bytes(bytes, 0, "Compress.DeflateStr: failed to deflate text");
 }
 
-/// @brief `Compress.InflateStr(data)` — inflate then decode as UTF-8 string.
+/// @brief `Compress.InflateStr(data)` — inflate then copy bytes into a runtime String.
 ///
-/// Use only when the original payload is known to be valid UTF-8;
-/// `rt_bytes_to_str` validates and traps on malformed sequences.
+/// No UTF-8 validation is performed; use only when the original payload's
+/// encoding is already known, or use `Inflate` plus an explicit codec.
 ///
 /// @param data Compressed `rt_bytes`.
 /// @return Owned `rt_string` with the inflated text.
@@ -1334,7 +1334,7 @@ void *rt_compress_gzip_str(rt_string text) {
     return compress_run_string_bytes(bytes, 1, "Compress.GzipStr: failed to gzip text");
 }
 
-/// @brief `Compress.GunzipStr(data)` — gunzip and decode as UTF-8 string.
+/// @brief `Compress.GunzipStr(data)` — gunzip then copy bytes into a runtime String.
 ///
 /// @param data GZIP-wrapped `rt_bytes`.
 /// @return Owned `rt_string` with the inflated text.

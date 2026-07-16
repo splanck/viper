@@ -102,7 +102,8 @@ void *rt_pqueue_try_peek_option(void *obj);
 /// @param obj Opaque Heap object pointer.
 void rt_pqueue_clear(void *obj);
 
-/// @brief Convert heap to Seq in priority order (destructive copy).
+/// @brief Convert heap to Seq in priority order (works on an internal copy;
+///        the original heap is preserved).
 /// @param obj Opaque Heap object pointer.
 /// @return New Seq containing elements in priority order.
 void *rt_pqueue_to_seq(void *obj);

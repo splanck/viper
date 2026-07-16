@@ -15,7 +15,8 @@
 //   - rt_bitset_is_empty tests whether any bits are set.
 //
 // Ownership/Lifetime:
-//   - BitSet objects are heap-allocated; caller is responsible for lifetime management.
+//   - BitSet objects are GC-managed (rt_obj_new_i64) with a runtime
+//     finalizer; callers must not free them directly.
 //   - Internal backing array may be reallocated on auto-grow.
 //
 // Links: src/runtime/collections/rt_bitset.c (implementation), src/runtime/core/rt_string.h

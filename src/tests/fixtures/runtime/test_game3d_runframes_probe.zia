@@ -25,7 +25,7 @@ func start() {
         fail("runFramesOnly did not advance World3D.frame");
         return;
     }
-    if (near(world.Dt, 0.025, 0.0001) == false ||
+    if (near(world.DeltaTime, 0.025, 0.0001) == false ||
         near(world.Elapsed, 0.075, 0.0001) == false) {
         fail("runFramesOnly did not update World3D dt/elapsed");
         return;

@@ -26,7 +26,7 @@ descriptions come from the modular `runtime.def` registry.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Audio`, `Music`, `MusicGen`, `Sound`, `Synth`, `Voice` — audio playback and procedural generation |
-| [Collections](collections/README.md)   | `Bag`, `Bytes`, `Deque`, `F64Buffer`, `Heap`, `I64Buffer`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `TreeMap`, `Trie`, `WeakMap` |
+| [Collections](collections/README.md)   | `StringSet`, `Bytes`, `Deque`, `F64Buffer`, `Heap`, `I64Buffer`, `LazySeq`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `SortedSet`, `Stack`, `SortedMap`, `Trie`, `WeakMap` |
 | [Core Types](core.md)           | `Box`, `Diagnostics`, `MessageBus`, `Object`, `Parse`, `String` — foundational types (`Viper.Core`) |
 | [Cryptography](crypto.md)       | `Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`; compatibility `Legacy.Aes`, `Legacy.Hash` |
 | [Diagnostics](diagnostics.md)   | `Diagnostics`, `Log`, `TrapInfo` — assertions, logging, and current-trap inspection |
@@ -40,7 +40,7 @@ descriptions come from the modular `runtime.def` registry.
 | [Input/Output](io/README.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
 | [Mathematics](math.md)          | `BigInt`, `Bits`, `Easing`, `Mat3`, `Mat4`, `Math`, `PerlinNoise`, `Quat`, `Random`, `Spline`, `Vec2`, `Vec3` |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
-| [System](system.md)             | `Environment`, `Clipboard`, `Exec`, `Machine`, `Terminal`; `Viper.Runtime.Unsafe`, `Viper.Runtime.GC`, compatibility `Viper.Memory` |
+| [System](system.md)             | `Environment`, `Clipboard`, `Exec`, `Machine`, `Terminal`; `Viper.Runtime.Unsafe`, `Viper.Runtime.GC`, compatibility `Viper.Memory`, and `Viper.Memory.WeakRef` |
 | [Text & Data](text/README.md)          | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `InvariantNumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version`; `Viper.Data`: `Serialize`, `Xml`, `Yaml` |
 | [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `Channel`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
@@ -91,7 +91,7 @@ the conceptual guide does not provide a class-specific section.
 
 | Class                                                         | Type     | Description                                |
 |---------------------------------------------------------------|----------|--------------------------------------------|
-| [`Bag`](../generated/runtime/collections.md#viper-collections-bag)                   | Instance | String set with set operations             |
+| [`StringSet`](../generated/runtime/collections.md#viper-collections-stringset)                   | Instance | String set with set operations             |
 | [`BiMap`](../generated/runtime/collections.md#viper-collections-bimap)               | Instance | Bidirectional key-value map                |
 | [`BitSet`](../generated/runtime/collections.md#viper-collections-bitset)             | Instance | Compact fixed-size set of bits             |
 | [`BloomFilter`](../generated/runtime/collections.md#viper-collections-bloomfilter)   | Instance | Probabilistic membership test              |
@@ -119,7 +119,7 @@ the conceptual guide does not provide a class-specific section.
 | [`SortedSet`](../generated/runtime/collections.md#viper-collections-sortedset)       | Instance | Sorted string set with range ops           |
 | [`SparseArray`](../generated/runtime/collections.md#viper-collections-sparsearray)   | Instance | Sparse integer-indexed array               |
 | [`Stack`](../generated/runtime/collections.md#viper-collections-stack)               | Instance | LIFO collection                            |
-| [`TreeMap`](../generated/runtime/collections.md#viper-collections-treemap)           | Instance | Sorted key-value map                       |
+| [`SortedMap`](../generated/runtime/collections.md#viper-collections-sortedmap)           | Instance | Sorted key-value map                       |
 | [`Trie`](../generated/runtime/collections.md#viper-collections-trie)                 | Instance | Prefix-tree for string lookups             |
 | [`UnionFind`](../generated/runtime/collections.md#viper-collections-unionfind)       | Instance | Disjoint-set union-find structure          |
 | [`WeakMap`](../generated/runtime/collections.md#viper-collections-weakmap)           | Instance | Weak-reference key-value map               |
@@ -181,16 +181,16 @@ the conceptual guide does not provide a class-specific section.
 | [`LevelDocument`](game/leveldata.md#vipergame2dleveldocument) | Instance | Legacy JSON level loader with tilemap and object spawn data |
 | [`SceneDocument`](game/scene.md#editable-scene-documents) | Instance | Editable JSON scene document with layers, objects, properties, diagnostics, and tilemap-copy export |
 
-### Viper.Sound
+### Viper.Audio
 
 | Class                                         | Type     | Description                      |
 |-----------------------------------------------|----------|----------------------------------|
-| [`Audio`](../generated/runtime/sound.md#viper-sound-audio)            | Static   | Global audio control             |
+| [`Audio`](../generated/runtime/sound.md#viper-audio-audio)            | Static   | Global audio control             |
 | [`Music`](audio.md#vipersoundmusic)            | Instance | Streaming music playback         |
 | [`MusicGen`](audio.md#vipersoundmusicgen)      | Instance | Procedural music composition     |
-| [`Playlist`](../generated/runtime/sound.md#viper-sound-playlist)      | Instance | Sequential/shuffle track queue   |
-| [`Sound`](audio.md#vipersoundsound)            | Instance | Sound effects for short clips    |
-| [`SoundBank`](audio.md#vipersoundsoundbank)    | Instance | Named sound registry             |
+| [`Playlist`](../generated/runtime/sound.md#viper-audio-playlist)      | Instance | Sequential/shuffle track queue   |
+| [`Sound`](audio.md#viperaudiosound)            | Instance | Sound effects for short clips    |
+| [`SoundBank`](audio.md#viperaudiosoundbank)    | Instance | Named sound registry             |
 | [`Synth`](audio.md#vipersoundsynth)            | Static   | Procedural sound synthesis       |
 | [`Voice`](audio.md#vipersoundvoice)            | Static   | Voice control for playing sounds |
 
@@ -205,7 +205,7 @@ the conceptual guide does not provide a class-specific section.
 | [`Material2D`](graphics/rendering2d.md#classes)            | Instance | 2D tint, alpha, and blend state  |
 | [`NineSlice2D`](graphics/shapes2d.md#classes)              | Instance | Stretchable UI image drawing |
 | [`ObjectLayer2D`](graphics/tilemaps2d.md#classes)          | Instance | Rect object map layer       |
-| [`ParticleSystem2D`](graphics/game2d.md#classes)           | Instance | Graphics alias for particle effects |
+| [`ParticleEmitter`](graphics/game2d.md#classes)           | Instance | Graphics alias for particle effects |
 | [`Pixels`](../generated/runtime/graphics.md#viper-graphics-pixels)         | Instance | Software image buffer            |
 | [`PostProcess2D`](graphics/rendering2d.md#classes)         | Instance | CPU image post-processing pass   |
 | [`RenderTarget2D`](graphics/rendering2d.md#render-targets-textures-and-renderer) | Instance | Offscreen alpha-aware render surface |
@@ -392,6 +392,7 @@ the conceptual guide does not provide a class-specific section.
 |-------------------------------------------------|--------|-------------------------------------------------|
 | [`Memory`](system.md#vipermemory)              | Static | Compatibility namespace for `Runtime.Unsafe`     |
 | [`GC`](../generated/runtime/memory.md#viper-memory-gc)               | Static | Compatibility namespace for `Runtime.GC`         |
+| [`WeakRef`](system.md#vipermemoryweakref)      | Instance | Zeroing reference that does not retain its target |
 
 ### Viper.Time
 
@@ -432,10 +433,10 @@ the conceptual guide does not provide a class-specific section.
 | LIFO (last-in-first-out)    | `Stack`     | Simple push/pop interface                   |
 | Priority queue              | `Heap`      | Extract min/max by priority                 |
 | Packed numeric batches      | `F64Buffer` / `I64Buffer` | Dense primitive storage without per-element boxing |
-| Sorted key-value            | `TreeMap`   | Keys in sorted order, floor/ceil queries    |
+| Sorted key-value            | `SortedMap`   | Keys in sorted order, floor/ceil queries    |
 | Sorted unique strings       | `SortedSet` | Sorted order, range queries, floor/ceil     |
 | Unique objects              | `Set`       | Object set with set operations              |
-| Unique strings              | `Bag`       | String set operations (union, etc.)         |
+| Unique strings              | `StringSet`       | String set operations (union, etc.)         |
 | Weak references             | `WeakMap`   | GC-friendly caching, avoids memory leaks    |
 
 ---

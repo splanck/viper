@@ -123,7 +123,7 @@ func assertWalksGrounded(game: WalkMinGame, canvas: Canvas3D) -> Boolean {
     var before = player.Position;
 
     Canvas3D.PushSyntheticKey(canvas, Key.W, true);
-    game.getWorld().Tick();
+    game.getWorld().Update();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);
 
@@ -134,7 +134,7 @@ func assertWalksGrounded(game: WalkMinGame, canvas: Canvas3D) -> Boolean {
         Terminal.Say("RESULT: fail player did not walk");
         return false;
     }
-    if (character.Grounded() == false) {
+    if (character.IsGrounded() == false) {
         Terminal.Say("RESULT: fail player not grounded");
         return false;
     }

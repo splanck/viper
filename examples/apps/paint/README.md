@@ -73,5 +73,5 @@ through a `Tool` interface + registry, so the toolbox is data-driven.
 - `Viper.Graphics.Color` HSL/hex helpers back the colour picker.
 - `Viper.Input.Action` for named keybindings; `Viper.Input.Keyboard.GetText` for
   the text tool; `Viper.Math.Random` for spray.
-- `Viper.Game.ButtonGroup` / `Viper.Game.UI.GameButton` for the toolbox;
+- `Viper.Game.ButtonGroup` / `Viper.Game.UI.HudButton` for the toolbox;
   `Viper.GUI.FileDialog` / `MessageBox` / `Cursor` for dialogs + cursors.

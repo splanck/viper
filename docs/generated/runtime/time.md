@@ -9,11 +9,12 @@
 <a id="viper-time-datetime"></a>
 ### `Viper.Time.DateTime`
 
-Provides Date Time functionality for time and scheduling workflows.
+Reads, converts, parses, and formats Unix timestamps.
 
-`Viper.Time.DateTime` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `AddDays`,
-`AddSeconds`, `Create`, `Day`.
+Timestamps use signed Unix seconds except `NowMs`. Component access and `Create` use
+the host local zone; `ToISO` uses UTC, and named-zone operations use Viper's embedded subset.
+Parsing uses legacy numeric sentinels plus `TryParseOption`; checked arithmetic traps on
+signed overflow.
 
 #### Methods
 
@@ -21,7 +22,7 @@ construct the class directly. Its public surface exposes operations including `A
 |---|---|---|
 | <a id="viper-time-datetime-adddays"></a>`AddDays` | `i64(i64,i64)` | `Viper.Time.DateTime.AddDays` |
 | <a id="viper-time-datetime-addseconds"></a>`AddSeconds` | `i64(i64,i64)` | `Viper.Time.DateTime.AddSeconds` |
-| <a id="viper-time-datetime-create"></a>`Create` | `i64(i64,i64,i64,i64,i64,i64)` | `Viper.Time.DateTime.Create` |
+| <a id="viper-time-datetime-fromparts"></a>`FromParts` | `i64(i64,i64,i64,i64,i64,i64)` | `Viper.Time.DateTime.FromParts` |
 | <a id="viper-time-datetime-day"></a>`Day` | `i64(i64)` | `Viper.Time.DateTime.Day` |
 | <a id="viper-time-datetime-dayofweek"></a>`DayOfWeek` | `i64(i64)` | `Viper.Time.DateTime.DayOfWeek` |
 | <a id="viper-time-datetime-diff"></a>`Diff` | `i64(i64,i64)` | `Viper.Time.DateTime.Diff` |
@@ -33,24 +34,23 @@ construct the class directly. Its public surface exposes operations including `A
 | <a id="viper-time-datetime-now"></a>`Now` | `i64()` | `Viper.Time.DateTime.Now` |
 | <a id="viper-time-datetime-nowms"></a>`NowMs` | `i64()` | `Viper.Time.DateTime.NowMs` |
 | <a id="viper-time-datetime-second"></a>`Second` | `i64(i64)` | `Viper.Time.DateTime.Second` |
-| <a id="viper-time-datetime-toiso"></a>`ToISO` | `str(i64)` | `Viper.Time.DateTime.ToISO` |
-| <a id="viper-time-datetime-tolocal"></a>`ToLocal` | `str(i64)` | `Viper.Time.DateTime.ToLocal` |
+| <a id="viper-time-datetime-toiso8601"></a>`ToIso8601` | `str(i64)` | `Viper.Time.DateTime.ToIso8601` |
+| <a id="viper-time-datetime-formatlocal"></a>`FormatLocal` | `str(i64)` | `Viper.Time.DateTime.FormatLocal` |
 | <a id="viper-time-datetime-tozone"></a>`ToZone` | `str(i64,obj)` | `Viper.Time.DateTime.ToZone` |
 | <a id="viper-time-datetime-year"></a>`Year` | `i64(i64)` | `Viper.Time.DateTime.Year` |
-| <a id="viper-time-datetime-parseiso"></a>`ParseISO` | `i64(str)` | `Viper.Time.DateTime.ParseISO` |
+| <a id="viper-time-datetime-parseiso8601"></a>`ParseIso8601` | `i64(str)` | `Viper.Time.DateTime.ParseIso8601` |
 | <a id="viper-time-datetime-parsedate"></a>`ParseDate` | `i64(str)` | `Viper.Time.DateTime.ParseDate` |
 | <a id="viper-time-datetime-parsetime"></a>`ParseTime` | `i64(str)` | `Viper.Time.DateTime.ParseTime` |
-| <a id="viper-time-datetime-tryparse"></a>`TryParse` | `i64(str)` | `Viper.Time.DateTime.TryParse` |
-| <a id="viper-time-datetime-tryparseoption"></a>`TryParseOption` | `obj<Viper.Option>(str)` | `Viper.Time.DateTime.TryParseOption` |
+| <a id="viper-time-datetime-tryparse"></a>`TryParse` | `obj<Viper.Option>(str)` | `Viper.Time.DateTime.TryParse` |
 
 <a id="viper-time-timezone"></a>
 ### `Viper.Time.TimeZone`
 
-Provides deterministic IANA named-zone lookup.
+Resolves Viper's deterministic embedded IANA-zone subset.
 
-`Viper.Time.TimeZone` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes a property such as `Name` and
-operations including `Find`, `OffsetAt`, `IsDstAt`.
+`Find` is exact and traps for an empty or unknown name. Returned handles point at
+process-lifetime static data. Transition coverage is deliberately limited; `OffsetAt` and
+`IsDstAt` keep the first/last configured rules outside each zone's embedded window.
 
 #### Properties
 
@@ -69,11 +69,11 @@ operations including `Find`, `OffsetAt`, `IsDstAt`.
 <a id="viper-time-duration"></a>
 ### `Viper.Time.Duration`
 
-Provides time interval/duration type.
+Manipulates signed 64-bit millisecond duration values.
 
-`Viper.Time.Duration` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes properties such as `Days`, `Hours`,
-`Minutes` and operations including `FromMillis`, `FromSeconds`, `FromMinutes`, `FromHours`.
+Duration is a scalar rather than a heap object. Factories and arithmetic use checked
+signed math; component accessors use the magnitude, while total accessors preserve the sign
+and truncate whole-unit conversions toward zero. Formatting returns owned strings.
 
 #### Properties
 
@@ -94,7 +94,7 @@ construct the class directly. Its public surface exposes properties such as `Day
 | <a id="viper-time-duration-fromminutes"></a>`FromMinutes` | `i64(i64)` | `Viper.Time.Duration.FromMinutes` |
 | <a id="viper-time-duration-fromhours"></a>`FromHours` | `i64(i64)` | `Viper.Time.Duration.FromHours` |
 | <a id="viper-time-duration-fromdays"></a>`FromDays` | `i64(i64)` | `Viper.Time.Duration.FromDays` |
-| <a id="viper-time-duration-create"></a>`Create` | `i64(i64,i64,i64,i64,i64)` | `Viper.Time.Duration.Create` |
+| <a id="viper-time-duration-fromparts"></a>`FromParts` | `i64(i64,i64,i64,i64,i64)` | `Viper.Time.Duration.FromParts` |
 | <a id="viper-time-duration-zero"></a>`Zero` | `i64()` | `Viper.Time.Duration.Zero` |
 | <a id="viper-time-duration-totalmillis"></a>`TotalMillis` | `i64(i64)` | `Viper.Time.Duration.TotalMillis` |
 | <a id="viper-time-duration-totalseconds"></a>`TotalSeconds` | `i64(i64)` | `Viper.Time.Duration.TotalSeconds` |
@@ -107,19 +107,19 @@ construct the class directly. Its public surface exposes properties such as `Day
 | <a id="viper-time-duration-mul"></a>`Mul` | `i64(i64,i64)` | `Viper.Time.Duration.Mul` |
 | <a id="viper-time-duration-div"></a>`Div` | `i64(i64,i64)` | `Viper.Time.Duration.Div` |
 | <a id="viper-time-duration-abs"></a>`Abs` | `i64(i64)` | `Viper.Time.Duration.Abs` |
-| <a id="viper-time-duration-neg"></a>`Neg` | `i64(i64)` | `Viper.Time.Duration.Neg` |
-| <a id="viper-time-duration-cmp"></a>`Cmp` | `i64(i64,i64)` | `Viper.Time.Duration.Cmp` |
+| <a id="viper-time-duration-negate"></a>`Negate` | `i64(i64)` | `Viper.Time.Duration.Negate` |
+| <a id="viper-time-duration-compare"></a>`Compare` | `i64(i64,i64)` | `Viper.Time.Duration.Compare` |
 | <a id="viper-time-duration-tostring"></a>`ToString` | `str(i64)` | `Viper.Time.Duration.ToString` |
-| <a id="viper-time-duration-toiso"></a>`ToISO` | `str(i64)` | `Viper.Time.Duration.ToISO` |
+| <a id="viper-time-duration-toiso8601"></a>`ToIso8601` | `str(i64)` | `Viper.Time.Duration.ToIso8601` |
 
 <a id="viper-time-relativetime"></a>
 ### `Viper.Time.RelativeTime`
 
-Provides human-readable relative time formatting.
+Formats timestamps and millisecond durations as compact English relative text.
 
-`Viper.Time.RelativeTime` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Format`,
-`FormatFrom`, `FormatDuration`, `FormatShort`.
+Timestamp forms use fixed second/minute/hour/day/30-day-month/365-day-year buckets.
+`FormatDuration` emits whole-second multi-unit text and discards sub-second precision. These
+helpers are hard-coded English and are separate from the localization formatters.
 
 #### Methods
 
@@ -133,11 +133,11 @@ construct the class directly. Its public surface exposes operations including `F
 <a id="viper-time-daterange"></a>
 ### `Viper.Time.DateRange`
 
-Provides date interval type.
+Represents a normalized closed range of integer Unix seconds.
 
-Create `Viper.Time.DateRange` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Start`,
-`End` and operations including `Contains`, `Days`, `Duration`, `Hours`.
+`New` swaps reversed endpoints. Containment includes both endpoints; duration queries
+use `End - Start`. `Intersection` returns null for disjoint ranges, while `Union` returns null
+unless the ranges overlap or are adjacent by one second.
 
 Constructor: `Viper.Time.DateRange.New`
 
@@ -165,12 +165,11 @@ Constructor: `Viper.Time.DateRange.New`
 <a id="viper-time-stopwatch"></a>
 ### `Viper.Time.Stopwatch`
 
-Provides Stopwatch functionality for time and scheduling workflows.
+Accumulates elapsed time across start/stop intervals.
 
-Create `Viper.Time.Stopwatch` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as
-`ElapsedMs`, `ElapsedNs`, `ElapsedUs` and operations including `Reset`, `Restart`, `Start`,
-`Stop`.
+`New` starts stopped and `StartNew` starts immediately. Elapsed properties truncate
+the internal nanosecond count to the requested unit. Instances are not thread-safe; POSIX can
+fall back to the adjustable realtime clock when its monotonic query fails.
 
 Constructor: `Viper.Time.Stopwatch.New`
 
@@ -197,28 +196,28 @@ Constructor: `Viper.Time.Stopwatch.New`
 <a id="viper-time-clock"></a>
 ### `Viper.Time.Clock`
 
-Provides basic timing utilities (sleep, ticks).
+Provides blocking sleep and elapsed-time clock readings.
 
-`Viper.Time.Clock` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Sleep`, `Ticks`,
-`TicksUs`.
+Sleep clamps negative values to zero and values above the 32-bit millisecond limit.
+Tick epochs and physical resolution are unspecified. POSIX prefers a monotonic clock but falls
+back to adjustable realtime if that query fails; all-source failure returns zero.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-time-clock-sleep"></a>`Sleep` | `void(i64)` | `Viper.Time.Clock.Sleep` |
-| <a id="viper-time-clock-ticks"></a>`Ticks` | `i64()` | `Viper.Time.Clock.Ticks` |
-| <a id="viper-time-clock-ticksus"></a>`TicksUs` | `i64()` | `Viper.Time.Clock.TicksUs` |
+| <a id="viper-time-clock-nowms"></a>`NowMs` | `i64()` | `Viper.Time.Clock.NowMs` |
+| <a id="viper-time-clock-nowmicros"></a>`NowMicros` | `i64()` | `Viper.Time.Clock.NowMicros` |
 
 <a id="viper-time-countdown"></a>
 ### `Viper.Time.Countdown`
 
-Provides interval timing with expiration.
+Tracks a pausable millisecond interval until expiration.
 
-Create `Viper.Time.Countdown` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Elapsed`,
-`Remaining`, `Expired` and operations including `Start`, `Stop`, `Reset`, `Wait`.
+New instances start stopped; non-positive intervals clamp to zero. Elapsed time keeps
+increasing after expiration while running. `Wait` starts a stopped instance, sleeps in bounded
+chunks until expiration, and leaves it running. Instances are not thread-safe.
 
 Constructor: `Viper.Time.Countdown.New`
 
@@ -228,7 +227,7 @@ Constructor: `Viper.Time.Countdown.New`
 |---|---|---|
 | <a id="viper-time-countdown-elapsed"></a>`Elapsed` | `i64` | read-only |
 | <a id="viper-time-countdown-remaining"></a>`Remaining` | `i64` | read-only |
-| <a id="viper-time-countdown-expired"></a>`Expired` | `i1` | read-only |
+| <a id="viper-time-countdown-isexpired"></a>`IsExpired` | `i1` | read-only |
 | <a id="viper-time-countdown-interval"></a>`Interval` | `i64` | read/write |
 | <a id="viper-time-countdown-isrunning"></a>`IsRunning` | `i1` | read-only |
 
@@ -245,11 +244,11 @@ Constructor: `Viper.Time.Countdown.New`
 <a id="viper-time-dateonly"></a>
 ### `Viper.Time.DateOnly`
 
-Provides date without time components.
+Represents immutable proleptic-Gregorian dates without time or zone state.
 
-`Viper.Time.DateOnly` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes properties such as `Year`, `Month`,
-`Day` and operations including `Create`, `Today`, `Parse`, `FromDays`.
+`Create`, `Today`, and exact `YYYY-MM-DD` parsing can return null. Arithmetic returns
+new objects and clamps month/year shifts to a valid day. Day-count conversion is relative to
+1970-01-01 and traps on signed overflow for extreme values.
 
 #### Properties
 
@@ -267,7 +266,7 @@ construct the class directly. Its public surface exposes properties such as `Yea
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-time-dateonly-create"></a>`Create` | `obj(i64,i64,i64)` | `Viper.Time.DateOnly.Create` |
+| <a id="viper-time-dateonly-fromparts"></a>`FromParts` | `obj(i64,i64,i64)` | `Viper.Time.DateOnly.FromParts` |
 | <a id="viper-time-dateonly-today"></a>`Today` | `obj()` | `Viper.Time.DateOnly.Today` |
 | <a id="viper-time-dateonly-parse"></a>`Parse` | `obj(str)` | `Viper.Time.DateOnly.Parse` |
 | <a id="viper-time-dateonly-fromdays"></a>`FromDays` | `obj(i64)` | `Viper.Time.DateOnly.FromDays` |
@@ -280,7 +279,7 @@ construct the class directly. Its public surface exposes properties such as `Yea
 | <a id="viper-time-dateonly-endofmonth"></a>`EndOfMonth` | `obj()` | `Viper.Time.DateOnly.EndOfMonth` |
 | <a id="viper-time-dateonly-startofyear"></a>`StartOfYear` | `obj()` | `Viper.Time.DateOnly.StartOfYear` |
 | <a id="viper-time-dateonly-endofyear"></a>`EndOfYear` | `obj()` | `Viper.Time.DateOnly.EndOfYear` |
-| <a id="viper-time-dateonly-cmp"></a>`Cmp` | `i64(obj)` | `Viper.Time.DateOnly.Cmp` |
+| <a id="viper-time-dateonly-compare"></a>`Compare` | `i64(obj)` | `Viper.Time.DateOnly.Compare` |
 | <a id="viper-time-dateonly-equals"></a>`Equals` | `i1(obj)` | `Viper.Time.DateOnly.Equals` |
 | <a id="viper-time-dateonly-tostring"></a>`ToString` | `str()` | `Viper.Time.DateOnly.ToString` |
 | <a id="viper-time-dateonly-format"></a>`Format` | `str(str)` | `Viper.Time.DateOnly.Format` |
@@ -291,7 +290,7 @@ construct the class directly. Its public surface exposes properties such as `Yea
 |---|---|---|
 | `Viper.Time.DateTime.AddDays` | `i64(i64,i64)` | `rt_datetime_add_days` |
 | `Viper.Time.DateTime.AddSeconds` | `i64(i64,i64)` | `rt_datetime_add_seconds` |
-| `Viper.Time.DateTime.Create` | `i64(i64,i64,i64,i64,i64,i64)` | `rt_datetime_create` |
+| `Viper.Time.DateTime.FromParts` | `i64(i64,i64,i64,i64,i64,i64)` | `rt_datetime_create` |
 | `Viper.Time.DateTime.Day` | `i64(i64)` | `rt_datetime_day` |
 | `Viper.Time.DateTime.DayOfWeek` | `i64(i64)` | `rt_datetime_day_of_week` |
 | `Viper.Time.DateTime.Diff` | `i64(i64,i64)` | `rt_datetime_diff` |
@@ -303,15 +302,14 @@ construct the class directly. Its public surface exposes properties such as `Yea
 | `Viper.Time.DateTime.Now` | `i64()` | `rt_datetime_now` |
 | `Viper.Time.DateTime.NowMs` | `i64()` | `rt_datetime_now_ms` |
 | `Viper.Time.DateTime.Second` | `i64(i64)` | `rt_datetime_second` |
-| `Viper.Time.DateTime.ToISO` | `str(i64)` | `rt_datetime_to_iso` |
-| `Viper.Time.DateTime.ToLocal` | `str(i64)` | `rt_datetime_to_local` |
+| `Viper.Time.DateTime.ToIso8601` | `str(i64)` | `rt_datetime_to_iso` |
+| `Viper.Time.DateTime.FormatLocal` | `str(i64)` | `rt_datetime_to_local` |
 | `Viper.Time.DateTime.ToZone` | `str(i64,obj)` | `rt_datetime_to_zone` |
 | `Viper.Time.DateTime.Year` | `i64(i64)` | `rt_datetime_year` |
-| `Viper.Time.DateTime.ParseISO` | `i64(str)` | `rt_datetime_parse_iso` |
+| `Viper.Time.DateTime.ParseIso8601` | `i64(str)` | `rt_datetime_parse_iso` |
 | `Viper.Time.DateTime.ParseDate` | `i64(str)` | `rt_datetime_parse_date` |
 | `Viper.Time.DateTime.ParseTime` | `i64(str)` | `rt_datetime_parse_time` |
-| `Viper.Time.DateTime.TryParse` | `i64(str)` | `rt_datetime_try_parse` |
-| `Viper.Time.DateTime.TryParseOption` | `obj<Viper.Option>(str)` | `rt_datetime_try_parse_option` |
+| `Viper.Time.DateTime.TryParse` | `obj<Viper.Option>(str)` | `rt_datetime_try_parse_option` |
 | `Viper.Time.TimeZone.Find` | `obj(str)` | `rt_tz_find` |
 | <a id="viper-time-timezone-get-name"></a>`Viper.Time.TimeZone.get_Name` | `str(obj)` | `rt_tz_name` |
 | `Viper.Time.TimeZone.OffsetAt` | `i64(obj,i64)` | `rt_tz_offset_at` |
@@ -321,7 +319,7 @@ construct the class directly. Its public surface exposes properties such as `Yea
 | `Viper.Time.Duration.FromMinutes` | `i64(i64)` | `rt_duration_from_minutes` |
 | `Viper.Time.Duration.FromHours` | `i64(i64)` | `rt_duration_from_hours` |
 | `Viper.Time.Duration.FromDays` | `i64(i64)` | `rt_duration_from_days` |
-| `Viper.Time.Duration.Create` | `i64(i64,i64,i64,i64,i64)` | `rt_duration_create` |
+| `Viper.Time.Duration.FromParts` | `i64(i64,i64,i64,i64,i64)` | `rt_duration_create` |
 | `Viper.Time.Duration.Zero` | `i64()` | `rt_duration_zero` |
 | `Viper.Time.Duration.TotalMillis` | `i64(i64)` | `rt_duration_total_millis` |
 | `Viper.Time.Duration.TotalSeconds` | `i64(i64)` | `rt_duration_total_seconds` |
@@ -339,10 +337,10 @@ construct the class directly. Its public surface exposes properties such as `Yea
 | `Viper.Time.Duration.Mul` | `i64(i64,i64)` | `rt_duration_mul` |
 | `Viper.Time.Duration.Div` | `i64(i64,i64)` | `rt_duration_div` |
 | `Viper.Time.Duration.Abs` | `i64(i64)` | `rt_duration_abs` |
-| `Viper.Time.Duration.Neg` | `i64(i64)` | `rt_duration_neg` |
-| `Viper.Time.Duration.Cmp` | `i64(i64,i64)` | `rt_duration_cmp` |
+| `Viper.Time.Duration.Negate` | `i64(i64)` | `rt_duration_neg` |
+| `Viper.Time.Duration.Compare` | `i64(i64,i64)` | `rt_duration_cmp` |
 | `Viper.Time.Duration.ToString` | `str(i64)` | `rt_duration_to_string` |
-| `Viper.Time.Duration.ToISO` | `str(i64)` | `rt_duration_to_iso` |
+| `Viper.Time.Duration.ToIso8601` | `str(i64)` | `rt_duration_to_iso` |
 | `Viper.Time.RelativeTime.Format` | `str(i64)` | `rt_reltime_format` |
 | `Viper.Time.RelativeTime.FormatFrom` | `str(i64,i64)` | `rt_reltime_format_from` |
 | `Viper.Time.RelativeTime.FormatDuration` | `str(i64)` | `rt_reltime_format_duration` |
@@ -359,7 +357,7 @@ construct the class directly. Its public surface exposes properties such as `Yea
 | `Viper.Time.DateRange.Duration` | `i64(obj)` | `rt_daterange_duration` |
 | `Viper.Time.DateRange.ToString` | `str(obj)` | `rt_daterange_to_string` |
 | `Viper.Time.DateOnly.Today` | `obj()` | `rt_dateonly_today` |
-| `Viper.Time.DateOnly.Create` | `obj(i64,i64,i64)` | `rt_dateonly_create` |
+| `Viper.Time.DateOnly.FromParts` | `obj(i64,i64,i64)` | `rt_dateonly_create` |
 | `Viper.Time.DateOnly.Parse` | `obj(str)` | `rt_dateonly_parse` |
 | `Viper.Time.DateOnly.FromDays` | `obj(i64)` | `rt_dateonly_from_days` |
 | <a id="viper-time-dateonly-get-year"></a>`Viper.Time.DateOnly.get_Year` | `i64(obj)` | `rt_dateonly_year` |
@@ -378,7 +376,7 @@ construct the class directly. Its public surface exposes properties such as `Yea
 | `Viper.Time.DateOnly.EndOfMonth` | `obj(obj)` | `rt_dateonly_end_of_month` |
 | `Viper.Time.DateOnly.StartOfYear` | `obj(obj)` | `rt_dateonly_start_of_year` |
 | `Viper.Time.DateOnly.EndOfYear` | `obj(obj)` | `rt_dateonly_end_of_year` |
-| `Viper.Time.DateOnly.Cmp` | `i64(obj,obj)` | `rt_dateonly_cmp` |
+| `Viper.Time.DateOnly.Compare` | `i64(obj,obj)` | `rt_dateonly_cmp` |
 | `Viper.Time.DateOnly.Equals` | `i1(obj,obj)` | `rt_dateonly_equals` |
 | `Viper.Time.DateOnly.ToString` | `str(obj)` | `rt_dateonly_to_string` |
 | `Viper.Time.DateOnly.Format` | `str(obj,str)` | `rt_dateonly_format` |
@@ -393,15 +391,15 @@ construct the class directly. Its public surface exposes properties such as `Yea
 | `Viper.Time.Stopwatch.StartNew` | `obj()` | `rt_stopwatch_start_new` |
 | `Viper.Time.Stopwatch.Stop` | `void(obj)` | `rt_stopwatch_stop` |
 | `Viper.Time.Clock.Sleep` | `void(i64)` | `rt_clock_sleep` |
-| `Viper.Time.Clock.Ticks` | `i64()` | `rt_clock_ticks` |
-| `Viper.Time.Clock.TicksUs` | `i64()` | `rt_clock_ticks_us` |
+| `Viper.Time.Clock.NowMs` | `i64()` | `rt_clock_ticks` |
+| `Viper.Time.Clock.NowMicros` | `i64()` | `rt_clock_ticks_us` |
 | `Viper.Time.Countdown.New` | `obj(i64)` | `rt_countdown_new` |
 | `Viper.Time.Countdown.Start` | `void(obj)` | `rt_countdown_start` |
 | `Viper.Time.Countdown.Stop` | `void(obj)` | `rt_countdown_stop` |
 | `Viper.Time.Countdown.Reset` | `void(obj)` | `rt_countdown_reset` |
 | <a id="viper-time-countdown-get-elapsed"></a>`Viper.Time.Countdown.get_Elapsed` | `i64(obj)` | `rt_countdown_elapsed` |
 | <a id="viper-time-countdown-get-remaining"></a>`Viper.Time.Countdown.get_Remaining` | `i64(obj)` | `rt_countdown_remaining` |
-| <a id="viper-time-countdown-get-expired"></a>`Viper.Time.Countdown.get_Expired` | `i1(obj)` | `rt_countdown_expired` |
+| <a id="viper-time-countdown-get-isexpired"></a>`Viper.Time.Countdown.get_IsExpired` | `i1(obj)` | `rt_countdown_expired` |
 | <a id="viper-time-countdown-get-interval"></a>`Viper.Time.Countdown.get_Interval` | `i64(obj)` | `rt_countdown_interval` |
 | <a id="viper-time-countdown-set-interval"></a>`Viper.Time.Countdown.set_Interval` | `void(obj,i64)` | `rt_countdown_set_interval` |
 | <a id="viper-time-countdown-get-isrunning"></a>`Viper.Time.Countdown.get_IsRunning` | `i1(obj)` | `rt_countdown_is_running` |

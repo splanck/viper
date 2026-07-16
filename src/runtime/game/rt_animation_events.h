@@ -43,7 +43,7 @@ void *rt_animation_event_batch_from_ids(const int64_t *ids, int64_t count);
 
 /// @brief Return the number of event IDs stored in a batch.
 /// @param batch Viper.Game.AnimationEventBatch object.
-/// @return Event count, or 0 for NULL or wrong-type values.
+/// @return Event count, or 0 for NULL. A non-NULL wrong-type value traps.
 int64_t rt_animation_event_batch_count(void *batch);
 
 /// @brief Read one event ID from a batch by index.
@@ -61,7 +61,8 @@ int8_t rt_animation_event_batch_contains(void *batch, int64_t event_id);
 /// @brief Copy batch event IDs into a new Viper.Collections.Seq.
 /// @details Each ID is boxed as an integer. The caller owns the returned Seq.
 /// @param batch Viper.Game.AnimationEventBatch object.
-/// @return New Seq of boxed integer event IDs, or an empty Seq for invalid input.
+/// @return New Seq of boxed integer event IDs, or an empty Seq for NULL input.
+///   A non-NULL wrong-type value traps.
 void *rt_animation_event_batch_ids(void *batch);
 
 #ifdef __cplusplus

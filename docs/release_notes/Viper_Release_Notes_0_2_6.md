@@ -6,10 +6,10 @@
 
 ### What this release is about
 
-A hardening cycle pushing toward alpha quality that also delivered substantial new capability. The headline new work is a code-first `Viper.Game3D` engine layered over the 3D runtime and a real ViperIDE editor with build/run and language services; the hardening backbone swept memory, threads, crypto, IO, graphics, the bytecode VM, the native toolchain, and packaging, while the Zia frontend closed its major language gaps and raw pointers left both source languages.
+A hardening cycle pushing toward alpha quality that also delivered new capability. The headline new work is a code-first `Viper.Game3D` engine layered over the 3D runtime and a real ViperIDE editor with build/run and language services; the hardening backbone swept memory, threads, crypto, IO, graphics, the bytecode VM, the native toolchain, and packaging, while the Zia frontend closed its major language gaps and raw pointers left both source languages.
 
 - **Zia frontend stability.** `defer`; structured `try`/`catch`/`finally`, multi-catch, bare rethrow; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence.
-- **Pointer-safety gate.** Zia and BASIC reject raw `Ptr` types and pointer-signature runtime APIs; the typed surface is now the only surface. (Biggest user-visible change.)
+- **Pointer-safety gate.** Zia and BASIC reject raw `Ptr` types and pointer-signature runtime APIs; the typed surface is now the only surface. (A major user-visible change.)
 - **Memory, GC & threads ownership.** Validated retain/release wrappers, weak-ref CAS retain inside the GC lock, trap-safe finalizers, class-ID validation on every public threads / MessageBus entry, and saturated wait deadlines.
 - **Crypto, TLS & IO security.** Canonical `Viper.Crypto.*` (scrypt, AES-GCM+AAD, approved-mode module, fixed-schedule ECDSA P-256); TLS Key-Usage / Basic-Constraints / EKU enforcement; hardened temp-file, archive, and ZIP64 paths.
 - **Network protocol correctness.** Independent HPACK tables, strict RFC 7230 `Transfer-Encoding` parsing (closes a request-smuggling avenue), and WebSocket frame/close-code validation.
@@ -111,7 +111,7 @@ Counts via `scripts/count_sloc.sh` (production 668,733 / test 278,412 / demo 192
 - Built-in first-person, free-fly, orbit, and follow camera controllers plus a grounded `CharacterController`; per-frame `Input3D` snapshots make `runFrames` deterministic, and native update callbacks are validated as executable on all three platforms.
 - `Animator3D` (crossfade, speed, state-time, event queries, additive layers, blend-tree base poses, IK solver binding, and worker-backed batch updates through `World3D.workerCount`) over the animation controller; enter/stay/exit collision events; spatial `Sound3D` (listener-follow, positional/attached playback, distance attenuation) and `Effects3D` presets (explosion, sparks, dust, smoke, impact decals); plus environment, model-template, asset-handle, lazy `World3D.stream`, `WorldStream3D`, and debug helpers.
 - `examples/3d/openworld_slice/` adds a tested streaming vertical slice: cell and heightmapped-terrain manifests with per-tile heightfield colliders and nav-bake sources, all-quadrant bounded-residency traversal with deterministic replay, KTX2 textures, a skinned glTF agent with crossfade plus LookAt and terrain-sampled foot IK, async asset-handle completion, character/physics/nav stepping, a committed software baseline, a capability-gated GPU smoke with a degenerate-basis robustness pass, and named local perf baselines (macOS Release software/Metal, and a Windows x64/MSVC Release software/D3D11 run covering native BC7 upload, clustered lighting, cascaded shadows, and long-traversal telemetry).
-- The spatial-audio classes are renamed `Audio3D`/`AudioListener3D`/`AudioSource3D` → `Sound3D`/`SoundListener3D`/`SoundSource3D` (breaking), matching the canonical `Viper.Sound` family.
+- The spatial-audio classes are renamed `Audio3D`/`AudioListener3D`/`AudioSource3D` → `Sound3D`/`SoundListener3D`/`SoundSource3D` (breaking), matching the canonical `Viper.Audio` family.
 
 ### Game runtime
 

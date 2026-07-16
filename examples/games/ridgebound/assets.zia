@@ -31,7 +31,7 @@ class RidgeboundAssets {
         playerCoreMesh = Mesh3D.Sphere(0.23, 12);
         playerLimbMesh = Mesh3D.Cylinder(0.075, 0.58, 8);
         playerPackMesh = Mesh3D.Box(0.44, 0.55, 0.20);
-        Mesh3D.CalcTangents(cubeMesh);
+        Mesh3D.CalculateTangents(cubeMesh);
 
         var stoneAlbedo = terrain.createStoneAlbedo(config.PBR_TEXTURE_SIZE);
         var metalAlbedo = terrain.createMetalAlbedo(config.PBR_TEXTURE_SIZE);

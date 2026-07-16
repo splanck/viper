@@ -163,7 +163,7 @@ class LiveDiagnostics {
             pendingGeneration = workScheduler.QueuedGeneration(scheduler.JOB_DIAGNOSTICS);
             workScheduler.Complete(scheduler.JOB_DIAGNOSTICS);
         } else {
-            var now = Viper.Time.Clock.Ticks();
+            var now = Viper.Time.Clock.NowMs();
             if pending == false or revision != pendingRevision or sourcePath != pendingPath {
                 pending = true;
                 pendingRevision = revision;
@@ -387,7 +387,7 @@ class LiveDiagnostics {
     /// @return Absolute normalized path, or an empty string for empty input.
     hide func NormalizeDiagnosticPath(path: String) -> String {
         if path == "" { return ""; }
-        return Path.Norm(Path.Abs(path));
+        return Path.Normalize(Path.Absolute(path));
     }
 
     /// @brief Force an immediate recheck on the next `update` call.
@@ -413,7 +413,7 @@ class LiveDiagnostics {
         pendingRevision = engine.GetRevision();
         pendingPath = sourcePath;
         pendingGeneration = 0;
-        lastEditMs = Viper.Time.Clock.Ticks() - DEBOUNCE_MS;
+        lastEditMs = Viper.Time.Clock.NowMs() - DEBOUNCE_MS;
         if workScheduler != null {
             pendingGeneration = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, pendingRevision, 0);
         }

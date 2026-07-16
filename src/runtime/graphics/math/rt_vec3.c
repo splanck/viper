@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_vec3.c
+// File: src/runtime/graphics/math/rt_vec3.c
 // Purpose: 3D vector mathematics (x, y, z doubles) for Viper graphics and
 //   simulation. Provides pure Vec3 arithmetic (+,-,×,÷), dot product, cross
 //   product, length/normalize, distance, linear interpolation, reflection, angle
@@ -644,7 +644,7 @@ double rt_vec3_dot(void *a, void *b) {
 /// ' Create coordinate frame
 /// Dim right = Vec3.New(1, 0, 0)
 /// Dim up = Vec3.New(0, 1, 0)
-/// Dim forward = right.Cross(up)  ' (0, 0, -1) in RH system
+/// Dim forward = right.Cross(up)  ' (0, 0, 1) in this RH convention
 /// ```
 ///
 /// @param a First vector. Must not be NULL.

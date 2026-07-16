@@ -40,8 +40,8 @@ func start() {
                     new Vec3(0.0, 0.0, 5.0),
                     new Vec3(0.0, 0.0, 0.0),
                     new Vec3(0.0, 1.0, 0.0));
-    var wall = Mesh3D.NewBox(20.0, 20.0, 0.2);
-    var dimMat = Material3D.NewColor(0.08, 0.08, 0.08);
+    var wall = Mesh3D.Box(20.0, 20.0, 0.2);
+    var dimMat = Material3D.FromColor(0.08, 0.08, 0.08);
     Material3D.SetUnlit(dimMat, true);
 
     // --- E37: auto-exposure raises a dark frame toward middle gray -----------
@@ -61,9 +61,9 @@ func start() {
     }
 
     // --- E38: identity LUT near-no-op; inverting LUT inverts ------------------
-    var identity = PostFX3D.MakeIdentityLUT();
+    var identity = PostFX3D.MakeIdentityLut();
     var lutChain = PostFX3D.New();
-    PostFX3D.AddColorLUT(lutChain, identity, 1.0);
+    PostFX3D.AddColorLut(lutChain, identity, 1.0);
     Canvas3D.SetPostFX(canvas, lutChain);
     drawDim(canvas, cam, wall, dimMat);
     var identitySum = sumAll(Canvas3D.ScreenshotFinal(canvas));
@@ -75,7 +75,7 @@ func start() {
         return;
     }
 
-    var inverted = PostFX3D.MakeIdentityLUT();
+    var inverted = PostFX3D.MakeIdentityLut();
     var iy = 0;
     while (iy < 16) {
         var ix = 0;
@@ -90,7 +90,7 @@ func start() {
         iy = iy + 1;
     }
     var invChain = PostFX3D.New();
-    PostFX3D.AddColorLUT(invChain, inverted, 1.0);
+    PostFX3D.AddColorLut(invChain, inverted, 1.0);
     Canvas3D.SetPostFX(canvas, invChain);
     drawDim(canvas, cam, wall, dimMat);
     var invertedSum = sumAll(Canvas3D.ScreenshotFinal(canvas));
@@ -207,12 +207,12 @@ func start() {
         return;
     }
     Canvas3D.SetHeightFogSun(canvas, 0.1, 1.0, 0.1, 2.0, 1.0);
-    var towardSun = Light3D.NewDirectional(new Vec3(0.0, 0.0, 1.0), 1.0, 1.0, 1.0);
+    var towardSun = Light3D.Directional(new Vec3(0.0, 0.0, 1.0), 1.0, 1.0, 1.0);
     Canvas3D.SetLight(canvas, 0, towardSun);
     drawDim(canvas, cam, wall, dimMat);
     var sunFacing = sumAll(Canvas3D.ScreenshotFinal(canvas));
     Canvas3D.Flip(canvas);
-    var awaySun = Light3D.NewDirectional(new Vec3(0.0, 0.0, -1.0), 1.0, 1.0, 1.0);
+    var awaySun = Light3D.Directional(new Vec3(0.0, 0.0, -1.0), 1.0, 1.0, 1.0);
     Canvas3D.SetLight(canvas, 0, awaySun);
     drawDim(canvas, cam, wall, dimMat);
     var antiSun = sumAll(Canvas3D.ScreenshotFinal(canvas));
@@ -288,7 +288,7 @@ func start() {
 
     // --- E40: lens flare adds ghost sprites on-screen -------------------------
     var sunDir = new Vec3(0.0, -0.4, 1.0); // sun sits at -direction: up-forward of the camera
-    var flareSun = Light3D.NewDirectional(sunDir, 1.0, 0.9, 0.7);
+    var flareSun = Light3D.Directional(sunDir, 1.0, 0.9, 0.7);
     Canvas3D.SetLight(canvas, 0, flareSun);
     var flare = LensFlare3D.New(flareSun);
     LensFlare3D.AddElement(flare, 0.0, 30.0, 16770000, 0.0);

@@ -39,25 +39,25 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
 | `Fill(color)`                     | `Void(Integer)`                                                      | Fill with raw `0xRRGGBBAA` storage                                                |
-| `FillRGBA(color)`                 | `Void(Integer)`                                                      | Explicit raw `0xRRGGBBAA` fill alias                                              |
+| `FillRgba(color)`                 | `Void(Integer)`                                                      | Explicit raw `0xRRGGBBAA` fill alias                                              |
 | `FillColor(color)`                | `Void(Integer)`                                                      | Fill from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                   |
 | `FlipH()`                         | `Pixels()`                                                           | Return a horizontally mirrored copy (left-right)                                  |
 | `FlipV()`                         | `Pixels()`                                                           | Return a vertically mirrored copy (top-bottom)                                    |
 | `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get raw `0xRRGGBBAA` storage at (x, y). Returns 0 if out of bounds                |
-| `GetRGBA(x, y)`                   | `Integer(Integer, Integer)`                                          | Get raw `0xRRGGBBAA` storage at (x, y). Returns 0 if out of bounds                |
+| `GetRgba(x, y)`                   | `Integer(Integer, Integer)`                                          | Get raw `0xRRGGBBAA` storage at (x, y). Returns 0 if out of bounds                |
 | `GetColor(x, y)`                  | `Integer(Integer, Integer)`                                          | Get pixel at (x, y) as a `Color`-compatible value; use `Color.Get*` to read components |
 | `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
 | `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
 | `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using alpha-aware bilinear interpolation; target dimensions must be positive |
 | `Rotate(angle)`                   | `Pixels(Double)`                                                     | Return a copy rotated around its pixel center by degrees (positive = clockwise); non-finite angles trap |
 | `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
-| `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
-| `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
+| `RotateCounterClockwise()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
+| `RotateClockwise()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
 | `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
 | `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
 | `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using nearest-neighbor interpolation; target dimensions must be positive |
 | `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set raw `0xRRGGBBAA` storage. Silently ignores out of bounds                      |
-| `SetRGBA(x, y, color)`            | `Void(Integer, Integer, Integer)`                                    | Explicit raw `0xRRGGBBAA` set alias                                               |
+| `SetRgba(x, y, color)`            | `Void(Integer, Integer, Integer)`                                    | Explicit raw `0xRRGGBBAA` set alias                                               |
 | `SetColor(x, y, color)`           | `Void(Integer, Integer, Integer)`                                    | Set from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                    |
 | `Tint(color)`                     | `Pixels(Integer)`                                                    | Return a copy with a color tint applied; `Color.RGBA` input also scales alpha     |
 | `ToBytes()`                       | `Bytes()`                                                            | Convert to raw bytes (RGBA, row-major)                                            |
@@ -83,8 +83,8 @@ Drawing primitives accept `0x00RRGGBB`, `Color.RGB()`, and tagged `Color.RGBA()`
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetRGB(x, y, color)` | `Void(Integer, Integer, Integer)` | Set pixel using `0x00RRGGBB` format (alpha = 255) |
-| `GetRGB(x, y)` | `Integer(Integer, Integer)` | Get pixel as `0x00RRGGBB` (alpha discarded) |
+| `SetRgb(x, y, color)` | `Void(Integer, Integer, Integer)` | Set pixel using `0x00RRGGBB` format (alpha = 255) |
+| `GetRgb(x, y)` | `Integer(Integer, Integer)` | Get pixel as `0x00RRGGBB` (alpha discarded) |
 | `DrawLine(x1, y1, x2, y2, color)` | `Void(Integer...)` | Bresenham line between two points |
 | `DrawBox(x, y, w, h, color)` | `Void(Integer...)` | Filled rectangle |
 | `DrawFrame(x, y, w, h, color)` | `Void(Integer...)` | Rectangle outline |
@@ -108,9 +108,9 @@ Drawing primitives accept `0x00RRGGBB`, `Color.RGB()`, and tagged `Color.RGBA()`
 | `TextScaledWidth(text, scale)` | `Integer(String, Integer)` | Measure built-in text width in pixels at integer scale |
 
 > **Color format note:** `Pixels.Set`, `Pixels.Fill`, and `Pixels.Get` are raw-storage APIs for
-> `0xRRGGBBAA`; `SetRGBA`, `FillRGBA`, and `GetRGBA` are explicit raw aliases. Drawing primitives
+> `0xRRGGBBAA`; `SetRgba`, `FillRgba`, and `GetRgba` are explicit raw aliases. Drawing primitives
 > and `SetColor`/`FillColor`/`GetColor` accept or return values compatible with `Viper.Graphics.Color`.
-> `SetRGB`/`GetRGB` remain RGB-only convenience methods.
+> `SetRgb`/`GetRgb` remain RGB-only convenience methods.
 
 Text rendering uses the same embedded monospace 8x8 bitmap font as `Canvas.Text`. Non-ASCII UTF-8
 codepoints measure as one cell and render with the fallback glyph. All text methods clip silently at
@@ -156,8 +156,8 @@ Raw pixel storage uses packed 32-bit RGBA in the format `0xRRGGBBAA`:
 - `BB` - Blue component (0-255)
 - `AA` - Alpha component (0-255, where 255 = opaque)
 
-`Pixels.Get` and `Pixels.GetRGBA` return the raw `0xRRGGBBAA` integer. `Pixels.Set`, `SetRGBA`,
-`Fill`, and `FillRGBA` write raw `0xRRGGBBAA` storage. `GetColor`, `SetColor`, and `FillColor` are
+`Pixels.Get` and `Pixels.GetRGBA` return the raw `0xRRGGBBAA` integer. `Pixels.Set`, `SetRgba`,
+`Fill`, and `FillRgba` write raw `0xRRGGBBAA` storage. `GetColor`, `SetColor`, and `FillColor` are
 the color-compatible forms for `Viper.Graphics.Color` values and Canvas-style `0x00RRGGBB` colors.
 
 **Drawing primitives** (`DrawLine`, `DrawBox`, etc.) use the same color inputs as Canvas methods and
@@ -170,7 +170,7 @@ primitives.
 
 > `Viper.Graphics.Color.RGBA()` returns a tagged `0xAARRGGBB` color value so alpha can be preserved
 > even when `a = 0`. It does **not** match raw `0xRRGGBBAA` storage. Use `SetColor`/`FillColor` for
-> tagged colors, or use `Set`/`Fill`/`SetRGBA`/`FillRGBA` for explicit raw storage.
+> tagged colors, or use `Set`/`Fill`/`SetRgba`/`FillRgba` for explicit raw storage.
 
 ### Zia Example
 
@@ -207,7 +207,7 @@ func start() {
     // Transform operations return new Pixels objects
     var flipped = p.Clone();
     flipped = flipped.FlipH();
-    var rotated = p.RotateCW();
+    var rotated = p.RotateClockwise();
     var scaled = p.Scale(128, 128);
     Say("Scaled: " + Fmt.Int(scaled.get_Width()) + "x" + Fmt.Int(scaled.get_Height()));
 }
@@ -228,7 +228,7 @@ FOR y = 0 TO 255
         DIM r AS INTEGER = x
         DIM g AS INTEGER = y
         DIM color AS INTEGER = Viper.Graphics.Color.RGB(r, g, 0)
-        pixels.SetRGB(x, y, color)
+        pixels.SetRgb(x, y, color)
     NEXT x
 NEXT y
 
@@ -261,8 +261,8 @@ flipped = pixels.FlipH()     ' Mirror horizontally
 flipped = pixels.FlipV()     ' Mirror vertically
 
 DIM rotated AS Viper.Graphics.Pixels
-rotated = pixels.RotateCW()  ' Rotate 90 degrees clockwise
-rotated = pixels.RotateCCW() ' Rotate 90 degrees counter-clockwise
+rotated = pixels.RotateClockwise()  ' Rotate 90 degrees clockwise
+rotated = pixels.RotateCounterClockwise() ' Rotate 90 degrees counter-clockwise
 rotated = pixels.Rotate180() ' Rotate 180 degrees
 
 ' Scale to new dimensions (nearest-neighbor interpolation)

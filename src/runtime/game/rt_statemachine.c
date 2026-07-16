@@ -28,8 +28,8 @@
 //
 // Ownership/Lifetime:
 //   - StateMachine objects are GC-managed via rt_obj_new_i64. The GC reclaims
-//     them automatically; rt_statemachine_destroy() is a no-op provided for
-//     API symmetry and forward-compatibility.
+//     them automatically; rt_statemachine_destroy() releases one reference
+//     and frees the object when it was the last reference.
 //
 // Links: src/runtime/game/rt_statemachine.h (public API, with full
 //        per-function documentation), docs/viperlib/game.md (StateMachine)

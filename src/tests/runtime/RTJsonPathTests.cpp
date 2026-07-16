@@ -77,6 +77,59 @@ static void test_has() {
     rt_string_unref(p2);
 }
 
+static void test_paths_with_embedded_nul_match_nothing() {
+    // VDOC-038: a path whose runtime bytes continue past a NUL must not
+    // silently address the shorter C-string prefix — it matches nothing.
+    void *obj = rt_map_new();
+    rt_string key = make_str("a");
+    rt_string value = make_str("hit");
+    rt_map_set(obj, key, value);
+
+    rt_string sneaky = rt_string_from_bytes("a\0suffix", 8);
+    assert(rt_jsonpath_get(obj, sneaky) == NULL);
+    assert(rt_jsonpath_has(obj, sneaky) == 0);
+    void *matches = rt_jsonpath_query(obj, sneaky);
+    assert(matches != NULL && rt_seq_len(matches) == 0);
+
+    rt_string plain = make_str("a");
+    void *hit = rt_jsonpath_get(obj, plain);
+    assert(hit != NULL);
+
+    rt_string_unref(sneaky);
+    rt_string_unref(plain);
+    rt_string_unref(key);
+    rt_string_unref(value);
+}
+
+static void test_has_and_get_or_distinguish_null_from_missing() {
+    // VDOC-021: a present JSON null member must report Has == true and must not
+    // be replaced by GetOr's default; only a missing path takes the default.
+    rt_string json = make_str("{\"x\":null,\"y\":1}");
+    void *doc = rt_json_parse(json);
+    rt_string_unref(json);
+    assert(doc != NULL);
+
+    rt_string px = make_str("x");
+    rt_string pz = make_str("z");
+    rt_string pchild = make_str("x.child");
+    assert(rt_jsonpath_has(doc, px) == 1);
+    assert(rt_jsonpath_has(doc, pz) == 0);
+    assert(rt_jsonpath_has(doc, pchild) == 0); // null has no children
+
+    rt_string def = make_str("default");
+    void *kept = rt_jsonpath_get_or(doc, px, def);
+    assert(kept == NULL); // real null preserved
+    void *defaulted = rt_jsonpath_get_or(doc, pz, def);
+    assert(defaulted != NULL);
+    assert(strcmp(rt_string_cstr((rt_string)defaulted), "default") == 0);
+    rt_string_unref((rt_string)defaulted);
+    rt_string_unref(def);
+
+    rt_string_unref(px);
+    rt_string_unref(pz);
+    rt_string_unref(pchild);
+}
+
 static void test_get_or() {
     void *obj = rt_map_new();
     rt_map_set(obj, make_str("x"), make_str("hello"));
@@ -220,6 +273,8 @@ int main() {
     test_dotted_path();
     test_bracket_index();
     test_has();
+    test_paths_with_embedded_nul_match_nothing();
+    test_has_and_get_or_distinguish_null_from_missing();
     test_get_or();
     test_get_str();
     test_get_int();

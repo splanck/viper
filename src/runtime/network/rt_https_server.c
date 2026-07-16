@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_https_server.c
-// Purpose: TLS-backed HTTP/1.1 server with routing and request/response objects.
+// Purpose: TLS-backed HTTP/1.1 and HTTP/2 server with routing and request/response objects.
 // Key invariants:
 //   - Accept loop runs in a dedicated thread.
 //   - Each connection is dispatched to the worker pool for request handling.
@@ -1158,7 +1158,7 @@ static void *accept_loop(void *arg)
 // Public API
 //=============================================================================
 
-/// @brief `HttpServer.New(port)` — create a new HTTP server bound to
+/// @brief `HttpsServer.New(port, certFile, keyFile)` — create a new HTTPS server bound to
 ///        the given TCP port.
 ///
 /// Allocates a GC-managed server impl, attaches the finalizer (which
@@ -1168,10 +1168,10 @@ static void *accept_loop(void *arg)
 /// not actually opened until `Start`; this constructor only validates
 /// inputs and reserves resources.
 ///
-/// Traps on invalid port (`<1` or `>65535`) or allocation failure.
+/// Traps on invalid port (`<0` or `>65535`) or allocation failure.
 ///
-/// @param port TCP port number, 1..65535.
-/// @return GC-managed `HttpServer` handle.
+/// @param port TCP port number, 0..65535; zero requests an ephemeral port at Start().
+/// @return GC-managed `HttpsServer` handle.
 void *rt_https_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
     if (port < 0 || port > 65535)
         rt_trap("HttpsServer: invalid port");
@@ -1262,25 +1262,25 @@ static void add_route_binding(void *obj,
         rt_trap("HttpsServer: failed to register route");
 }
 
-/// @brief `HttpServer.Get(pattern, handler_tag)` — register a GET route.
-/// @param obj         HttpServer handle.
+/// @brief `HttpsServer.Get(pattern, handler_tag)` — register a GET route.
+/// @param obj         HttpsServer handle.
 /// @param pattern     URL pattern.
 /// @param handler_tag Handler tag string (resolved by `BindHandler`).
 void rt_https_server_get(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_get);
 }
 
-/// @brief `HttpServer.Post(pattern, handler_tag)` — register a POST route.
+/// @brief `HttpsServer.Post(pattern, handler_tag)` — register a POST route.
 void rt_https_server_post(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_post);
 }
 
-/// @brief `HttpServer.Put(pattern, handler_tag)` — register a PUT route.
+/// @brief `HttpsServer.Put(pattern, handler_tag)` — register a PUT route.
 void rt_https_server_put(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_put);
 }
 
-/// @brief `HttpServer.Delete(pattern, handler_tag)` — register a DELETE route.
+/// @brief `HttpsServer.Delete(pattern, handler_tag)` — register a DELETE route.
 void rt_https_server_del(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_delete);
 }
@@ -1420,7 +1420,7 @@ void rt_https_server_start(void *obj) {
     }
 }
 
-/// @brief `HttpServer.Stop()` — tear down the listener and join the
+/// @brief `HttpsServer.Stop()` — tear down the listener and join the
 ///        accept thread.
 ///
 /// Clears the running flag, closes the underlying TCP server (which
@@ -1429,7 +1429,7 @@ void rt_https_server_start(void *obj) {
 /// any in-flight worker tasks before returning. NULL receiver is a
 /// silent no-op. Safe to call repeatedly.
 ///
-/// @param obj HttpServer handle.
+/// @param obj HttpsServer handle.
 void rt_https_server_stop(void *obj) {
     if (!obj)
         return;

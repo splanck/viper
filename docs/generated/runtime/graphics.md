@@ -74,7 +74,6 @@ Constructor: `Viper.Graphics.Canvas.New`
 | <a id="viper-graphics-canvas-setposition"></a>`SetPosition` | `void(i64,i64)` | `Viper.Graphics.Canvas.SetPosition` |
 | <a id="viper-graphics-canvas-getfps"></a>`GetFps` | `i64()` | `Viper.Graphics.Canvas.GetFps` |
 | <a id="viper-graphics-canvas-setfps"></a>`SetFps` | `void(i64)` | `Viper.Graphics.Canvas.SetFps` |
-| <a id="viper-graphics-canvas-setdtmax"></a>`SetDTMax` | `void(i64)` | `Viper.Graphics.Canvas.SetDTMax` |
 | <a id="viper-graphics-canvas-setmaxdeltatime"></a>`SetMaxDeltaTime` | `void(i64)` | `Viper.Graphics.Canvas.SetMaxDeltaTime` |
 | <a id="viper-graphics-canvas-beginframe"></a>`BeginFrame` | `i64()` | `Viper.Graphics.Canvas.BeginFrame` |
 | <a id="viper-graphics-canvas-ismaximized"></a>`IsMaximized` | `i1()` | `Viper.Graphics.Canvas.IsMaximized` |
@@ -119,9 +118,9 @@ Constructor: `Viper.Graphics.Canvas.New`
 
 Provides custom bitmap font (BDF/PSF).
 
-`Viper.Graphics.BitmapFont` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `CharWidth`, `CharHeight`, `GlyphCount` and operations
-including `LoadBDF`, `LoadPSF`, `TextWidth`.
+`Viper.Graphics.BitmapFont` is a static runtime surface and does not require an instance.
+Its public surface exposes properties such as `CharWidth`, `CharHeight`, `GlyphCount` and
+operations including `LoadBdf`, `LoadPsf`, `TextWidth`.
 
 #### Properties
 
@@ -137,36 +136,9 @@ including `LoadBDF`, `LoadPSF`, `TextWidth`.
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics-bitmapfont-loadbdf"></a>`LoadBDF` | `obj<Viper.Graphics.BitmapFont>(str)` | `Viper.Graphics.BitmapFont.LoadBDF` |
-| <a id="viper-graphics-bitmapfont-loadpsf"></a>`LoadPSF` | `obj<Viper.Graphics.BitmapFont>(str)` | `Viper.Graphics.BitmapFont.LoadPSF` |
+| <a id="viper-graphics-bitmapfont-loadbdf"></a>`LoadBdf` | `obj<Viper.Graphics.BitmapFont>(str)` | `Viper.Graphics.BitmapFont.LoadBdf` |
+| <a id="viper-graphics-bitmapfont-loadpsf"></a>`LoadPsf` | `obj<Viper.Graphics.BitmapFont>(str)` | `Viper.Graphics.BitmapFont.LoadPsf` |
 | <a id="viper-graphics-bitmapfont-textwidth"></a>`TextWidth` | `i64(str)` | `Viper.Graphics.BitmapFont.TextWidth` |
-
-<a id="viper-graphics-spritefont"></a>
-### `Viper.Graphics.SpriteFont`
-
-Provides game-facing alias for BitmapFont.
-
-`Viper.Graphics.SpriteFont` is a static runtime surface and does not require an instance. Its
-public surface exposes properties such as `CharWidth`, `CharHeight`, `GlyphCount` and operations
-including `LoadBDF`, `LoadPSF`, `TextWidth`.
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-graphics-spritefont-charwidth"></a>`CharWidth` | `i64` | read-only |
-| <a id="viper-graphics-spritefont-charheight"></a>`CharHeight` | `i64` | read-only |
-| <a id="viper-graphics-spritefont-glyphcount"></a>`GlyphCount` | `i64` | read-only |
-| <a id="viper-graphics-spritefont-ismonospace"></a>`IsMonospace` | `i1` | read-only |
-| <a id="viper-graphics-spritefont-textheight"></a>`TextHeight` | `i64` | read-only |
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-graphics-spritefont-loadbdf"></a>`LoadBDF` | `obj<Viper.Graphics.SpriteFont>(str)` | `Viper.Graphics.SpriteFont.LoadBDF` |
-| <a id="viper-graphics-spritefont-loadpsf"></a>`LoadPSF` | `obj<Viper.Graphics.SpriteFont>(str)` | `Viper.Graphics.SpriteFont.LoadPSF` |
-| <a id="viper-graphics-spritefont-textwidth"></a>`TextWidth` | `i64(str)` | `Viper.Graphics.BitmapFont.TextWidth` |
 
 <a id="viper-graphics-color"></a>
 ### `Viper.Graphics.Color`
@@ -175,7 +147,7 @@ Provides color utilities.
 
 `Viper.Graphics.Color` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Red`, `Green`,
-`Blue` and operations including `RGB`, `RGBA`, `FromHSL`, `GetR`.
+`Blue` and operations including `Rgb`, `Rgba`, `FromHsl`, `GetRed`.
 
 #### Properties
 
@@ -196,13 +168,13 @@ construct the class directly. Its public surface exposes properties such as `Red
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-graphics-color-rgb"></a>`RGB` | `i64(i64,i64,i64)` | `Viper.Graphics.Color.RGB` |
-| <a id="viper-graphics-color-rgba"></a>`RGBA` | `i64(i64,i64,i64,i64)` | `Viper.Graphics.Color.RGBA` |
-| <a id="viper-graphics-color-fromhsl"></a>`FromHSL` | `i64(i64,i64,i64)` | `Viper.Graphics.Color.FromHSL` |
-| <a id="viper-graphics-color-getr"></a>`GetR` | `i64(i64)` | `Viper.Graphics.Color.GetR` |
-| <a id="viper-graphics-color-getg"></a>`GetG` | `i64(i64)` | `Viper.Graphics.Color.GetG` |
-| <a id="viper-graphics-color-getb"></a>`GetB` | `i64(i64)` | `Viper.Graphics.Color.GetB` |
-| <a id="viper-graphics-color-geta"></a>`GetA` | `i64(i64)` | `Viper.Graphics.Color.GetA` |
+| <a id="viper-graphics-color-rgb"></a>`Rgb` | `i64(i64,i64,i64)` | `Viper.Graphics.Color.Rgb` |
+| <a id="viper-graphics-color-rgba"></a>`Rgba` | `i64(i64,i64,i64,i64)` | `Viper.Graphics.Color.Rgba` |
+| <a id="viper-graphics-color-fromhsl"></a>`FromHsl` | `i64(i64,i64,i64)` | `Viper.Graphics.Color.FromHsl` |
+| <a id="viper-graphics-color-getred"></a>`GetRed` | `i64(i64)` | `Viper.Graphics.Color.GetRed` |
+| <a id="viper-graphics-color-getgreen"></a>`GetGreen` | `i64(i64)` | `Viper.Graphics.Color.GetGreen` |
+| <a id="viper-graphics-color-getblue"></a>`GetBlue` | `i64(i64)` | `Viper.Graphics.Color.GetBlue` |
+| <a id="viper-graphics-color-getalpha"></a>`GetAlpha` | `i64(i64)` | `Viper.Graphics.Color.GetAlpha` |
 | <a id="viper-graphics-color-lerp"></a>`Lerp` | `i64(i64,i64,i64)` | `Viper.Graphics.Color.Lerp` |
 | <a id="viper-graphics-color-brighten"></a>`Brighten` | `i64(i64,i64)` | `Viper.Graphics.Color.Brighten` |
 | <a id="viper-graphics-color-darken"></a>`Darken` | `i64(i64,i64)` | `Viper.Graphics.Color.Darken` |
@@ -213,9 +185,9 @@ construct the class directly. Its public surface exposes properties such as `Red
 | <a id="viper-graphics-color-complement"></a>`Complement` | `i64(i64)` | `Viper.Graphics.Color.Complement` |
 | <a id="viper-graphics-color-grayscale"></a>`Grayscale` | `i64(i64)` | `Viper.Graphics.Color.Grayscale` |
 | <a id="viper-graphics-color-invert"></a>`Invert` | `i64(i64)` | `Viper.Graphics.Color.Invert` |
-| <a id="viper-graphics-color-geth"></a>`GetH` | `i64(i64)` | `Viper.Graphics.Color.GetH` |
-| <a id="viper-graphics-color-gets"></a>`GetS` | `i64(i64)` | `Viper.Graphics.Color.GetS` |
-| <a id="viper-graphics-color-getl"></a>`GetL` | `i64(i64)` | `Viper.Graphics.Color.GetL` |
+| <a id="viper-graphics-color-gethue"></a>`GetHue` | `i64(i64)` | `Viper.Graphics.Color.GetHue` |
+| <a id="viper-graphics-color-getsaturation"></a>`GetSaturation` | `i64(i64)` | `Viper.Graphics.Color.GetSaturation` |
+| <a id="viper-graphics-color-getlightness"></a>`GetLightness` | `i64(i64)` | `Viper.Graphics.Color.GetLightness` |
 
 <a id="viper-graphics-pixels"></a>
 ### `Viper.Graphics.Pixels`
@@ -224,7 +196,7 @@ Provides software image buffer.
 
 Create `Viper.Graphics.Pixels` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Width`,
-`Height` and operations including `Get`, `GetRGBA`, `GetColor`, `Set`.
+`Height` and operations including `Get`, `GetRgba`, `GetColor`, `Set`.
 
 Constructor: `Viper.Graphics.Pixels.New`
 
@@ -240,13 +212,13 @@ Constructor: `Viper.Graphics.Pixels.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-graphics-pixels-get"></a>`Get` | `i64(i64,i64)` | `Viper.Graphics.Pixels.Get` |
-| <a id="viper-graphics-pixels-getrgba"></a>`GetRGBA` | `i64(i64,i64)` | `Viper.Graphics.Pixels.GetRGBA` |
+| <a id="viper-graphics-pixels-getrgba"></a>`GetRgba` | `i64(i64,i64)` | `Viper.Graphics.Pixels.GetRgba` |
 | <a id="viper-graphics-pixels-getcolor"></a>`GetColor` | `i64(i64,i64)` | `Viper.Graphics.Pixels.GetColor` |
 | <a id="viper-graphics-pixels-set"></a>`Set` | `void(i64,i64,i64)` | `Viper.Graphics.Pixels.Set` |
-| <a id="viper-graphics-pixels-setrgba"></a>`SetRGBA` | `void(i64,i64,i64)` | `Viper.Graphics.Pixels.SetRGBA` |
+| <a id="viper-graphics-pixels-setrgba"></a>`SetRgba` | `void(i64,i64,i64)` | `Viper.Graphics.Pixels.SetRgba` |
 | <a id="viper-graphics-pixels-setcolor"></a>`SetColor` | `void(i64,i64,i64)` | `Viper.Graphics.Pixels.SetColor` |
 | <a id="viper-graphics-pixels-fill"></a>`Fill` | `void(i64)` | `Viper.Graphics.Pixels.Fill` |
-| <a id="viper-graphics-pixels-fillrgba"></a>`FillRGBA` | `void(i64)` | `Viper.Graphics.Pixels.FillRGBA` |
+| <a id="viper-graphics-pixels-fillrgba"></a>`FillRgba` | `void(i64)` | `Viper.Graphics.Pixels.FillRgba` |
 | <a id="viper-graphics-pixels-fillcolor"></a>`FillColor` | `void(i64)` | `Viper.Graphics.Pixels.FillColor` |
 | <a id="viper-graphics-pixels-clear"></a>`Clear` | `void()` | `Viper.Graphics.Pixels.Clear` |
 | <a id="viper-graphics-pixels-copy"></a>`Copy` | `void(i64,i64,obj,i64,i64,i64,i64)` | `Viper.Graphics.Pixels.Copy` |
@@ -257,8 +229,8 @@ Constructor: `Viper.Graphics.Pixels.New`
 | <a id="viper-graphics-pixels-savepng"></a>`SavePng` | `i64(str)` | `Viper.Graphics.Pixels.SavePng` |
 | <a id="viper-graphics-pixels-fliph"></a>`FlipH` | `obj()` | `Viper.Graphics.Pixels.FlipH` |
 | <a id="viper-graphics-pixels-flipv"></a>`FlipV` | `obj()` | `Viper.Graphics.Pixels.FlipV` |
-| <a id="viper-graphics-pixels-rotatecw"></a>`RotateCW` | `obj()` | `Viper.Graphics.Pixels.RotateCW` |
-| <a id="viper-graphics-pixels-rotateccw"></a>`RotateCCW` | `obj()` | `Viper.Graphics.Pixels.RotateCCW` |
+| <a id="viper-graphics-pixels-rotateclockwise"></a>`RotateClockwise` | `obj()` | `Viper.Graphics.Pixels.RotateClockwise` |
+| <a id="viper-graphics-pixels-rotatecounterclockwise"></a>`RotateCounterClockwise` | `obj()` | `Viper.Graphics.Pixels.RotateCounterClockwise` |
 | <a id="viper-graphics-pixels-rotate180"></a>`Rotate180` | `obj()` | `Viper.Graphics.Pixels.Rotate180` |
 | <a id="viper-graphics-pixels-rotate"></a>`Rotate` | `obj(f64)` | `Viper.Graphics.Pixels.Rotate` |
 | <a id="viper-graphics-pixels-scale"></a>`Scale` | `obj(i64,i64)` | `Viper.Graphics.Pixels.Scale` |
@@ -267,8 +239,8 @@ Constructor: `Viper.Graphics.Pixels.New`
 | <a id="viper-graphics-pixels-tint"></a>`Tint` | `obj(i64)` | `Viper.Graphics.Pixels.Tint` |
 | <a id="viper-graphics-pixels-blur"></a>`Blur` | `obj(i64)` | `Viper.Graphics.Pixels.Blur` |
 | <a id="viper-graphics-pixels-resize"></a>`Resize` | `obj(i64,i64)` | `Viper.Graphics.Pixels.Resize` |
-| <a id="viper-graphics-pixels-setrgb"></a>`SetRGB` | `void(i64,i64,i64)` | `Viper.Graphics.Pixels.SetRGB` |
-| <a id="viper-graphics-pixels-getrgb"></a>`GetRGB` | `i64(i64,i64)` | `Viper.Graphics.Pixels.GetRGB` |
+| <a id="viper-graphics-pixels-setrgb"></a>`SetRgb` | `void(i64,i64,i64)` | `Viper.Graphics.Pixels.SetRgb` |
+| <a id="viper-graphics-pixels-getrgb"></a>`GetRgb` | `i64(i64,i64)` | `Viper.Graphics.Pixels.GetRgb` |
 | <a id="viper-graphics-pixels-drawline"></a>`DrawLine` | `void(i64,i64,i64,i64,i64)` | `Viper.Graphics.Pixels.DrawLine` |
 | <a id="viper-graphics-pixels-drawbox"></a>`DrawBox` | `void(i64,i64,i64,i64,i64)` | `Viper.Graphics.Pixels.DrawBox` |
 | <a id="viper-graphics-pixels-drawframe"></a>`DrawFrame` | `void(i64,i64,i64,i64,i64)` | `Viper.Graphics.Pixels.DrawFrame` |
@@ -304,8 +276,8 @@ Constructor: `Viper.Graphics.Pixels.New`
 Provides animated sprite.
 
 Create `Viper.Graphics.Sprite` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-`Width` and operations including `FromFile`, `Draw`, `SetOrigin`, `AddFrame`.
+object with the instance members below. Its public surface exposes properties such as `X`,
+`Y`, `Width` and operations including `FromFile`, `Draw`, `SetOrigin`, `AddFrame`.
 
 Constructor: `Viper.Graphics.Sprite.New`
 
@@ -380,8 +352,8 @@ Constructor: `Viper.Graphics.SpriteAnimator.New`
 Provides 2D camera view.
 
 Create `Viper.Graphics.Camera` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-`Zoom` and operations including `SetCenter`, `Follow`, `ToScreenX`, `ToScreenY`.
+object with the instance members below. Its public surface exposes properties such as `X`,
+`Y`, `Zoom` and operations including `SetCenter`, `Follow`, `ToScreenX`, `ToScreenY`.
 
 Constructor: `Viper.Graphics.Camera.New`
 
@@ -447,7 +419,7 @@ Constructor: `Viper.Graphics.SpriteBatch.New`
 | <a id="viper-graphics-spritebatch-end"></a>`End` | `void(obj)` | `Viper.Graphics.SpriteBatch.End` |
 | <a id="viper-graphics-spritebatch-draw"></a>`Draw` | `void(obj,i64,i64)` | `Viper.Graphics.SpriteBatch.Draw` |
 | <a id="viper-graphics-spritebatch-drawscaled"></a>`DrawScaled` | `void(obj,i64,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawScaled` |
-| <a id="viper-graphics-spritebatch-drawex"></a>`DrawEx` | `void(obj,i64,i64,i64,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawEx` |
+| `Draw` | `void(obj,i64,i64,i64,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawWithTransform` |
 | <a id="viper-graphics-spritebatch-drawpixels"></a>`DrawPixels` | `void(obj,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawPixels` |
 | <a id="viper-graphics-spritebatch-drawregion"></a>`DrawRegion` | `void(obj,i64,i64,i64,i64,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawRegion` |
 | <a id="viper-graphics-spritebatch-setsortbydepth"></a>`SetSortByDepth` | `void(i1)` | `Viper.Graphics.SpriteBatch.SetSortByDepth` |
@@ -456,7 +428,7 @@ Constructor: `Viper.Graphics.SpriteBatch.New`
 | <a id="viper-graphics-spritebatch-resetsettings"></a>`ResetSettings` | `void()` | `Viper.Graphics.SpriteBatch.ResetSettings` |
 | <a id="viper-graphics-spritebatch-drawatlas"></a>`DrawAtlas` | `void(obj,str,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawAtlas` |
 | <a id="viper-graphics-spritebatch-drawatlasscaled"></a>`DrawAtlasScaled` | `void(obj,str,i64,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawAtlasScaled` |
-| <a id="viper-graphics-spritebatch-drawatlasex"></a>`DrawAtlasEx` | `void(obj,str,i64,i64,i64,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawAtlasEx` |
+| `DrawAtlas` | `void(obj,str,i64,i64,i64,i64,i64)` | `Viper.Graphics.SpriteBatch.DrawAtlasWithTransform` |
 | <a id="viper-graphics-spritebatch-new"></a>`New` | `obj(i64)` | `Viper.Graphics.SpriteBatch.New` |
 
 <a id="viper-graphics-textureatlas"></a>
@@ -493,7 +465,7 @@ Constructor: `Viper.Graphics.TextureAtlas.New`
 <a id="viper-graphics-rendertarget2d"></a>
 ### `Viper.Graphics.RenderTarget2D`
 
-Provides cPU-backed offscreen surface.
+Provides CPU-backed offscreen surface.
 
 Create `Viper.Graphics.RenderTarget2D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
@@ -519,35 +491,6 @@ Constructor: `Viper.Graphics.RenderTarget2D.New`
 | <a id="viper-graphics-rendertarget2d-drawpixels"></a>`DrawPixels` | `void(i64,i64,obj)` | `Viper.Graphics.RenderTarget2D.DrawPixels` |
 | <a id="viper-graphics-rendertarget2d-drawregion"></a>`DrawRegion` | `void(i64,i64,obj,i64,i64,i64,i64)` | `Viper.Graphics.RenderTarget2D.DrawRegion` |
 | <a id="viper-graphics-rendertarget2d-new"></a>`New` | `obj(i64,i64)` | `Viper.Graphics.RenderTarget2D.New` |
-
-<a id="viper-graphics-surface2d"></a>
-### `Viper.Graphics.Surface2D`
-
-Provides Surface 2D functionality for 2D graphics and media applications.
-
-Create `Viper.Graphics.Surface2D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Width`,
-`Height`, `Pixels` and operations including `Clear`, `Resize`, `DrawPixels`, `DrawRegion`.
-
-Constructor: `Viper.Graphics.Surface2D.New`
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-graphics-surface2d-width"></a>`Width` | `i64` | read-only |
-| <a id="viper-graphics-surface2d-height"></a>`Height` | `i64` | read-only |
-| <a id="viper-graphics-surface2d-pixels"></a>`Pixels` | `obj` | read-only |
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-graphics-surface2d-clear"></a>`Clear` | `void(i64)` | `Viper.Graphics.RenderTarget2D.Clear` |
-| <a id="viper-graphics-surface2d-resize"></a>`Resize` | `void(i64,i64)` | `Viper.Graphics.RenderTarget2D.Resize` |
-| <a id="viper-graphics-surface2d-drawpixels"></a>`DrawPixels` | `void(i64,i64,obj)` | `Viper.Graphics.RenderTarget2D.DrawPixels` |
-| <a id="viper-graphics-surface2d-drawregion"></a>`DrawRegion` | `void(i64,i64,obj,i64,i64,i64,i64)` | `Viper.Graphics.RenderTarget2D.DrawRegion` |
-| <a id="viper-graphics-surface2d-new"></a>`New` | `obj(i64,i64)` | `Viper.Graphics.Surface2D.New` |
 
 <a id="viper-graphics-texture2d"></a>
 ### `Viper.Graphics.Texture2D`
@@ -613,7 +556,7 @@ Constructor: `Viper.Graphics.GpuTexture2D.New`
 Provides retained draw command stream.
 
 Create `Viper.Graphics.Renderer2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Count` and operations including `Begin`, `Clear`, `SetTint`, `SetAlpha`.
 
 Constructor: `Viper.Graphics.Renderer2D.New`
@@ -676,8 +619,8 @@ Constructor: `Viper.Graphics.Material2D.New`
 Provides Shader 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.Shader2D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Effect`,
-`Amount`, `Color` and operations including `Apply`.
+object with the instance members below. Its public surface exposes properties such as
+`Effect`, `Amount`, `Color` and operations including `Apply`.
 
 Constructor: `Viper.Graphics.Shader2D.New`
 
@@ -702,8 +645,8 @@ Constructor: `Viper.Graphics.Shader2D.New`
 Provides Post Process 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.PostProcess2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetEffect`, `SetAmount`, `SetColor`, `Apply`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetEffect`, `SetAmount`, `SetColor`, `Apply`.
 
 Constructor: `Viper.Graphics.PostProcess2D.New`
 
@@ -750,47 +693,14 @@ Constructor: `Viper.Graphics.Viewport2D.New`
 | <a id="viper-graphics-viewport2d-screentoworldy"></a>`ScreenToWorldY` | `i64(i64)` | `Viper.Graphics.Viewport2D.ScreenToWorldY` |
 | <a id="viper-graphics-viewport2d-new"></a>`New` | `obj(i64,i64,i64,i64)` | `Viper.Graphics.Viewport2D.New` |
 
-<a id="viper-graphics-screenscaler"></a>
-### `Viper.Graphics.ScreenScaler`
-
-Provides Screen Scaler functionality for 2D graphics and media applications.
-
-Create `Viper.Graphics.ScreenScaler` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes properties such as
-`Scale`, `OffsetX`, `OffsetY` and operations including `SetVirtualSize`, `SetScreenSize`,
-`SetIntegerScaling`, `WorldToScreenX`.
-
-Constructor: `Viper.Graphics.ScreenScaler.New`
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-graphics-screenscaler-scale"></a>`Scale` | `i64` | read-only |
-| <a id="viper-graphics-screenscaler-offsetx"></a>`OffsetX` | `i64` | read-only |
-| <a id="viper-graphics-screenscaler-offsety"></a>`OffsetY` | `i64` | read-only |
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-graphics-screenscaler-setvirtualsize"></a>`SetVirtualSize` | `void(i64,i64)` | `Viper.Graphics.Viewport2D.SetVirtualSize` |
-| <a id="viper-graphics-screenscaler-setscreensize"></a>`SetScreenSize` | `void(i64,i64)` | `Viper.Graphics.Viewport2D.SetScreenSize` |
-| <a id="viper-graphics-screenscaler-setintegerscaling"></a>`SetIntegerScaling` | `void(i1)` | `Viper.Graphics.Viewport2D.SetIntegerScaling` |
-| <a id="viper-graphics-screenscaler-worldtoscreenx"></a>`WorldToScreenX` | `i64(i64)` | `Viper.Graphics.Viewport2D.WorldToScreenX` |
-| <a id="viper-graphics-screenscaler-worldtoscreeny"></a>`WorldToScreenY` | `i64(i64)` | `Viper.Graphics.Viewport2D.WorldToScreenY` |
-| <a id="viper-graphics-screenscaler-screentoworldx"></a>`ScreenToWorldX` | `i64(i64)` | `Viper.Graphics.Viewport2D.ScreenToWorldX` |
-| <a id="viper-graphics-screenscaler-screentoworldy"></a>`ScreenToWorldY` | `i64(i64)` | `Viper.Graphics.Viewport2D.ScreenToWorldY` |
-| <a id="viper-graphics-screenscaler-new"></a>`New` | `obj(i64,i64,i64,i64)` | `Viper.Graphics.ScreenScaler.New` |
-
 <a id="viper-graphics-tileset2d"></a>
 ### `Viper.Graphics.TileSet2D`
 
 Provides Tile Set 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.TileSet2D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Columns`,
-`Rows`, `TileCount` and operations including `GetTilePixels`.
+object with the instance members below. Its public surface exposes properties such as
+`Columns`, `Rows`, `TileCount` and operations including `GetTilePixels`.
 
 Constructor: `Viper.Graphics.TileSet2D.New`
 
@@ -845,7 +755,7 @@ Constructor: `Viper.Graphics.TileLayer2D.New`
 Provides Object Layer 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.ObjectLayer2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Count` and operations including `AddRect`, `Clear`, `GetX`, `GetY`.
 
 Constructor: `Viper.Graphics.ObjectLayer2D.New`
@@ -875,8 +785,8 @@ Constructor: `Viper.Graphics.ObjectLayer2D.New`
 Provides Auto Tile 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.AutoTile2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetVariant`, `Resolve`, `Apply`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetVariant`, `Resolve`, `Apply`.
 
 Constructor: `Viper.Graphics.AutoTile2D.New`
 
@@ -895,7 +805,7 @@ Constructor: `Viper.Graphics.AutoTile2D.New`
 Provides Path 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.Path2D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Count`
+object with the instance members below. Its public surface exposes properties such as `Count`
 and operations including `Clear`, `MoveTo`, `LineTo`, `GetX`.
 
 Constructor: `Viper.Graphics.Path2D.New`
@@ -924,8 +834,8 @@ Constructor: `Viper.Graphics.Path2D.New`
 Provides Shape Renderer 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.ShapeRenderer2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetStroke`, `SetFill`, `Line`, `Rect`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetStroke`, `SetFill`, `Line`, `Rect`.
 
 Constructor: `Viper.Graphics.ShapeRenderer2D.New`
 
@@ -947,8 +857,8 @@ Constructor: `Viper.Graphics.ShapeRenderer2D.New`
 Provides Text Renderer 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.TextRenderer2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetFont`, `SetScale`, `SetColor`, `MeasureWidth`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetFont`, `SetScale`, `SetColor`, `MeasureWidth`.
 
 Constructor: `Viper.Graphics.TextRenderer2D.New`
 
@@ -994,8 +904,8 @@ Constructor: `Viper.Graphics.SdfFont.New`
 Provides Nine Slice 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.NineSlice2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`DrawToPixels`.
+returned object with the instance members below. Its public surface exposes operations
+including `DrawToPixels`.
 
 Constructor: `Viper.Graphics.NineSlice2D.New`
 
@@ -1012,7 +922,7 @@ Constructor: `Viper.Graphics.NineSlice2D.New`
 Provides Debug Draw 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.DebugDraw2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Count` and operations including `Clear`, `Line`, `Rect`, `Circle`.
 
 Constructor: `Viper.Graphics.DebugDraw2D.New`
@@ -1041,7 +951,8 @@ Provides Transform 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.Transform2D` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`X`, `Y`, `ScaleX` and operations including `SetPosition`, `SetScale`, `SetOrigin`, `Translate`.
+`X`, `Y`, `ScaleX` and operations including `SetPosition`, `SetScale`, `SetOrigin`,
+`Translate`.
 
 Constructor: `Viper.Graphics.Transform2D.New`
 
@@ -1073,8 +984,8 @@ Constructor: `Viper.Graphics.Transform2D.New`
 Provides Sampler 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.Sampler2D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Filter`,
-`Wrap` and operations including `ApplyToTexture`.
+object with the instance members below. Its public surface exposes properties such as
+`Filter`, `Wrap` and operations including `ApplyToTexture`.
 
 Constructor: `Viper.Graphics.Sampler2D.New`
 
@@ -1124,8 +1035,8 @@ Constructor: `Viper.Graphics.BlendState2D.New`
 Provides Sprite Renderer 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.SpriteRenderer2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetMaterial`, `SetSampler`, `SetBlendState`, `DrawPixels`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetMaterial`, `SetSampler`, `SetBlendState`, `DrawPixels`.
 
 Constructor: `Viper.Graphics.SpriteRenderer2D.New`
 
@@ -1227,8 +1138,8 @@ Constructor: `Viper.Graphics.AnimatedSprite2D.New`
 Provides Text Layout 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.TextLayout2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetFont`, `SetScale`, `SetWrapWidth`, `SetAlignment`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetFont`, `SetScale`, `SetWrapWidth`, `SetAlignment`.
 
 Constructor: `Viper.Graphics.TextLayout2D.New`
 
@@ -1251,8 +1162,8 @@ Constructor: `Viper.Graphics.TextLayout2D.New`
 Provides Render Pass 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.RenderPass2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
-`Enabled` and operations including `SetSource`, `SetTarget`, `SetShader`, `Execute`.
+returned object with the instance members below. Its public surface exposes properties such as
+`IsEnabled` and operations including `SetSource`, `SetTarget`, `SetShader`, `Execute`.
 
 Constructor: `Viper.Graphics.RenderPass2D.New`
 
@@ -1260,7 +1171,7 @@ Constructor: `Viper.Graphics.RenderPass2D.New`
 
 | Property | Type | Access |
 |---|---|---|
-| <a id="viper-graphics-renderpass2d-enabled"></a>`Enabled` | `i1` | read/write |
+| <a id="viper-graphics-renderpass2d-isenabled"></a>`IsEnabled` | `i1` | read/write |
 
 #### Methods
 
@@ -1278,7 +1189,7 @@ Constructor: `Viper.Graphics.RenderPass2D.New`
 Provides Render Graph 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.RenderGraph2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes a property such as
+returned object with the instance members below. Its public surface exposes properties such as
 `Count` and operations including `AddPass`, `Clear`, `Execute`.
 
 Constructor: `Viper.Graphics.RenderGraph2D.New`
@@ -1332,8 +1243,8 @@ Constructor: `Viper.Graphics.CollisionMask2D.New`
 Provides Hitbox 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.Hitbox2D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
-`Width` and operations including `Set`, `Contains`, `Intersects`.
+object with the instance members below. Its public surface exposes properties such as `X`,
+`Y`, `Width` and operations including `Set`, `Contains`, `Intersects`.
 
 Constructor: `Viper.Graphics.Hitbox2D.New`
 
@@ -1361,8 +1272,8 @@ Constructor: `Viper.Graphics.Hitbox2D.New`
 Provides Palette 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.Palette2D` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes a property such as `Count`
-and operations including `SetColor`, `GetColor`, `GetRGBA`, `Apply`.
+object with the instance members below. Its public surface exposes properties such as `Count`
+and operations including `SetColor`, `GetColor`, `GetRgba`, `Apply`.
 
 Constructor: `Viper.Graphics.Palette2D.New`
 
@@ -1378,7 +1289,7 @@ Constructor: `Viper.Graphics.Palette2D.New`
 |---|---|---|
 | <a id="viper-graphics-palette2d-setcolor"></a>`SetColor` | `void(i64,i64)` | `Viper.Graphics.Palette2D.SetColor` |
 | <a id="viper-graphics-palette2d-getcolor"></a>`GetColor` | `i64(i64)` | `Viper.Graphics.Palette2D.GetColor` |
-| <a id="viper-graphics-palette2d-getrgba"></a>`GetRGBA` | `i64(i64)` | `Viper.Graphics.Palette2D.GetRGBA` |
+| <a id="viper-graphics-palette2d-getrgba"></a>`GetRgba` | `i64(i64)` | `Viper.Graphics.Palette2D.GetRgba` |
 | <a id="viper-graphics-palette2d-apply"></a>`Apply` | `obj(obj)` | `Viper.Graphics.Palette2D.Apply` |
 | <a id="viper-graphics-palette2d-applylegacy"></a>`ApplyLegacy` | `obj(obj)` | `Viper.Graphics.Palette2D.ApplyLegacy` |
 | <a id="viper-graphics-palette2d-new"></a>`New` | `obj()` | `Viper.Graphics.Palette2D.New` |
@@ -1389,8 +1300,8 @@ Constructor: `Viper.Graphics.Palette2D.New`
 Provides Gradient 2D functionality for 2D graphics and media applications.
 
 Create `Viper.Graphics.Gradient2D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes operations including
-`SetColors`, `SetSteps`, `Sample`, `SampleRGBA`.
+returned object with the instance members below. Its public surface exposes operations
+including `SetColors`, `SetSteps`, `Sample`, `SampleRgba`.
 
 Constructor: `Viper.Graphics.Gradient2D.New`
 
@@ -1401,9 +1312,9 @@ Constructor: `Viper.Graphics.Gradient2D.New`
 | <a id="viper-graphics-gradient2d-setcolors"></a>`SetColors` | `void(i64,i64)` | `Viper.Graphics.Gradient2D.SetColors` |
 | <a id="viper-graphics-gradient2d-setsteps"></a>`SetSteps` | `void(i64)` | `Viper.Graphics.Gradient2D.set_Steps` |
 | <a id="viper-graphics-gradient2d-sample"></a>`Sample` | `i64(f64)` | `Viper.Graphics.Gradient2D.Sample` |
-| <a id="viper-graphics-gradient2d-samplergba"></a>`SampleRGBA` | `i64(f64)` | `Viper.Graphics.Gradient2D.SampleRGBA` |
-| <a id="viper-graphics-gradient2d-samplepct"></a>`SamplePct` | `i64(i64)` | `Viper.Graphics.Gradient2D.SamplePct` |
-| <a id="viper-graphics-gradient2d-samplergbapct"></a>`SampleRGBAPct` | `i64(i64)` | `Viper.Graphics.Gradient2D.SampleRGBAPct` |
+| <a id="viper-graphics-gradient2d-samplergba"></a>`SampleRgba` | `i64(f64)` | `Viper.Graphics.Gradient2D.SampleRgba` |
+| <a id="viper-graphics-gradient2d-samplepercent"></a>`SamplePercent` | `i64(i64)` | `Viper.Graphics.Gradient2D.SamplePercent` |
+| <a id="viper-graphics-gradient2d-samplergbapercent"></a>`SampleRgbaPercent` | `i64(i64)` | `Viper.Graphics.Gradient2D.SampleRgbaPercent` |
 | <a id="viper-graphics-gradient2d-fillhorizontal"></a>`FillHorizontal` | `void(obj)` | `Viper.Graphics.Gradient2D.FillHorizontal` |
 | <a id="viper-graphics-gradient2d-fillvertical"></a>`FillVertical` | `void(obj)` | `Viper.Graphics.Gradient2D.FillVertical` |
 | <a id="viper-graphics-gradient2d-new"></a>`New` | `obj(i64,i64,i64)` | `Viper.Graphics.Gradient2D.New` |
@@ -1518,90 +1429,6 @@ Constructor: `Viper.Graphics.TiledMapLoader.New`
 | <a id="viper-graphics-tiledmaploader-newtilemap"></a>`NewTilemap` | `obj(i64,i64)` | `Viper.Graphics.TiledMapLoader.NewTilemap` |
 | <a id="viper-graphics-tiledmaploader-new"></a>`New` | `obj()` | `Viper.Graphics.TiledMapLoader.New` |
 
-<a id="viper-graphics-particlesystem2d"></a>
-### `Viper.Graphics.ParticleSystem2D`
-
-Provides Particle System 2D functionality for 2D graphics and media applications.
-
-`Viper.Graphics.ParticleSystem2D` exposes a registry-backed runtime surface without requiring
-callers to construct the class directly. Its public surface exposes properties such as `X`, `Y`,
-`Rate` and operations including `SetPosition`, `SetLifetime`, `SetVelocity`, `SetGravity`.
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-graphics-particlesystem2d-x"></a>`X` | `f64` | read-only |
-| <a id="viper-graphics-particlesystem2d-y"></a>`Y` | `f64` | read-only |
-| <a id="viper-graphics-particlesystem2d-rate"></a>`Rate` | `f64` | read/write |
-| <a id="viper-graphics-particlesystem2d-isemitting"></a>`IsEmitting` | `i1` | read-only |
-| <a id="viper-graphics-particlesystem2d-count"></a>`Count` | `i64` | read-only |
-| <a id="viper-graphics-particlesystem2d-fadeout"></a>`FadeOut` | `i1` | read/write |
-| <a id="viper-graphics-particlesystem2d-shrink"></a>`Shrink` | `i1` | read/write |
-| <a id="viper-graphics-particlesystem2d-color"></a>`Color` | `i64` | read/write |
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-graphics-particlesystem2d-setposition"></a>`SetPosition` | `void(f64,f64)` | `Viper.Game.ParticleEmitter.SetPosition` |
-| <a id="viper-graphics-particlesystem2d-setlifetime"></a>`SetLifetime` | `void(i64,i64)` | `Viper.Game.ParticleEmitter.SetLifetime` |
-| <a id="viper-graphics-particlesystem2d-setvelocity"></a>`SetVelocity` | `void(f64,f64,f64,f64)` | `Viper.Game.ParticleEmitter.SetVelocity` |
-| <a id="viper-graphics-particlesystem2d-setgravity"></a>`SetGravity` | `void(f64,f64)` | `Viper.Game.ParticleEmitter.SetGravity` |
-| <a id="viper-graphics-particlesystem2d-setsize"></a>`SetSize` | `void(f64,f64)` | `Viper.Game.ParticleEmitter.SetSize` |
-| <a id="viper-graphics-particlesystem2d-start"></a>`Start` | `void()` | `Viper.Game.ParticleEmitter.Start` |
-| <a id="viper-graphics-particlesystem2d-stop"></a>`Stop` | `void()` | `Viper.Game.ParticleEmitter.Stop` |
-| <a id="viper-graphics-particlesystem2d-burst"></a>`Burst` | `void(i64)` | `Viper.Game.ParticleEmitter.Burst` |
-| <a id="viper-graphics-particlesystem2d-update"></a>`Update` | `void()` | `Viper.Game.ParticleEmitter.Update` |
-| <a id="viper-graphics-particlesystem2d-clear"></a>`Clear` | `void()` | `Viper.Game.ParticleEmitter.Clear` |
-| <a id="viper-graphics-particlesystem2d-destroy"></a>`Destroy` | `void()` | `Viper.Game.ParticleEmitter.Destroy` |
-| <a id="viper-graphics-particlesystem2d-particleat"></a>`ParticleAt` | `obj<Viper.Option>(i64)` | `Viper.Game.ParticleEmitter.ParticleAt` |
-| <a id="viper-graphics-particlesystem2d-draw"></a>`Draw` | `i64(obj)` | `Viper.Game.ParticleEmitter.Draw` |
-| <a id="viper-graphics-particlesystem2d-drawat"></a>`DrawAt` | `i64(obj,i64,i64)` | `Viper.Game.ParticleEmitter.DrawAt` |
-| <a id="viper-graphics-particlesystem2d-drawtopixels"></a>`DrawToPixels` | `i64(obj,i64,i64)` | `Viper.Game.ParticleEmitter.DrawToPixels` |
-
-<a id="viper-graphics-emitter2d"></a>
-### `Viper.Graphics.Emitter2D`
-
-Provides Emitter 2D functionality for 2D graphics and media applications.
-
-`Viper.Graphics.Emitter2D` exposes a registry-backed runtime surface without requiring callers
-to construct the class directly. Its public surface exposes properties such as `X`, `Y`, `Rate`
-and operations including `SetPosition`, `SetLifetime`, `SetVelocity`, `SetGravity`.
-
-#### Properties
-
-| Property | Type | Access |
-|---|---|---|
-| <a id="viper-graphics-emitter2d-x"></a>`X` | `f64` | read-only |
-| <a id="viper-graphics-emitter2d-y"></a>`Y` | `f64` | read-only |
-| <a id="viper-graphics-emitter2d-rate"></a>`Rate` | `f64` | read/write |
-| <a id="viper-graphics-emitter2d-isemitting"></a>`IsEmitting` | `i1` | read-only |
-| <a id="viper-graphics-emitter2d-count"></a>`Count` | `i64` | read-only |
-| <a id="viper-graphics-emitter2d-fadeout"></a>`FadeOut` | `i1` | read/write |
-| <a id="viper-graphics-emitter2d-shrink"></a>`Shrink` | `i1` | read/write |
-| <a id="viper-graphics-emitter2d-color"></a>`Color` | `i64` | read/write |
-
-#### Methods
-
-| Method | Signature | Runtime target |
-|---|---|---|
-| <a id="viper-graphics-emitter2d-setposition"></a>`SetPosition` | `void(f64,f64)` | `Viper.Game.ParticleEmitter.SetPosition` |
-| <a id="viper-graphics-emitter2d-setlifetime"></a>`SetLifetime` | `void(i64,i64)` | `Viper.Game.ParticleEmitter.SetLifetime` |
-| <a id="viper-graphics-emitter2d-setvelocity"></a>`SetVelocity` | `void(f64,f64,f64,f64)` | `Viper.Game.ParticleEmitter.SetVelocity` |
-| <a id="viper-graphics-emitter2d-setgravity"></a>`SetGravity` | `void(f64,f64)` | `Viper.Game.ParticleEmitter.SetGravity` |
-| <a id="viper-graphics-emitter2d-setsize"></a>`SetSize` | `void(f64,f64)` | `Viper.Game.ParticleEmitter.SetSize` |
-| <a id="viper-graphics-emitter2d-start"></a>`Start` | `void()` | `Viper.Game.ParticleEmitter.Start` |
-| <a id="viper-graphics-emitter2d-stop"></a>`Stop` | `void()` | `Viper.Game.ParticleEmitter.Stop` |
-| <a id="viper-graphics-emitter2d-burst"></a>`Burst` | `void(i64)` | `Viper.Game.ParticleEmitter.Burst` |
-| <a id="viper-graphics-emitter2d-update"></a>`Update` | `void()` | `Viper.Game.ParticleEmitter.Update` |
-| <a id="viper-graphics-emitter2d-clear"></a>`Clear` | `void()` | `Viper.Game.ParticleEmitter.Clear` |
-| <a id="viper-graphics-emitter2d-destroy"></a>`Destroy` | `void()` | `Viper.Game.ParticleEmitter.Destroy` |
-| <a id="viper-graphics-emitter2d-particleat"></a>`ParticleAt` | `obj<Viper.Option>(i64)` | `Viper.Game.ParticleEmitter.ParticleAt` |
-| <a id="viper-graphics-emitter2d-draw"></a>`Draw` | `i64(obj)` | `Viper.Game.ParticleEmitter.Draw` |
-| <a id="viper-graphics-emitter2d-drawat"></a>`DrawAt` | `i64(obj,i64,i64)` | `Viper.Game.ParticleEmitter.DrawAt` |
-| <a id="viper-graphics-emitter2d-drawtopixels"></a>`DrawToPixels` | `i64(obj,i64,i64)` | `Viper.Game.ParticleEmitter.DrawToPixels` |
-
 <a id="viper-graphics-spritesheet"></a>
 ### `Viper.Graphics.SpriteSheet`
 
@@ -1609,8 +1436,8 @@ Provides sprite atlas with named regions.
 
 Create `Viper.Graphics.SpriteSheet` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`RegionCount`, `Width`, `Height` and operations including `FromGrid`, `SetRegion`, `GetRegion`,
-`HasRegion`.
+`RegionCount`, `Width`, `Height` and operations including `FromGrid`, `SetRegion`,
+`GetRegion`, `HasRegion`.
 
 Constructor: `Viper.Graphics.SpriteSheet.New`
 
@@ -1700,16 +1527,14 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Canvas.TextFontScaled` | `void(obj,i64,i64,str,obj,i64,i64)` | `rt_canvas_text_font_scaled` |
 | `Viper.Graphics.Canvas.TextFontCentered` | `void(obj,i64,str,obj,i64)` | `rt_canvas_text_font_centered` |
 | `Viper.Graphics.Canvas.TextFontRight` | `void(obj,i64,i64,str,obj,i64)` | `rt_canvas_text_font_right` |
-| `Viper.Graphics.BitmapFont.LoadBDF` | `obj<Viper.Graphics.BitmapFont>(str)` | `rt_bitmapfont_load_bdf` |
-| `Viper.Graphics.BitmapFont.LoadPSF` | `obj<Viper.Graphics.BitmapFont>(str)` | `rt_bitmapfont_load_psf` |
+| `Viper.Graphics.BitmapFont.LoadBdf` | `obj<Viper.Graphics.BitmapFont>(str)` | `rt_bitmapfont_load_bdf` |
+| `Viper.Graphics.BitmapFont.LoadPsf` | `obj<Viper.Graphics.BitmapFont>(str)` | `rt_bitmapfont_load_psf` |
 | <a id="viper-graphics-bitmapfont-get-charwidth"></a>`Viper.Graphics.BitmapFont.get_CharWidth` | `i64(obj)` | `rt_bitmapfont_char_width` |
 | <a id="viper-graphics-bitmapfont-get-charheight"></a>`Viper.Graphics.BitmapFont.get_CharHeight` | `i64(obj)` | `rt_bitmapfont_char_height` |
 | <a id="viper-graphics-bitmapfont-get-glyphcount"></a>`Viper.Graphics.BitmapFont.get_GlyphCount` | `i64(obj)` | `rt_bitmapfont_glyph_count` |
 | <a id="viper-graphics-bitmapfont-get-ismonospace"></a>`Viper.Graphics.BitmapFont.get_IsMonospace` | `i1(obj)` | `rt_bitmapfont_is_monospace` |
 | `Viper.Graphics.BitmapFont.TextWidth` | `i64(obj,str)` | `rt_bitmapfont_text_width` |
 | <a id="viper-graphics-bitmapfont-get-textheight"></a>`Viper.Graphics.BitmapFont.get_TextHeight` | `i64(obj)` | `rt_bitmapfont_text_height` |
-| `Viper.Graphics.SpriteFont.LoadBDF` | `obj<Viper.Graphics.SpriteFont>(str)` | `rt_spritefont_load_bdf` |
-| `Viper.Graphics.SpriteFont.LoadPSF` | `obj<Viper.Graphics.SpriteFont>(str)` | `rt_spritefont_load_psf` |
 | `Viper.Graphics.Canvas.BoxAlpha` | `void(obj,i64,i64,i64,i64,i64,i64)` | `rt_canvas_box_alpha` |
 | `Viper.Graphics.Canvas.DiscAlpha` | `void(obj,i64,i64,i64,i64,i64)` | `rt_canvas_disc_alpha` |
 | `Viper.Graphics.Canvas.EllipseAlpha` | `void(obj,i64,i64,i64,i64,i64,i64)` | `rt_canvas_ellipse_alpha` |
@@ -1748,7 +1573,6 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Canvas.SetPosition` | `void(obj,i64,i64)` | `rt_canvas_set_position` |
 | `Viper.Graphics.Canvas.GetFps` | `i64(obj)` | `rt_canvas_get_fps` |
 | `Viper.Graphics.Canvas.SetFps` | `void(obj,i64)` | `rt_canvas_set_fps` |
-| `Viper.Graphics.Canvas.SetDTMax` | `void(obj,i64)` | `rt_canvas_set_dt_max` |
 | `Viper.Graphics.Canvas.SetMaxDeltaTime` | `void(obj,i64)` | `rt_canvas_set_dt_max` |
 | `Viper.Graphics.Canvas.BeginFrame` | `i64(obj)` | `rt_canvas_begin_frame` |
 | <a id="viper-graphics-canvas-get-deltatime"></a>`Viper.Graphics.Canvas.get_DeltaTime` | `i64(obj)` | `rt_canvas_get_delta_time` |
@@ -1776,17 +1600,17 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-graphics-color-get-magenta"></a>`Viper.Graphics.Color.get_Magenta` | `i64()` | `rt_color_magenta` |
 | <a id="viper-graphics-color-get-gray"></a>`Viper.Graphics.Color.get_Gray` | `i64()` | `rt_color_gray` |
 | <a id="viper-graphics-color-get-orange"></a>`Viper.Graphics.Color.get_Orange` | `i64()` | `rt_color_orange` |
-| `Viper.Graphics.Color.RGB` | `i64(i64,i64,i64)` | `rt_color_rgb` |
-| `Viper.Graphics.Color.RGBA` | `i64(i64,i64,i64,i64)` | `rt_color_rgba` |
-| `Viper.Graphics.Color.FromHSL` | `i64(i64,i64,i64)` | `rt_color_from_hsl` |
-| `Viper.Graphics.Color.GetH` | `i64(i64)` | `rt_color_get_h` |
-| `Viper.Graphics.Color.GetS` | `i64(i64)` | `rt_color_get_s` |
-| `Viper.Graphics.Color.GetL` | `i64(i64)` | `rt_color_get_l` |
+| `Viper.Graphics.Color.Rgb` | `i64(i64,i64,i64)` | `rt_color_rgb` |
+| `Viper.Graphics.Color.Rgba` | `i64(i64,i64,i64,i64)` | `rt_color_rgba` |
+| `Viper.Graphics.Color.FromHsl` | `i64(i64,i64,i64)` | `rt_color_from_hsl` |
+| `Viper.Graphics.Color.GetHue` | `i64(i64)` | `rt_color_get_h` |
+| `Viper.Graphics.Color.GetSaturation` | `i64(i64)` | `rt_color_get_s` |
+| `Viper.Graphics.Color.GetLightness` | `i64(i64)` | `rt_color_get_l` |
 | `Viper.Graphics.Color.Lerp` | `i64(i64,i64,i64)` | `rt_color_lerp` |
-| `Viper.Graphics.Color.GetR` | `i64(i64)` | `rt_color_get_r` |
-| `Viper.Graphics.Color.GetG` | `i64(i64)` | `rt_color_get_g` |
-| `Viper.Graphics.Color.GetB` | `i64(i64)` | `rt_color_get_b` |
-| `Viper.Graphics.Color.GetA` | `i64(i64)` | `rt_color_get_a` |
+| `Viper.Graphics.Color.GetRed` | `i64(i64)` | `rt_color_get_r` |
+| `Viper.Graphics.Color.GetGreen` | `i64(i64)` | `rt_color_get_g` |
+| `Viper.Graphics.Color.GetBlue` | `i64(i64)` | `rt_color_get_b` |
+| `Viper.Graphics.Color.GetAlpha` | `i64(i64)` | `rt_color_get_a` |
 | `Viper.Graphics.Color.Brighten` | `i64(i64,i64)` | `rt_color_brighten` |
 | `Viper.Graphics.Color.Darken` | `i64(i64,i64)` | `rt_color_darken` |
 | `Viper.Graphics.Color.FromHex` | `i64(str)` | `rt_color_from_hex` |
@@ -1800,16 +1624,16 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Pixels.Clone` | `obj(obj)` | `rt_pixels_clone` |
 | `Viper.Graphics.Pixels.Copy` | `void(obj,i64,i64,obj,i64,i64,i64,i64)` | `rt_pixels_copy` |
 | `Viper.Graphics.Pixels.Fill` | `void(obj,i64)` | `rt_pixels_fill` |
-| `Viper.Graphics.Pixels.FillRGBA` | `void(obj,i64)` | `rt_pixels_fill_rgba` |
+| `Viper.Graphics.Pixels.FillRgba` | `void(obj,i64)` | `rt_pixels_fill_rgba` |
 | `Viper.Graphics.Pixels.FillColor` | `void(obj,i64)` | `rt_pixels_fill_color` |
 | `Viper.Graphics.Pixels.FromBytes` | `obj<Viper.Graphics.Pixels>(i64,i64,obj)` | `rt_pixels_from_bytes` |
 | `Viper.Graphics.Pixels.Get` | `i64(obj,i64,i64)` | `rt_pixels_get` |
-| `Viper.Graphics.Pixels.GetRGBA` | `i64(obj,i64,i64)` | `rt_pixels_get_rgba` |
+| `Viper.Graphics.Pixels.GetRgba` | `i64(obj,i64,i64)` | `rt_pixels_get_rgba` |
 | `Viper.Graphics.Pixels.GetColor` | `i64(obj,i64,i64)` | `rt_pixels_get_color` |
 | <a id="viper-graphics-pixels-get-height"></a>`Viper.Graphics.Pixels.get_Height` | `i64(obj)` | `rt_pixels_height` |
 | `Viper.Graphics.Pixels.New` | `obj(i64,i64)` | `rt_pixels_new` |
 | `Viper.Graphics.Pixels.Set` | `void(obj,i64,i64,i64)` | `rt_pixels_set` |
-| `Viper.Graphics.Pixels.SetRGBA` | `void(obj,i64,i64,i64)` | `rt_pixels_set_rgba` |
+| `Viper.Graphics.Pixels.SetRgba` | `void(obj,i64,i64,i64)` | `rt_pixels_set_rgba` |
 | `Viper.Graphics.Pixels.SetColor` | `void(obj,i64,i64,i64)` | `rt_pixels_set_color` |
 | `Viper.Graphics.Pixels.ToBytes` | `obj(obj)` | `rt_pixels_to_bytes` |
 | <a id="viper-graphics-pixels-get-width"></a>`Viper.Graphics.Pixels.get_Width` | `i64(obj)` | `rt_pixels_width` |
@@ -1817,8 +1641,8 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Pixels.SaveBmp` | `i64(obj,str)` | `rt_pixels_save_bmp` |
 | `Viper.Graphics.Pixels.FlipH` | `obj(obj)` | `rt_pixels_flip_h` |
 | `Viper.Graphics.Pixels.FlipV` | `obj(obj)` | `rt_pixels_flip_v` |
-| `Viper.Graphics.Pixels.RotateCW` | `obj(obj)` | `rt_pixels_rotate_cw` |
-| `Viper.Graphics.Pixels.RotateCCW` | `obj(obj)` | `rt_pixels_rotate_ccw` |
+| `Viper.Graphics.Pixels.RotateClockwise` | `obj(obj)` | `rt_pixels_rotate_cw` |
+| `Viper.Graphics.Pixels.RotateCounterClockwise` | `obj(obj)` | `rt_pixels_rotate_ccw` |
 | `Viper.Graphics.Pixels.Rotate180` | `obj(obj)` | `rt_pixels_rotate_180` |
 | `Viper.Graphics.Pixels.Rotate` | `obj(obj,f64)` | `rt_pixels_rotate` |
 | `Viper.Graphics.Pixels.Scale` | `obj(obj,i64,i64)` | `rt_pixels_scale` |
@@ -1832,8 +1656,8 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Pixels.LoadGif` | `obj(str)` | `rt_pixels_load_gif` |
 | `Viper.Graphics.Pixels.Load` | `obj(str)` | `rt_pixels_load` |
 | `Viper.Graphics.Pixels.SavePng` | `i64(obj,str)` | `rt_pixels_save_png` |
-| `Viper.Graphics.Pixels.SetRGB` | `void(obj,i64,i64,i64)` | `rt_pixels_set_rgb` |
-| `Viper.Graphics.Pixels.GetRGB` | `i64(obj,i64,i64)` | `rt_pixels_get_rgb` |
+| `Viper.Graphics.Pixels.SetRgb` | `void(obj,i64,i64,i64)` | `rt_pixels_set_rgb` |
+| `Viper.Graphics.Pixels.GetRgb` | `i64(obj,i64,i64)` | `rt_pixels_get_rgb` |
 | `Viper.Graphics.Pixels.DrawLine` | `void(obj,i64,i64,i64,i64,i64)` | `rt_pixels_draw_line` |
 | `Viper.Graphics.Pixels.DrawBox` | `void(obj,i64,i64,i64,i64,i64)` | `rt_pixels_draw_box` |
 | `Viper.Graphics.Pixels.DrawFrame` | `void(obj,i64,i64,i64,i64,i64)` | `rt_pixels_draw_frame` |
@@ -1944,7 +1768,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.SpriteBatch.End` | `void(obj,obj)` | `rt_spritebatch_end` |
 | `Viper.Graphics.SpriteBatch.Draw` | `void(obj,obj,i64,i64)` | `rt_spritebatch_draw` |
 | `Viper.Graphics.SpriteBatch.DrawScaled` | `void(obj,obj,i64,i64,i64)` | `rt_spritebatch_draw_scaled` |
-| `Viper.Graphics.SpriteBatch.DrawEx` | `void(obj,obj,i64,i64,i64,i64,i64)` | `rt_spritebatch_draw_ex` |
+| <a id="viper-graphics-spritebatch-drawwithtransform"></a>`Viper.Graphics.SpriteBatch.DrawWithTransform` | `void(obj,obj,i64,i64,i64,i64,i64)` | `rt_spritebatch_draw_ex` |
 | `Viper.Graphics.SpriteBatch.DrawPixels` | `void(obj,obj,i64,i64)` | `rt_spritebatch_draw_pixels` |
 | `Viper.Graphics.SpriteBatch.DrawRegion` | `void(obj,obj,i64,i64,i64,i64,i64,i64)` | `rt_spritebatch_draw_region` |
 | <a id="viper-graphics-spritebatch-get-count"></a>`Viper.Graphics.SpriteBatch.get_Count` | `i64(obj)` | `rt_spritebatch_count` |
@@ -1956,7 +1780,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.SpriteBatch.ResetSettings` | `void(obj)` | `rt_spritebatch_reset_settings` |
 | `Viper.Graphics.SpriteBatch.DrawAtlas` | `void(obj,obj,str,i64,i64)` | `rt_spritebatch_draw_atlas` |
 | `Viper.Graphics.SpriteBatch.DrawAtlasScaled` | `void(obj,obj,str,i64,i64,i64)` | `rt_spritebatch_draw_atlas_scaled` |
-| `Viper.Graphics.SpriteBatch.DrawAtlasEx` | `void(obj,obj,str,i64,i64,i64,i64,i64)` | `rt_spritebatch_draw_atlas_ex` |
+| <a id="viper-graphics-spritebatch-drawatlaswithtransform"></a>`Viper.Graphics.SpriteBatch.DrawAtlasWithTransform` | `void(obj,obj,str,i64,i64,i64,i64,i64)` | `rt_spritebatch_draw_atlas_ex` |
 | `Viper.Graphics.TextureAtlas.New` | `obj(obj)` | `rt_texatlas_new` |
 | `Viper.Graphics.TextureAtlas.LoadGrid` | `obj(obj,i64,i64)` | `rt_texatlas_load_grid` |
 | `Viper.Graphics.TextureAtlas.Add` | `void(obj,str,i64,i64,i64,i64)` | `rt_texatlas_add` |
@@ -1975,7 +1799,6 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.RenderTarget2D.Resize` | `void(obj,i64,i64)` | `rt_rendertarget2d_resize` |
 | `Viper.Graphics.RenderTarget2D.DrawPixels` | `void(obj,i64,i64,obj)` | `rt_rendertarget2d_draw_pixels` |
 | `Viper.Graphics.RenderTarget2D.DrawRegion` | `void(obj,i64,i64,obj,i64,i64,i64,i64)` | `rt_rendertarget2d_draw_region` |
-| `Viper.Graphics.Surface2D.New` | `obj(i64,i64)` | `rt_surface2d_new` |
 | `Viper.Graphics.Texture2D.New` | `obj(obj)` | `rt_texture2d_new` |
 | `Viper.Graphics.Texture2D.FromFile` | `obj(str)` | `rt_texture2d_from_file` |
 | <a id="viper-graphics-texture2d-get-width"></a>`Viper.Graphics.Texture2D.get_Width` | `i64(obj)` | `rt_texture2d_width` |
@@ -2036,7 +1859,6 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Viewport2D.WorldToScreenY` | `i64(obj,i64)` | `rt_viewport2d_world_to_screen_y` |
 | `Viper.Graphics.Viewport2D.ScreenToWorldX` | `i64(obj,i64)` | `rt_viewport2d_screen_to_world_x` |
 | `Viper.Graphics.Viewport2D.ScreenToWorldY` | `i64(obj,i64)` | `rt_viewport2d_screen_to_world_y` |
-| `Viper.Graphics.ScreenScaler.New` | `obj(i64,i64,i64,i64)` | `rt_screenscaler_new` |
 | `Viper.Graphics.TileSet2D.New` | `obj(obj,i64,i64)` | `rt_tileset2d_new` |
 | <a id="viper-graphics-tileset2d-get-columns"></a>`Viper.Graphics.TileSet2D.get_Columns` | `i64(obj)` | `rt_tileset2d_columns` |
 | <a id="viper-graphics-tileset2d-get-rows"></a>`Viper.Graphics.TileSet2D.get_Rows` | `i64(obj)` | `rt_tileset2d_rows` |
@@ -2167,8 +1989,8 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.RenderPass2D.SetSource` | `void(obj,obj)` | `rt_renderpass2d_set_source` |
 | `Viper.Graphics.RenderPass2D.SetTarget` | `void(obj,obj)` | `rt_renderpass2d_set_target` |
 | `Viper.Graphics.RenderPass2D.SetShader` | `void(obj,obj)` | `rt_renderpass2d_set_shader` |
-| <a id="viper-graphics-renderpass2d-set-enabled"></a>`Viper.Graphics.RenderPass2D.set_Enabled` | `void(obj,i1)` | `rt_renderpass2d_set_enabled` |
-| <a id="viper-graphics-renderpass2d-get-enabled"></a>`Viper.Graphics.RenderPass2D.get_Enabled` | `i1(obj)` | `rt_renderpass2d_get_enabled` |
+| <a id="viper-graphics-renderpass2d-set-isenabled"></a>`Viper.Graphics.RenderPass2D.set_IsEnabled` | `void(obj,i1)` | `rt_renderpass2d_set_enabled` |
+| <a id="viper-graphics-renderpass2d-get-isenabled"></a>`Viper.Graphics.RenderPass2D.get_IsEnabled` | `i1(obj)` | `rt_renderpass2d_get_enabled` |
 | `Viper.Graphics.RenderPass2D.Execute` | `void(obj)` | `rt_renderpass2d_execute` |
 | `Viper.Graphics.RenderGraph2D.New` | `obj(i64)` | `rt_rendergraph2d_new` |
 | `Viper.Graphics.RenderGraph2D.AddPass` | `void(obj,obj)` | `rt_rendergraph2d_add_pass` |
@@ -2193,7 +2015,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Palette2D.New` | `obj()` | `rt_palette2d_new` |
 | `Viper.Graphics.Palette2D.SetColor` | `void(obj,i64,i64)` | `rt_palette2d_set_color` |
 | `Viper.Graphics.Palette2D.GetColor` | `i64(obj,i64)` | `rt_palette2d_get_color_value` |
-| `Viper.Graphics.Palette2D.GetRGBA` | `i64(obj,i64)` | `rt_palette2d_get_color` |
+| `Viper.Graphics.Palette2D.GetRgba` | `i64(obj,i64)` | `rt_palette2d_get_color` |
 | <a id="viper-graphics-palette2d-get-count"></a>`Viper.Graphics.Palette2D.get_Count` | `i64(obj)` | `rt_palette2d_get_count` |
 | `Viper.Graphics.Palette2D.Apply` | `obj(obj,obj)` | `rt_palette2d_apply` |
 | `Viper.Graphics.Palette2D.ApplyLegacy` | `obj(obj,obj)` | `rt_palette2d_apply_legacy` |
@@ -2201,9 +2023,9 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Graphics.Gradient2D.SetColors` | `void(obj,i64,i64)` | `rt_gradient2d_set_colors` |
 | <a id="viper-graphics-gradient2d-set-steps"></a>`Viper.Graphics.Gradient2D.set_Steps` | `void(obj,i64)` | `rt_gradient2d_set_steps` |
 | `Viper.Graphics.Gradient2D.Sample` | `i64(obj,f64)` | `rt_gradient2d_sample_color_normalized` |
-| `Viper.Graphics.Gradient2D.SampleRGBA` | `i64(obj,f64)` | `rt_gradient2d_sample_normalized` |
-| `Viper.Graphics.Gradient2D.SamplePct` | `i64(obj,i64)` | `rt_gradient2d_sample_color` |
-| `Viper.Graphics.Gradient2D.SampleRGBAPct` | `i64(obj,i64)` | `rt_gradient2d_sample` |
+| `Viper.Graphics.Gradient2D.SampleRgba` | `i64(obj,f64)` | `rt_gradient2d_sample_normalized` |
+| `Viper.Graphics.Gradient2D.SamplePercent` | `i64(obj,i64)` | `rt_gradient2d_sample_color` |
+| `Viper.Graphics.Gradient2D.SampleRgbaPercent` | `i64(obj,i64)` | `rt_gradient2d_sample` |
 | `Viper.Graphics.Gradient2D.FillHorizontal` | `void(obj,obj)` | `rt_gradient2d_fill_horizontal` |
 | `Viper.Graphics.Gradient2D.FillVertical` | `void(obj,obj)` | `rt_gradient2d_fill_vertical` |
 | `Viper.Graphics.CameraRig2D.New` | `obj(obj)` | `rt_camerarig2d_new` |

@@ -179,32 +179,40 @@ static rt_string join_with_style(void *items, const rt_locdata_list_style_t *sty
     int64_t n = rt_list_len(items);
     if (n <= 0)
         return rt_string_from_bytes("", 0);
+    // rt_list_get returns a retained reference; every element fetched here
+    // must be released once consumed (VDOC-075).
     if (n == 1) {
         rt_string a = (rt_string)rt_list_get(items, 0);
         if (!a)
             return rt_string_from_bytes("", 0);
-        rt_string_ref(a);
-        return a;
+        return a; // transfer the retained reference to the caller
     }
     if (n == 2) {
         rt_string a = (rt_string)rt_list_get(items, 0);
         rt_string b = (rt_string)rt_list_get(items, 1);
-        return expand_pair(style->pair, a, b);
+        rt_string out = expand_pair(style->pair, a, b);
+        rt_string_unref(a);
+        rt_string_unref(b);
+        return out;
     }
     // n >= 3: build from the right.
     rt_string last_a = (rt_string)rt_list_get(items, n - 2);
     rt_string last_b = (rt_string)rt_list_get(items, n - 1);
     rt_string result = expand_pair(style->end, last_a, last_b);
+    rt_string_unref(last_a);
+    rt_string_unref(last_b);
 
     for (int64_t k = n - 3; k > 0; --k) {
         rt_string item = (rt_string)rt_list_get(items, k);
         rt_string next = expand_pair(style->middle, item, result);
+        rt_string_unref(item);
         rt_string_unref(result);
         result = next;
     }
 
     rt_string first = (rt_string)rt_list_get(items, 0);
     rt_string final = expand_pair(style->start, first, result);
+    rt_string_unref(first);
     rt_string_unref(result);
     return final;
 }

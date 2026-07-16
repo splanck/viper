@@ -39,6 +39,7 @@
 #include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_joints3d.h"
+#include "rt_joints3d_internal.h"
 #include "rt_platform.h"
 #include "rt_raycast3d.h"
 #include "rt_threadpool.h"
@@ -197,6 +198,67 @@ static int joint3d_matches_type(void *joint, int64_t joint_type) {
     if (joint_type == RT_JOINT_SIXDOF)
         return rt_g3d_has_class(joint, RT_G3D_SIXDOFJOINT3D_CLASS_ID);
     return 0;
+}
+
+/// @brief True when @p b can drive a joint this substep: an awake dynamic body,
+///   or a kinematic body with nonzero commanded velocity. Static anchors and
+///   sleeping dynamics can't initiate constraint motion.
+static int body3d_is_joint_driver(const rt_body3d *b) {
+    if (!b)
+        return 0;
+    if (b->motion_mode == PH3D_MODE_DYNAMIC)
+        return !b->is_sleeping;
+    if (b->motion_mode == PH3D_MODE_KINEMATIC) {
+        return b->velocity[0] != 0.0 || b->velocity[1] != 0.0 || b->velocity[2] != 0.0 ||
+               b->angular_velocity[0] != 0.0 || b->angular_velocity[1] != 0.0 ||
+               b->angular_velocity[2] != 0.0;
+    }
+    return 0;
+}
+
+/// @brief Joint-solver bridge: skip fully-at-rest pairs, wake active ones.
+/// @details The kinematics views are prefix views of live rt_body3d payloads
+///   (layout pinned by the static asserts above), so the casts are exact.
+///   Without this gate a sleeping jointed body silently discarded every
+///   spring/hinge impulse (the integrator skips sleeping bodies) and
+///   position-correcting joints teleported sleeping bodies without waking them.
+int joint3d_pair_begin_solve(rt_body3d_kinematics *body_a, rt_body3d_kinematics *body_b) {
+    rt_body3d *a = (rt_body3d *)body_a;
+    rt_body3d *b = (rt_body3d *)body_b;
+    if (!body3d_is_joint_driver(a) && !body3d_is_joint_driver(b))
+        return 0;
+    body3d_wake_if_dynamic(a);
+    body3d_wake_if_dynamic(b);
+    return 1;
+}
+
+/// @brief Joint-solver bridge: pose-only broadphase touch after a joint moved a body.
+void joint3d_mark_body_moved(rt_body3d_kinematics *body) {
+    body3d_touch_broadphase_moved((rt_body3d *)body);
+}
+
+static int32_t world3d_joint_count_safe(const rt_world3d *w);
+
+/// @brief Wake every dynamic body joined to @p body by any joint in @p w.
+/// @details Called from explicit pose writes (SetPosition/SetOrientation): a
+///   teleported static or kinematic anchor must re-activate sleeping partners
+///   so the constraint re-solves against the new pose. O(joint_count), only on
+///   user action.
+static void world3d_wake_joint_partners(rt_world3d *w, const rt_body3d *body) {
+    if (!w || !body)
+        return;
+    int32_t joint_count = world3d_joint_count_safe(w);
+    for (int32_t i = 0; i < joint_count; i++) {
+        void *ja = NULL;
+        void *jb = NULL;
+        if (!w->joints[i] ||
+            !rt_joint3d_get_bodies(w->joints[i], (int32_t)w->joint_types[i], &ja, &jb))
+            continue;
+        if ((const rt_body3d *)ja == body)
+            body3d_wake_if_dynamic((rt_body3d *)jb);
+        else if ((const rt_body3d *)jb == body)
+            body3d_wake_if_dynamic((rt_body3d *)ja);
+    }
 }
 
 /// @brief Return non-zero only when every component of @p v is finite.
@@ -425,6 +487,48 @@ int world3d_reserve_broadphase_sort_scratch(rt_world3d *w, int32_t needed) {
     w->broadphase_sort_scratch = new_entries;
     w->broadphase_sort_scratch_capacity = new_capacity;
     return 1;
+}
+
+/// @brief Return a world-persistent scratch buffer of at least @p bytes for @p slot.
+/// @details The solver's hottest path (island batching, warm-start pair tables,
+///   event diff flags) runs every substep; carving its transient arrays out of
+///   world-owned slots that grow geometrically and persist until teardown
+///   removes all per-substep malloc/free churn. Contents are scratch: callers
+///   must not rely on values surviving between acquires. @p zeroed gives
+///   calloc semantics for the first @p bytes.
+/// @return Slot buffer, or NULL on invalid args / allocation failure.
+void *world3d_step_scratch_acquire(rt_world3d *w, int32_t slot, size_t bytes, int zeroed) {
+    if (!w || slot < 0 || slot >= PH3D_WORLD_SCRATCH_SLOTS || bytes == 0)
+        return NULL;
+    if (w->step_scratch_capacity[slot] < bytes) {
+        size_t grown = w->step_scratch_capacity[slot] ? w->step_scratch_capacity[slot] : 256u;
+        while (grown < bytes) {
+            if (grown > SIZE_MAX / 2u) {
+                grown = bytes;
+                break;
+            }
+            grown *= 2u;
+        }
+        void *next = realloc(w->step_scratch[slot], grown);
+        if (!next)
+            return NULL;
+        w->step_scratch[slot] = next;
+        w->step_scratch_capacity[slot] = grown;
+    }
+    if (zeroed)
+        memset(w->step_scratch[slot], 0, bytes);
+    return w->step_scratch[slot];
+}
+
+/// @brief Release every step-scratch slot (world teardown / reset only).
+void world3d_step_scratch_free_all(rt_world3d *w) {
+    if (!w)
+        return;
+    for (int32_t i = 0; i < PH3D_WORLD_SCRATCH_SLOTS; i++) {
+        free(w->step_scratch[i]);
+        w->step_scratch[i] = NULL;
+        w->step_scratch_capacity[i] = 0;
+    }
 }
 
 /// @brief Clamp @p value to [0, +∞), substituting @p fallback for non-finite inputs.

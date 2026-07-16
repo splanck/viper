@@ -26,7 +26,7 @@ func testNow() {
 
 func testCreate() {
     // Create a specific date: 2024-06-15 12:30:45
-    var dt = Viper.Time.DateTime.Create(2024, 6, 15, 12, 30, 45);
+    var dt = Viper.Time.DateTime.FromParts(2024, 6, 15, 12, 30, 45);
     assertGt(dt, 0, "create valid");
 
     // Verify components match
@@ -41,7 +41,7 @@ func testCreate() {
 func testComponents() {
     // Use a known timestamp: 2024-01-01 00:00:00 UTC = 1704067200
     // Note: Component functions use local time, so results vary by timezone
-    var dt = Viper.Time.DateTime.Create(2024, 1, 1, 0, 0, 0);
+    var dt = Viper.Time.DateTime.FromParts(2024, 1, 1, 0, 0, 0);
 
     // DayOfWeek (0=Sunday, 1=Monday, etc.)
     var dow = Viper.Time.DateTime.DayOfWeek(dt);
@@ -50,7 +50,7 @@ func testComponents() {
 }
 
 func testArithmetic() {
-    var dt = Viper.Time.DateTime.Create(2024, 1, 15, 12, 0, 0);
+    var dt = Viper.Time.DateTime.FromParts(2024, 1, 15, 12, 0, 0);
 
     // AddDays
     var plus10 = Viper.Time.DateTime.AddDays(dt, 10);
@@ -65,7 +65,7 @@ func testArithmetic() {
 }
 
 func testFormat() {
-    var dt = Viper.Time.DateTime.Create(2024, 6, 15, 14, 30, 0);
+    var dt = Viper.Time.DateTime.FromParts(2024, 6, 15, 14, 30, 0);
 
     // Format with pattern
     var formatted = Viper.Time.DateTime.Format(dt, "%Y-%m-%d");

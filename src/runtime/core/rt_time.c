@@ -14,8 +14,9 @@
 // Key invariants:
 //   - Sleep uses nanosleep() on POSIX and Sleep() on Windows; nanosleep is
 //     retried automatically on EINTR to sleep the full requested duration.
-//   - The tick counter uses CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter
-//     (Windows); it is unaffected by NTP adjustments or daylight saving.
+//   - The tick counter prefers CLOCK_MONOTONIC (POSIX) or QueryPerformanceCounter
+//     (Windows). POSIX falls back to CLOCK_REALTIME when the monotonic query fails,
+//     so the fallback can move with wall-clock adjustments (VDOC-223).
 //   - Negative sleep durations are treated as 0 (no-op).
 //   - All functions are thread-safe; each call is independent with no shared
 //     mutable state.
@@ -300,7 +301,7 @@ void rt_sleep_ms(int32_t ms) {
 ///
 /// **Clock selection:**
 /// 1. CLOCK_MONOTONIC (preferred) - not affected by NTP or manual changes
-/// 2. CLOCK_REALTIME (fallback) - may jump if system time changes
+/// 2. CLOCK_REALTIME (fallback) - may jump forward or backward with system time
 ///
 /// **Usage example:**
 /// ```
@@ -310,7 +311,8 @@ void rt_sleep_ms(int32_t ms) {
 /// Print "Operation took " & elapsed & " ms"
 /// ```
 ///
-/// @return Monotonic milliseconds since an arbitrary epoch, or 0 on error.
+/// @return Milliseconds since the selected clock's epoch, or 0 on error. The
+///         realtime fallback is not monotonic.
 ///
 /// @note Uses clock_gettime() with CLOCK_MONOTONIC.
 /// @note Falls back to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable.
@@ -350,7 +352,8 @@ int64_t rt_timer_ms(void) {
 /// Print "Function took " & elapsed & " μs"
 /// ```
 ///
-/// @return Monotonic microseconds since an arbitrary epoch, or 0 on error.
+/// @return Microseconds since the selected clock's epoch, or 0 on error. The
+///         realtime fallback is not monotonic.
 ///
 /// @note Uses clock_gettime() with CLOCK_MONOTONIC.
 /// @note 1 millisecond = 1,000 microseconds.

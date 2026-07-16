@@ -26,7 +26,7 @@ func runStarterReplay() -> Float {
     var canvas = game.getCanvas();
     Canvas3D.SetInputSource(canvas, 1);
     Canvas3D.PushSyntheticKey(canvas, Key.W, true);
-    game.getWorld().Tick();
+    game.getWorld().Update();
     game.step(0.100);
     Canvas3D.ClearSyntheticInput(canvas);
 
@@ -48,7 +48,7 @@ func runStarterReplay() -> Float {
         game.destroy();
         return fail("starter frame was not finalized");
     }
-    if (game.getCharacter().Grounded() == false) {
+    if (game.getCharacter().IsGrounded() == false) {
         game.destroy();
         return fail("starter character did not stay grounded");
     }

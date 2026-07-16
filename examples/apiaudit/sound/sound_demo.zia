@@ -1,7 +1,7 @@
 module SoundDemo;
 bind Viper.Terminal;
 func start() {
-    Say("=== API Audit: Viper.Sound (All Classes) ===");
+    Say("=== API Audit: Viper.Audio (All Classes) ===");
     Say("NOTE: Sound classes require audio hardware. API surface documentation only.");
     Say("");
     Say("--- Audio ---");

@@ -132,10 +132,9 @@ static rt_pty_impl *pty_checked(void *handle) {
 }
 
 /// @brief Store a bounded user-facing PTY diagnostic string.
-/// @details The PTY runtime is main-thread-only like the GUI/runtime surfaces
-///          that consume it, so a single process-local buffer is sufficient and
-///          avoids changing the PtySession object layout just to report open
-///          failures that have no session handle.
+/// @details Uses a single process-local compatibility buffer. No main-thread
+///          assertion or synchronization protects it, so concurrent PTY calls
+///          can race and overwrite diagnostics (VDOC-215).
 /// @param message NUL-terminated diagnostic text; NULL clears the buffer.
 static void pty_set_last_error(const char *message) {
     if (!message) {
@@ -1266,6 +1265,8 @@ int64_t rt_pty_resize(void *handle, int64_t cols, int64_t rows) {
     if (!pty || !pty->started || pty->destroyed)
         return 0;
     pty_clamp_size(&cols, &rows);
+    // Backend ioctl/HRESULT failures are discarded; TRUE currently means only
+    // that the session handle was valid (VDOC-214).
     pty_resize_impl(pty, cols, rows);
     return 1;
 }

@@ -78,7 +78,7 @@ func listSlots(saveRoot: String) -> List[SaveSlot] {
     if !Dir.Exists(saveRoot) {
         return slots;
     }
-    for name in Dir.DirsSeq(saveRoot) {
+    for name in Dir.Dirs(saveRoot) {
         var franchiseDir = Path.Join(saveRoot, name);
         if !File.Exists(Path.Join(franchiseDir, "franchise.save")) {
             continue;

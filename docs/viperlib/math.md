@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Mathematics
@@ -81,8 +81,8 @@ Rotate counts are normalized to 0-63 (count MOD 64).
 - **CountLeadingZeros** — Count leading zeros. Returns 64 for zero, 0 for negative values.
 - **CountTrailingZeros** — Count trailing zeros. Returns 64 for zero.
 
-Compatibility aliases remain available for existing code: `Ushr`, `Rotl`,
-`Rotr`, `LeadZ`, and `TrailZ`.
+Compatibility aliases remain available for existing code: `ShiftRightLogical`, `RotateLeft`,
+`RotateRight`, `CountLeadingZeros`, and `CountTrailingZeros`.
 
 #### Single Bit Operations
 
@@ -232,8 +232,23 @@ Mathematical functions and constants.
 
 | Method         | Signature        | Description                |
 |----------------|------------------|----------------------------|
-| `Deg(radians)` | `Double(Double)` | Convert radians to degrees |
-| `Rad(degrees)` | `Double(Double)` | Convert degrees to radians |
+| `ToDegrees(radians)` | `Double(Double)` | Convert radians to degrees |
+| `ToRadians(degrees)` | `Double(Double)` | Convert degrees to radians |
+
+### Behavior Notes
+
+- Floating-point functions use the host C math-library semantics. Domain errors such as
+  `Sqrt(-1.0)` and `Acos(2.0)` return NaN rather than trapping; infinities are handled according
+  to the corresponding library operation.
+- `AbsInt(INT64_MIN)` traps because its positive magnitude is not representable. `Round` rounds
+  halfway cases away from zero.
+- `Sgn(NaN)` returns NaN. Both positive and negative zero produce positive zero. `Min` and `Max`
+  propagate a NaN operand and preserve the expected signed zero (`Min(-0,+0) = -0`,
+  `Max(-0,+0) = +0`).
+- `Clamp` and `ClampInt` swap inverted bounds. `Lerp` does not clamp `t`, so values outside
+  `[0,1]` extrapolate.
+- `Wrap` and `WrapInt` do not swap bounds: if `hi <= lo`, they return `lo`. Floating-point
+  `Wrap` also follows normal NaN behavior for non-finite inputs.
 
 ### Zia Example
 
@@ -279,8 +294,8 @@ PRINT Viper.Math.Sin(Viper.Math.Pi / 2)  ' Output: 1.0
 PRINT Viper.Math.Cos(0)                   ' Output: 1.0
 
 ' Angle conversion
-PRINT Viper.Math.Deg(Viper.Math.Pi)      ' Output: 180.0
-PRINT Viper.Math.Rad(90)                  ' Output: 1.5707963...
+PRINT Viper.Math.ToDegrees(Viper.Math.Pi)      ' Output: 180.0
+PRINT Viper.Math.ToRadians(90)                  ' Output: 1.5707963...
 
 ' Min/Max/Clamp
 PRINT Viper.Math.MaxInt(10, 20)          ' Output: 20
@@ -302,7 +317,7 @@ Random number generation with uniform and distribution-based functions.
 
 **Type:** Static utility class plus seeded instances
 
-**Constructor:** `Viper.Math.Random.New(seed)` or `new Viper.Math.Random(seed)` creates a seeded random generator instance with state independent from the static/global generator.
+**Constructor:** `Viper.Math.Random.New(seed)` or `new Viper.Math.Random(seed)` creates a seeded random generator instance with state independent from the active runtime context's generator.
 
 ### Core Methods
 
@@ -310,9 +325,8 @@ Random number generation with uniform and distribution-based functions.
 |----------------|--------------------|-------------------------------------------------|
 | `Seed(value)`  | `Void(Integer)`    | Seeds the random number generator               |
 | `Next()`       | `Double()`         | Returns a random double in the range [0.0, 1.0) |
-| `NextDouble()` | `Double()`         | Alias for `Next()` on instances and static calls |
+| `NextDouble()` | `Double()`         | Instance-only alias for `Next()`                  |
 | `NextInt(max)` | `Integer(Integer)` | Returns a random integer in the range [0, max)  |
-| `NextInt(min, max)` | `Integer(Integer, Integer)` | Instance alias for inclusive `Range(min, max)` |
 
 ### Distribution Methods
 
@@ -396,13 +410,19 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 
 ### Notes
 
-- All random functions use the same LCG (Linear Congruential Generator)
-- Sequences are deterministic for a given seed
-- `Gaussian` uses the Box-Muller transform for accurate normal distribution
-- `Exponential(lambda)` produces values with mean = 1/lambda
-- `NextInt(max)` and `Range(min, max)` use rejection sampling to avoid modulo bias
-- `Range(a, b)` automatically swaps bounds if min > max, and the full signed 64-bit range is supported
-- `Shuffle` performs a Fisher-Yates shuffle (O(n) complexity)
+- Static calls use the active runtime context's LCG state; separate runtime contexts have separate
+  sequences. A constructed `Random` has independent state but exposes only `Next`, `NextDouble`,
+  `NextInt(max)`, `Range(min,max)`, and `Seed` as instance methods.
+- There is no static `NextDouble()` and no two-argument `NextInt` overload. Use static `Next()` or
+  instance `NextDouble()`, and use `Range(min,max)` for an inclusive range.
+- Sequences are deterministic for a given seed. `NextInt(max)` and `Range(min,max)` use rejection
+  sampling to avoid modulo bias; `Range` swaps inverted bounds and supports the full signed i64
+  range.
+- `NextInt(max <= 0)` returns 0. `Dice(sides <= 0)` returns 1, non-positive standard deviations
+  make `Gaussian` return its mean, and non-positive exponential rates return 0.
+- `Chance` returns false at probabilities at or below 0 and true at or above 1. `Gaussian` uses
+  Box-Muller, `Exponential(lambda)` has mean `1/lambda` for positive finite lambda, and `Shuffle`
+  is an in-place Fisher-Yates shuffle using the context generator.
 
 ---
 
@@ -440,9 +460,8 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 | `Neg()`          | `obj()`         | Negate vector: -self                                       |
 | `Dot(other)`     | `f64(obj)`      | Dot product of two vectors                                 |
 | `Cross(other)`   | `f64(obj)`      | 2D cross product (scalar z-component)                      |
-| `Len()`          | `f64()`         | Length (magnitude) of vector                               |
-| `Length()`       | `f64()`         | Alias for `Len()`                                          |
-| `LenSq()`        | `f64()`         | Squared length (avoids sqrt)                               |
+| `Length()`       | `f64()`         | Length (magnitude)                                          |
+| `LengthSquared()`        | `f64()`         | Squared length (avoids sqrt)                               |
 | `Norm()`         | `obj()`         | Normalize to unit length                                   |
 | `Normalize()`    | `obj()`         | Alias for `Norm()`                                         |
 | `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
@@ -454,10 +473,11 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 ### Notes
 
 - Vectors are immutable - all operations return new vectors
-- `Norm()` returns zero vector if input has zero length
-- `Div()` traps on division by zero
+- `Norm()` returns the zero vector for a zero-length vector or any non-finite component.
+- `Div()` traps for zero, NaN, or infinite divisors.
+- `Lerp()` does not clamp `t`; values outside `[0,1]` extrapolate.
 - `Cross()` returns the scalar z-component of the 3D cross product (treating 2D vectors as 3D with z=0)
-- Angles are in radians; use `Viper.Math.Rad()` and `Viper.Math.Deg()` for conversion
+- Angles are in radians; use `Viper.Math.ToRadians()` and `Viper.Math.ToDegrees()` for conversion
 
 ### Zia Example
 
@@ -553,15 +573,25 @@ END IF
 | `Add(other)`     | `obj(obj)`      | Add two vectors: self + other                              |
 | `Sub(other)`     | `obj(obj)`      | Subtract vectors: self - other                             |
 | `Mul(scalar)`    | `obj(f64)`      | Multiply by scalar: self * s                               |
+| `Scale(scalar)`  | `obj(f64)`      | Alias for `Mul(scalar)`                                    |
 | `Div(scalar)`    | `obj(f64)`      | Divide by scalar: self / s                                 |
 | `Neg()`          | `obj()`         | Negate vector: -self                                       |
 | `Dot(other)`     | `f64(obj)`      | Dot product of two vectors                                 |
 | `Cross(other)`   | `obj(obj)`      | Cross product (returns Vec3)                               |
-| `Len()`          | `f64()`         | Length (magnitude) of vector                               |
-| `LenSq()`        | `f64()`         | Squared length (avoids sqrt)                               |
+| `Length()`       | `f64()`         | Length (magnitude)                                          |
+| `LengthSquared()`        | `f64()`         | Squared length (avoids sqrt)                               |
 | `Norm()`         | `obj()`         | Normalize to unit length                                   |
+| `Normalize()`    | `obj()`         | Alias for `Norm()`                                         |
 | `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
+| `Distance(other)`| `f64(obj)`      | Alias for `Dist(other)`                                    |
 | `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
+| `Reflect(normal)`| `obj(obj)`      | Reflect across a normal, which is normalized internally   |
+| `Project(onto)`  | `obj(obj)`      | Project onto the line spanned by another vector            |
+| `ClampLength(max)`  | `obj(f64)`      | Limit magnitude to at most `max`                           |
+| `MoveTowards(target, delta)` | `obj(obj, f64)` | Move by at most `delta`, snapping when in reach |
+| `Angle(other)`   | `f64(obj)`      | Unsigned angle to another vector in `[0, pi]`              |
+| `Min(other)`     | `obj(obj)`      | Component-wise minimum                                     |
+| `Max(other)`     | `obj(obj)`      | Component-wise maximum                                     |
 | `Set(x, y, z)`   | `void(f64, f64, f64)` | Replace all components in place                      |
 | `CopyFrom(other)` | `void(obj)`    | Copy another Vec3's components in place                    |
 
@@ -570,10 +600,13 @@ END IF
 - Arithmetic operations are pure and return new vectors.
 - Use `Set`, `CopyFrom`, or writable `X`/`Y`/`Z` properties when a per-frame script path
   needs to reuse an existing vector.
-- `Norm()` returns zero vector if input has zero length
-- `Div()` traps on division by zero
+- `Norm()` returns the zero vector for zero-length or non-finite input. `Div()` traps for zero,
+  NaN, or infinite divisors, while `Lerp()` extrapolates when `t` is outside `[0,1]`.
 - `Cross()` returns a Vec3 perpendicular to both input vectors (right-hand rule)
 - The cross product formula: a × b = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx)
+- `Reflect` and `Project` return zero for degenerate/non-finite directions. `ClampLength` returns zero
+  for a non-positive or non-finite limit. `MoveTowards` leaves the current value unchanged for a
+  negative or non-finite delta. `Angle` returns 0 for degenerate/non-finite vectors.
 
 ### Zia Example
 
@@ -672,9 +705,8 @@ smooth interpolation via SLERP.
 | `Conjugate()`     | `obj()`         | Return conjugate (inverse for unit quaternions)                |
 | `Dot(other)`      | `f64(obj)`      | Dot product with another quaternion                            |
 | `Inverse()`       | `obj()`         | Return the inverse quaternion                                  |
-| `Len()`           | `f64()`         | Magnitude of the quaternion                                    |
-| `LenSq()`         | `f64()`         | Squared magnitude (avoids sqrt)                                |
-| `Lerp(other, t)`  | `obj(obj, f64)` | Linear interpolation between two quaternions                   |
+| `LengthSquared()`         | `f64()`         | Squared magnitude (avoids sqrt)                                |
+| `Lerp(other, t)`  | `obj(obj, f64)` | Normalized linear interpolation (nlerp); `t` is not clamped    |
 | `Mul(other)`      | `obj(obj)`      | Multiply (compose) two quaternion rotations                    |
 | `Norm()`          | `obj()`         | Normalize to unit length                                       |
 | `RotateVec3(v)`   | `obj(obj)`      | Rotate a Vec3 by this quaternion, returns Vec3                 |
@@ -685,9 +717,14 @@ smooth interpolation via SLERP.
 
 - Quaternions are immutable — all operations return new quaternions.
 - `Mul` composes rotations: `a.Mul(b)` applies rotation `b` then rotation `a`.
-- `Slerp` performs smooth interpolation along the shortest arc on the unit sphere.
+- `Slerp` assumes unit inputs, chooses the shortest arc, and clamps `t` to `[0,1]`; a non-finite
+  `t` traps. `Lerp` normalizes its result but extrapolates for `t` outside that range.
 - `Norm()` returns the zero quaternion for a zero-length or non-finite quaternion.
-- `FromAxisAngle` takes a `Vec3` axis object and a scalar angle in radians.
+- `FromAxisAngle` takes a `Vec3` axis and radians. A zero/non-finite axis or non-finite angle
+  produces identity. `FromEuler` likewise returns identity for non-finite input.
+- `RotateVec3` and `ToMat4` assume a unit quaternion; call `Norm()` first for raw-component
+  quaternions. `Axis()` returns `(0,0,1)` when no meaningful axis exists, and `Angle()` returns a
+  value in `[0,2*pi]` (0 for a degenerate quaternion).
 
 ### Zia Example
 
@@ -734,7 +771,7 @@ func start() {
 ```basic
 ' Create quaternion from axis-angle (90 degrees around Y axis)
 DIM axis AS Viper.Math.Vec3 = Viper.Math.Vec3.New(0.0, 1.0, 0.0)
-DIM q AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis, Viper.Math.Rad(90.0))
+DIM q AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis, Viper.Math.ToRadians(90.0))
 
 ' Rotate a vector
 DIM v AS Viper.Math.Vec3 = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
@@ -744,7 +781,7 @@ PRINT "Rotated: ("; Viper.Math.Vec3.get_X(rotated); ", "; Viper.Math.Vec3.get_Y(
 
 ' Compose rotations
 DIM axis2 AS Viper.Math.Vec3 = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
-DIM q2 AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis2, Viper.Math.Rad(45.0))
+DIM q2 AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis2, Viper.Math.ToRadians(45.0))
 DIM combined AS OBJECT = Viper.Math.Quat.Mul(q, q2)
 
 ' Smooth interpolation between orientations
@@ -756,8 +793,11 @@ DIM halfway AS OBJECT = Viper.Math.Quat.Slerp(identity, q, 0.5)
 
 ## Viper.Math.Easing
 
-Standard easing functions for smooth animation and interpolation. Each function takes a normalized time value `t` in
-[0.0, 1.0] and returns a transformed value.
+Standard easing functions for smooth animation and interpolation. Each function is intended for a normalized time
+value `t` in `[0.0,1.0]`. Inputs are not uniformly clamped: polynomial, sine, back, and bounce
+functions extrapolate, exponential and elastic functions pin their endpoints, and circular
+functions can return NaN outside their square-root domain. Back and elastic curves intentionally
+overshoot `[0,1]` even for valid input.
 
 **Type:** Static utility class
 
@@ -777,7 +817,6 @@ Standard easing functions for smooth animation and interpolation. Each function 
 | `InOutCubic(t)`  | `Double(Double)` | Cubic ease in-out                        |
 | `InQuart(t)`     | `Double(Double)` | Quartic ease in                          |
 | `OutQuart(t)`    | `Double(Double)` | Quartic ease out                         |
-| `InOutQuart(t)`  | `Double(Double)` | Quartic ease in-out                      |
 | `InSine(t)`      | `Double(Double)` | Sinusoidal ease in                       |
 | `OutSine(t)`     | `Double(Double)` | Sinusoidal ease out                      |
 | `InOutSine(t)`   | `Double(Double)` | Sinusoidal ease in-out                   |
@@ -892,6 +931,17 @@ The current runtime registry includes the spline object as an explicit first par
 static forms shown below (`Spline.Eval(spline, t)`, `Spline.Sample(spline, count)`, and so on); instance-call syntax is
 not accepted by the current BASIC frontend.
 
+- `CatmullRom` and `Linear` require at least two points and copy each input Vec2's coordinates.
+  The current Catmull-Rom implementation is the uniform `0.5`-tangent form with duplicated endpoint
+  neighbors; it is not centripetal.
+- `t` is intended to be finite and in `[0,1]`. Linear and Catmull-Rom evaluation clamp finite
+  out-of-range values, while Bezier evaluation extrapolates. Non-finite `t` is unsafe for the
+  linear and Catmull-Rom implementations; see VDOC-201 in the review findings.
+- `Tangent` is not normalized: it is the active segment delta for a linear spline, the analytic
+  derivative for Bezier, and a finite-difference derivative for Catmull-Rom.
+- `PointAt` traps outside `0..PointCount-1`. `ArcLength` uses at least one equal-parameter segment,
+  and `Sample(count)` raises counts below two to two.
+
 ### Zia Example
 
 ```rust
@@ -1005,11 +1055,17 @@ Perlin noise generator for procedural content generation. Produces smooth, conti
 ### Notes
 
 - All methods are called in a static style, passing the noise object as the first parameter
-- Output values are in the range [-1.0, 1.0] for single-octave noise
+- Single-octave output is approximately bounded by `[-1,1]` and is not clamped (2D output is
+  normally narrower). The field repeats every 256 integer cells on each axis.
 - The same seed always produces the same noise field (deterministic)
 - `Octave2D`/`Octave3D` layer multiple frequencies for more natural-looking noise (fractal Brownian motion)
-- Higher octave counts add finer detail but increase computation cost
-- Persistence controls how much each octave contributes; lower values produce smoother output
+- Octave counts are clamped to 16; non-positive counts return 0. Non-finite persistence also
+  returns 0. Persistence is accepted outside the usual `[0,1]` range, including negative values.
+- Coordinates must be finite and their floored cell index must fit a 32-bit C `int`; otherwise the
+  sample returns 0. Higher octave counts add finer detail but increase computation cost.
+- The registry accepts an untyped object as the explicit receiver, but the implementation does not
+  validate that object before reading its permutation table; pass only the instance returned by
+  `PerlinNoise.New` (VDOC-202).
 
 ### Zia Example
 
@@ -1085,8 +1141,8 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
 | Method / Property  | Signature         | Description                                    |
 |--------------------|-------------------|------------------------------------------------|
 | `FromInt(n)`       | `Object(Integer)` | Create a BigInt from a 64-bit integer          |
-| `FromStr(s)`       | `Object(String)`  | Create a BigInt from a decimal string          |
-| `FromBytes(b)`     | `Object(Bytes)`   | Create a BigInt from little-endian Bytes       |
+| `FromStr(s)`       | `Object(String)`  | Parse decimal or `0x`/`0b`/`0o` text           |
+| `FromBytes(b)`     | `Object(Bytes)`   | Parse big-endian two's-complement Bytes        |
 | `Zero`             | `Object`          | The constant 0                                 |
 | `One`              | `Object`          | The constant 1                                 |
 
@@ -1094,10 +1150,10 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
 
 | Method             | Signature                | Description                                      |
 |--------------------|--------------------------|--------------------------------------------------|
-| `ToInt(n)`         | `Integer(Object)`        | Convert to 64-bit integer (traps if out of range)|
+| `ToInt(n)`         | `Integer(Object)`        | Convert to i64, saturating out-of-range values |
 | `ToString(n)`      | `String(Object)`         | Convert to decimal string                        |
-| `ToStrBase(n, base)` | `String(Object, Integer)` | Convert to string in given base (2–36)        |
-| `ToBytes(n)`       | `Bytes(Object)`          | Convert to little-endian Bytes                   |
+| `ToStringBase(n, base)` | `String(Object, Integer)` | Convert to string in given base (2–36)        |
+| `ToBytes(n)`       | `Bytes(Object)`          | Convert to big-endian two's-complement Bytes     |
 | `FitsInt(n)`       | `Boolean(Object)`        | True if value fits in a 64-bit signed integer    |
 
 ### Arithmetic Methods
@@ -1145,10 +1201,25 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
 ### Notes
 
 - BigInt values are immutable — all operations return new objects.
-- `Div(a, b)` traps on division by zero.
+- `FromStr` accepts an optional sign, leading spaces/tabs, trailing whitespace, underscores, and
+  `0x`, `0b`, or `0o` prefixes. Invalid text returns null rather than trapping. Separators are
+  permissive and may appear at the edges or repeatedly.
+- `ToInt` saturates to `INT64_MIN`/`INT64_MAX`; call `FitsInt` first when loss must be rejected.
+- Byte conversion uses signed big-endian two's-complement form. The current `ToBytes` encoder is
+  wrong for some negative values (for example, `-129` encodes as `7f` and round-trips as `127`),
+  so do not use it for negative serialization until VDOC-203 is fixed.
+- `Div(a,b)` truncates toward zero and `Mod(a,b)` gives the remainder the dividend's sign; both
+  trap on a zero divisor. Consequently, `PowMod` can return a negative residue for a negative base
+  (VDOC-205); normalize it explicitly when a least-nonnegative residue is required.
 - `Sqrt(n)` traps if n is negative.
-- `Pow(n, exp)` requires a non-negative integer exponent.
-- `ToStrBase` supports bases 2 through 36; digits above 9 use lowercase letters.
+- `Pow(n,exp)` and `PowMod(n,exp,mod)` require non-negative exponents; `PowMod` also requires a
+  nonzero modulus.
+- `ToStringBase` supports bases 2 through 36; digits above 9 use lowercase letters.
+- Bitwise methods use arbitrary-width two's-complement semantics. `BitLength` measures magnitude;
+  negative `TestBit` values have infinitely extended sign bits. Negative bit indexes return false
+  or an unchanged clone, and negative shift counts leave the value unchanged.
+- BigInt operands are exposed as generic `Object` values and are not receiver-validated by the C
+  implementation. Passing any non-BigInt object can corrupt memory or crash (VDOC-204).
 
 ### Zia Example
 
@@ -1275,15 +1346,19 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 | Method                 | Signature                | Description                                      |
 |------------------------|--------------------------|--------------------------------------------------|
 | `TransformPoint(m, v)` | `Object(Object, Object)` | Transform a Vec2 point (applies translation)     |
-| `TransformVec(m, v)`   | `Object(Object, Object)` | Transform a Vec2 direction (ignores translation) |
-| `Eq(a, b, eps)`        | `Boolean(Object, Object, f64)` | True if all elements differ by less than eps |
+| `TransformVector(m, v)`   | `Object(Object, Object)` | Transform a Vec2 direction (ignores translation) |
+| `Eq(a, b, eps)`        | `Boolean(Object, Object, f64)` | True if every absolute difference is at most the effective tolerance |
 
 ### Notes
 
 - Matrices are stored in row-major order.
 - `TransformPoint` treats the Vec2 as a homogeneous point (w=1); translation is applied.
-- `TransformVec` treats the Vec2 as a direction (w=0); translation is not applied.
-- `Inverse` traps when the determinant is zero.
+- `TransformVector` treats the Vec2 as a direction (w=0); translation is not applied.
+- `Get` returns 0 for an out-of-range index; `Row` and `Col` return a zero Vec3.
+- `Rotate` returns identity for a non-finite angle. `Inverse` traps for a non-finite determinant or
+  when `abs(det) < 1e-15`, not just for exact zero.
+- `Eq` substitutes `1e-9` when `eps <= 0` and accepts differences equal to the tolerance. NaN in a
+  matrix or in `eps` currently makes unequal elements compare equal (VDOC-207).
 - All factory methods return a new matrix; matrices are immutable.
 
 ### Zia Example
@@ -1312,7 +1387,7 @@ func start() {
     // Rotation by 90 degrees
     var r   = Mat3.Rotate(1.5707963);
     var dir = Vec2.New(1.0, 0.0);
-    var rd  = Mat3.TransformVec(r, dir);
+    var rd  = Mat3.TransformVector(r, dir);
     Say("Rotated X: " + Fmt.NumFixed(Vec2.get_X(rd), 1));  // ~0.0
     Say("Rotated Y: " + Fmt.NumFixed(Vec2.get_Y(rd), 1));  // ~1.0
 
@@ -1329,7 +1404,7 @@ func start() {
 ```basic
 ' 2D transform pipeline
 DIM scale AS OBJECT = Viper.Math.Mat3.Scale(3.0, 3.0)
-DIM rot   AS OBJECT = Viper.Math.Mat3.Rotate(Viper.Math.Rad(45.0))
+DIM rot   AS OBJECT = Viper.Math.Mat3.Rotate(Viper.Math.ToRadians(45.0))
 DIM trans AS OBJECT = Viper.Math.Mat3.Translate(100.0, 50.0)
 
 ' Compose: scale → rotate → translate (right to left application order)
@@ -1387,7 +1462,7 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 
 | Method                              | Signature                               | Description                              |
 |-------------------------------------|-----------------------------------------|------------------------------------------|
-| `Perspective(fov, aspect, near, far)` | `Object(f64, f64, f64, f64)`          | Perspective projection matrix (fov in radians, column-major convention) |
+| `Perspective(fov, aspect, near, far)` | `Object(f64, f64, f64, f64)`          | Right-handed perspective projection (vertical fov in radians) |
 | `Ortho(l, r, b, t, near, far)`      | `Object(f64, f64, f64, f64, f64, f64)` | Orthographic projection matrix           |
 | `LookAt(eye, center, up)`           | `Object(Object, Object, Object)`        | View matrix from eye/center/up (Vec3)    |
 
@@ -1402,23 +1477,32 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 | `MulScalar(m, s)`   | `Object(Object, f64)`              | Multiply every element by scalar      |
 | `Neg(m)`            | `Object(Object)`                   | Negate every element                  |
 | `Transpose(m)`      | `Object(Object)`                   | Transpose rows and columns            |
-| `Inverse(m)`        | `Object(Object)`                   | Matrix inverse (traps if singular)    |
+| `Inverse(m)`        | `Object(Object)`                   | Matrix inverse (identity fallback if singular) |
 | `Det(m)`            | `f64(Object)`                      | Determinant                           |
-| `Eq(a, b, eps)`     | `Boolean(Object, Object, f64)`     | True if all elements differ by < eps  |
+| `Eq(a, b, eps)`     | `Boolean(Object, Object, f64)`     | True if every absolute difference is at most the effective tolerance |
 
 ### Transform Application
 
 | Method                 | Signature                | Description                                       |
 |------------------------|--------------------------|---------------------------------------------------|
-| `TransformPoint(m, v)` | `Object(Object, Object)` | Transform a Vec3 point (applies translation)      |
-| `TransformVec(m, v)`   | `Object(Object, Object)` | Transform a Vec3 direction (ignores translation)  |
+| `TransformPoint(m, v)` | `Object(Object, Object)` | Transform a Vec3 point and perform perspective divide |
+| `TransformVector(m, v)`   | `Object(Object, Object)` | Transform a Vec3 direction (ignores translation)  |
 
 ### Notes
 
 - Matrices are stored in row-major order.
+- Matrices multiply column vectors; storage order does not change the projection convention.
 - `LookAt` expects right-handed coordinate system (OpenGL convention).
 - `Perspective` uses the standard OpenGL depth range [-1, 1].
-- `RotateAxis` normalizes the axis internally; passing a zero-length axis traps.
+- Invalid/non-finite projection parameters, a degenerate `LookAt`, and a zero/non-finite
+  `RotateAxis` input return identity rather than trapping. Perspective requires `0 < fov < pi`,
+  positive aspect and near plane, and `near < far`.
+- `TransformPoint` returns normalized-device coordinates after dividing by homogeneous `w`; it
+  returns the zero vector for non-finite input/output or `abs(w) <= 1e-15`.
+- `Get` returns 0 for invalid indices. `Inverse` silently returns identity for a non-finite or
+  near-zero determinant (`abs(det) < 1e-15`), unlike `Mat3.Inverse` (VDOC-208).
+- `Eq` uses `1e-9` when `eps <= 0`, accepts equality at the tolerance, and has the same NaN false-
+  positive defect as `Mat3.Eq` (VDOC-207).
 - Composing transforms: `Mul(B, A)` applies A first, then B (right-to-left).
 
 ### Zia Example
@@ -1435,7 +1519,7 @@ bind Viper.Text.Fmt as Fmt;
 func start() {
     // Simple model matrix: scale → rotateY → translate
     var s = Mat4.Scale(2.0, 2.0, 2.0);
-    var r = Mat4.RotateY(Math.Rad(45.0));
+    var r = Mat4.RotateY(Math.ToRadians(45.0));
     var t = Mat4.Translate(0.0, 0.0, -5.0);
     var model = Mat4.Mul(t, Mat4.Mul(r, s));
 
@@ -1446,7 +1530,7 @@ func start() {
     var view   = Mat4.LookAt(eye, center, up);
 
     // Perspective projection
-    var proj = Mat4.Perspective(Math.Rad(60.0), 16.0 / 9.0, 0.1, 1000.0);
+    var proj = Mat4.Perspective(Math.ToRadians(60.0), 16.0 / 9.0, 0.1, 1000.0);
 
     // MVP matrix
     var mvp = Mat4.Mul(proj, Mat4.Mul(view, model));
@@ -1469,7 +1553,7 @@ func start() {
 ```basic
 ' Build a 3D model-view-projection matrix
 DIM scale AS OBJECT = Viper.Math.Mat4.Scale(1.0, 1.0, 1.0)
-DIM rotY  AS OBJECT = Viper.Math.Mat4.RotateY(Viper.Math.Rad(30.0))
+DIM rotY  AS OBJECT = Viper.Math.Mat4.RotateY(Viper.Math.ToRadians(30.0))
 DIM trans AS OBJECT = Viper.Math.Mat4.Translate(0.0, 0.0, -10.0)
 
 DIM model AS OBJECT = Viper.Math.Mat4.Mul(trans, Viper.Math.Mat4.Mul(rotY, scale))
@@ -1481,16 +1565,16 @@ DIM up     AS OBJECT = Viper.Math.Vec3.New(0.0, 1.0, 0.0)
 DIM view   AS OBJECT = Viper.Math.Mat4.LookAt(eye, center, up)
 
 ' Projection
-DIM proj AS OBJECT = Viper.Math.Mat4.Perspective(Viper.Math.Rad(60.0), 1.777, 0.1, 1000.0)
+DIM proj AS OBJECT = Viper.Math.Mat4.Perspective(Viper.Math.ToRadians(60.0), 1.777, 0.1, 1000.0)
 
 ' Combined MVP
 DIM mvp AS OBJECT = Viper.Math.Mat4.Mul(proj, Viper.Math.Mat4.Mul(view, model))
 
-' Transform a world-space point into clip space
+' Transform a world-space point into normalized-device coordinates
 DIM pt  AS OBJECT = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
 DIM out AS OBJECT = Viper.Math.Mat4.TransformPoint(mvp, pt)
-PRINT "Clip X: "; Viper.Math.Vec3.get_X(out)
-PRINT "Clip Y: "; Viper.Math.Vec3.get_Y(out)
+PRINT "NDC X: "; Viper.Math.Vec3.get_X(out)
+PRINT "NDC Y: "; Viper.Math.Vec3.get_Y(out)
 
 ' Orthographic projection for 2D/UI overlay
 DIM ortho AS OBJECT = Viper.Math.Mat4.Ortho(0.0, 1920.0, 0.0, 1080.0, -1.0, 1.0)
@@ -1498,12 +1582,12 @@ PRINT "Det(ortho): "; Viper.Math.Mat4.Det(ortho)
 
 ' Rotate around arbitrary axis
 DIM axis    AS OBJECT = Viper.Math.Vec3.New(1.0, 1.0, 0.0)
-DIM rotAxis AS OBJECT = Viper.Math.Mat4.RotateAxis(axis, Viper.Math.Rad(45.0))
+DIM rotAxis AS OBJECT = Viper.Math.Mat4.RotateAxis(axis, Viper.Math.ToRadians(45.0))
 ```
 
 ---
 
 ## See Also
 
-- [Graphics](graphics/README.md) - Use `Vec2`, `Vec3`, `Mat3`, `Mat4`, and `Quaternion` with `Canvas` and `Pixels` for 2D/3D graphics
+- [Graphics](graphics/README.md) - Use `Vec2`, `Vec3`, `Mat3`, `Mat4`, and `Quat` with `Canvas` and `Pixels` for 2D/3D graphics
 - [Cryptography](crypto.md) - `Rand` for cryptographically secure randomness

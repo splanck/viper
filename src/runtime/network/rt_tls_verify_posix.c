@@ -6,9 +6,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_tls_verify_posix.c
-// Purpose: Native (macOS Security.framework / Linux manual) TLS certificate chain and
-//   CertificateVerify validation. Compiled on non-_WIN32 platforms; the Windows
-//   CryptoAPI path lives in rt_tls_verify_win.c.
+// Purpose: In-tree PEM-bundle TLS certificate-chain and CertificateVerify validation for macOS
+//   and Linux. Compiled on non-_WIN32 platforms; the Windows CryptoAPI path lives in
+//   rt_tls_verify_win.c.
 //
 // Links: rt_tls_verify_internal.h (shared helpers), rt_tls_verify_win.c, rt_tls_internal.h
 //

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-07-14
 ---
 
 # Utilities
@@ -38,8 +38,8 @@ Type conversion utilities.
 
 ### Conversion Rules
 
-- `ToInt64` parses decimal integer text with optional leading/trailing ASCII whitespace.
-- `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. It also accepts the formatter's non-finite spellings: `NaN`, `Inf`, and `-Inf`. C-style hexadecimal floats such as `0x1p4`, overflow, embedded NUL bytes, and non-whitespace trailing characters are rejected.
+- `ToInt64` parses signed decimal integer text with optional leading/trailing ASCII whitespace.
+- `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. It also accepts case-insensitive `NaN` and `Inf` with an optional sign. C-style hexadecimal floats such as `0x1p4`, overflow, embedded NUL bytes, and non-whitespace trailing characters are rejected.
 - `ToStringDouble` uses locale-independent round-trip precision for finite values, and emits `NaN`, `Inf`, or `-Inf` for non-finite values, so text it emits can be parsed back through `ToDouble`.
 - `ToString_Int` and `ToString_Double` remain available as compatibility aliases.
 - Embedded NUL bytes and non-whitespace trailing characters are rejected.
@@ -102,7 +102,7 @@ String formatting utilities for converting values to formatted strings.
 | `Int(value)`                | `String(Integer)`                  | Format integer as decimal string         |
 | `IntRadix(value, radix)`    | `String(Integer, Integer)`         | Format integer in specified radix (2-36) |
 | `IntPad(value, width, pad)` | `String(Integer, Integer, String)` | Format integer with padding              |
-| `Num(value)`                | `String(Double)`                   | Format number with default precision     |
+| `Num(value)`                | `String(Double)`                   | Format number for display (15 significant digits) |
 | `NumFixed(value, decimals)` | `String(Double, Integer)`          | Format number with fixed decimal places  |
 | `Scientific(value, decimals)` | `String(Double, Integer)`        | Format number in scientific notation     |
 | `Percent(value, decimals)`    | `String(Double, Integer)`        | Format number as percentage              |
@@ -121,9 +121,15 @@ String formatting utilities for converting values to formatted strings.
 ### Formatting Rules
 
 - Numeric formatting is locale-stable: decimal output uses `.` even when the process locale uses another separator.
-- `Num` emits enough significant digits for finite values to round-trip through the `Viper.Core.Parse` numeric helpers.
+- `Num` is the historical display formatter: it uses 15 significant digits and is not guaranteed
+  to preserve the exact IEEE-754 value when reparsed. Use `Viper.Core.Convert.ToStringDouble()`
+  when exact round-trip text is required.
 - Signed zero formats as zero in `Num`, `NumFixed`, `Scientific`, `Percent`, and `Currency`.
-- `NumSci`, `NumPct`, and `BoolYN` remain available as compatibility aliases.
+- `Scientific`, `Percent`, and `YesNo` remain available as compatibility aliases.
+- `NumFixed`, `Scientific`, `Percent`, and `Currency` clamp requested decimal places to 0-20.
+- `IntRadix` returns an empty string outside radix 2-36. Decimal negatives use a minus sign;
+  non-decimal radices, `Hex`, `HexPad`, `Bin`, and `Oct` format the unsigned 64-bit bit pattern.
+- `HexPad` clamps width to 1-16 digits.
 - `IntPad` defaults to space padding when the pad string is null, empty, or does not start with a valid UTF-8 character. It uses the first full UTF-8 character from valid pad strings and supports widths beyond 255 subject to allocation limits.
 - `Size` chooses units using integer byte thresholds, then promotes near-boundary rounded displays so output does not show values such as `1024.0 PB`.
 - `IntGrouped` preserves the full separator byte sequence and defaults to `","` only when the separator is null or empty.
@@ -156,7 +162,7 @@ func start() {
     Say("YesNo: " + Fmt.YesNo(false));       // Output: YesNo: no
 
     // Size formatting
-    Say("Size: " + Fmt.Size(1048576));       // Output: Size: 1.0 MB
+    Say("Size: " + Fmt.SizeBytes(1048576));       // Output: Size: 1.0 MB
 }
 ```
 
@@ -179,9 +185,9 @@ PRINT Viper.Text.Fmt.Bool(TRUE)              ' Output: "true"
 PRINT Viper.Text.Fmt.YesNo(FALSE)            ' Output: "no"
 
 ' Size formatting (auto-scales to KB, MB, GB, etc.)
-PRINT Viper.Text.Fmt.Size(1024)              ' Output: "1.0 KB"
-PRINT Viper.Text.Fmt.Size(1048576)           ' Output: "1.0 MB"
-PRINT Viper.Text.Fmt.Size(1234567890)        ' Output: "1.1 GB"
+PRINT Viper.Text.Fmt.SizeBytes(1024)              ' Output: "1.0 KB"
+PRINT Viper.Text.Fmt.SizeBytes(1048576)           ' Output: "1.0 MB"
+PRINT Viper.Text.Fmt.SizeBytes(1234567890)        ' Output: "1.1 GB"
 
 ' Radix formatting
 PRINT Viper.Text.Fmt.Hex(255)                ' Output: "ff"
@@ -202,11 +208,11 @@ Structured logging with configurable log levels.
 
 | Constant | Value | Description                    |
 |----------|-------|--------------------------------|
-| `DEBUG`  | 0     | Detailed debugging information |
-| `INFO`   | 1     | General informational messages |
-| `WARN`   | 2     | Warning conditions             |
-| `ERROR`  | 3     | Error conditions               |
-| `OFF`    | 4     | Disable all logging            |
+| `LevelDebug` | 0 | Detailed debugging information |
+| `LevelInfo`  | 1 | General informational messages |
+| `LevelWarn`  | 2 | Warning conditions             |
+| `LevelError` | 3 | Error conditions               |
+| `LevelOff`   | 4 | Disable all logging            |
 
 ### Properties
 
@@ -227,10 +233,11 @@ Structured logging with configurable log levels.
 ### Notes
 
 - Default log level is `INFO` (debug messages suppressed)
-- Log output goes to stderr with timestamp and level prefix
+- Log output goes to stderr with a local-time timestamp and level prefix
 - Format: `[LEVEL] YYYY-MM-DD HH:MM:SS message`
 - Message output is length-aware. Embedded NUL bytes and control characters such as newline, carriage return, and tab are escaped so one log call produces one physical log line, even when multiple threads log concurrently. If heap allocation for the full line fails, the logger falls back to serialized streaming instead of dropping the message.
 - Log level reads and writes are atomic and safe to call concurrently.
+- Assigning `Level` clamps values below 0 to `LevelDebug` and values above 4 to `LevelOff`.
 - Set `Level = Viper.Diagnostics.Log.LevelOff` to disable all logging
 
 ### Zia Example
@@ -263,15 +270,17 @@ Viper.Diagnostics.Log.Warn("Configuration file not found, using defaults")
 Viper.Diagnostics.Log.Error("Failed to connect to database")
 
 ' Debug logging (suppressed by default)
-Viper.Diagnostics.Log.Debug("Entering function processData")
+Viper.Diagnostics.Log.Debug("Entering processing function")
 
 ' Enable debug logging
 Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.LevelDebug
 Viper.Diagnostics.Log.Debug("Now this message appears")
 
+DIM userCount AS INTEGER = 42
+
 ' Check if level is enabled before expensive formatting
 IF Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.LevelDebug) THEN
-    Viper.Diagnostics.Log.Debug("User count: " + Viper.Text.Fmt.Int(userCount))
+    Viper.Diagnostics.Log.Debug("Active count: " + Viper.Text.Fmt.Int(userCount))
 END IF
 
 ' Suppress all logging
@@ -316,7 +325,9 @@ graceful error handling.
 - Null input is treated as parse failure: `Try*` returns `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports radix 2-36 (digits 0-9, letters a-z). Radix 10 accepts leading `+` and `-`; other radices parse unsigned 64-bit bit patterns so `Viper.Text.Fmt.Hex(-1)` and `Viper.Text.Fmt.Bin(-1)` round-trip to `-1`. Prefixes such as `0x` and non-decimal signs are rejected.
 - Leading/trailing whitespace is trimmed before parsing
-- Numeric parsing is locale-independent, uses `.` as the decimal separator, and accepts only decimal float syntax. C-style hexadecimal floats such as `0x1p4` are rejected.
+- Numeric parsing is locale-independent, uses `.` as the decimal separator, and accepts strict
+  decimal float syntax plus case-insensitive `NaN` and optionally signed `Inf`. C-style
+  hexadecimal floats such as `0x1p4` and the display spelling `Infinity` are rejected.
 - Embedded NUL bytes are rejected, even when the bytes before the NUL form a valid value.
 - Internal C helpers still clear their output slots before returning failure, but frontend code should use the managed `Option` APIs.
 
@@ -358,6 +369,11 @@ func start() {
 
 ```basic
 ' Parse with default fallback
+DIM portStr AS STRING = "8080"
+DIM timeoutStr AS STRING = "invalid"
+DIM verboseStr AS STRING = "yes"
+DIM userInput AS STRING = "42"
+
 DIM port AS INTEGER = Viper.Core.Parse.IntOr(portStr, 8080)
 DIM timeout AS DOUBLE = Viper.Core.Parse.DoubleOr(timeoutStr, 30.0)
 DIM verbose AS INTEGER = Viper.Core.Parse.BoolOr(verboseStr, FALSE)

@@ -182,7 +182,7 @@ func ApplyExplorerDuplicate(shell: app_shell.AppShell,
         overlay.Reject(shell, "Duplicate is available for files.");
         return;
     }
-    var targetPath = Path.Join(Path.Dir(sourcePath), name);
+    var targetPath = Path.Join(Path.Directory(sourcePath), name);
     if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
         overlay.Reject(shell, "Target already exists.");
         return;
@@ -211,7 +211,7 @@ func ApplyExplorerRename(shell: app_shell.AppShell,
         overlay.Reject(shell, "Choose a file or folder to rename.");
         return;
     }
-    var targetPath = Path.Join(Path.Dir(selectedPath), name);
+    var targetPath = Path.Join(Path.Directory(selectedPath), name);
     if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
         overlay.Reject(shell, "Target already exists.");
         return;

@@ -7,7 +7,7 @@
 //
 // File: src/runtime/system/rt_exec.c
 // Purpose: Implements external command execution for the Viper.System.Exec class.
-//          Provides Run (fire-and-forget), Capture (capture stdout),
+//          Provides Run (synchronous direct execution), Capture (capture stdout),
 //          Shell (via system shell), and ShellFull (capture + exit code)
 //          variants using posix_spawn (Unix) or CreateProcess (Win32).
 //
@@ -17,16 +17,16 @@
 //   - Shell execution (Shell, ShellCapture, ShellFull) runs via /bin/sh -c or
 //     cmd.exe /c; the caller is responsible for input sanitization.
 //   - Capture functions return stdout as a string; stderr is not captured.
-//   - ShellFull stores the exit code in a per-context slot for LastExitCode().
+//   - ShellCapture and ShellFull store the exit code in a thread-local slot for
+//     LastExitCode(); ShellResult delegates through ShellFull.
 //   - A NULL or empty program path causes a trap.
-//   - All functions are thread-safe; the per-context exit code is stored in
-//     the calling thread's RtContext, not in global state.
+//   - The compatibility exit-code side channel is C thread-local state.
 //
 // Ownership/Lifetime:
 //   - Returned stdout capture strings are fresh rt_string allocations owned
 //     by the caller.
-//   - No persistent state is held across calls except the last exit code in
-//     the calling thread's context.
+//   - No persistent state is held across calls except the thread-local last
+//     capture-style shell exit code.
 //
 // Links: src/runtime/system/rt_exec.h (public API)
 //
@@ -1198,7 +1198,7 @@ int64_t rt_exec_shell(rt_string command) {
 ///
 /// @return String containing the command's stdout, or empty string on failure.
 ///
-/// @note Uses popen() - both stdout and stderr may be captured on some systems.
+/// @note Uses popen() and captures stdout only unless the command redirects stderr itself.
 /// @note Empty command returns empty string.
 /// @note Traps if command is NULL.
 ///

@@ -1,6 +1,6 @@
 // ============================================================================
 // MODULE: sound (SoundManager)
-// PURPOSE: Wraps Viper.Sound + SoundBank with named-channel mixing,
+// PURPOSE: Wraps Viper.Audio + SoundBank with named-channel mixing,
 //          master/music/SFX volume, mute toggle, and graceful fall-
 //          through when audio isn't available.
 //
@@ -10,18 +10,18 @@
 //     fire-and-forget.
 //   * THREE VOLUME KNOBS. Master × music (or SFX) yields final
 //     level. Each is 0-100; mute is a separate hard-off.
-//   * NO-AUDIO FALLBACK. If Audio.IsAvailable() is false, ready
+//   * NO-AUDIO FALLBACK. If Mixer.IsAvailable() is false, ready
 //     stays false and every Play/Stop becomes a no-op. Lets the
 //     game run headlessly in CI.
 // ============================================================================
 
 module sound;
 
-bind Viper.Sound;
+bind Viper.Audio;
 bind "./audio/sfx_bank";
 bind "./audio/music_tracks";
 
-/// @brief Named-channel sound/music mixer wrapping Viper.Sound.SoundBank.
+/// @brief Named-channel sound/music mixer wrapping Viper.Mixer.SoundBank.
 class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
@@ -45,8 +45,8 @@ class SoundManager {
     }
 
     expose func setup() {
-        if Audio.IsAvailable() == false { return; }
-        var ok = Audio.Init();
+        if Mixer.IsAvailable() == false { return; }
+        var ok = Mixer.Init();
         if ok == 0 { return; }
         bank = SoundBank.New();
 
@@ -61,8 +61,8 @@ class SoundManager {
         if ready == false { return; }
         self.stopSiren();
         self.stopMusic();
-        Audio.StopAllSounds();
-        Audio.Shutdown();
+        Mixer.StopAllSounds();
+        Mixer.Shutdown();
         ready = false;
     }
 
@@ -184,7 +184,7 @@ class SoundManager {
     hide func playSfx(name: String, volume: Integer) {
         if ready == false { return; }
         if bank.Has(name) {
-            bank.Get(name).PlayExGroup(volume, 0, 1);
+            bank.Get(name).PlayGroup(volume, 0, 1);
         }
     }
 
@@ -198,9 +198,9 @@ class SoundManager {
             musicOut = 0;
             sfxOut = 0;
         }
-        Audio.SetMasterVolume(masterOut);
-        Audio.SetGroupVolume(0, musicOut);
-        Audio.SetGroupVolume(1, sfxOut);
+        Mixer.SetMasterVolume(masterOut);
+        Mixer.SetGroupVolume(0, musicOut);
+        Mixer.SetGroupVolume(1, sfxOut);
     }
 }
 

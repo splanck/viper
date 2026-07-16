@@ -37,6 +37,8 @@
 
 #include "rt_trie.h"
 
+#include "rt_option.h"
+
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
@@ -61,7 +63,8 @@ const char *rt_trap_get_error(void);
 typedef struct rt_trie_node {
     struct rt_trie_node *children[TRIE_ALPHABET_SIZE];
     void *value;        // Non-NULL if this node marks end of a key
-    int8_t is_terminal; // 1 if a key ends here
+    int8_t is_terminal; // 1 if a key ends here (value may legitimately be
+                        // NULL even at a terminal node)
 } rt_trie_node;
 
 typedef struct rt_trie_impl {
@@ -460,6 +463,10 @@ void rt_trie_set(void *obj, rt_string key, void *value) {
         node = node->children[c];
     }
 
+    if (!node->is_terminal && trie->count >= (size_t)INT64_MAX) {
+        rt_trap("Trie.Set: maximum size reached");
+        return;
+    }
     void *old = node->value;
     rt_obj_retain_maybe(value);
     node->value = value;
@@ -606,6 +613,47 @@ rt_string rt_trie_longest_prefix(void *obj, rt_string str) {
     if (!found)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(cstr, last_match);
+}
+
+/// @brief LongestPrefix preserving the empty-key match: Some(prefix) when any
+///        stored key (including "") is a prefix of `str`, None when nothing
+///        matches (VDOC-103).
+void *rt_trie_longest_prefix_option(void *obj, rt_string str) {
+    if (!obj)
+        return rt_option_none();
+    rt_trie_impl *trie = as_trie(obj, "Trie.LongestPrefix: invalid Trie object");
+    if (!trie->root)
+        return rt_option_none();
+
+    size_t len = 0;
+    const char *cstr = trie_string_data(str, &len);
+
+    rt_trie_node *node = trie->root;
+    size_t last_match = 0;
+    int found = 0;
+
+    if (node->is_terminal) {
+        found = 1;
+        last_match = 0;
+    }
+
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char c = (unsigned char)cstr[i];
+        if (!node->children[c])
+            break;
+        node = node->children[c];
+        if (node->is_terminal) {
+            found = 1;
+            last_match = i + 1;
+        }
+    }
+
+    if (!found)
+        return rt_option_none();
+    rt_string match = rt_string_from_bytes(cstr, last_match);
+    void *opt = rt_option_some_str(match);
+    rt_string_unref(match);
+    return opt;
 }
 
 /// @brief Remove `key` from the trie (releases its value). Returns 1 if removed, 0 if absent.

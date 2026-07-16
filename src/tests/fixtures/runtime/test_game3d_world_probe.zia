@@ -42,8 +42,8 @@ func start() {
         return;
     }
 
-    var mesh = G3D.Mesh3D.NewBox(1.0, 1.0, 1.0);
-    var mat = G3D.Material3D.NewColor(0.2, 0.7, 0.9);
+    var mesh = G3D.Mesh3D.Box(1.0, 1.0, 1.0);
+    var mat = G3D.Material3D.FromColor(0.2, 0.7, 0.9);
     var player = Game3D.Entity3D.Of(mesh, mat);
     player.Name = "Player";
     player.SetPosition(0.0, 0.0, 0.0);
@@ -55,11 +55,11 @@ func start() {
         fail("World3D.spawn did not mark the entity spawned");
         return;
     }
-    if (world.FindEntity("Player") == null) {
+    if (world.FindEntity("Player").IsNone) {
         fail("World3D.findEntity did not find the spawned entity");
         return;
     }
-    if (world.FindNode("Player") == null) {
+    if (world.FindNode("Player").IsNone) {
         fail("World3D.findNode did not find the entity node");
         return;
     }
@@ -75,8 +75,8 @@ func start() {
         return;
     }
     world.Spawn(imported);
-    if (world.FindEntity("ImportedRoot") == null ||
-        world.FindNode("ImportedChild") == null) {
+    if (world.FindEntity("ImportedRoot").IsNone ||
+        world.FindNode("ImportedChild").IsNone) {
         fail("World3D did not index a FromNode imported subtree");
         return;
     }
@@ -89,15 +89,15 @@ func start() {
     G3D.Canvas3D.SetInputSource(canvas, 1);
     G3D.Canvas3D.SetClockSource(canvas, 1);
     G3D.Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.020);
-    if (world.Tick() == false ||
+    if (world.Update() == false ||
         world.Frame != 1 ||
-        near(world.Dt, 0.020, 0.0001) == false) {
+        near(world.DeltaTime, 0.020, 0.0001) == false) {
         fail("World3D.tick did not advance synthetic timing");
         return;
     }
     world.StepSimulation(0.0);
     if (world.Frame != 2 ||
-        near(world.Dt, 1.0 / 60.0, 0.0001) == false) {
+        near(world.DeltaTime, 1.0 / 60.0, 0.0001) == false) {
         fail("World3D.stepSimulation did not clamp and advance frame timing");
         return;
     }
@@ -117,7 +117,7 @@ func start() {
     world.Present();
 
     world.Despawn(imported);
-    if (world.FindNode("ImportedChild") != null) {
+    if (world.FindNode("ImportedChild").IsSome) {
         fail("World3D.despawn did not detach the FromNode subtree");
         return;
     }

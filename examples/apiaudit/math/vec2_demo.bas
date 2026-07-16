@@ -86,7 +86,7 @@ PRINT "Len(0,0): "; vz.Len()
 
 ' --- LenSq ---
 PRINT "--- LenSq ---"
-PRINT "LenSq(3,4): "; v1.LenSq()
+PRINT "LenSq(3,4): "; v1.LengthSquared()
 
 ' --- Dist ---
 PRINT "--- Dist ---"

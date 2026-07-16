@@ -489,7 +489,7 @@ extern "C" void vm_async_run_entry_trampoline(void *raw) {
 /// @details Uses the native runtime helper outside the VM, but when an IL
 ///          function pointer is supplied from VM execution it spawns a child VM
 ///          and resolves a Future with that worker's returned object.
-static void threads_async_run_handler(void **args, void *result) {
+static void threads_async_run_impl(void **args, void *result, bool owned) {
     void *entry = nullptr;
     void *arg = nullptr;
     if (args && args[0])
@@ -502,7 +502,7 @@ static void threads_async_run_handler(void **args, void *result) {
 
     VM *parentVm = activeVMInstance();
     if (!parentVm) {
-        void *future = rt_async_run(entry, arg);
+        void *future = owned ? rt_async_run_owned(entry, arg) : rt_async_run(entry, arg);
         if (result)
             *reinterpret_cast<void **>(result) = future;
         return;
@@ -521,12 +521,15 @@ static void threads_async_run_handler(void **args, void *result) {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
+    // Ownership follows the variant (VDOC-127): Run borrows the arg exactly
+    // like the native path (the caller keeps it alive), RunOwned retains it
+    // until the worker completes.
     auto *payload = new (std::nothrow) VmAsyncRunPayload{&module,
                                                          std::move(program),
                                                          parentVm->externRegistry(),
                                                          entryFn,
                                                          arg,
-                                                         arg != nullptr,
+                                                         owned && arg != nullptr,
                                                          promise};
     if (!payload) {
         rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
@@ -557,6 +560,74 @@ static void threads_async_run_handler(void **args, void *result) {
         rt_obj_free(thread);
     if (result)
         *reinterpret_cast<void **>(result) = future;
+}
+
+/// @brief Runtime bridge handler for Viper.Threads.Async.Run (borrowed arg).
+static void threads_async_run_handler(void **args, void *result) {
+    threads_async_run_impl(args, result, /*owned=*/false);
+}
+
+/// @brief Runtime bridge handler for Viper.Threads.Async.RunOwned (owned arg).
+static void threads_async_run_owned_handler(void **args, void *result) {
+    threads_async_run_impl(args, result, /*owned=*/true);
+}
+
+/// @brief Trap for Async callback variants without a managed VM bridge
+///        (VDOC-127): the native implementations would cast the opaque VM
+///        function value to a native pointer — undefined behavior.
+static bool vmAsyncCallbackUnsupported(const char *api) {
+    if (activeVMInstance()) {
+        rt_trap((std::string(api) +
+                 ": callback execution is not supported on the interpreted backends; "
+                 "compile to native to run it")
+                    .c_str());
+        return true;
+    }
+    return false;
+}
+
+static void threads_async_run_cancellable_handler(void **args, void *result) {
+    if (vmAsyncCallbackUnsupported("Async.RunCancellable"))
+        return;
+    void *entry = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *arg = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *token = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *future = rt_async_run_cancellable(entry, arg, token);
+    if (result)
+        *reinterpret_cast<void **>(result) = future;
+}
+
+static void threads_async_run_cancellable_owned_handler(void **args, void *result) {
+    if (vmAsyncCallbackUnsupported("Async.RunCancellableOwned"))
+        return;
+    void *entry = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *arg = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *token = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *future = rt_async_run_cancellable_owned(entry, arg, token);
+    if (result)
+        *reinterpret_cast<void **>(result) = future;
+}
+
+static void threads_async_map_handler(void **args, void *result) {
+    if (vmAsyncCallbackUnsupported("Async.Map"))
+        return;
+    void *future = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *fn = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *mapped = rt_async_map(future, fn, arg);
+    if (result)
+        *reinterpret_cast<void **>(result) = mapped;
+}
+
+static void threads_async_map_owned_handler(void **args, void *result) {
+    if (vmAsyncCallbackUnsupported("Async.MapOwned"))
+        return;
+    void *future = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *fn = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *mapped = rt_async_map_owned(future, fn, arg);
+    if (result)
+        *reinterpret_cast<void **>(result) = mapped;
 }
 
 /// @brief Run an index-range callback sequentially on the active VM.
@@ -638,14 +709,112 @@ static void runVmInvokeFunctions(VM &vm, void *funcs, const char *api) {
     }
 }
 
+/// @brief Run a `(Ptr) -> Unit` callback over each Seq element on the VM.
+/// @details Sequential equivalent of the native Parallel.ForEach (VDOC-126):
+///          same visible effects, single-threaded ordering.
+static void runVmSeqForEach(VM &vm, void *seq, void *func, const char *api) {
+    if (!seq)
+        return;
+    const il::core::Function *fn = resolveEntryFunction(vm.module(), func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return;
+    }
+    using Kind = il::core::Type::Kind;
+    if (fn->retType.kind != Kind::Void || fn->params.size() != 1 ||
+        fn->params[0].type.kind != Kind::Ptr) {
+        rt_trap((std::string(api) + ": callback must be (Object) -> Unit").c_str());
+        return;
+    }
+    const int64_t count = rt_seq_len(seq);
+    for (int64_t i = 0; i < count; ++i) {
+        il::support::SmallVector<Slot, 1> callArgs;
+        Slot s{};
+        s.ptr = rt_seq_get(seq, i);
+        callArgs.push_back(s);
+        detail::VMAccess::callFunction(vm, *fn, callArgs);
+    }
+}
+
+/// @brief Map a Seq through a `(Ptr) -> Ptr` callback on the VM.
+/// @details Sequential equivalent of the native Parallel.Map (VDOC-126);
+///          returns an owning Seq of the mapped values in order.
+static void *runVmSeqMap(VM &vm, void *seq, void *func, const char *api) {
+    void *out = rt_seq_new();
+    rt_seq_set_owns_elements(out, 1);
+    if (!seq)
+        return out;
+    const il::core::Function *fn = resolveEntryFunction(vm.module(), func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return out;
+    }
+    using Kind = il::core::Type::Kind;
+    if (fn->retType.kind != Kind::Ptr || fn->params.size() != 1 ||
+        fn->params[0].type.kind != Kind::Ptr) {
+        rt_trap((std::string(api) + ": callback must be (Object) -> Object").c_str());
+        return out;
+    }
+    const int64_t count = rt_seq_len(seq);
+    for (int64_t i = 0; i < count; ++i) {
+        il::support::SmallVector<Slot, 1> callArgs;
+        Slot s{};
+        s.ptr = rt_seq_get(seq, i);
+        callArgs.push_back(s);
+        Slot r = detail::VMAccess::callFunction(vm, *fn, callArgs);
+        rt_seq_push(out, r.ptr);
+    }
+    return out;
+}
+
+/// @brief Fold a Seq through a `(Ptr, Ptr) -> Ptr` callback on the VM.
+/// @details Sequential left fold matching the native Parallel.Reduce result
+///          for associative reducers (VDOC-126).
+static void *runVmSeqReduce(VM &vm, void *seq, void *func, void *identity, const char *api) {
+    if (!seq)
+        return identity;
+    const il::core::Function *fn = resolveEntryFunction(vm.module(), func);
+    if (!fn) {
+        rt_trap((std::string(api) + ": invalid callback function").c_str());
+        return identity;
+    }
+    using Kind = il::core::Type::Kind;
+    if (fn->retType.kind != Kind::Ptr || fn->params.size() != 2 ||
+        fn->params[0].type.kind != Kind::Ptr || fn->params[1].type.kind != Kind::Ptr) {
+        rt_trap((std::string(api) + ": callback must be (Object, Object) -> Object").c_str());
+        return identity;
+    }
+    void *acc = identity;
+    const int64_t count = rt_seq_len(seq);
+    for (int64_t i = 0; i < count; ++i) {
+        il::support::SmallVector<Slot, 2> callArgs;
+        Slot a{};
+        a.ptr = acc;
+        callArgs.push_back(a);
+        Slot b{};
+        b.ptr = rt_seq_get(seq, i);
+        callArgs.push_back(b);
+        Slot r = detail::VMAccess::callFunction(vm, *fn, callArgs);
+        acc = r.ptr;
+    }
+    return acc;
+}
+
 static void threads_pool_submit_handler(void **args, void *result) {
     void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
 
     if (VM *vm = activeVMInstance()) {
-        // No worker pool on the VM: run the task synchronously and report success, preserving
+        // No worker pool on the VM: run the task synchronously, preserving
         // "submit, then it runs" semantics for dev/debug instead of trapping.
+        // Pool state is still honored (VDOC-125): a shut-down or invalid
+        // pool rejects the submission exactly like the native backend.
+        if (!pool || rt_threadpool_get_is_shutdown(pool)) {
+            if (result)
+                *reinterpret_cast<int8_t *>(result) = 0;
+            return;
+        }
         runVmPoolTask(*vm, callback, arg, "Pool.Submit");
         if (result)
             *reinterpret_cast<int8_t *>(result) = 1;
@@ -657,12 +826,38 @@ static void threads_pool_submit_handler(void **args, void *result) {
         *reinterpret_cast<int8_t *>(result) = submitted;
 }
 
+/// @brief SubmitOwned bridge: on the VM the task runs synchronously, so the
+///        pool-side retain/release nets out within the call (VDOC-128).
+static void threads_pool_submit_owned_handler(void **args, void *result) {
+    void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+
+    if (VM *vm = activeVMInstance()) {
+        if (!pool || rt_threadpool_get_is_shutdown(pool)) {
+            if (result)
+                *reinterpret_cast<int8_t *>(result) = 0;
+            return;
+        }
+        runVmPoolTask(*vm, callback, arg, "Pool.SubmitOwned");
+        if (result)
+            *reinterpret_cast<int8_t *>(result) = 1;
+        return;
+    }
+
+    int8_t submitted = rt_threadpool_submit_owned(pool, callback, arg);
+    if (result)
+        *reinterpret_cast<int8_t *>(result) = submitted;
+}
+
 static void threads_parallel_foreach_handler(void **args, void *result) {
     (void)result;
     void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.ForEach: sequence-callback execution is not yet supported on the VM; compile to native to run it");
+    if (VM *vm = activeVMInstance()) {
+        runVmSeqForEach(*vm, seq, func, "Parallel.ForEach");
+        return;
+    }
     rt_parallel_foreach(seq, func);
 }
 
@@ -671,16 +866,24 @@ static void threads_parallel_foreach_pool_handler(void **args, void *result) {
     void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.ForEachPool: sequence-callback execution is not yet supported on the VM; compile to native to run it");
+    if (VM *vm = activeVMInstance()) {
+        // The pool is a native concurrency hint; on the VM the walk is sequential.
+        (void)pool;
+        runVmSeqForEach(*vm, seq, func, "Parallel.ForEachPool");
+        return;
+    }
     rt_parallel_foreach_pool(seq, func, pool);
 }
 
 static void threads_parallel_map_handler(void **args, void *result) {
     void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.Map: sequence-callback execution is not yet supported on the VM; compile to native to run it");
+    if (VM *vm = activeVMInstance()) {
+        void *vmMapped = runVmSeqMap(*vm, seq, func, "Parallel.Map");
+        if (result)
+            *reinterpret_cast<void **>(result) = vmMapped;
+        return;
+    }
     void *mapped = rt_parallel_map(seq, func);
     if (result)
         *reinterpret_cast<void **>(result) = mapped;
@@ -690,8 +893,13 @@ static void threads_parallel_map_pool_handler(void **args, void *result) {
     void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.MapPool: sequence-callback execution is not yet supported on the VM; compile to native to run it");
+    if (VM *vm = activeVMInstance()) {
+        (void)pool;
+        void *vmMapped = runVmSeqMap(*vm, seq, func, "Parallel.MapPool");
+        if (result)
+            *reinterpret_cast<void **>(result) = vmMapped;
+        return;
+    }
     void *mapped = rt_parallel_map_pool(seq, func, pool);
     if (result)
         *reinterpret_cast<void **>(result) = mapped;
@@ -751,8 +959,12 @@ static void threads_parallel_reduce_handler(void **args, void *result) {
     void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.Reduce: sequence-callback execution is not yet supported on the VM; compile to native to run it");
+    if (VM *vm = activeVMInstance()) {
+        void *vmReduced = runVmSeqReduce(*vm, seq, func, identity, "Parallel.Reduce");
+        if (result)
+            *reinterpret_cast<void **>(result) = vmReduced;
+        return;
+    }
     void *reduced = rt_parallel_reduce(seq, func, identity);
     if (result)
         *reinterpret_cast<void **>(result) = reduced;
@@ -763,8 +975,13 @@ static void threads_parallel_reduce_pool_handler(void **args, void *result) {
     void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
     void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
     void *pool = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
-    if (activeVMInstance())
-        rt_trap("Parallel.ReducePool: sequence-callback execution is not yet supported on the VM; compile to native to run it");
+    if (VM *vm = activeVMInstance()) {
+        (void)pool;
+        void *vmReduced = runVmSeqReduce(*vm, seq, func, identity, "Parallel.ReducePool");
+        if (result)
+            *reinterpret_cast<void **>(result) = vmReduced;
+        return;
+    }
     void *reduced = rt_parallel_reduce_pool(seq, func, identity, pool);
     if (result)
         *reinterpret_cast<void **>(result) = reduced;
@@ -816,10 +1033,57 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
+        ext.name = "Viper.Threads.Async.RunOwned";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_async_run_owned_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Async.RunCancellable";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_async_run_cancellable_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Async.RunCancellableOwned";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_async_run_cancellable_owned_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Async.Map";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_async_map_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Async.MapOwned";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_async_map_owned_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
         ext.name = "Viper.Threads.Pool.Submit";
         ext.signature =
             make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
         ext.fn = reinterpret_cast<void *>(&threads_pool_submit_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Pool.SubmitOwned";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
+        ext.fn = reinterpret_cast<void *>(&threads_pool_submit_owned_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {

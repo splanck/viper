@@ -33,6 +33,16 @@
 extern "C" {
 #endif
 
+/// @brief snprintf that always uses the C numeric locale for the conversion.
+/// @details Deterministic decimal separators regardless of the embedding
+///          process's LC_NUMERIC. Shared by the text-format emitters so their
+///          numeric output is identical across locales (VDOC-041).
+/// @param buffer Destination buffer.
+/// @param capacity Size of @p buffer in bytes.
+/// @param fmt printf-style format string.
+/// @return Number of bytes written (excluding the terminator), or negative on error.
+int rt_format_snprintf_c_locale(char *buffer, size_t capacity, const char *fmt, ...);
+
 /// @brief Format a double-precision value into a deterministic display string.
 ///
 /// @details This is the BASIC PRINT/WRITE# display form. It keeps historical

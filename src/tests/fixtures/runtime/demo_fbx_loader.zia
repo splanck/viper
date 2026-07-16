@@ -11,25 +11,25 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 200.0);
 
     // Load complex binary FBX file (pyramob — multi-mesh model)
-    var asset = FBX.Load("src/tests/fixtures/runtime/test_humanoid.fbx");
+    var asset = Fbx.Load("src/tests/fixtures/runtime/test_humanoid.fbx");
 
-    var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
-    var floor_mat = Material3D.NewColor(0.2, 0.2, 0.25);
+    var floor_mesh = Mesh3D.Plane(20.0, 20.0);
+    var floor_mat = Material3D.FromColor(0.2, 0.2, 0.25);
 
     // Material palette for multiple meshes
-    var mat0 = Material3D.NewColor(0.8, 0.3, 0.2);
+    var mat0 = Material3D.FromColor(0.8, 0.3, 0.2);
     Material3D.SetShininess(mat0, 32.0);
-    var mat1 = Material3D.NewColor(0.2, 0.6, 0.8);
+    var mat1 = Material3D.FromColor(0.2, 0.6, 0.8);
     Material3D.SetShininess(mat1, 64.0);
-    var mat2 = Material3D.NewColor(0.3, 0.8, 0.3);
+    var mat2 = Material3D.FromColor(0.3, 0.8, 0.3);
     Material3D.SetShininess(mat2, 48.0);
 
     // Lighting
     var sun_dir = new Vec3(-0.5, -1.0, -0.3);
-    var sun = Light3D.NewDirectional(sun_dir, 1.0, 0.95, 0.9);
+    var sun = Light3D.Directional(sun_dir, 1.0, 0.95, 0.9);
     Canvas3D.SetLight(canvas, 0, sun);
     var fill_dir = new Vec3(0.5, 0.5, 0.5);
-    var fill = Light3D.NewDirectional(fill_dir, 0.4, 0.4, 0.5);
+    var fill = Light3D.Directional(fill_dir, 0.4, 0.4, 0.5);
     Canvas3D.SetLight(canvas, 1, fill);
     Canvas3D.SetAmbient(canvas, 0.12, 0.12, 0.18);
 
@@ -43,12 +43,12 @@ func start() {
     SceneGraph.Add(scene, floor_node);
 
     // Add all meshes from FBX as scene nodes
-    var mesh_count = FBX.get_MeshCount(asset);
+    var mesh_count = Fbx.get_MeshCount(asset);
     var mats = [mat0, mat1, mat2];
 
     var i = 0;
     while (i < mesh_count) {
-        var m = FBX.GetMesh(asset, i);
+        var m = Fbx.GetMesh(asset, i);
         if (m != null) {
             var node = SceneNode.New();
             node.Mesh = m;
@@ -70,7 +70,7 @@ func start() {
 
     var time = 0.0;
 
-    while (canvas.ShouldClose == 0) {
+    while (not canvas.ShouldClose) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.05, 0.05, 0.1);
 

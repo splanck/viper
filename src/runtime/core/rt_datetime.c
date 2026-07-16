@@ -1049,8 +1049,9 @@ static int dt_make_utc_timestamp(
 /// @brief Compose a civil datetime into a local-zone Unix-epoch second count.
 /// @details Routes through `mktime` so DST/timezone rules apply automatically. The
 ///          round-trip through `localtime_r` validates that every output field matches
-///          the input — this catches DST "skipped hour" / "repeated hour" ambiguity
-///          cases that `mktime` would silently normalise.
+///          the input, rejecting skipped local hours that `mktime` normalizes. A repeated
+///          hour can round-trip through either occurrence, so `tm_isdst = -1` leaves that
+///          choice to the host implementation (VDOC-226).
 static int dt_make_local_timestamp(
     int year, int month, int day, int hour, int minute, int second, int64_t *out) {
     struct tm tm = {0};

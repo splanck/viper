@@ -179,7 +179,7 @@ class Effects {
             if tmKey[i] == key { return i; }
             i = i + 1;
         }
-        var m = G3D.Material3D.NewColor(r, g, b);
+        var m = G3D.Material3D.FromColor(r, g, b);
         G3D.Material3D.SetEmissiveColor(m, r, g, b);
         m.EmissiveIntensity = 2.6;
         tmKey.Add(key);
@@ -320,7 +320,7 @@ class Effects {
         while i < DECALS {
             if decalLive[i] == 1 {
                 G3D.Decal3D.Update(decals[i], dt);
-                if decals[i].Expired { decalLive[i] = 0; decals[i] = null; }
+                if decals[i].IsExpired { decalLive[i] = 0; decals[i] = null; }
             }
             i = i + 1;
         }

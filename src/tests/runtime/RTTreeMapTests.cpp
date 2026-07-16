@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTTreeMapTests.cpp
-// Purpose: Tests for Viper.Collections.TreeMap sorted key-value storage.
+// Purpose: Tests for Viper.Collections.SortedMap sorted key-value storage.
 //
 //===----------------------------------------------------------------------===//
 
@@ -399,7 +399,7 @@ static void test_null_value() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Collections.TreeMap Tests ===\n\n");
+    printf("=== Viper.Collections.SortedMap Tests ===\n\n");
 
     // Basic creation
     test_new_treemap();

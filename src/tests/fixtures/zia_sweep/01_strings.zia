@@ -79,9 +79,9 @@ func testSearchOps() {
     assertTrue(Viper.String.EndsWith("hello", ""), "endswith empty");
 
     // Has (fixed from Contains)
-    assertTrue(Viper.String.Has("hello", "ell"), "has found");
-    assertFalse(Viper.String.Has("hello", "xyz"), "has not found");
-    assertTrue(Viper.String.Has("hello", ""), "has empty");
+    assertTrue(Viper.String.Contains("hello", "ell"), "has found");
+    assertFalse(Viper.String.Contains("hello", "xyz"), "has not found");
+    assertTrue(Viper.String.Contains("hello", ""), "has empty");
 }
 
 func testSubstringOps() {
@@ -140,10 +140,10 @@ func testSplitOps() {
 
 func testFlipOps() {
     // Flip (fixed from Reverse)
-    assertEqStr(Viper.String.Flip("hello"), "olleh", "flip basic");
-    assertEqStr(Viper.String.Flip(""), "", "flip empty");
-    assertEqStr(Viper.String.Flip("a"), "a", "flip single");
-    assertEqStr(Viper.String.Flip("ab"), "ba", "flip two");
+    assertEqStr(Viper.String.Reverse("hello"), "olleh", "flip basic");
+    assertEqStr(Viper.String.Reverse(""), "", "flip empty");
+    assertEqStr(Viper.String.Reverse("a"), "a", "flip single");
+    assertEqStr(Viper.String.Reverse("ab"), "ba", "flip two");
 }
 
 func testEdgeCases() {
@@ -152,7 +152,7 @@ func testEdgeCases() {
     assertEqInt(Viper.String.get_Length(long), 10000, "long string length");
 
     // Cmp (fixed from Compare)
-    assertEqInt(Viper.String.Cmp("a", "b"), -1, "cmp less");
-    assertEqInt(Viper.String.Cmp("b", "a"), 1, "cmp greater");
-    assertEqInt(Viper.String.Cmp("a", "a"), 0, "cmp equal");
+    assertEqInt(Viper.String.Compare("a", "b"), -1, "cmp less");
+    assertEqInt(Viper.String.Compare("b", "a"), 1, "cmp greater");
+    assertEqInt(Viper.String.Compare("a", "a"), 0, "cmp equal");
 }

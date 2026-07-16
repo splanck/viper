@@ -62,7 +62,7 @@ static int daterange_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
-/// @brief Test whether two adjacent ranges leave at least one day gap between them.
+/// @brief Test whether two integer-second ranges leave at least one uncovered second.
 /// @details Returns 1 if `right_start > left_end + 1` (i.e. the two ranges are not
 ///          contiguous and not overlapping). Special-cases `INT64_MAX` so the `+1`
 ///          can't overflow. Used by the union/intersect operators to decide whether

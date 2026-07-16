@@ -33,18 +33,18 @@
 //
 // This file demonstrates three useful Viper audio patterns:
 //
-//   1. **Named sound bank** (`Viper.Sound.SoundBank`) — you
+//   1. **Named sound bank** (`Viper.Mixer.SoundBank`) — you
 //      register sounds under symbolic names ("jump", "hit"),
 //      then play them by name.  Renaming a WAV file doesn't
 //      ripple through the codebase.
 //
-//   2. **Procedural fallback** (`Viper.Sound.Synth`) — if the
+//   2. **Procedural fallback** (`Viper.Mixer.Synth`) — if the
 //      WAV files are absent (say a freshly-checked-out demo
 //      with no assets), the synth generates passable tones
 //      programmatically.  The game *still ships* and has
 //      recognisable feedback.  Great for CI / test probes.
 //
-//   3. **Graceful init failure** — `Audio.Init()` can fail on
+//   3. **Graceful init failure** — `Mixer.Init()` can fail on
 //      headless or audio-disabled platforms.  We flip a
 //      `ready` flag and let every `play*()` method early-out
 //      silently.  The rest of the game doesn't need to know.
@@ -71,7 +71,7 @@
 
 module sound;
 
-bind Viper.Sound;
+bind Viper.Audio;
 bind Viper.Text.Fmt;
 bind "./config";
 
@@ -158,13 +158,13 @@ class SoundManager {
     /// `Synth.*`.  Either way the bank gains the named sound
     /// and `play*` methods will work.
     ///
-    /// `Audio.Init()` returning 0 (no audio hardware /
+    /// `Mixer.Init()` returning 0 (no audio hardware /
     /// permission denied) leaves `ready = false` and every
     /// `play*` becomes a silent no-op.  This is what lets the
     /// game ship to headless CI without a separate "no audio"
     /// build.
     expose func setup(basePath: String) {
-        var ok = Audio.Init();
+        var ok = Mixer.Init();
         if ok == 0 { return; }
 
         applyVolumeSettings();
@@ -509,8 +509,8 @@ class SoundManager {
     /// group 1 is also updated for future grouped SFX calls.
     hide func applyVolumeSettings() {
         if ready == false { return; }
-        Audio.SetMasterVolume(masterVolume);
-        Audio.SetGroupVolume(1, sfxVolume);
+        Mixer.SetMasterVolume(masterVolume);
+        Mixer.SetGroupVolume(1, sfxVolume);
         var adaptiveMusicVolume =
             musicVolume * (85 + combatIntensity * 15 / 100) / 100;
         var adaptiveAmbienceVolume = ambienceVolume;
@@ -518,9 +518,9 @@ class SoundManager {
             adaptiveMusicVolume = adaptiveMusicVolume * 60 / 100;
             adaptiveAmbienceVolume = adaptiveAmbienceVolume * 70 / 100;
         }
-        Audio.SetGroupVolume(2, adaptiveMusicVolume);
-        Audio.SetGroupVolume(3, adaptiveAmbienceVolume);
-        Audio.SetGroupVolume(4, voiceVolume);
+        Mixer.SetGroupVolume(2, adaptiveMusicVolume);
+        Mixer.SetGroupVolume(3, adaptiveAmbienceVolume);
+        Mixer.SetGroupVolume(4, voiceVolume);
     }
 
     /// @brief Scale a base sound-effect volume by the current SFX slider.
@@ -557,18 +557,18 @@ class SoundManager {
         var texture = song.AddChannel(4);
 
         song.SetEnvelope(pad, 180, 160, 46, 220);
-        song.SetChannelVol(pad, 28);
+        song.SetChannelVolume(pad, 28);
         song.SetDetune(pad, 2 + bounded % 7);
         song.SetPan(pad, -22);
         song.SetEnvelope(pulse, 6, 55, 42, 90);
-        song.SetChannelVol(pulse, 42);
+        song.SetChannelVolume(pulse, 42);
         song.SetPan(pulse, 20);
         song.SetVibrato(pulse, 4 + bounded % 8, 360 + bounded * 30);
         song.SetEnvelope(bass, 4, 45, 70, 70);
-        song.SetChannelVol(bass, 40);
+        song.SetChannelVolume(bass, 40);
         song.SetPan(bass, -8);
         song.SetEnvelope(texture, 1, 22, 0, 35);
-        song.SetChannelVol(texture, 18 + bounded % 12);
+        song.SetChannelVolume(texture, 18 + bounded % 12);
 
         var chord = 0;
         while chord < 4 {
@@ -612,11 +612,11 @@ class SoundManager {
         var air = song.AddChannel(0);
         var texture = song.AddChannel(4);
         song.SetEnvelope(air, 350, 260, 35, 420);
-        song.SetChannelVol(air, 24);
+        song.SetChannelVolume(air, 24);
         song.SetDetune(air, 4 + bounded);
         song.SetPan(air, -28 + bounded * 5);
         song.SetEnvelope(texture, 2, 90, 4, 120);
-        song.SetChannelVol(texture, 9 + bounded);
+        song.SetChannelVolume(texture, 9 + bounded);
         song.SetPan(texture, 24 - bounded * 4);
         var root = 34 + (bounded * 7) % 12;
         song.AddNote(air, 0, root + 12, 1600);
@@ -638,8 +638,8 @@ class SoundManager {
     ///        device.
     expose func shutdown() {
         if ready == false { return; }
-        Audio.StopAllSounds();
-        Audio.Shutdown();
+        Mixer.StopAllSounds();
+        Mixer.Shutdown();
         ready = false;
     }
 
@@ -663,79 +663,79 @@ class SoundManager {
     /// @brief Player jump.  Short upward whoosh.
     expose func playJump() {
         if ready == false { return; }
-        bank.PlayEx("jump", scaledSfx(60), 0);
+        bank.Play("jump", scaledSfx(60), 0);
     }
 
     /// @brief Bullet fired.
     expose func playShoot() {
         if ready == false { return; }
-        bank.PlayEx("shoot", scaledSfx(50), 0);
+        bank.Play("shoot", scaledSfx(50), 0);
     }
 
     /// @brief Coin pickup chime.
     expose func playCoin() {
         if ready == false { return; }
-        bank.PlayEx("coin", scaledSfx(70), 0);
+        bank.Play("coin", scaledSfx(70), 0);
     }
 
     /// @brief Player took damage.  Lower-pitched bark.
     expose func playHurt() {
         if ready == false { return; }
-        bank.PlayEx("hurt", scaledSfx(80), 0);
+        bank.Play("hurt", scaledSfx(80), 0);
     }
 
     /// @brief Enemy killed.  Sharp pop.
     expose func playEnemyDeath() {
         if ready == false { return; }
-        bank.PlayEx("enemy_death", scaledSfx(65), 0);
+        bank.Play("enemy_death", scaledSfx(65), 0);
     }
 
     /// @brief Powerup pickup arpeggio.
     expose func playPowerup() {
         if ready == false { return; }
-        bank.PlayEx("powerup", scaledSfx(70), 0);
+        bank.Play("powerup", scaledSfx(70), 0);
     }
 
     /// @brief Checkpoint activated.
     expose func playCheckpoint() {
         if ready == false { return; }
-        bank.PlayEx("checkpoint", scaledSfx(70), 0);
+        bank.Play("checkpoint", scaledSfx(70), 0);
     }
 
     /// @brief Level cleared fanfare.
     expose func playLevelComplete() {
         if ready == false { return; }
-        bank.PlayEx("level_complete", scaledSfx(80), 0);
+        bank.Play("level_complete", scaledSfx(80), 0);
     }
 
     /// @brief Menu confirm click.
     expose func playMenuSelect() {
         if ready == false { return; }
-        bank.PlayEx("menu_select", scaledSfx(60), 0);
+        bank.Play("menu_select", scaledSfx(60), 0);
     }
 
     /// @brief Menu cursor tick.
     expose func playMenuMove() {
         if ready == false { return; }
-        bank.PlayEx("menu_move", scaledSfx(40), 0);
+        bank.Play("menu_move", scaledSfx(40), 0);
     }
 
     /// @brief Backing out of a sub-screen.  Lower, softer than confirm.
     expose func playMenuBack() {
         if ready == false { return; }
-        bank.PlayEx("menu_back", scaledSfx(50), 0);
+        bank.Play("menu_back", scaledSfx(50), 0);
     }
 
     /// @brief Player death.  Falling-pitch wail.
     expose func playDeath() {
         if ready == false { return; }
-        bank.PlayEx("death", scaledSfx(80), 0);
+        bank.Play("death", scaledSfx(80), 0);
     }
 
     /// @brief Mario-style stomp on enemy.
     expose func playStomp() {
         if ready == false { return; }
-        bank.PlayEx("stomp", scaledSfx(65), 0);
+        bank.Play("stomp", scaledSfx(65), 0);
     }
 
     // =========================================================================
@@ -745,37 +745,37 @@ class SoundManager {
     /// @brief Dash whoosh.
     expose func playDash() {
         if ready == false { return; }
-        bank.PlayEx("dash", scaledSfx(65), 0);
+        bank.Play("dash", scaledSfx(65), 0);
     }
 
     /// @brief Charge-shot wind-up loop start.
     expose func playChargeStart() {
         if ready == false { return; }
-        bank.PlayEx("charge_start", scaledSfx(48), 0);
+        bank.Play("charge_start", scaledSfx(48), 0);
     }
 
     /// @brief Charge-shot release boom.
     expose func playChargeRelease() {
         if ready == false { return; }
-        bank.PlayEx("charge_release", scaledSfx(78), 0);
+        bank.Play("charge_release", scaledSfx(78), 0);
     }
 
     /// @brief Ground-pound landing thud.
     expose func playGroundPound() {
         if ready == false { return; }
-        bank.PlayEx("ground_pound", scaledSfx(82), 0);
+        bank.Play("ground_pound", scaledSfx(82), 0);
     }
 
     /// @brief Ice-wraith freeze impact.
     expose func playFreeze() {
         if ready == false { return; }
-        bank.PlayEx("freeze", scaledSfx(70), 0);
+        bank.Play("freeze", scaledSfx(70), 0);
     }
 
     /// @brief Boss phase-change roar.
     expose func playBossPhase() {
         if ready == false { return; }
-        bank.PlayEx("boss_phase", scaledSfx(90), 0);
+        bank.Play("boss_phase", scaledSfx(90), 0);
     }
 
     /// @brief Play the shared hostile-projectile attack-tell cue.
@@ -786,26 +786,26 @@ class SoundManager {
     /// @return Nothing. Routes through SFX volume or no-ops without audio.
     expose func playEnemyTell() {
         if ready == false { return; }
-        bank.PlayEx("enemy_tell", scaledSfx(38), 0);
+        bank.Play("enemy_tell", scaledSfx(38), 0);
     }
 
     /// @brief Ability acquired sting.  Used by the freeze-
     ///        frame popup.
     expose func playAbilityGet() {
         if ready == false { return; }
-        bank.PlayEx("ability_get", scaledSfx(85), 0);
+        bank.Play("ability_get", scaledSfx(85), 0);
     }
 
     /// @brief Save-station activation chime.
     expose func playSave() {
         if ready == false { return; }
-        bank.PlayEx("save", scaledSfx(72), 0);
+        bank.Play("save", scaledSfx(72), 0);
     }
 
     /// @brief Lore terminal scanned beep.
     expose func playLoreFound() {
         if ready == false { return; }
-        bank.PlayEx("lore_found", scaledSfx(62), 0);
+        bank.Play("lore_found", scaledSfx(62), 0);
     }
 
     /// @brief Confirm an optional secret-room discovery with a unique shimmer.
@@ -814,7 +814,7 @@ class SoundManager {
     ///         audio device was unavailable during setup.
     expose func playSecretFound() {
         if ready == false { return; }
-        bank.PlayEx("secret_found", scaledSfx(74), 0);
+        bank.Play("secret_found", scaledSfx(74), 0);
     }
 
     /// @brief Play one cadence-controlled step for the sampled floor material.
@@ -828,7 +828,7 @@ class SoundManager {
         if family == FOOTSTEP_SOFT { name = "footstep_soft"; }
         if family == FOOTSTEP_METAL { name = "footstep_metal"; }
         if family == FOOTSTEP_CRYSTAL { name = "footstep_crystal"; }
-        bank.PlayEx(name, scaledSfx(34), 0);
+        bank.Play(name, scaledSfx(34), 0);
     }
 
     /// @brief Play the short ARIA channel-open cue at independent voice volume.
@@ -836,32 +836,32 @@ class SoundManager {
     /// @return Nothing. Missing audio hardware remains a silent safe no-op.
     expose func playRadioCue() {
         if ready == false { return; }
-        bank.PlayEx("radio_chirp", 65 * voiceVolume / 100, 0);
+        bank.Play("radio_chirp", 65 * voiceVolume / 100, 0);
     }
 
     /// @brief Boss-room entry sting.
     expose func playBossIntro() {
         if ready == false { return; }
-        bank.PlayEx("boss_intro", scaledSfx(88), 0);
+        bank.Play("boss_intro", scaledSfx(88), 0);
     }
 
     /// @brief Game-clear / endgame fanfare.
     expose func playVictory() {
         if ready == false { return; }
-        bank.PlayEx("victory", scaledSfx(92), 0);
+        bank.Play("victory", scaledSfx(92), 0);
     }
 
     /// @brief Generic explosion.  Used for breaking walls,
     ///        boss minions, etc.
     expose func playExplosion() {
         if ready == false { return; }
-        bank.PlayEx("explosion", scaledSfx(82), 0);
+        bank.Play("explosion", scaledSfx(82), 0);
     }
 
     /// @brief Glassy shatter for crystal tiles.
     expose func playCrystalBreak() {
         if ready == false { return; }
-        bank.PlayEx("crystal_break", scaledSfx(68), 0);
+        bank.Play("crystal_break", scaledSfx(68), 0);
     }
 
     // =========================================================================

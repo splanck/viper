@@ -54,7 +54,7 @@ class ToolPalette {
     }
 
     expose func previous() -> Integer {
-        return group.SelectPrev();
+        return group.SelectPrevious();
     }
 
     expose func selected() -> Integer {

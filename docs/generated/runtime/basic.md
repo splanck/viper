@@ -11,9 +11,9 @@
 
 Provides Language Service constants and static operations for Viper BASIC language tooling.
 
-`Viper.Basic.LanguageService` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `CheckForFile`, `ItemsForFile`, `SymbolsForFile`,
-`HoverInfoForFile`.
+`Viper.Basic.LanguageService` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `CheckForFile`, `ItemsForFile`,
+`SymbolsForFile`, `HoverInfoForFile`.
 
 #### Methods
 

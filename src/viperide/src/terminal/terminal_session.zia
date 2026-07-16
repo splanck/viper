@@ -48,22 +48,21 @@ class TerminalSession {
         exitedThisUpdate = false;
         started = true;
         if Pty.IsSupported() == false {
-            lastError = Pty.LastError();
-            if lastError == "" { lastError = "PTY support is not available on this platform"; }
+            lastError = "PTY support is not available on this platform";
             return false;
         }
         if active { return true; }
         var a = args;
         if a == null { a = Seq.New(); }
-        session = Pty.Open(program, a, cwd, null, cols, rows);
-        if session == null {
-            lastError = Pty.LastError();
+        var opened = Pty.OpenResult(program, a, cwd, null, cols, rows);
+        if not opened.IsOk {
+            lastError = opened.UnwrapErrStr();
             if lastError == "" { lastError = "PTY session could not be created"; }
             return false;
         }
+        session = opened.Unwrap();
         if session.IsValid() == false {
-            lastError = Pty.LastError();
-            if lastError == "" { lastError = "PTY session handle was invalid"; }
+            lastError = "PTY session handle was invalid";
             session = null;
             return false;
         }

@@ -27,8 +27,8 @@ PRINT "Range 2: Jan 15 - Feb 15"
 
 ' --- Start / End ---
 PRINT "--- Start / End ---"
-PRINT "r1 Start ISO: "; Viper.Time.DateTime.ToISO(Viper.Time.DateRange.get_Start(r1))
-PRINT "r1 End ISO: "; Viper.Time.DateTime.ToISO(Viper.Time.DateRange.get_End(r1))
+PRINT "r1 Start ISO: "; Viper.Time.DateTime.ToIso8601(Viper.Time.DateRange.get_Start(r1))
+PRINT "r1 End ISO: "; Viper.Time.DateTime.ToIso8601(Viper.Time.DateRange.get_End(r1))
 
 ' --- Contains ---
 PRINT "--- Contains ---"
@@ -47,15 +47,15 @@ PRINT "r1 Overlaps r2: "; Viper.Time.DateRange.Overlaps(r1, r2)
 PRINT "--- Intersection ---"
 DIM inter AS OBJECT
 inter = Viper.Time.DateRange.Intersection(r1, r2)
-PRINT "Intersection Start: "; Viper.Time.DateTime.ToISO(Viper.Time.DateRange.get_Start(inter))
-PRINT "Intersection End: "; Viper.Time.DateTime.ToISO(Viper.Time.DateRange.get_End(inter))
+PRINT "Intersection Start: "; Viper.Time.DateTime.ToIso8601(Viper.Time.DateRange.get_Start(inter))
+PRINT "Intersection End: "; Viper.Time.DateTime.ToIso8601(Viper.Time.DateRange.get_End(inter))
 
 ' --- Union ---
 PRINT "--- Union ---"
 DIM uni AS OBJECT
 uni = Viper.Time.DateRange.Union(r1, r2)
-PRINT "Union Start: "; Viper.Time.DateTime.ToISO(Viper.Time.DateRange.get_Start(uni))
-PRINT "Union End: "; Viper.Time.DateTime.ToISO(Viper.Time.DateRange.get_End(uni))
+PRINT "Union Start: "; Viper.Time.DateTime.ToIso8601(Viper.Time.DateRange.get_Start(uni))
+PRINT "Union End: "; Viper.Time.DateTime.ToIso8601(Viper.Time.DateRange.get_End(uni))
 
 ' --- Days ---
 PRINT "--- Days ---"

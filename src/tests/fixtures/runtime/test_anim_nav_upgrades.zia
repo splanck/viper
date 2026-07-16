@@ -121,7 +121,7 @@ func start() {
     // --- Nav auto-tiling ---------------------------------------------------
     var scene = SceneGraph.New();
     var node = SceneNode.New();
-    SceneNode.set_Mesh(node, Mesh3D.NewPlane(40.0, 40.0));
+    SceneNode.set_Mesh(node, Mesh3D.Plane(40.0, 40.0));
     SceneGraph.Add(scene, node);
     var nm = NavMesh3D.Bake(scene, 0.4, 1.8, 45.0, 0.5);
     if (nm == null) {

@@ -5,7 +5,7 @@ last-verified: 2026-07-14
 ---
 
 # Maps & Sets
-> Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, TreeMap
+> Map, Set, OrderedMap, SortedSet, FrozenMap, FrozenSet, SortedMap
 
 **Part of [Viper Runtime Library](../README.md) › [Collections](README.md)**
 
@@ -30,8 +30,8 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 | Method                     | Signature                 | Description                                                              |
 |----------------------------|---------------------------|--------------------------------------------------------------------------|
 | `Set(key, value)`          | `Void(String, Object)`    | Add or update key-value pair                                             |
-| `Get(key)`                 | `Object(String)`          | Get value for key (returns NULL if not found)                            |
-| `GetOr(key, defaultValue)` | `Object(String, Object)`  | Get value for key, or return `defaultValue` if missing (does not insert) |
+| `Get(key)`                 | `Object(String)`          | Get the borrowed value for a key (NULL if missing)                       |
+| `GetOr(key, defaultValue)` | `Object(String, Object)`  | Get the borrowed value, or `defaultValue` if missing (does not insert)   |
 | `Has(key)`                 | `Boolean(String)`         | Check if key exists                                                      |
 | `SetIfMissing(key, value)` | `Boolean(String, Object)` | Insert key-value pair only when missing; returns true if inserted        |
 | `Remove(key)`              | `Boolean(String)`         | Remove key-value pair; returns true if found                             |
@@ -47,19 +47,28 @@ Convenience methods for storing and retrieving typed values without manual boxin
 | Method                          | Signature                    | Description                                                       |
 |---------------------------------|------------------------------|-------------------------------------------------------------------|
 | `SetInt(key, value)`            | `Void(String, Integer)`      | Store an integer value                                            |
-| `GetInt(key)`                   | `Integer(String)`            | Get an integer value (returns 0 if key not found)                 |
-| `GetIntOr(key, default)`        | `Integer(String, Integer)`   | Get an integer value, or return `default` if missing              |
+| `GetInt(key)`                   | `Integer(String)`            | Get/coerce a numeric value (0 if missing; traps if incompatible)  |
+| `GetIntOr(key, default)`        | `Integer(String, Integer)`   | Get/coerce a numeric value, or `default` if missing/incompatible  |
 | `SetFloat(key, value)`          | `Void(String, Number)`       | Store a floating-point value                                      |
-| `GetFloat(key)`                 | `Number(String)`             | Get a floating-point value (returns 0.0 if key not found)         |
-| `GetFloatOr(key, default)`      | `Number(String, Number)`     | Get a floating-point value, or return `default` if missing        |
+| `GetFloat(key)`                 | `Number(String)`             | Get/coerce a numeric value (0.0 if missing; traps if incompatible)|
+| `GetFloatOr(key, default)`      | `Number(String, Number)`     | Get/coerce a numeric value, or `default` if missing/incompatible  |
+| `SetBool(key, value)`           | `Void(String, Boolean)`      | Store a boolean value                                             |
+| `GetBool(key)`                  | `Boolean(String)`            | Get/coerce a numeric/boolean value (false if missing)             |
+| `GetBoolOr(key, default)`       | `Boolean(String, Boolean)`   | Get/coerce a value, or `default` if missing/incompatible          |
 | `SetStr(key, value)`            | `Void(String, String)`       | Store a string value                                              |
-| `GetStr(key)`                   | `String(String)`             | Get a string value (returns empty string if key not found)        |
+| `GetStr(key)`                   | `String(String)`             | Get a string (empty if missing; traps if incompatible)            |
 
 ### Notes
 
 - String keys are compared by full byte length; embedded NUL bytes are part of the key.
 - Values are retained while stored and released when overwritten, removed, cleared, or finalized.
+- `Get()` and `GetOr()` return borrowed references. A present key may store NULL: in that case
+  `Has()` is true and both getters return NULL rather than substituting the default.
 - `Keys()` and `Values()` return independent snapshots. Key snapshots own copied strings; value snapshots retain the object values so they remain valid after the source map is cleared.
+- `Keys()` and `Values()` use the same hash-table order, not insertion order; corresponding indices
+  identify the same entry, but that order is otherwise unspecified.
+- Integer, float, and boolean getters coerce among boxed integers, floats, and booleans. The plain
+  getters trap on another stored type; their `Or` variants return the supplied default instead.
 - Map growth and key-copy allocation paths trap on overflow instead of wrapping.
 
 ### Zia Example
@@ -154,7 +163,7 @@ PRINT scores.IsEmpty  ' Output: True
 ## Viper.Collections.Set
 
 A generic set data structure for storing unique objects. Efficiently handles membership testing, set operations (union,
-intersection, difference), and subset/superset queries. Unlike `Bag` which stores strings, `Set` stores arbitrary objects.
+intersection, difference), and subset/superset queries. Unlike `StringSet` which stores strings, `Set` stores arbitrary objects.
 
 **Type:** Instance (obj)
 **Constructor:** `Viper.Collections.Set.New()`
@@ -187,12 +196,16 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 
 ### Notes
 
-- Objects are compared by reference identity, not value equality
-- Order of objects returned by `Items()` is not guaranteed (hash table)
-- `Items()` and `ToSeq()` return retained snapshots; elements remain valid after the source set is cleared.
-- Set operations (`Union`, `Intersect`, `Diff`) return new sets; originals are unchanged
-- Uses object identity hash for O(1) average-case operations
-- Automatically resizes when load factor exceeds threshold
+- Separately boxed integers, booleans, floats, and strings compare by boxed value. Other objects
+  compare by reference identity. Boxed values of different tags remain distinct (for example,
+  boxed integer `1` and boxed boolean `true`).
+- Order of objects returned by `Items()` is not guaranteed (hash-table order).
+- Elements are retained while stored. `Items()`, `ToSeq()`, and `ToList()` return retained
+  snapshots; elements remain valid after the source set is cleared.
+- Set operations (`Union`, `Intersect`, `Diff`) return new sets; originals are unchanged.
+- Hashing follows the same rule as equality: boxed scalars hash by value and other objects by
+  identity. Membership operations are O(1) average-case and O(n) worst-case.
+- The table automatically resizes when its load factor reaches the threshold.
 
 ### Zia Example
 
@@ -206,12 +219,13 @@ bind Viper.Terminal;
 func start() {
     var items: Set = Set.New();
     var one = Box.I64(1);
+    var anotherOne = Box.I64(1);
     var two = Box.I64(2);
 
     SayBool(items.Add(one));       // true
-    SayBool(items.Add(one));       // false: identical object reference
+    SayBool(items.Add(anotherOne)); // false: equal boxed value, despite a different box
     SayBool(items.Add(two));       // true
-    SayBool(items.Has(one));       // true
+    SayBool(items.Has(Box.I64(1))); // true: boxed-value lookup
     SayInt(items.Count);           // 2
 }
 ```
@@ -230,8 +244,9 @@ items.Add(b)
 items.Add(c)
 PRINT items.Count           ' Output: 3
 
-' Duplicate add returns false
-DIM wasNew AS INTEGER = items.Add(a)
+' A separately boxed equal scalar is also a duplicate
+DIM anotherA AS OBJECT = Viper.Core.Box.I64(1)
+DIM wasNew AS INTEGER = items.Add(anotherA)
 PRINT wasNew              ' Output: 0 (already present)
 
 ' Membership testing
@@ -284,18 +299,18 @@ disjoint.Add(w)
 PRINT setA.IsDisjoint(disjoint) ' Output: 1 (true - no common elements)
 ```
 
-### Set vs Bag
+### Set vs StringSet
 
-| Feature          | Set                        | Bag                     |
+| Feature          | Set                        | StringSet                     |
 |------------------|----------------------------|-------------------------|
 | Element type     | Any object                 | Strings only            |
-| Comparison       | Reference identity         | String value            |
+| Comparison       | Boxed-scalar value; otherwise identity | String value   |
 | Subset/Superset  | Yes                        | No                      |
 | Disjoint check   | Yes                        | No                      |
 
 ### Use Cases
 
-- **Object deduplication:** Track unique object instances
+- **Value/object deduplication:** Deduplicate boxed scalars by value or other objects by identity
 - **Graph algorithms:** Track visited nodes
 - **Relationship modeling:** Many-to-many relationships
 - **Set mathematics:** Compute unions, intersections, and differences
@@ -323,23 +338,26 @@ regardless of updates.
 | Method            | Signature              | Description                                                       |
 |-------------------|------------------------|-------------------------------------------------------------------|
 | `Set(key, value)` | `Void(String, Object)` | Add or update a key-value pair (preserves original insertion order)|
-| `Get(key)`        | `Object(String)`       | Get value for key (null if not found)                             |
+| `Get(key)`        | `Object(String)`       | Get the borrowed value for a key (null if not found)              |
 | `Has(key)`        | `Boolean(String)`      | Check if key exists                                               |
 | `KeyAt(index)`    | `String(Integer)`      | Get the key at the given position in insertion order              |
 | `Keys()`          | `Seq()`                | Get all keys in insertion order                                   |
 | `Values()`        | `Seq()`                | Get all values in insertion order                                 |
-| `Remove(key)`     | `Integer(String)`      | Remove a key-value pair; returns 1 if found, 0 if not            |
+| `Remove(key)`     | `Boolean(String)`      | Remove a key-value pair; true if found                            |
 | `Clear()`         | `Void()`               | Remove all entries                                                |
 
 ### Notes
 
 - Updating an existing key's value does *not* change its position in the insertion order
-- `KeyAt` provides O(1) access to keys by their insertion position
+- `KeyAt` walks the insertion-order list and is O(index), hence O(n) in the worst case. It returns
+  null for a negative or out-of-range index.
 - After removing a key, subsequent keys shift down in their positional indices
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Passing a null key through the runtime API is treated as the empty string key
 - Values are retained while stored and released when overwritten, removed, cleared, or finalized
-- `KeyAt()` returns an owned copied string. `Keys()` and `Values()` return independent snapshots. Value snapshots retain object values.
+- `Get()` returns a borrowed value. Use `Has()` to distinguish a missing key from a present null.
+- `KeyAt()` returns an owned copied string. `Keys()` and `Values()` return independent snapshots
+  in insertion order; value snapshots retain object values.
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 
 ### Zia Example
@@ -436,14 +454,14 @@ om.Clear()
 PRINT om.IsEmpty          ' 1
 ```
 
-### OrderedMap vs Map vs TreeMap
+### OrderedMap vs Map vs SortedMap
 
-| Feature           | OrderedMap       | Map              | TreeMap          |
+| Feature           | OrderedMap       | Map              | SortedMap          |
 |-------------------|------------------|------------------|------------------|
 | Key order         | Insertion order  | Unordered        | Sorted order     |
 | Lookup            | O(1) average     | O(1) average     | O(log n)         |
 | Insert            | O(1) average     | O(1) average     | O(n)             |
-| Positional access | O(1) via KeyAt   | Not available    | Not available    |
+| Positional access | O(n) via KeyAt   | Not available    | Not available    |
 
 ### Use Cases
 
@@ -456,7 +474,7 @@ PRINT om.IsEmpty          ' 1
 
 ## Viper.Collections.SortedSet
 
-A sorted set of unique strings maintained in sorted order. Unlike `Bag` which uses hash-based storage, `SortedSet`
+A sorted set of unique strings maintained in sorted order. Unlike `StringSet` which uses hash-based storage, `SortedSet`
 keeps elements sorted, enabling efficient range queries, ordered iteration, and floor/ceiling operations.
 
 **Type:** Instance (obj)
@@ -481,9 +499,9 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 | `Last()`            | `String()`                 | Get largest (last) element; empty string if empty                  |
 | `Floor(str)`        | `String(String)`           | Greatest element <= given string; empty if none                    |
 | `Ceil(str)`         | `String(String)`           | Least element >= given string; empty if none                       |
-| `Lower(str)`        | `String(String)`           | Greatest element < given string (strictly less)                    |
-| `Higher(str)`       | `String(String)`           | Least element > given string (strictly greater)                    |
-| `At(index)`         | `String(Integer)`          | Get element at index in sorted order                               |
+| `Lower(str)`        | `String(String)`           | Greatest element < given string; empty if none                     |
+| `Higher(str)`       | `String(String)`           | Least element > given string; empty if none                        |
+| `At(index)`         | `String(Integer)`          | Get element at index; empty if out of range                        |
 | `IndexOf(str)`      | `Integer(String)`          | Get index of element (-1 if not found)                             |
 | `Items()`           | `Seq()`                    | Get all elements as a Seq in sorted order                          |
 | `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to]; null bounds are open-ended       |
@@ -500,6 +518,11 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 - `Range(from, to)` includes both bounds. Pass null for `from` or `to` through the runtime API to leave that side open.
 - `First()`, `Last()`, `Floor()`, `Ceil()`, `Lower()`, `Higher()`, and `At()` return owned copied strings.
 - `Items()`, `Range()`, `Take()`, and `Skip()` return independent snapshots containing copied strings.
+- `Take(n)` returns empty for `n <= 0`; `Skip(n)` treats a negative `n` as zero and therefore
+  returns all elements.
+- The registry currently declares `Range()`, `Take()`, and `Skip()` as unqualified objects even
+  though they return `Seq`. In Zia, assign these results to an explicitly typed `Seq` before using
+  members such as `Count`; direct chaining can dispatch `SortedSet.Count` on the Seq and trap.
 - Capacity growth traps on overflow instead of wrapping.
 
 ### Zia Example
@@ -593,9 +616,9 @@ subset.Add("c")
 PRINT subset.IsSubset(set1)  ' Output: 1 (true)
 ```
 
-### SortedSet vs Bag vs Set
+### SortedSet vs StringSet vs Set
 
-| Feature          | SortedSet        | Bag              | Set              |
+| Feature          | SortedSet        | StringSet              | Set              |
 |------------------|------------------|------------------|------------------|
 | Element type     | Strings          | Strings          | Objects          |
 | Order            | Sorted           | Unordered        | Unordered        |
@@ -639,8 +662,8 @@ lookup, merging (which returns a new FrozenMap), and equality comparison.
 
 | Method                     | Signature                 | Description                                                       |
 |----------------------------|---------------------------|-------------------------------------------------------------------|
-| `Get(key)`                 | `Object(String)`          | Get value for key (returns null if not found)                     |
-| `GetOr(key, defaultValue)` | `Object(String, Object)` | Get value for key, or return defaultValue if missing              |
+| `Get(key)`                 | `Object(String)`          | Get the borrowed value for a key (null if missing)                |
+| `GetOr(key, defaultValue)` | `Object(String, Object)`  | Get the borrowed value, or `defaultValue` if missing              |
 | `Has(key)`                 | `Boolean(String)`         | Check if key exists                                               |
 | `Keys()`                   | `Seq()`                   | Get all keys as a Seq                                             |
 | `Values()`                 | `Seq()`                   | Get all values as a Seq                                           |
@@ -649,12 +672,20 @@ lookup, merging (which returns a new FrozenMap), and equality comparison.
 
 ### Notes
 
-- Keys in the `FromSeqs` constructor should be boxed strings (e.g., `Box.Str("key")`) in Zia; BASIC auto-boxes strings
-- FrozenMap is truly immutable: there are no Set, Remove, or Clear methods
-- `Merge` returns a new FrozenMap; when both maps have the same key, the other map's value wins
-- `Equals` compares boxed values by value, not reference identity
-- Keys are compared by full byte length; embedded NUL bytes are part of the key
-- Keys and values are retained by the frozen map until the map is released
+- Keys in the `FromSeqs` constructor should be boxed strings (e.g., `Box.Str("key")`) in Zia;
+  BASIC auto-boxes strings. Null keys are skipped and another non-string value traps while being
+  unboxed.
+- `FromSeqs` zips only through the shorter input. Repeated keys collapse, with the last paired
+  value winning.
+- FrozenMap is truly immutable: there are no `Set`, `Remove`, or `Clear` methods.
+- `Get()` and `GetOr()` return borrowed references. A present null value remains null rather than
+  being replaced by `GetOr`'s default; call `Has()` to distinguish it from a missing key.
+- `Keys()` and `Values()` are retained snapshots in matching hash-slot order. The order is neither
+  insertion order nor a stable cross-run order, but corresponding indices refer to the same entry.
+- `Merge` returns a new FrozenMap; when both maps have the same key, the other map's value wins.
+- `Equals` compares same-tag boxed scalar values by value and other objects by reference identity.
+- Keys are compared by full byte length; embedded NUL bytes are part of the key.
+- Keys and values are retained by the frozen map until the map is released.
 
 ### Zia Example
 
@@ -794,11 +825,15 @@ that return new FrozenSet instances.
 
 ### Notes
 
-- Elements in the `FromSeq` constructor should be boxed strings (e.g., `Box.Str("value")`) in Zia; BASIC auto-boxes
-- Duplicate elements in the source Seq are automatically removed
-- All set operations return new FrozenSet instances; originals are unchanged
-- `Equals` compares by value regardless of insertion order
-- Elements are compared by full byte length; embedded NUL bytes are part of element identity
+- Elements in the `FromSeq` constructor should be boxed strings (e.g., `Box.Str("value")`) in
+  Zia; BASIC auto-boxes. Null elements are skipped and another non-string value traps while being
+  unboxed.
+- Duplicate elements in the source Seq are automatically removed.
+- Elements are retained by the frozen set. `Items()` returns an independently retained snapshot
+  in unspecified hash-slot order.
+- All set operations return new FrozenSet instances; originals are unchanged.
+- `Equals` compares strings by value regardless of insertion order.
+- Elements are compared by full byte length; embedded NUL bytes are part of element identity.
 
 ### Zia Example
 
@@ -912,13 +947,13 @@ PRINT fs.Equals(fs3)        ' 1 (same elements)
 
 ---
 
-## Viper.Collections.TreeMap
+## Viper.Collections.SortedMap
 
 A sorted key-value map that maintains keys in sorted order. Uses a sorted array with binary search for O(log n) lookups.
 Supports range queries via Floor/Ceil operations.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.TreeMap()`
+**Constructor:** `NEW Viper.Collections.SortedMap()`
 
 ### Properties
 
@@ -932,7 +967,7 @@ Supports range queries via Floor/Ceil operations.
 | Method            | Signature              | Description                                                     |
 |-------------------|------------------------|-----------------------------------------------------------------|
 | `Set(key, value)` | `Void(String, Object)` | Set or update a key-value pair                                  |
-| `Get(key)`        | `Object(String)`       | Get the value for a key (returns null if not found)             |
+| `Get(key)`        | `Object(String)`       | Get the borrowed value for a key (null if not found)            |
 | `Has(key)`        | `Boolean(String)`      | Check if a key exists                                           |
 | `Remove(key)`     | `Boolean(String)`      | Remove a key-value pair; returns true if removed                |
 | `Clear()`         | `Void()`               | Remove all entries                                              |
@@ -947,6 +982,13 @@ Supports range queries via Floor/Ceil operations.
 
 - Keys are compared by full byte length in sorted byte order; embedded NUL bytes are part of the key.
 - Values are retained while stored and released when overwritten, removed, cleared, or finalized.
+- A null runtime key is treated as the empty string key. `Get()` returns a borrowed value; use
+  `Has()` to distinguish a missing key from a present null value.
+- `First()`, `Last()`, `Floor()`, and `Ceil()` return owned copied strings, or an empty string when
+  no matching key exists.
+- `Keys()` and `Values()` are independent retained snapshots in the same key-sorted order. Key
+  strings are copied and values are shared, not deep-cloned.
+- SortedMap is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example
 
@@ -958,7 +1000,7 @@ bind Viper.Collections;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var tm = new TreeMap();
+    var tm = new SortedMap();
 
     // Insert in any order — stored sorted
     tm.Set("cherry", Viper.Core.Box.Str("red"));
@@ -978,8 +1020,8 @@ func start() {
 ### BASIC Example
 
 ```basic
-DIM tm AS Viper.Collections.TreeMap
-tm = NEW Viper.Collections.TreeMap()
+DIM tm AS Viper.Collections.SortedMap
+tm = NEW Viper.Collections.SortedMap()
 
 ' Insert in any order - stored sorted
 tm.Set("cherry", "red")
@@ -1001,9 +1043,9 @@ PRINT tm.Floor("blueberry")  ' Output: "banana" (largest key <= "blueberry")
 PRINT tm.Ceil("blueberry")   ' Output: "cherry" (smallest key >= "blueberry")
 ```
 
-### TreeMap vs Map
+### SortedMap vs Map
 
-| Feature    | TreeMap  | Map           |
+| Feature    | SortedMap  | Map           |
 |------------|----------|---------------|
 | Key order  | Sorted   | Unordered     |
 | Lookup     | O(log n) | O(1) average  |

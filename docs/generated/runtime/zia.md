@@ -12,12 +12,14 @@
 Provides Completion constants and static operations for Zia language tooling.
 
 `Viper.Zia.Completion` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Complete`, `CompleteForFile`, `Items`, `ItemsForFile`.
+Its public surface exposes operations including `Complete`, `CompleteForFile`, `Items`,
+`ItemsForFile`.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
+| <a id="viper-zia-completion-isavailable"></a>`IsAvailable` | `i1()` | `Viper.Zia.Completion.IsAvailable` |
 | <a id="viper-zia-completion-complete"></a>`Complete` | `str(str,i64,i64)` | `Viper.Zia.Completion.Complete` |
 | <a id="viper-zia-completion-completeforfile"></a>`CompleteForFile` | `str(str,str,i64,i64)` | `Viper.Zia.Completion.CompleteForFile` |
 | <a id="viper-zia-completion-items"></a>`Items` | `obj<Viper.Collections.Seq>(str,i64,i64)` | `Viper.Zia.Completion.Items` |
@@ -47,7 +49,8 @@ surface exposes operations including `Complete`, `CompleteForFile`, `Items`, `It
 Provides structured diagnostics and compile results.
 
 `Viper.Zia.Toolchain` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `Check`, `CheckForFile`, `BeginCheckForFile`, `Compile`.
+Its public surface exposes operations including `Check`, `CheckForFile`, `BeginCheckForFile`,
+`Compile`.
 
 #### Methods
 
@@ -65,7 +68,7 @@ surface exposes operations including `Check`, `CheckForFile`, `BeginCheckForFile
 Provides incremental document mirror sync (plan 08), static-only.
 
 `Viper.Zia.Document` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
+Its public surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
 
 #### Methods
 
@@ -75,6 +78,7 @@ surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
 | <a id="viper-zia-document-syncdelta"></a>`SyncDelta` | `i1(str,str,i64)` | `Viper.Zia.Document.SyncDelta` |
 | <a id="viper-zia-document-close"></a>`Close` | `void(str)` | `Viper.Zia.Document.Close` |
 | <a id="viper-zia-document-text"></a>`Text` | `str(str)` | `Viper.Zia.Document.Text` |
+| <a id="viper-zia-document-has"></a>`Has` | `i1(str)` | `Viper.Zia.Document.Has` |
 | <a id="viper-zia-document-checkforfile"></a>`CheckForFile` | `str(str)` | `Viper.Zia.Document.CheckForFile` |
 | <a id="viper-zia-document-begincheckforfile"></a>`BeginCheckForFile` | `obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)` | `Viper.Zia.Document.BeginCheckForFile` |
 
@@ -84,7 +88,7 @@ surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
 Provides Semantic Job constants and static operations for Zia language tooling.
 
 `Viper.Zia.SemanticJob` is a static runtime surface and does not require an instance. Its public
-surface exposes operations including `IsDone`, `IsError`, `Error`, `ErrorOption`.
+Its public surface exposes operations including `IsDone`, `IsError`, `Error`, `Kind`.
 
 #### Methods
 
@@ -92,8 +96,7 @@ surface exposes operations including `IsDone`, `IsError`, `Error`, `ErrorOption`
 |---|---|---|
 | <a id="viper-zia-semanticjob-isdone"></a>`IsDone` | `i1(obj)` | `Viper.Zia.SemanticJob.IsDone` |
 | <a id="viper-zia-semanticjob-iserror"></a>`IsError` | `i1(obj)` | `Viper.Zia.SemanticJob.IsError` |
-| <a id="viper-zia-semanticjob-error"></a>`Error` | `str(obj)` | `Viper.Zia.SemanticJob.Error` |
-| <a id="viper-zia-semanticjob-erroroption"></a>`ErrorOption` | `obj<Viper.Option>(obj)` | `Viper.Zia.SemanticJob.ErrorOption` |
+| <a id="viper-zia-semanticjob-error"></a>`Error` | `obj<Viper.Option>(obj)` | `Viper.Zia.SemanticJob.Error` |
 | <a id="viper-zia-semanticjob-kind"></a>`Kind` | `i64(obj)` | `Viper.Zia.SemanticJob.Kind` |
 | <a id="viper-zia-semanticjob-cancel"></a>`Cancel` | `void(obj)` | `Viper.Zia.SemanticJob.Cancel` |
 | <a id="viper-zia-semanticjob-completionitems"></a>`CompletionItems` | `obj<Viper.Collections.Seq>(obj)` | `Viper.Zia.SemanticJob.CompletionItems` |
@@ -117,8 +120,8 @@ to compilers, language services, and generated reference documentation.
 
 Provides project-wide semantic navigation and rename queries.
 
-`Viper.Zia.ProjectIndex` is a static runtime surface and does not require an instance. Its
-public surface exposes operations including `IsValid`, `UpdateFile`, `RemoveFile`, `Clear`.
+`Viper.Zia.ProjectIndex` is a static runtime surface and does not require an instance.
+Its public surface exposes operations including `New`, `IsValid`, `UpdateFile`, `RemoveFile`.
 
 #### Methods
 
@@ -185,8 +188,7 @@ to compilers, language services, and generated reference documentation.
 | `Viper.Zia.Completion.BeginTokensForFile` | `obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)` | `rt_zia_completion_begin_tokens_for_file` |
 | `Viper.Zia.SemanticJob.IsDone` | `i1(obj)` | `rt_zia_semantic_job_is_done` |
 | `Viper.Zia.SemanticJob.IsError` | `i1(obj)` | `rt_zia_semantic_job_is_error` |
-| `Viper.Zia.SemanticJob.Error` | `str(obj)` | `rt_zia_semantic_job_error` |
-| `Viper.Zia.SemanticJob.ErrorOption` | `obj<Viper.Option>(obj)` | `rt_zia_semantic_job_error_option` |
+| `Viper.Zia.SemanticJob.Error` | `obj<Viper.Option>(obj)` | `rt_zia_semantic_job_error_option` |
 | `Viper.Zia.SemanticJob.Kind` | `i64(obj)` | `rt_zia_semantic_job_kind` |
 | `Viper.Zia.SemanticJob.Cancel` | `void(obj)` | `rt_zia_semantic_job_cancel` |
 | `Viper.Zia.SemanticJob.CompletionItems` | `obj<Viper.Collections.Seq>(obj)` | `rt_zia_semantic_job_completion_items` |
@@ -199,6 +201,8 @@ to compilers, language services, and generated reference documentation.
 | `Viper.Zia.Document.SyncDelta` | `i1(str,str,i64)` | `rt_zia_doc_sync_delta` |
 | `Viper.Zia.Document.Close` | `void(str)` | `rt_zia_doc_close` |
 | `Viper.Zia.Document.Text` | `str(str)` | `rt_zia_doc_text` |
+| `Viper.Zia.Document.Has` | `i1(str)` | `rt_zia_doc_has` |
+| `Viper.Zia.Completion.IsAvailable` | `i1()` | `rt_zia_service_available` |
 | `Viper.Zia.Document.CheckForFile` | `str(str)` | `rt_zia_check_for_file_mirror` |
 | `Viper.Zia.Document.BeginCheckForFile` | `obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)` | `rt_zia_doc_begin_check_for_file` |
 

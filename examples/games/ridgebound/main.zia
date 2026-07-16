@@ -33,7 +33,7 @@ func runSmoke() {
     }
     Terminal.Say("RESULT: ok");
     game.destroy();
-    Env.EndProgram(0);
+    Env.Exit(0);
 }
 
 func start() {

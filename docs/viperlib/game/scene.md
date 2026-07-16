@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-22
+last-verified: 2026-07-15
 ---
 
 # Editable Scene Documents
@@ -18,7 +18,7 @@ loads a scene and maps objects/properties into game-owned entities.
 
 | Method | Signature | Description |
 |---|---|---|
-| `SceneDocument.New(width, height, tileWidth, tileHeight)` | `SceneDocument(i64, i64, i64, i64)` | Create a scene with one base layer. |
+| `SceneDocument.New(width, height, tileWidth, tileHeight)` | `SceneDocument(i64, i64, i64, i64)` | Create a scene with one base layer. Invalid map dimensions produce a diagnostic 1×1 document; nonpositive tile dimensions become 16. |
 | `SceneDocument.LoadJsonResult(text)` | `Result(str)` | Load scene JSON as `Ok(SceneDocument)` or `Err(message)`. |
 | `SceneDocument.LoadResult(path)` | `Result(str)` | Read and load a scene file as `Ok(SceneDocument)` or `Err(message)`. |
 | `SceneDocument.LoadJson(text)` | `SceneDocument(str)` | Load scene JSON without trapping on malformed user input. |
@@ -33,22 +33,45 @@ import compatibility.
 `Save` writes a temporary file next to the target and replaces the target
 only after that write succeeds. Failed replacement leaves the temporary file
 removed and records an error diagnostic; an existing target is not deleted first.
+It does not create a missing parent directory and does not reject a document merely
+because `HasErrors()` is true.
+
+```zia
+module SceneDocumentDemo;
+
+bind Viper.Terminal;
+
+func start() {
+    var scene = Viper.Game2D.SceneDocument.New(4, 3, 16, 16);
+    scene.SetTile(0, 1, 2, 7);
+    scene.SetStr("theme", "cave");
+    Say(scene.GetStr("theme", "unknown"));
+}
+```
 
 ## Diagnostics
 
 | Method | Description |
 |---|---|
 | `HasErrors()` | True when retained diagnostics include an error. |
-| `LastError()` | Compatibility diagnostic containing the newest diagnostic message. |
 | `Diagnostics()` | Compatibility `Seq<str>` of diagnostic messages. |
 | `DiagnosticRecords()` | `Seq<Map>` with `code`, `severity`, `message`, `path`, `line`, `column`, and `source`. |
-| `ClearDiagnostics()` | Clear retained diagnostics and `LastError()`. |
+| `ClearDiagnostics()` | Clear retained diagnostics. It also currently marks an invalid document valid. |
 
 Prefer `LoadJsonResult` and `LoadResult` for production code that wants loading
-to be an explicit `Ok`/`Err` value. The compatibility `LoadJson` and `Load`
-methods still return an invalid scene with diagnostics instead of trapping for
-bad JSON, missing files, unknown versions, invalid dimensions, v1 tile count
-mismatches, and resource-limit violations.
+to be an explicit `Ok`/`Err` value. Their `Err` contains one diagnostic message,
+not the invalid document or its full diagnostic records. The compatibility
+`LoadJson` and `Load` methods still return an invalid scene with diagnostics
+instead of trapping for bad JSON, missing files, unknown versions, invalid
+dimensions, v1 tile count mismatches, and resource-limit violations.
+
+`ClearDiagnostics()` currently resets the document's internal validity flag as
+well as clearing messages. Calling it on a failed load therefore makes
+`HasErrors()` false even though normalized or incomplete data remains. Also, a
+Result load currently chooses the newest diagnostic message; if a warning was
+added after an error, that warning text can become the `Err` message. Both are
+known defects, so retain `DiagnosticRecords()` before clearing a compatibility
+load.
 
 Edit-time rejections, such as an over-long layer name or property key, are
 reported as warning diagnostics. They do not make `HasErrors()` true unless a
@@ -84,7 +107,7 @@ lives in typed scalar properties: `null`, bool, int, float, or string.
 | `ObjectGetInt/Str/Float/Bool(index, key, default)` | Typed property reads; incompatible kinds return the supplied default. |
 | `ObjectSetInt/Str/Float/Bool(index, key, value)` | Typed property writes. |
 | `ObjectHas(index, key)` / `ObjectKeys(index)` / `ObjectRemove(index, key)` | Inspect or remove object properties. |
-| `CountOfType(type)` / `ObjectOfType(type, n)` / `FindObject(id)` / `FindObjectOption(id)` | Search helpers returning counts, indexes, or `Option[Integer]`. Prefer `FindObjectOption` for new code. |
+| `CountOfType(type)` / `ObjectOfType(type, n)` / `FindObjectOption(id)` | Search helpers returning counts, indexes, or `Option[Integer]`. |
 | `MoveObject(from, to)` | Reorder objects. |
 
 Compatibility methods `SetObjectProperty`, `GetObjectProperty`, and
@@ -129,6 +152,26 @@ or editor code.
 When present, preserved `collision`, `tileProperties`, `animations`, and
 `autotiles` sections are applied to the returned Tilemap using the matching
 Tilemap runtime APIs.
+
+## Resource Limits
+
+Loads retain diagnostics and normalize or drop excess data rather than allocating
+without bounds. The current limits are:
+
+| Resource | Limit |
+|---|---:|
+| JSON input | 16 MiB |
+| Cells per layer | 1,048,576 |
+| Total cells across layers | 4,194,304 |
+| Layers | 16 |
+| Objects | 65,536 |
+| Scene properties | 16,384 |
+| Properties per object | 256 |
+| Property key | 128 bytes |
+| String property value | 64 KiB |
+| Preserved rich/unknown sections | 4 MiB total |
+| Retained diagnostics | 256 |
+| Layer name compatible with `Tilemap` | 31 bytes |
 
 ## JSON Schema V1
 

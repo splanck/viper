@@ -82,8 +82,9 @@ build/package workflows.
 stdout. With \fB-o output.il\fR it writes textual IL. With any other output name
 it builds a native executable.
 .PP
-\fBrun\fR builds and runs a Zia or BASIC target. Legacy IL, Zia, and BASIC entry
-points remain available through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\fR.
+\fBrun\fR builds and runs a Zia or BASIC target, and executes a \fI.il\fR target
+directly on the VM. Legacy IL, Zia, and BASIC entry points remain available
+through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\fR.
 .PP
 \fBcheck\fR type-checks and verifies a target without running or emitting
 anything. Exit codes: 0 no errors, 1 usage/target error, 2 compile or

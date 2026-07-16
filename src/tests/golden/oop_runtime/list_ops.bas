@@ -24,20 +24,20 @@ END IF
 l.Push(a)
 l.Push(c)
 
-PRINT l.Find(a)
-PRINT l.Find(b)
-PRINT l.Find(c)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(a), -1)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(b), -1)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(c), -1)
 
 ' Insert in the middle: [a, b, c]
 l.Insert(1, b)
 
-PRINT l.Find(a)
-PRINT l.Find(b)
-PRINT l.Find(c)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(a), -1)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(b), -1)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(c), -1)
 
 ' Append via Insert(index == Count): [a, b, c, d]
 l.Insert(l.Count, d)
-PRINT l.Find(d)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(d), -1)
 
 ' Remove missing element
 IF l.Remove(e) THEN
@@ -57,6 +57,6 @@ ELSE
 END IF
 
 PRINT l.Count
-PRINT l.Find(a)
+PRINT Viper.Option.UnwrapOrI64(l.FindOption(a), -1)
 
 END
