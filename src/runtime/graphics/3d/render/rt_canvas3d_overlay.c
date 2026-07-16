@@ -966,7 +966,7 @@ static int canvas3d_backend_supports_clustered_lighting(const vgfx3d_backend_t *
     if (backend == &vgfx3d_d3d11_backend)
         return 1;
 #endif
-#if RT_PLATFORM_LINUX
+#if RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
     if (backend == &vgfx3d_opengl_backend)
         return 1;
 #endif
@@ -988,7 +988,7 @@ static int canvas3d_backend_supports_shadow_csm(const vgfx3d_backend_t *backend)
     if (backend == &vgfx3d_d3d11_backend)
         return 1;
 #endif
-#if RT_PLATFORM_LINUX
+#if RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
     if (backend == &vgfx3d_opengl_backend)
         return 1;
 #endif

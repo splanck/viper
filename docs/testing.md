@@ -81,6 +81,9 @@ ctest --test-dir build -L slow             # Opt-in long-running tests only
 # Run a specific test
 ctest --test-dir build -R test_zia_lexer
 
+# Prove the dependency-free Linux headless graphics configuration
+ctest --test-dir build -R linux_headless_graphics_smoke --output-on-failure
+
 # Run tests in parallel
 ctest --test-dir build -j$(nproc)
 

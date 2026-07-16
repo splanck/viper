@@ -14,14 +14,15 @@
 //   - The lookup table is fully baked-in; no filesystem access.
 //   - DT_NEEDED order follows a stable ABI-conventional sequence: libc.so.6 is
 //     always first (when present) so unresolved C runtime symbols satisfy.
-//   - Returning false leaves @p plan in a partially-populated state; callers
-//     should treat this as a fatal link error.
+//   - Returning false clears @p plan, so callers never observe a stale or
+//     partially populated DT_NEEDED list after a fatal link error.
 // Ownership/Lifetime: stateless — caller owns the populated LinuxImportPlan.
 // Links: codegen/common/linker/PlatformImportPlanner.hpp,
 //        codegen/common/linker/ElfExeWriter.hpp
 //
 //===----------------------------------------------------------------------===//
 
+#include "codegen/common/linker/DynamicSymbolPolicy.hpp"
 #include "codegen/common/linker/PlatformImportPlanner.hpp"
 
 #include <cstdint>
@@ -174,12 +175,18 @@ LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
 
 bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
                       LinuxImportPlan &plan,
-                      std::ostream & /*err*/) {
+                      std::ostream &err) {
     plan.neededLibs.clear();
 
     std::unordered_set<LinuxNeededLib> libs = {LinuxNeededLib::LibC};
-    for (const auto &sym : dynamicSyms)
+    for (const auto &sym : dynamicSyms) {
+        if (!isKnownDynamicSymbol(sym, LinkPlatform::Linux)) {
+            err << "error: unrecognized Linux dynamic import '" << sym << "'\n";
+            plan.neededLibs.clear();
+            return false;
+        }
         libs.insert(classifyLinuxImportLibrary(sym));
+    }
 
     static constexpr LinuxNeededLib kOrder[] = {
         LinuxNeededLib::LibC,

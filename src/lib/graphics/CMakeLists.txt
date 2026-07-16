@@ -56,8 +56,19 @@ if (VIPER_GRAPHICS_MODE STREQUAL "OFF")
     return()
 endif ()
 
+if (NOT DEFINED VIPER_GRAPHICS_BACKEND)
+    message(FATAL_ERROR "VIPER_GRAPHICS_BACKEND must be defined before adding src/lib/graphics")
+endif ()
+
 # Platform detection and source selection
-if (APPLE)
+if (VIPER_GRAPHICS_BACKEND STREQUAL "HEADLESS")
+    message(STATUS "ViperGFX: Building dependency-free headless backend")
+    set(VGFX_PLATFORM_SOURCES src/vgfx_platform_mock.c)
+    set(VGFX_PLATFORM_LIBS "")
+    set(VIPERGFX_BACKEND "Headless" CACHE INTERNAL "Selected ViperGFX backend" FORCE)
+elseif (VIPER_GRAPHICS_BACKEND STREQUAL "X11" AND (APPLE OR WIN32))
+    message(FATAL_ERROR "ViperGFX: X11 backend is supported only on Linux/Unix hosts")
+elseif (APPLE)
     message(STATUS "ViperGFX: Building for macOS (Cocoa backend)")
     set(VGFX_PLATFORM_SOURCES src/vgfx_platform_macos.m)
     set(VGFX_PLATFORM_LIBS "-framework Cocoa")
@@ -70,7 +81,9 @@ elseif (UNIX)
         set(VIPERGFX_UNAVAILABLE_REASON
                 "X11 not found; install libx11-dev/libX11-devel or set VIPER_GRAPHICS_MODE=OFF"
                 CACHE INTERNAL "Reason ViperGFX is unavailable" FORCE)
-        if (VIPER_GRAPHICS_MODE STREQUAL "REQUIRE")
+        if (VIPER_GRAPHICS_MODE STREQUAL "REQUIRE" OR
+            VIPER_GRAPHICS_BACKEND STREQUAL "NATIVE" OR
+            VIPER_GRAPHICS_BACKEND STREQUAL "X11")
             message(FATAL_ERROR
                     "ViperGFX: X11 not found and VIPER_GRAPHICS_MODE=REQUIRE.\n"
                     "Install libx11-dev (Debian/Ubuntu) or libX11-devel (Fedora/RHEL),\n"

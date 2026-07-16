@@ -66,6 +66,8 @@ TEST(PlatformImportPlanners, LinuxPlannerClassifiesNeededLibraries) {
                                   "cos",
                                   "dlopen",
                                   "exp10",
+                                  "getpwuid_r",
+                                  "pipe2",
                                   "pthread_create",
                                   "XOpenDisplay",
                                   "snd_pcm_open",
@@ -80,6 +82,16 @@ TEST(PlatformImportPlanners, LinuxPlannerClassifiesNeededLibraries) {
                                         "libX11.so.6",
                                         "libasound.so.2"}),
               plan.neededLibs);
+}
+
+TEST(PlatformImportPlanners, LinuxPlannerRejectsUnknownImportsWithoutPartialPlan) {
+    LinuxImportPlan plan;
+    plan.neededLibs = {"stale.so"};
+    std::ostringstream err;
+    EXPECT_FALSE(planLinuxImports({"malloc", "viper_missing_linux_symbol"}, plan, err));
+    EXPECT_TRUE(plan.neededLibs.empty());
+    EXPECT_NE(err.str().find("unrecognized Linux dynamic import 'viper_missing_linux_symbol'"),
+              std::string::npos);
 }
 
 TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {

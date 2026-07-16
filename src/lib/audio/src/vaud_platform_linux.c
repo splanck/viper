@@ -56,34 +56,6 @@ typedef struct {
     pthread_cond_t pause_cond;   ///< Signal for pause/resume
 } vaud_linux_data;
 
-static pthread_mutex_t g_alsa_error_handler_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static void alsa_silent_error_handler(
-    const char *file, int line, const char *function, int err, const char *fmt, ...) {
-    (void)file;
-    (void)line;
-    (void)function;
-    (void)err;
-    (void)fmt;
-}
-
-static int alsa_verbose_errors_enabled(void) {
-    const char *value = getenv("VIPER_ALSA_VERBOSE");
-    return value && value[0] != '\0' && strcmp(value, "0") != 0;
-}
-
-static void alsa_begin_quiet_probe(void) {
-    pthread_mutex_lock(&g_alsa_error_handler_mutex);
-    if (!alsa_verbose_errors_enabled())
-        snd_lib_error_set_handler(alsa_silent_error_handler);
-}
-
-static void alsa_end_quiet_probe(void) {
-    if (!alsa_verbose_errors_enabled())
-        snd_lib_error_set_handler(NULL);
-    pthread_mutex_unlock(&g_alsa_error_handler_mutex);
-}
-
 /// @brief Lock the ALSA PCM handle for one backend operation group.
 /// @details ALSA PCM handles are shared between the audio thread and public
 ///          pause/resume/shutdown calls. This mutex keeps prepare, recover,
@@ -215,12 +187,18 @@ static int alsa_write_all(vaud_context_t ctx,
 
         if (written == -EAGAIN) {
             vaud_stats_add(&ctx->stats.backend_waits, 1);
-            int wait_rc = snd_pcm_wait(plat->pcm, 100);
-            if (wait_rc < 0 && !alsa_recover_write_error(ctx, plat, wait_rc)) {
-                alsa_pcm_unlock(plat);
-                return 0;
-            }
+            /* The handle remains open until the audio thread joins. Do not hold
+             * pcm_mutex across the bounded readiness wait: pause and shutdown
+             * need to issue drop/prepare promptly to wake or redirect playback. */
             alsa_pcm_unlock(plat);
+            int wait_rc = snd_pcm_wait(plat->pcm, 100);
+            if (wait_rc < 0) {
+                alsa_pcm_lock(plat);
+                int recovered = alsa_recover_write_error(ctx, plat, wait_rc);
+                alsa_pcm_unlock(plat);
+                if (!recovered)
+                    return 0;
+            }
             continue;
         }
 
@@ -326,12 +304,9 @@ int vaud_platform_init(vaud_context_t ctx) {
         return 0;
     }
 
-    /* Open the default PCM device.  Keep startup probes quiet and nonblocking
-     * so optional demo audio cannot flood stderr or stall window startup when
-     * no default ALSA device is configured. */
-    alsa_begin_quiet_probe();
+    /* ALSA's error callback is process-global and has no getter. Do not replace
+     * an embedding application's handler merely to silence an optional probe. */
     err = snd_pcm_open(&plat->pcm, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
-    alsa_end_quiet_probe();
     if (err < 0) {
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
@@ -343,9 +318,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     /* Configure PCM parameters */
-    alsa_begin_quiet_probe();
     err = alsa_configure_pcm(plat->pcm);
-    alsa_end_quiet_probe();
 
     if (err < 0) {
         snd_pcm_close(plat->pcm);

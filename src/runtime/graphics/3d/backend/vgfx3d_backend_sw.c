@@ -762,7 +762,7 @@ static const vgfx3d_backend_t *vgfx3d_backend_from_name(const char *name) {
 #elif RT_PLATFORM_WINDOWS
     if (strcmp(name, "d3d11") == 0)
         return &vgfx3d_d3d11_backend;
-#elif RT_PLATFORM_LINUX
+#elif RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
     if (strcmp(name, "opengl") == 0)
         return &vgfx3d_opengl_backend;
 #endif
@@ -801,7 +801,7 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
 #else
     platform = VGFX3D_BACKEND_PLATFORM_WINDOWS;
 #endif
-#elif RT_PLATFORM_LINUX
+#elif RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
     platform = VGFX3D_BACKEND_PLATFORM_LINUX;
 #endif
 

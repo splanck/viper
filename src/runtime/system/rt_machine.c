@@ -42,8 +42,11 @@
 
 #include "rt_machine.h"
 
+#include "rt_platform.h"
 #include "rt_string.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,6 +63,7 @@
 #include <unistd.h>
 #else
 #include <pwd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <unistd.h>
@@ -81,6 +85,211 @@ static rt_string make_str(const char *s) {
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(s, strlen(s));
 }
+
+#if !RT_PLATFORM_WINDOWS
+static const char *nonempty_env(const char *name) {
+    const char *value = getenv(name);
+    return value && value[0] != '\0' ? value : NULL;
+}
+
+static rt_string machine_passwd_field(int home_directory) {
+    long hint = sysconf(_SC_GETPW_R_SIZE_MAX);
+    size_t size = hint > 0 && (unsigned long)hint <= SIZE_MAX ? (size_t)hint : 4096u;
+    for (;;) {
+        char *buffer = (char *)malloc(size);
+        if (!buffer)
+            return make_str("");
+        struct passwd entry;
+        struct passwd *result = NULL;
+        int rc = getpwuid_r(getuid(), &entry, buffer, size, &result);
+        if (rc == 0 && result) {
+            const char *value = home_directory ? result->pw_dir : result->pw_name;
+            rt_string out = make_str(value && value[0] != '\0' ? value : "");
+            free(buffer);
+            return out;
+        }
+        free(buffer);
+        if (rc != ERANGE || size > SIZE_MAX / 2u)
+            return make_str("");
+        size *= 2u;
+    }
+}
+
+static int64_t checked_u64_bytes(unsigned long long value, unsigned long long unit) {
+    if (unit != 0 && value > (unsigned long long)INT64_MAX / unit)
+        return INT64_MAX;
+    return (int64_t)(value * unit);
+}
+#endif
+
+#if RT_PLATFORM_LINUX
+static int linux_read_control_line(const char *path, char *buffer, size_t capacity) {
+    if (!path || !buffer || capacity < 2)
+        return 0;
+    FILE *file = fopen(path, "r");
+    if (!file)
+        return 0;
+    char *result = fgets(buffer, (int)capacity, file);
+    int extra = result && !strchr(buffer, '\n') ? fgetc(file) : EOF;
+    fclose(file);
+    if (!result || extra != EOF)
+        return 0;
+    buffer[strcspn(buffer, "\r\n")] = '\0';
+    return buffer[0] != '\0';
+}
+
+static int linux_parse_u64(const char *text, unsigned long long *out) {
+    if (!text || !out || text[0] == '\0' || text[0] == '-')
+        return 0;
+    errno = 0;
+    char *end = NULL;
+    unsigned long long value = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || (*end != '\0' && *end != ' '))
+        return 0;
+    *out = value;
+    return 1;
+}
+
+static int64_t linux_read_control_u64(const char *path) {
+    char line[128];
+    if (!linux_read_control_line(path, line, sizeof(line)) || strcmp(line, "max") == 0)
+        return 0;
+    unsigned long long value = 0;
+    return linux_parse_u64(line, &value) && value <= (unsigned long long)INT64_MAX
+               ? (int64_t)value
+               : 0;
+}
+
+static int64_t linux_cgroup_memory_value(const char *name) {
+    if (strcmp(name, "memory.max") == 0) {
+        int64_t value = linux_read_control_u64("/sys/fs/cgroup/memory.max");
+        return value > 0 ? value
+                         : linux_read_control_u64(
+                               "/sys/fs/cgroup/memory/memory.limit_in_bytes");
+    }
+    if (strcmp(name, "memory.current") == 0) {
+        int64_t value = linux_read_control_u64("/sys/fs/cgroup/memory.current");
+        return value > 0
+                   ? value
+                   : linux_read_control_u64("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+    }
+    return 0;
+}
+
+static int64_t linux_count_cpuset(const char *text) {
+    if (!text || text[0] == '\0')
+        return 0;
+    unsigned long long count = 0;
+    const char *cursor = text;
+    while (*cursor) {
+        errno = 0;
+        char *end = NULL;
+        unsigned long long first = strtoull(cursor, &end, 10);
+        if (errno != 0 || end == cursor)
+            return 0;
+        unsigned long long last = first;
+        if (*end == '-') {
+            cursor = end + 1;
+            errno = 0;
+            last = strtoull(cursor, &end, 10);
+            if (errno != 0 || end == cursor || last < first)
+                return 0;
+        }
+        unsigned long long span = last - first + 1u;
+        if (ULLONG_MAX - count < span)
+            return 0;
+        count += span;
+        if (*end == '\0')
+            break;
+        if (*end != ',')
+            return 0;
+        cursor = end + 1;
+    }
+    return count > 0 && count <= (unsigned long long)INT64_MAX ? (int64_t)count : 0;
+}
+
+static int64_t linux_cgroup_cpu_limit(void) {
+    char line[128];
+    int64_t limit = 0;
+    if (linux_read_control_line("/sys/fs/cgroup/cpu.max", line, sizeof(line)) &&
+        strncmp(line, "max ", 4) != 0) {
+        unsigned long long quota = 0, period = 0;
+        char *space = strchr(line, ' ');
+        if (space) {
+            *space++ = '\0';
+            if (linux_parse_u64(line, &quota) && linux_parse_u64(space, &period) && period > 0) {
+                unsigned long long rounded = quota / period + (quota % period != 0);
+                if (rounded > 0 && rounded <= (unsigned long long)INT64_MAX)
+                    limit = (int64_t)rounded;
+            }
+        }
+    }
+    if (limit == 0) {
+        int64_t quota =
+            linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
+        int64_t period =
+            linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_period_us");
+        if (quota > 0 && period > 0)
+            limit = quota / period + (quota % period != 0);
+    }
+    if (linux_read_control_line(
+            "/sys/fs/cgroup/cpuset.cpus.effective", line, sizeof(line))) {
+        int64_t cpuset = linux_count_cpuset(line);
+        if (cpuset > 0 && (limit == 0 || cpuset < limit))
+            limit = cpuset;
+    } else if (linux_read_control_line(
+                   "/sys/fs/cgroup/cpuset/cpuset.cpus", line, sizeof(line))) {
+        int64_t cpuset = linux_count_cpuset(line);
+        if (cpuset > 0 && (limit == 0 || cpuset < limit))
+            limit = cpuset;
+    }
+    return limit;
+}
+
+rt_string rt_machine_linux_parse_os_release_file(const char *path) {
+    FILE *file = fopen(path, "r");
+    if (!file)
+        return NULL;
+    char *line = NULL;
+    size_t capacity = 0;
+    rt_string result = NULL;
+    while (getline(&line, &capacity, file) >= 0) {
+        if (strncmp(line, "VERSION_ID=", 11) != 0)
+            continue;
+        char *value = line + 11;
+        value[strcspn(value, "\r\n")] = '\0';
+        size_t length = strlen(value);
+        char quote = 0;
+        if (length > 0 && (value[0] == '\'' || value[0] == '"')) {
+            quote = value[0];
+            if (length < 2 || value[length - 1] != quote)
+                break;
+            value[length - 1] = '\0';
+            value++;
+        }
+        char *read_cursor = value;
+        char *write_cursor = value;
+        int valid = 1;
+        while (*read_cursor) {
+            unsigned char ch = (unsigned char)*read_cursor++;
+            if (ch == '\\' && quote != '\'' && *read_cursor)
+                ch = (unsigned char)*read_cursor++;
+            if (ch < 0x20 || ch == 0x7f) {
+                valid = 0;
+                break;
+            }
+            *write_cursor++ = (char)ch;
+        }
+        *write_cursor = '\0';
+        if (valid && value[0] != '\0')
+            result = make_str(value);
+        break;
+    }
+    free(line);
+    fclose(file);
+    return result;
+}
+#endif
 
 // ============================================================================
 // Operating System
@@ -177,27 +386,11 @@ rt_string rt_machine_os_ver(void) {
     return make_str("unknown");
 
 #elif defined(__linux__)
-    // Linux: read /etc/os-release or use uname
-    FILE *fp = fopen("/etc/os-release", "r");
-    if (fp) {
-        char line[256];
-        while (fgets(line, sizeof(line), fp)) {
-            if (strncmp(line, "VERSION_ID=", 11) == 0) {
-                fclose(fp);
-                // Remove quotes and newline
-                char *ver = line + 11;
-                size_t vlen = strlen(ver);
-                if (vlen > 0 && ver[vlen - 1] == '\n')
-                    ver[--vlen] = '\0';
-                if (vlen >= 2 && ver[0] == '"' && ver[vlen - 1] == '"') {
-                    ver[vlen - 1] = '\0';
-                    ver++;
-                }
-                return make_str(ver);
-            }
-        }
-        fclose(fp);
-    }
+    rt_string version = rt_machine_linux_parse_os_release_file("/etc/os-release");
+    if (!version)
+        version = rt_machine_linux_parse_os_release_file("/usr/lib/os-release");
+    if (version)
+        return version;
     // Fallback to uname
     struct utsname uts;
     if (uname(&uts) == 0) {
@@ -256,15 +449,14 @@ rt_string rt_machine_user(void) {
         return rt_file_path_wide_to_string(user);
     return make_str("unknown");
 #else
-    // Try getpwuid first
-    struct passwd *pw = getpwuid(getuid());
-    if (pw && pw->pw_name) {
-        return make_str(pw->pw_name);
-    }
+    rt_string account = machine_passwd_field(0);
+    if (rt_str_len(account) > 0)
+        return account;
+    rt_string_unref(account);
     // Fallback to environment variables
-    const char *user = getenv("USER");
+    const char *user = nonempty_env("USER");
     if (!user)
-        user = getenv("LOGNAME");
+        user = nonempty_env("LOGNAME");
     if (user)
         return make_str(user);
     return make_str("unknown");
@@ -296,15 +488,10 @@ rt_string rt_machine_home(void) {
     }
     return make_str("");
 #else
-    const char *home = getenv("HOME");
+    const char *home = nonempty_env("HOME");
     if (home)
         return make_str(home);
-    // Fallback to passwd entry
-    struct passwd *pw = getpwuid(getuid());
-    if (pw && pw->pw_dir) {
-        return make_str(pw->pw_dir);
-    }
-    return make_str("");
+    return machine_passwd_field(1);
 #endif
 }
 
@@ -325,12 +512,13 @@ rt_string rt_machine_temp(void) {
     }
     return make_str("C:\\Temp");
 #else
-    const char *tmp = getenv("TMPDIR");
+    const char *tmp = nonempty_env("TMPDIR");
     if (!tmp)
-        tmp = getenv("TMP");
+        tmp = nonempty_env("TMP");
     if (!tmp)
-        tmp = getenv("TEMP");
-    if (!tmp)
+        tmp = nonempty_env("TEMP");
+    struct stat st;
+    if (!tmp || tmp[0] != '/' || stat(tmp, &st) != 0 || !S_ISDIR(st.st_mode))
         tmp = "/tmp";
     return make_str(tmp);
 #endif
@@ -369,9 +557,9 @@ int64_t rt_machine_cores(void) {
 
 #elif defined(__linux__)
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
-    if (cores > 0)
-        return (int64_t)cores;
-    return 1;
+    int64_t host = cores > 0 ? (int64_t)cores : 1;
+    int64_t constrained = linux_cgroup_cpu_limit();
+    return constrained > 0 && constrained < host ? constrained : host;
 
 #else
     long cores = sysconf(_SC_NPROCESSORS_ONLN);
@@ -444,7 +632,10 @@ int64_t rt_machine_mem_total(void) {
 #elif defined(__linux__)
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
-        return (int64_t)si.totalram * (int64_t)si.mem_unit;
+        int64_t host = checked_u64_bytes((unsigned long long)si.totalram,
+                                         (unsigned long long)si.mem_unit);
+        int64_t constrained = linux_cgroup_memory_value("memory.max");
+        return constrained > 0 && constrained < host ? constrained : host;
     }
     return 0;
 
@@ -518,7 +709,15 @@ int64_t rt_machine_mem_free(void) {
                 unsigned long long kb = 0;
                 if (sscanf(line, "MemAvailable: %llu kB", &kb) == 1) {
                     fclose(meminfo);
-                    return (int64_t)(kb * 1024ULL);
+                    int64_t host_available = checked_u64_bytes(kb, 1024ULL);
+                    int64_t limit = linux_cgroup_memory_value("memory.max");
+                    int64_t current = linux_cgroup_memory_value("memory.current");
+                    if (limit > 0 && current >= 0) {
+                        int64_t container_available = current < limit ? limit - current : 0;
+                        if (container_available < host_available)
+                            host_available = container_available;
+                    }
+                    return host_available;
                 }
             }
             fclose(meminfo);
@@ -528,8 +727,11 @@ int64_t rt_machine_mem_free(void) {
     // a closer approximation than freeram alone.
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
-        int64_t unit = (int64_t)si.mem_unit;
-        return ((int64_t)si.freeram + (int64_t)si.bufferram) * unit;
+        unsigned long long pages = (unsigned long long)si.freeram;
+        if (ULLONG_MAX - pages < (unsigned long long)si.bufferram)
+            return INT64_MAX;
+        pages += (unsigned long long)si.bufferram;
+        return checked_u64_bytes(pages, (unsigned long long)si.mem_unit);
     }
     return 0;
 

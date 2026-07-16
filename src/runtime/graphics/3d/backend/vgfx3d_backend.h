@@ -652,7 +652,7 @@ extern const vgfx3d_backend_t vgfx3d_metal_backend;
 /// @brief The Direct3D 11 GPU backend (Windows only).
 extern const vgfx3d_backend_t vgfx3d_d3d11_backend;
 #endif
-#if RT_PLATFORM_LINUX
+#if RT_PLATFORM_LINUX && !defined(VIPER_GRAPHICS_HEADLESS)
 /// @brief The OpenGL GPU backend (Linux only).
 extern const vgfx3d_backend_t vgfx3d_opengl_backend;
 #endif

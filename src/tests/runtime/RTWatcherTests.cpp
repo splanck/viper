@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_platform.h"
 #include "rt_watcher.h"
 #include "tests/common/PlatformSkip.h"
 
@@ -51,7 +52,7 @@ extern "C" void vm_trap(const char *msg) {
         g_trap_expected = false;                                                                   \
     } while (0)
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <direct.h>
 #include <process.h>
 #define mkdir_p(path) _mkdir(path)
@@ -72,7 +73,7 @@ static void test_result(const char *name, bool passed) {
 
 /// @brief Get a unique temp directory path for testing.
 static const char *get_test_base() {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     static char buf[256];
     const char *tmp = getenv("TEMP");
     if (!tmp)
@@ -217,7 +218,7 @@ static void test_directory_event_path() {
     mkdir_p(base);
 
     char file_path[512];
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     snprintf(file_path, sizeof(file_path), "%s\\created.txt", base);
 #else
     snprintf(file_path, sizeof(file_path), "%s/created.txt", base);
@@ -231,7 +232,7 @@ static void test_directory_event_path() {
     int64_t event = poll_until_event(w);
     assert(event != RT_WATCH_EVENT_NONE);
     rt_string event_path = rt_watcher_event_path(w);
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     test_result("macOS directory event path is watched directory",
                 strcmp(rt_string_cstr(event_path), base) == 0);
 #else
@@ -251,7 +252,7 @@ static void test_file_event_path() {
     mkdir_p(base);
 
     char file_path[512];
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     snprintf(file_path, sizeof(file_path), "%s\\watched.txt", base);
 #else
     snprintf(file_path, sizeof(file_path), "%s/watched.txt", base);
@@ -281,7 +282,7 @@ static void test_stop_clears_last_event() {
     mkdir_p(base);
 
     char file_path[512];
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     snprintf(file_path, sizeof(file_path), "%s\\stale.txt", base);
 #else
     snprintf(file_path, sizeof(file_path), "%s/stale.txt", base);
@@ -307,7 +308,7 @@ static void test_stop_clears_last_event() {
     rmdir_p(base);
 }
 
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
 static void test_file_recreate_is_detected() {
     printf("Testing file recreate events...\n");
 
@@ -362,7 +363,7 @@ static void test_nonexistent_path_trap() {
     test_result("Non-existent path trap", true);
 }
 
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
 /// @brief VDOC-190: an INTERNAL ring overflow (Viper's 64-entry queue fills
 ///        before the client polls) reports a POSITIVE exact dropped count via
 ///        EventOverflowCount(), never the -1 native-overflow sentinel. (The
@@ -407,10 +408,61 @@ static void test_internal_overflow_reports_positive_count() {
     else
         test_result("internal overflow not triggered (fast drain, acceptable)", true);
 }
+
+static void test_deleted_watch_becomes_inactive() {
+    printf("Testing deleted watch terminal state...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    char watched_dir[512];
+    snprintf(watched_dir, sizeof(watched_dir), "%s/terminal-watch", base);
+    mkdir_p(watched_dir);
+
+    void *w = rt_watcher_new(rt_string_from_bytes(watched_dir, strlen(watched_dir)));
+    rt_watcher_start(w);
+    test_result("directory watcher starts", rt_watcher_get_is_watching(w) == 1);
+
+    rmdir_p(watched_dir);
+    int saw_rescan = 0;
+    for (int i = 0; i < 20; ++i) {
+        int64_t ev = rt_watcher_poll_for(w, 100);
+        if (ev == RT_WATCH_EVENT_OVERFLOW)
+            saw_rescan = 1;
+        if (!rt_watcher_get_is_watching(w) && saw_rescan)
+            break;
+    }
+    test_result("deleted watch requests rescan", saw_rescan != 0);
+    test_result("deleted watch becomes inactive", rt_watcher_get_is_watching(w) == 0);
+    rt_watcher_stop(w);
+}
+
+static void test_attribute_change_is_modified() {
+    printf("Testing attribute change events...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s/attrib.txt", base);
+    create_file(file_path);
+
+    void *w = rt_watcher_new(rt_string_from_bytes(file_path, strlen(file_path)));
+    rt_watcher_start(w);
+    (void)chmod(file_path, 0600);
+
+    int saw_modified = 0;
+    for (int i = 0; i < 20; ++i) {
+        if (rt_watcher_poll_for(w, 100) == RT_WATCH_EVENT_MODIFIED) {
+            saw_modified = 1;
+            break;
+        }
+    }
+    test_result("attribute change produces modified event", saw_modified != 0);
+    rt_watcher_stop(w);
+    remove_file(file_path);
+    rmdir_p(base);
+}
 #endif
 
 int main() {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     // Skip on Windows: test uses /tmp paths not available on Windows
     VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
@@ -423,9 +475,11 @@ int main() {
     test_directory_event_path();
     test_file_event_path();
     test_stop_clears_last_event();
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     test_file_recreate_is_detected();
     test_internal_overflow_reports_positive_count();
+    test_deleted_watch_becomes_inactive();
+    test_attribute_change_is_modified();
 #endif
     test_null_path_trap();
     test_nonexistent_path_trap();

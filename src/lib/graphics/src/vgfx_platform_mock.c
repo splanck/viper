@@ -52,6 +52,17 @@ static int64_t g_mock_time_ms = 0;
 ///          can set a HiDPI scale before vgfx_create_window() to validate
 ///          framebuffer/logical coordinate contracts without a real display.
 static float g_mock_display_scale = 1.0f;
+static char *g_mock_clipboard_text = NULL;
+static vgfx_atomic_flag_t g_mock_clipboard_lock;
+
+static void mock_clipboard_lock(void) {
+    while (vgfx_atomic_flag_test_and_set(&g_mock_clipboard_lock))
+        vgfx_internal_event_wait();
+}
+
+static void mock_clipboard_unlock(void) {
+    vgfx_atomic_flag_clear(&g_mock_clipboard_lock);
+}
 
 #define VGFX_MOCK_PENDING_QUEUE_SLOTS (VGFX_EVENT_QUEUE_SIZE * 8)
 
@@ -67,6 +78,43 @@ typedef struct {
     int pending_tail;
     vgfx_event_t pending_events[VGFX_MOCK_PENDING_QUEUE_SLOTS];
 } vgfx_mock_platform;
+
+int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
+    if (format != VGFX_CLIPBOARD_TEXT)
+        return 0;
+    mock_clipboard_lock();
+    int available = g_mock_clipboard_text && g_mock_clipboard_text[0] != '\0';
+    mock_clipboard_unlock();
+    return available;
+}
+
+char *vgfx_clipboard_get_text(void) {
+    mock_clipboard_lock();
+    const char *source = g_mock_clipboard_text ? g_mock_clipboard_text : "";
+    size_t length = strlen(source);
+    char *copy = (char *)malloc(length + 1u);
+    if (copy)
+        memcpy(copy, source, length + 1u);
+    mock_clipboard_unlock();
+    return copy;
+}
+
+void vgfx_clipboard_set_text(const char *text) {
+    const char *source = text ? text : "";
+    size_t length = strlen(source);
+    char *copy = (char *)malloc(length + 1u);
+    if (!copy)
+        return;
+    memcpy(copy, source, length + 1u);
+    mock_clipboard_lock();
+    free(g_mock_clipboard_text);
+    g_mock_clipboard_text = copy;
+    mock_clipboard_unlock();
+}
+
+void vgfx_clipboard_clear(void) {
+    vgfx_clipboard_set_text("");
+}
 
 /// @brief Allocate an aligned buffer for the platform-agnostic framebuffer.
 /// @details The mock backend cannot rely on OS-specific aligned allocators, so

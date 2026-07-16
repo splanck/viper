@@ -175,6 +175,7 @@ typedef struct {
     char *clipboard_text;             ///< Owned text while this window owns CLIPBOARD
     XIM xim;                          ///< Input method for UTF-8 text input
     XIC xic;                          ///< Input context for UTF-8 text input
+    int xi_opcode;                    ///< XInput extension opcode for this Display connection
     int cursor_type;                  ///< Last requested cursor type
     int cursor_visible;               ///< 1 if cursor should be visible
     Cursor cursor_cache[6];           ///< Cached visible cursor handles by public cursor type
@@ -190,6 +191,21 @@ typedef GLXFBConfig *(*vgfx_glx_choose_fb_config_fn)(Display *dpy,
 typedef XVisualInfo *(*vgfx_glx_get_visual_from_fb_config_fn)(Display *dpy, GLXFBConfig config);
 
 static void *g_vgfx_glx_libgl_handle = NULL;
+static vgfx_glx_choose_fb_config_fn g_vgfx_glx_choose_fb_config = NULL;
+static vgfx_glx_get_visual_from_fb_config_fn g_vgfx_glx_get_visual_from_fb_config = NULL;
+static pthread_once_t g_vgfx_glx_once = PTHREAD_ONCE_INIT;
+
+static void x11_load_glx_library(void) {
+    g_vgfx_glx_libgl_handle = dlopen("libGL.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (!g_vgfx_glx_libgl_handle)
+        g_vgfx_glx_libgl_handle = dlopen("libGL.so", RTLD_NOW | RTLD_LOCAL);
+    if (!g_vgfx_glx_libgl_handle)
+        return;
+    g_vgfx_glx_choose_fb_config = (vgfx_glx_choose_fb_config_fn)dlsym(
+        g_vgfx_glx_libgl_handle, "glXChooseFBConfig");
+    g_vgfx_glx_get_visual_from_fb_config = (vgfx_glx_get_visual_from_fb_config_fn)dlsym(
+        g_vgfx_glx_libgl_handle, "glXGetVisualFromFBConfig");
+}
 
 /// @brief Try to select a double-buffered GLX visual for windows that may host GPU rendering.
 ///
@@ -199,8 +215,6 @@ static void *g_vgfx_glx_libgl_handle = NULL;
 /// matching double-buffered FBConfig, which produces a mapped title bar with a never-updated client
 /// area on some Linux drivers.
 static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
-    vgfx_glx_choose_fb_config_fn choose_fb_config;
-    vgfx_glx_get_visual_from_fb_config_fn get_visual_from_fb_config;
     GLXFBConfig *configs;
     XVisualInfo *visual_info = NULL;
     int fb_count = 0;
@@ -224,21 +238,12 @@ static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
 
     if (!x11 || !x11->display)
         return 0;
-    if (!g_vgfx_glx_libgl_handle)
-        g_vgfx_glx_libgl_handle = dlopen("libGL.so.1", RTLD_LAZY);
-    if (!g_vgfx_glx_libgl_handle)
-        g_vgfx_glx_libgl_handle = dlopen("libGL.so", RTLD_LAZY);
-    if (!g_vgfx_glx_libgl_handle)
+    if (pthread_once(&g_vgfx_glx_once, x11_load_glx_library) != 0)
+        return 0;
+    if (!g_vgfx_glx_choose_fb_config || !g_vgfx_glx_get_visual_from_fb_config)
         return 0;
 
-    choose_fb_config =
-        (vgfx_glx_choose_fb_config_fn)dlsym(g_vgfx_glx_libgl_handle, "glXChooseFBConfig");
-    get_visual_from_fb_config = (vgfx_glx_get_visual_from_fb_config_fn)dlsym(
-        g_vgfx_glx_libgl_handle, "glXGetVisualFromFBConfig");
-    if (!choose_fb_config || !get_visual_from_fb_config)
-        return 0;
-
-    configs = choose_fb_config(x11->display, x11->screen, fb_attribs, &fb_count);
+    configs = g_vgfx_glx_choose_fb_config(x11->display, x11->screen, fb_attribs, &fb_count);
     if (!configs || fb_count <= 0) {
         if (configs)
             XFree(configs);
@@ -246,7 +251,7 @@ static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
     }
 
     for (int i = 0; i < fb_count; i++) {
-        visual_info = get_visual_from_fb_config(x11->display, configs[i]);
+        visual_info = g_vgfx_glx_get_visual_from_fb_config(x11->display, configs[i]);
         if (visual_info)
             break;
     }
@@ -273,12 +278,17 @@ static float g_x11_scale_value = 1.0f;
 ///          that may touch Xlib from multiple threads.  Calling it more than
 ///          once is harmless for this backend; the flag only avoids repeated
 ///          work on common single-threaded paths.
-static void x11_init_threads_once(void) {
-    static int initialized = 0;
-    if (!initialized) {
-        XInitThreads();
-        initialized = 1;
-    }
+static pthread_once_t g_x11_threads_once = PTHREAD_ONCE_INIT;
+static int g_x11_threads_available = 0;
+
+static void x11_init_threads(void) {
+    g_x11_threads_available = XInitThreads() != 0;
+}
+
+static int x11_init_threads_once(void) {
+    if (pthread_once(&g_x11_threads_once, x11_init_threads) != 0)
+        return 0;
+    return g_x11_threads_available;
 }
 
 /// @brief Wait briefly for an X11 window to become viewable after `XMapWindow`.
@@ -617,25 +627,10 @@ static void x11_unregister_window(struct vgfx_window *win) {
     x11_global_unlock();
 }
 
-/// @brief Release the cached GLX library handle once no X11 windows remain.
-/// @details `XCloseDisplay` may run GLX extension cleanup registered on the
-///          display.  The last window must therefore close its display before
-///          unloading the process-wide `libGL` handle that supplied those hooks.
-static void x11_maybe_close_glx_library(void) {
-    x11_global_lock();
-    if (!g_vgfx_x11_windows && g_vgfx_glx_libgl_handle) {
-        dlclose(g_vgfx_glx_libgl_handle);
-        g_vgfx_glx_libgl_handle = NULL;
-    }
-    x11_global_unlock();
-}
-
-static struct vgfx_window *x11_clipboard_window(void) {
-    x11_global_lock();
+/// @pre g_x11_global_mu is held by the caller until it finishes using the result.
+static struct vgfx_window *x11_clipboard_window_locked(void) {
     if (x11_window_usable(g_vgfx_clipboard_window)) {
-        struct vgfx_window *result = g_vgfx_clipboard_window;
-        x11_global_unlock();
-        return result;
+        return g_vgfx_clipboard_window;
     }
 
     for (struct vgfx_window *win = g_vgfx_x11_windows; win;) {
@@ -646,7 +641,6 @@ static struct vgfx_window *x11_clipboard_window(void) {
         vgfx_internal_event_unlock(win);
         if (x11_window_usable(win) && focused) {
             g_vgfx_clipboard_window = win;
-            x11_global_unlock();
             return win;
         }
         win = next;
@@ -654,19 +648,14 @@ static struct vgfx_window *x11_clipboard_window(void) {
 
     if (x11_window_usable(g_vgfx_cursor_window)) {
         g_vgfx_clipboard_window = g_vgfx_cursor_window;
-        struct vgfx_window *result = g_vgfx_clipboard_window;
-        x11_global_unlock();
-        return result;
+        return g_vgfx_clipboard_window;
     }
     if (x11_window_usable(g_vgfx_x11_windows)) {
         g_vgfx_clipboard_window = g_vgfx_x11_windows;
-        struct vgfx_window *result = g_vgfx_clipboard_window;
-        x11_global_unlock();
-        return result;
+        return g_vgfx_clipboard_window;
     }
 
     g_vgfx_clipboard_window = NULL;
-    x11_global_unlock();
     return NULL;
 }
 
@@ -915,7 +904,6 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
         }
         XCloseDisplay(x11->display);
         x11->display = NULL;
-        x11_maybe_close_glx_library();
     }
 
     free(x11);
@@ -1070,8 +1058,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     }
 
     win->platform_data = x11;
-    x11_register_window(win);
     x11->close_requested = 0;
+    x11->xi_opcode = -1;
     x11->cursor_type = 0;
     x11->cursor_visible = 1;
     x11->width = win->width;
@@ -1079,7 +1067,11 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->hidden = hide_window;
 
     /* Open connection to X server */
-    x11_init_threads_once();
+    if (!x11_init_threads_once()) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to initialize thread-safe Xlib access");
+        x11_cleanup_platform(win);
+        return 0;
+    }
     x11->display = XOpenDisplay(NULL);
     if (!x11->display) {
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to open X11 display");
@@ -1251,6 +1243,9 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     XFlush(x11->display);
     if (!hide_window)
         x11_wait_for_viewable(x11);
+
+    /* Publish only fully initialized windows to process-global services. */
+    x11_register_window(win);
 
     return 1;
 }
@@ -1566,7 +1561,7 @@ static char *x11_read_text_property(vgfx_x11_data *x11, Atom property, Atom requ
 /* Relative-mouse helpers implemented after the XInput2 loader at the bottom
  * of this file (see "Relative (raw) mouse mode" section). */
 static void x11_handle_generic_event(struct vgfx_window *win, XEvent *event);
-void x11_relative_apply_grab(struct vgfx_window *win, int enable);
+static int x11_relative_apply_grab(struct vgfx_window *win, int enable);
 
 int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
     if (!win || !win->platform_data)
@@ -1585,8 +1580,11 @@ int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
     pfd.fd = ConnectionNumber(x11->display);
     pfd.events = POLLIN;
     pfd.revents = 0;
-    int r = poll(&pfd, 1, timeout_ms);
-    return r > 0 ? 1 : 0;
+    int r;
+    do {
+        r = poll(&pfd, 1, timeout_ms);
+    } while (r < 0 && errno == EINTR);
+    return r > 0 && (pfd.revents & POLLIN) != 0 ? 1 : 0;
 }
 
 int vgfx_platform_process_events(struct vgfx_window *win) {
@@ -2519,17 +2517,17 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) 
 void vgfx_platform_hide_cursor(void) {
     x11_global_lock();
     struct vgfx_window *win = g_vgfx_cursor_window;
-    x11_global_unlock();
     if (win)
         vgfx_platform_set_cursor_visible(win, 0);
+    x11_global_unlock();
 }
 
 void vgfx_platform_show_cursor(void) {
     x11_global_lock();
     struct vgfx_window *win = g_vgfx_cursor_window;
-    x11_global_unlock();
     if (win)
         vgfx_platform_set_cursor_visible(win, 1);
+    x11_global_unlock();
 }
 
 void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h) {
@@ -2599,16 +2597,25 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
 char *vgfx_clipboard_get_text(void) {
     vgfx_x11_data *x11 = NULL;
 
-    struct vgfx_window *owner = x11_clipboard_window();
-    if (!owner || !owner->platform_data)
+    x11_global_lock();
+    struct vgfx_window *owner = x11_clipboard_window_locked();
+    if (!owner || !owner->platform_data) {
+        x11_global_unlock();
         return NULL;
+    }
 
     x11 = (vgfx_x11_data *)owner->platform_data;
-    if (!x11 || !x11->display || !x11->window)
+    if (!x11 || !x11->display || !x11->window) {
+        x11_global_unlock();
         return NULL;
+    }
 
-    if (x11->clipboard_text && XGetSelectionOwner(x11->display, x11->clipboard_atom) == x11->window)
-        return x11_strdup_text(x11->clipboard_text);
+    if (x11->clipboard_text &&
+        XGetSelectionOwner(x11->display, x11->clipboard_atom) == x11->window) {
+        char *copy = x11_strdup_text(x11->clipboard_text);
+        x11_global_unlock();
+        return copy;
+    }
 
     Atom targets[2] = {x11->utf8_string_atom, XA_STRING};
     for (size_t target_index = 0; target_index < 2; target_index++) {
@@ -2636,8 +2643,10 @@ char *vgfx_clipboard_get_text(void) {
                 }
 
                 char *copy = x11_read_text_property(x11, x11->clipboard_property_atom, target);
-                if (copy)
+                if (copy) {
+                    x11_global_unlock();
                     return copy;
+                }
                 target_done = 1;
             } else {
                 usleep(1000);
@@ -2645,23 +2654,31 @@ char *vgfx_clipboard_get_text(void) {
         }
     }
 
+    x11_global_unlock();
     return NULL;
 }
 
 void vgfx_clipboard_set_text(const char *text) {
     vgfx_x11_data *x11 = NULL;
 
-    struct vgfx_window *owner = x11_clipboard_window();
-    if (!owner || !owner->platform_data)
+    x11_global_lock();
+    struct vgfx_window *owner = x11_clipboard_window_locked();
+    if (!owner || !owner->platform_data) {
+        x11_global_unlock();
         return;
+    }
 
     x11 = (vgfx_x11_data *)owner->platform_data;
-    if (!x11 || !x11->display || !x11->window)
+    if (!x11 || !x11->display || !x11->window) {
+        x11_global_unlock();
         return;
+    }
 
     char *copy = x11_strdup_text(text);
-    if (!copy)
+    if (!copy) {
+        x11_global_unlock();
         return;
+    }
 
     free(x11->clipboard_text);
     x11->clipboard_text = copy;
@@ -2671,6 +2688,7 @@ void vgfx_clipboard_set_text(const char *text) {
         x11->clipboard_text = NULL;
     }
     XFlush(x11->display);
+    x11_global_unlock();
 }
 
 void vgfx_clipboard_clear(void) {
@@ -2761,39 +2779,42 @@ typedef int (*vgfx_xi_select_events_fn)(Display *, Window, vgfx_xi_event_mask_t 
 static void *g_vgfx_xi_handle = NULL;
 static vgfx_xi_query_version_fn g_vgfx_xi_query_version = NULL;
 static vgfx_xi_select_events_fn g_vgfx_xi_select_events = NULL;
-int g_vgfx_xi_opcode = -1; /* consulted by the GenericEvent handler */
+static pthread_once_t g_vgfx_xi_once = PTHREAD_ONCE_INIT;
+
+static void x11_xi2_load_library(void) {
+    g_vgfx_xi_handle = dlopen("libXi.so.6", RTLD_NOW | RTLD_LOCAL);
+    if (!g_vgfx_xi_handle)
+        g_vgfx_xi_handle = dlopen("libXi.so", RTLD_NOW | RTLD_LOCAL);
+    if (!g_vgfx_xi_handle)
+        return;
+    g_vgfx_xi_query_version =
+        (vgfx_xi_query_version_fn)dlsym(g_vgfx_xi_handle, "XIQueryVersion");
+    g_vgfx_xi_select_events =
+        (vgfx_xi_select_events_fn)dlsym(g_vgfx_xi_handle, "XISelectEvents");
+}
 
 /// @brief Lazily load libXi and resolve the XInput2 entry points we use.
 /// @return 1 when XInput2 >= 2.0 is available on @p display, 0 otherwise.
-static int x11_xi2_load(Display *display) {
-    if (!display)
+static int x11_xi2_load(vgfx_x11_data *x11) {
+    if (!x11 || !x11->display)
         return 0;
-    if (!g_vgfx_xi_handle) {
-        g_vgfx_xi_handle = dlopen("libXi.so.6", RTLD_LAZY);
-        if (!g_vgfx_xi_handle)
-            g_vgfx_xi_handle = dlopen("libXi.so", RTLD_LAZY);
-        if (!g_vgfx_xi_handle)
-            return 0;
-        g_vgfx_xi_query_version =
-            (vgfx_xi_query_version_fn)dlsym(g_vgfx_xi_handle, "XIQueryVersion");
-        g_vgfx_xi_select_events =
-            (vgfx_xi_select_events_fn)dlsym(g_vgfx_xi_handle, "XISelectEvents");
-    }
+    if (pthread_once(&g_vgfx_xi_once, x11_xi2_load_library) != 0)
+        return 0;
     if (!g_vgfx_xi_query_version || !g_vgfx_xi_select_events)
         return 0;
 
     int opcode = 0;
     int event_base = 0;
     int error_base = 0;
-    if (!XQueryExtension(display, "XInputExtension", &opcode, &event_base, &error_base))
+    if (!XQueryExtension(x11->display, "XInputExtension", &opcode, &event_base, &error_base))
         return 0;
 
     int major = 2;
     int minor = 0;
-    if (g_vgfx_xi_query_version(display, &major, &minor) != Success)
+    if (g_vgfx_xi_query_version(x11->display, &major, &minor) != Success)
         return 0;
 
-    g_vgfx_xi_opcode = opcode;
+    x11->xi_opcode = opcode;
     return 1;
 }
 
@@ -2804,14 +2825,14 @@ static int x11_xi2_load(Display *display) {
 static void x11_handle_generic_event(struct vgfx_window *win, XEvent *event) {
     if (!win || !event || !win->relative_mouse_enabled || !win->relative_mouse_native)
         return;
-    if (g_vgfx_xi_opcode < 0)
-        return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
     if (!x11 || !x11->display)
         return;
+    if (x11->xi_opcode < 0)
+        return;
 
     XGenericEventCookie *cookie = &event->xcookie;
-    if (cookie->extension != g_vgfx_xi_opcode)
+    if (cookie->extension != x11->xi_opcode)
         return;
     if (!XGetEventData(x11->display, cookie))
         return;
@@ -2859,26 +2880,29 @@ static int x11_xi2_select_raw_motion(vgfx_x11_data *x11, int enable) {
 /// @details Raw motion keeps flowing regardless of the cursor position; the
 ///          grab only prevents the (hidden) cursor from drifting onto other
 ///          windows/workspaces and stealing a click.
-void x11_relative_apply_grab(struct vgfx_window *win, int enable) {
+static int x11_relative_apply_grab(struct vgfx_window *win, int enable) {
     if (!win || !win->platform_data)
-        return;
+        return 0;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
     if (!x11->display || !x11->window)
-        return;
+        return 0;
     if (enable) {
-        XGrabPointer(x11->display,
-                     x11->window,
-                     True,
-                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
-                     GrabModeAsync,
-                     GrabModeAsync,
-                     x11->window,
-                     None,
-                     CurrentTime);
+        int result = XGrabPointer(x11->display,
+                                  x11->window,
+                                  True,
+                                  ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+                                  GrabModeAsync,
+                                  GrabModeAsync,
+                                  x11->window,
+                                  None,
+                                  CurrentTime);
+        if (result != GrabSuccess)
+            return 0;
     } else {
         XUngrabPointer(x11->display, CurrentTime);
     }
     XFlush(x11->display);
+    return 1;
 }
 
 int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
@@ -2889,15 +2913,18 @@ int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
         return 0;
 
     if (enabled) {
-        if (!x11_xi2_load(x11->display))
+        if (!x11_xi2_load(x11))
             return 0; /* No XInput2 — caller falls back to warp-to-center. */
         if (!x11_xi2_select_raw_motion(x11, 1))
             return 0;
-        x11_relative_apply_grab(win, 1);
-    } else {
-        if (g_vgfx_xi_select_events && g_vgfx_xi_opcode >= 0)
+        if (!x11_relative_apply_grab(win, 1)) {
             (void)x11_xi2_select_raw_motion(x11, 0);
-        x11_relative_apply_grab(win, 0);
+            return 0;
+        }
+    } else {
+        if (g_vgfx_xi_select_events && x11->xi_opcode >= 0)
+            (void)x11_xi2_select_raw_motion(x11, 0);
+        (void)x11_relative_apply_grab(win, 0);
     }
     XFlush(x11->display);
     return 1;

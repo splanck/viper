@@ -875,6 +875,28 @@ static void close_fd(int *fd) {
     }
 }
 
+static void pty_child_report_errno(int fd, int error_value) {
+    const unsigned char *bytes = (const unsigned char *)&error_value;
+    size_t off = 0;
+    while (off < sizeof(error_value)) {
+        ssize_t count = write(fd, bytes + off, sizeof(error_value) - off);
+        if (count > 0) {
+            off += (size_t)count;
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        break;
+    }
+}
+
+static void pty_signal_session(pid_t pid, int signal_number) {
+    if (pid <= 0)
+        return;
+    if (kill(-pid, signal_number) != 0 && errno == ESRCH)
+        (void)kill(pid, signal_number);
+}
+
 static void set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags >= 0)
@@ -1047,7 +1069,7 @@ static rt_pty_impl *pty_open_impl(
     }
 
     char slave_name[256];
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     int pts_rc = ptsname_r(master, slave_name, sizeof(slave_name));
     if (pts_rc != 0) {
         errno = pts_rc;
@@ -1078,18 +1100,30 @@ static rt_pty_impl *pty_open_impl(
     // failure by returning NULL instead of an apparently valid session that only
     // fails later (VDOC-213).
     int exec_pipe[2] = {-1, -1};
-    if (pipe(exec_pipe) != 0) {
+#if RT_PLATFORM_LINUX && defined(O_CLOEXEC)
+    int pipe_rc = pipe2(exec_pipe, O_CLOEXEC);
+#else
+    int pipe_rc = pipe(exec_pipe);
+#endif
+    if (pipe_rc != 0) {
         pty_set_last_errno("pipe failed");
         close(master);
         free_string_vector(&envp);
         free_string_vector(&argv);
         return NULL;
     }
-#if defined(FD_CLOEXEC)
+#if defined(FD_CLOEXEC) && !(RT_PLATFORM_LINUX && defined(O_CLOEXEC))
     {
         int f = fcntl(exec_pipe[1], F_GETFD, 0);
-        if (f >= 0)
-            (void)fcntl(exec_pipe[1], F_SETFD, f | FD_CLOEXEC);
+        if (f < 0 || fcntl(exec_pipe[1], F_SETFD, f | FD_CLOEXEC) != 0) {
+            pty_set_last_errno("setting exec-status close-on-exec failed");
+            close(exec_pipe[0]);
+            close(exec_pipe[1]);
+            close(master);
+            free_string_vector(&envp);
+            free_string_vector(&argv);
+            return NULL;
+        }
     }
 #endif
 
@@ -1107,30 +1141,39 @@ static rt_pty_impl *pty_open_impl(
     if (pid == 0) {
         // CHILD — only async-signal-safe calls until exec.
         close(exec_pipe[0]);
-        setsid();
+        if (setsid() < 0) {
+            pty_child_report_errno(exec_pipe[1], errno);
+            _exit(127);
+        }
         int slave = open(slave_name, O_RDWR);
         if (slave < 0) {
             int e = errno;
-            (void)!write(exec_pipe[1], &e, sizeof(e));
+            pty_child_report_errno(exec_pipe[1], e);
             _exit(127);
         }
 #if defined(TIOCSCTTY)
-        (void)ioctl(slave, TIOCSCTTY, 0);
+        if (ioctl(slave, TIOCSCTTY, 0) != 0) {
+            int e = errno;
+            pty_child_report_errno(exec_pipe[1], e);
+            _exit(127);
+        }
 #endif
         struct winsize ws;
         memset(&ws, 0, sizeof(ws));
         ws.ws_col = (unsigned short)cols;
         ws.ws_row = (unsigned short)rows;
-        (void)ioctl(slave, TIOCSWINSZ, &ws);
-        (void)dup2(slave, STDIN_FILENO);
-        (void)dup2(slave, STDOUT_FILENO);
-        (void)dup2(slave, STDERR_FILENO);
+        if (ioctl(slave, TIOCSWINSZ, &ws) != 0 || dup2(slave, STDIN_FILENO) < 0 ||
+            dup2(slave, STDOUT_FILENO) < 0 || dup2(slave, STDERR_FILENO) < 0) {
+            int e = errno;
+            pty_child_report_errno(exec_pipe[1], e);
+            _exit(127);
+        }
         if (slave > STDERR_FILENO)
             close(slave);
         close(master);
         if (cwd_text && chdir(cwd_text) != 0) {
             int e = errno;
-            (void)!write(exec_pipe[1], &e, sizeof(e));
+            pty_child_report_errno(exec_pipe[1], e);
             _exit(127);
         }
         // Always PATH-search bare program names. For an explicit environment,
@@ -1145,7 +1188,7 @@ static rt_pty_impl *pty_open_impl(
         // still open because exec did not run).
         {
             int e = errno;
-            (void)!write(exec_pipe[1], &e, sizeof(e));
+            pty_child_report_errno(exec_pipe[1], e);
         }
         _exit(127);
     }
@@ -1155,19 +1198,33 @@ static rt_pty_impl *pty_open_impl(
     // Block until the child either reports a startup error or successfully
     // exec's (closing the CLOEXEC write end -> EOF). Retry on EINTR.
     int child_errno = 0;
-    ssize_t status_read;
-    do {
-        status_read = read(exec_pipe[0], &child_errno, sizeof(child_errno));
-    } while (status_read < 0 && errno == EINTR);
+    size_t status_bytes = 0;
+    while (status_bytes < sizeof(child_errno)) {
+        ssize_t count = read(exec_pipe[0], (unsigned char *)&child_errno + status_bytes,
+                             sizeof(child_errno) - status_bytes);
+        if (count > 0) {
+            status_bytes += (size_t)count;
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        if (count < 0)
+            status_bytes = sizeof(child_errno) + 1u;
+        break;
+    }
     close(exec_pipe[0]);
-    if (status_read > 0) {
+    if (status_bytes != 0) {
         // The child failed before/at exec (e.g. program not found on PATH).
         (void)waitpid(pid, NULL, 0);
         close(master);
         free_string_vector(&envp);
         free_string_vector(&argv);
-        errno = child_errno;
-        pty_set_last_errno("child exec failed");
+        if (status_bytes == sizeof(child_errno)) {
+            errno = child_errno;
+            pty_set_last_errno("child exec failed");
+        } else {
+            pty_set_last_error("child exec status protocol failed");
+        }
         return NULL;
     }
 
@@ -1184,7 +1241,7 @@ static rt_pty_impl *pty_open_impl(
 
     rt_pty_impl *pty = pty_alloc();
     if (!pty) {
-        (void)kill(pid, SIGTERM);
+        pty_signal_session(pid, SIGTERM);
         (void)waitpid(pid, NULL, 0);
         close(master);
         return NULL;
@@ -1200,10 +1257,10 @@ static void pty_close(rt_pty_impl *pty) {
     if (!pty || pty->destroyed)
         return;
     if (pty->running && pty->pid > 0) {
-        (void)kill(pty->pid, SIGTERM);
+        pty_signal_session(pty->pid, SIGTERM);
         pty_wait_after_sigterm(pty, 500);
         if (pty->running) {
-            (void)kill(pty->pid, SIGKILL);
+            pty_signal_session(pty->pid, SIGKILL);
             pty_poll_internal(pty, 1);
         }
     } else {
@@ -1367,7 +1424,11 @@ int64_t rt_pty_kill(void *handle) {
 #else
     if (pty->pid <= 0)
         return 0;
-    return kill(pty->pid, SIGTERM) == 0 ? 1 : 0;
+    if (kill(-pty->pid, SIGTERM) == 0)
+        return 1;
+    if (errno == ESRCH)
+        return kill(pty->pid, SIGTERM) == 0 ? 1 : 0;
+    return 0;
 #endif
 }
 

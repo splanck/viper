@@ -51,7 +51,7 @@
 #include <windows.h>
 #elif RT_PLATFORM_MACOS
 #include <ApplicationServices/ApplicationServices.h>
-#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS)
+#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS) && !defined(VIPER_GRAPHICS_HEADLESS)
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #endif
@@ -336,7 +336,7 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 #elif RT_PLATFORM_MACOS
     CGEventFlags flags = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
     return (flags & kCGEventFlagMaskAlphaShift) ? 1 : 0;
-#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS)
+#elif RT_PLATFORM_LINUX && defined(VIPER_ENABLE_GRAPHICS) && !defined(VIPER_GRAPHICS_HEADLESS)
     extern void *vgfx_get_native_display(void *window);
 
     Display *display = NULL;

@@ -53,12 +53,10 @@
 #include <limits.h>
 #include <poll.h>
 #include <sys/inotify.h>
-#include <sys/resource.h>
 #include <unistd.h>
 #elif RT_PLATFORM_MACOS
 #include <fcntl.h>
 #include <sys/event.h>
-#include <sys/resource.h>
 #include <sys/time.h>
 #include <unistd.h>
 #ifndef O_EVTONLY
@@ -332,6 +330,18 @@ static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out) {
 }
 
 #if RT_PLATFORM_LINUX
+static void watcher_close_inotify(rt_watcher_impl *w) {
+    if (!w)
+        return;
+    if (w->watch_descriptor >= 0 && w->inotify_fd >= 0)
+        (void)inotify_rm_watch(w->inotify_fd, w->watch_descriptor);
+    w->watch_descriptor = -1;
+    if (w->inotify_fd >= 0)
+        (void)close(w->inotify_fd);
+    w->inotify_fd = -1;
+    w->is_watching = 0;
+}
+
 /// @brief Drain pending inotify events from the kernel and translate to RT_WATCH_EVENT_*.
 ///
 /// A single `read` can return multiple packed `struct inotify_event`
@@ -344,43 +354,79 @@ static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out) {
 /// configured for a specific file rather than a directory.
 static void watcher_read_inotify_events(rt_watcher_impl *w) {
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
-    ssize_t len = read(w->inotify_fd, buf, sizeof(buf));
-    if (len <= 0)
-        return;
+    int terminal = 0;
+    for (;;) {
+        ssize_t len = read(w->inotify_fd, buf, sizeof(buf));
+        if (len < 0) {
+            if (errno == EINTR)
+                continue;
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                watcher_queue_native_overflow(w);
+                terminal = 1;
+            }
+            break;
+        }
+        if (len == 0) {
+            watcher_queue_native_overflow(w);
+            terminal = 1;
+            break;
+        }
 
-    char *ptr = buf;
-    while (ptr < buf + len) {
-        struct inotify_event *event = (struct inotify_event *)ptr;
-        int64_t type = RT_WATCH_EVENT_NONE;
+        char *ptr = buf;
+        char *end = buf + len;
+        while ((size_t)(end - ptr) >= sizeof(struct inotify_event)) {
+            struct inotify_event *event = (struct inotify_event *)ptr;
+            size_t stride = sizeof(struct inotify_event) + (size_t)event->len;
+            if (stride > (size_t)(end - ptr)) {
+                watcher_queue_native_overflow(w);
+                terminal = 1;
+                break;
+            }
+            int64_t type = RT_WATCH_EVENT_NONE;
 
         // The kernel sets IN_Q_OVERFLOW (wd == -1, no name) when its own event
         // queue overflowed and events were lost. Translate it into an overflow
         // marker with an UNKNOWN loss count so clients get the documented
         // rescan signal (VDOC-190).
-        if (event->mask & IN_Q_OVERFLOW) {
+            if (event->mask & IN_Q_OVERFLOW) {
+                watcher_queue_native_overflow(w);
+                ptr += stride;
+                continue;
+            }
+            if (event->mask & (IN_IGNORED | IN_UNMOUNT)) {
+                watcher_queue_native_overflow(w);
+                terminal = 1;
+                ptr += stride;
+                continue;
+            }
+
+            if (event->mask & IN_CREATE)
+                type = RT_WATCH_EVENT_CREATED;
+            else if (event->mask & (IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB))
+                type = RT_WATCH_EVENT_MODIFIED;
+            else if (event->mask & (IN_DELETE | IN_DELETE_SELF))
+                type = RT_WATCH_EVENT_DELETED;
+            else if (event->mask & (IN_MOVED_FROM | IN_MOVED_TO | IN_MOVE_SELF))
+                type = RT_WATCH_EVENT_RENAMED;
+
+            if (type != RT_WATCH_EVENT_NONE) {
+                const char *name = event->len > 0 ? event->name : NULL;
+                rt_string path = watcher_event_path_from_relative(w, name);
+                if (path)
+                    watcher_queue_event_owned(w, type, path);
+            }
+
+            ptr += stride;
+        }
+        if (ptr != end && !terminal) {
             watcher_queue_native_overflow(w);
-            ptr += sizeof(struct inotify_event) + event->len;
-            continue;
+            terminal = 1;
         }
-
-        if (event->mask & IN_CREATE)
-            type = RT_WATCH_EVENT_CREATED;
-        else if (event->mask & IN_MODIFY)
-            type = RT_WATCH_EVENT_MODIFIED;
-        else if (event->mask & (IN_DELETE | IN_DELETE_SELF))
-            type = RT_WATCH_EVENT_DELETED;
-        else if (event->mask & (IN_MOVED_FROM | IN_MOVED_TO | IN_MOVE_SELF))
-            type = RT_WATCH_EVENT_RENAMED;
-
-        if (type != RT_WATCH_EVENT_NONE) {
-            const char *name = event->len > 0 ? event->name : NULL;
-            rt_string path = watcher_event_path_from_relative(w, name);
-            if (path)
-                watcher_queue_event_owned(w, type, path);
-        }
-
-        ptr += sizeof(struct inotify_event) + event->len;
+        if (terminal)
+            break;
     }
+    if (terminal)
+        watcher_close_inotify(w);
 }
 #endif
 
@@ -619,32 +665,6 @@ int8_t rt_watcher_get_is_watching(void *obj) {
     return watcher_require(obj, "Watcher: invalid watcher")->is_watching;
 }
 
-/// @brief Best-effort one-time raise of the process open-file-descriptor limit.
-/// @details Each watcher consumes descriptors (a kqueue/inotify fd plus the
-///          watched path fd). A workspace watcher over a large tree opens many,
-///          and the default soft RLIMIT_NOFILE (256 on macOS) is easily
-///          exhausted. Raising the soft limit toward the hard limit lets the
-///          watcher — and the IDE's file handles generally — scale. Failure is
-///          ignored: callers already degrade gracefully when a watcher cannot start.
-static void watcher_raise_fd_limit_once(void) {
-#if RT_PLATFORM_MACOS || RT_PLATFORM_LINUX
-    static int attempted = 0;
-    if (attempted)
-        return;
-    attempted = 1;
-    struct rlimit rl;
-    if (getrlimit(RLIMIT_NOFILE, &rl) != 0)
-        return;
-    rlim_t want = 16384;
-    if (rl.rlim_max != RLIM_INFINITY && want > rl.rlim_max)
-        want = rl.rlim_max;
-    if (rl.rlim_cur < want) {
-        rl.rlim_cur = want;
-        (void)setrlimit(RLIMIT_NOFILE, &rl);
-    }
-#endif
-}
-
 /// @brief Begin watching. Per platform:
 ///   - **Linux:** `inotify_init1(IN_NONBLOCK)` + `inotify_add_watch` with mask covering create/
 ///     delete/modify/move events.
@@ -670,8 +690,6 @@ void rt_watcher_start(void *obj) {
         return;
     }
 
-    watcher_raise_fd_limit_once();
-
 #if RT_PLATFORM_LINUX
     w->inotify_fd = inotify_init1(IN_NONBLOCK
 #ifdef IN_CLOEXEC
@@ -688,7 +706,8 @@ void rt_watcher_start(void *obj) {
         (void)fcntl(w->inotify_fd, F_SETFD, inotify_flags | FD_CLOEXEC);
 #endif
 
-    uint32_t mask = IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO;
+    uint32_t mask = IN_CREATE | IN_DELETE | IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB |
+                    IN_MOVED_FROM | IN_MOVED_TO;
     const char *watch_target =
         rt_string_cstr(w->is_directory ? (rt_string)w->watch_path : (rt_string)w->watch_dir_path);
     if (w->is_directory)
@@ -856,9 +875,6 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
         return RT_WATCH_EVENT_NONE;
 
     rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
-    if (!w->is_watching)
-        return RT_WATCH_EVENT_NONE;
-
     // First check if we have queued events
     watcher_event ev;
     if (watcher_dequeue_event(w, &ev)) {
@@ -871,6 +887,8 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
         w->has_last_event = 1;
         return ev.type;
     }
+    if (!w->is_watching)
+        return RT_WATCH_EVENT_NONE;
 
     // Read new events from OS
 #if RT_PLATFORM_LINUX
@@ -899,10 +917,12 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
         }
         // timeout <= 0 (wait-forever or poll-once) retries with the same value.
     }
-    if (poll_rc > 0 && (pfd.revents & POLLNVAL)) {
-        w->is_watching = 0;
-    } else if (poll_rc > 0 && (pfd.revents & POLLIN)) {
+    if (poll_rc > 0 && (pfd.revents & POLLIN)) {
         watcher_read_inotify_events(w);
+    }
+    if (poll_rc > 0 && (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+        watcher_queue_native_overflow(w);
+        watcher_close_inotify(w);
     }
 #elif RT_PLATFORM_MACOS
     watcher_read_kqueue_events(w, watcher_timeout_to_int(ms));

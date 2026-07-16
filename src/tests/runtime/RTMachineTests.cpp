@@ -12,12 +12,22 @@
 
 #include "rt_internal.h"
 #include "rt_machine.h"
+#include "rt_platform.h"
 #include "rt_string.h"
+
+#if RT_PLATFORM_LINUX
+extern "C" rt_string rt_machine_linux_parse_os_release_file(const char *path);
+#endif
 
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+
+#if RT_PLATFORM_LINUX
+#include <unistd.h>
+#endif
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -158,6 +168,25 @@ static void test_mem_relationship() {
     assert(free_mem <= total);
 }
 
+#if RT_PLATFORM_LINUX
+static void test_linux_os_release_parser() {
+    char path[] = "/tmp/viper-os-release-XXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    FILE *file = fdopen(fd, "w");
+    assert(file != nullptr);
+    std::string long_prefix(400, 'x');
+    fprintf(file, "NAME=%s\nVERSION_ID=\"24.04\\\"-lts\"\n", long_prefix.c_str());
+    assert(fclose(file) == 0);
+
+    rt_string version = rt_machine_linux_parse_os_release_file(path);
+    assert(version != nullptr);
+    assert(strcmp(rt_string_cstr(version), "24.04\"-lts") == 0);
+    rt_string_unref(version);
+    assert(unlink(path) == 0);
+}
+#endif
+
 int main() {
     printf("=== Viper.System.Machine Tests ===\n\n");
 
@@ -173,6 +202,9 @@ int main() {
     test_endian();
     test_consistency();
     test_mem_relationship();
+#if RT_PLATFORM_LINUX
+    test_linux_os_release_parser();
+#endif
 
     printf("\nAll tests passed!\n");
     return 0;

@@ -133,6 +133,17 @@ function(viper_add_tools_tests)
     endif ()
 
     if (UNIX AND NOT APPLE)
+        viper_add_ctest(linux_headless_graphics_smoke
+                ${CMAKE_COMMAND}
+                -DCMAKE_BIN=${CMAKE_COMMAND}
+                -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+                -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/linux_headless_graphics_smoke
+                -P ${_VIPER_TOOLS_DIR}/HeadlessGraphicsSmoke.cmake)
+        set_tests_properties(linux_headless_graphics_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 180)
+        viper_add_test_labels(linux_headless_graphics_smoke gui smoke tools requires_linux)
+
         viper_add_ctest(linux_toolchain_deb_installer_smoke
                 ${CMAKE_COMMAND}
                 -DCMAKE_BIN=${CMAKE_COMMAND}

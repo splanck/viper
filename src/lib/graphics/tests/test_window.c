@@ -22,6 +22,7 @@
 #include "test_harness.h"
 #include "vgfx.h"
 #include "vgfx_mock.h"
+#include <stdlib.h>
 #include <string.h>
 
 /* T1: Window Creation – Valid Parameters */
@@ -160,6 +161,24 @@ void test_monitor_size_allows_null_window(void) {
     TEST_END();
 }
 
+void test_headless_clipboard_round_trip(void) {
+    TEST_BEGIN("Audit: Headless Clipboard Round Trip");
+
+    vgfx_clipboard_clear();
+    ASSERT_EQ(vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT), 0);
+    vgfx_clipboard_set_text("Viper headless clipboard");
+    ASSERT_EQ(vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT), 1);
+
+    char *text = vgfx_clipboard_get_text();
+    ASSERT_NOT_NULL(text);
+    ASSERT_TRUE(strcmp(text, "Viper headless clipboard") == 0);
+    free(text);
+
+    vgfx_clipboard_clear();
+    ASSERT_EQ(vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT), 0);
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for window lifecycle tests.
 /// Why:  Validate that window create/resize/teardown flows are robust.
@@ -175,6 +194,7 @@ int main(void) {
     test_hidpi_canvas_logical_size_contract();
     test_hidpi_resize_reports_physical_and_logical_size();
     test_monitor_size_allows_null_window();
+    test_headless_clipboard_round_trip();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();
