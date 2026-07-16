@@ -161,12 +161,13 @@ class DebugChannel {
         cv_.notify_one();
     }
 
-    std::thread reader_;
     std::mutex mutex_;
     std::mutex outMutex_;
     std::condition_variable cv_;
     std::deque<JsonValue> queue_;
     bool eof_ = false;
+    // Construct last: readerLoop accesses every synchronization member above.
+    std::thread reader_;
 };
 
 JsonValue stoppedEvent(const il::vm::DebugStopInfo &info) {

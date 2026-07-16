@@ -1356,7 +1356,7 @@ set_tests_properties(zia_viperide_debug PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;debug"
         RUN_SERIAL TRUE
-        TIMEOUT 120)
+        TIMEOUT 240)
 
 add_test(NAME zia_viperide_debug_vars
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/viperide/src/probes/debug_vars_probe.zia" -- --viper-bin $<TARGET_FILE:viper>

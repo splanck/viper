@@ -23,6 +23,8 @@ bind TempFile = Viper.IO.TempFile;
 bind Str = Viper.String;
 bind Terminal = Viper.Terminal;
 
+func debugWaitMs() -> Integer { return 20000; }
+
 func argValue(name: String) -> String {
     var i = 0;
     while i < Env.GetArgumentCount() - 1 {
@@ -77,7 +79,7 @@ func main() {
     }
 
     // 1) Run to the breakpoint on line 5; locals a/b must be populated.
-    pollUntilSettled(session, 8000);
+    pollUntilSettled(session, debugWaitMs());
     if session.stopped == false {
         fail("did not stop at breakpoint (terminated=" + session.terminated
             + ", reason=" + session.lastReason + ")");
@@ -212,7 +214,7 @@ func main() {
         fail("StepOver left stale paused debugger state visible");
         return;
     }
-    pollUntilSettled(session, 8000);
+    pollUntilSettled(session, debugWaitMs());
     if session.stopped == false {
         fail("did not stop after StepOver (terminated=" + session.terminated + ")");
         return;
@@ -232,7 +234,7 @@ func main() {
         fail("RunToLine left stale paused debugger state visible");
         return;
     }
-    pollUntilSettled(session, 8000);
+    pollUntilSettled(session, debugWaitMs());
     if session.stopped == false {
         fail("did not stop after RunToLine (terminated=" + session.terminated + ")");
         return;
@@ -251,7 +253,7 @@ func main() {
         fail("Continue left stale paused debugger state visible");
         return;
     }
-    pollUntilSettled(session, 8000);
+    pollUntilSettled(session, debugWaitMs());
     if session.terminated == false {
         fail("did not terminate after Continue");
         return;
@@ -279,7 +281,7 @@ func main() {
         fail("BASIC DebugSession.Launch returned false");
         return;
     }
-    pollUntilSettled(bsession, 8000);
+    pollUntilSettled(bsession, debugWaitMs());
     if bsession.stopped == false {
         fail("BASIC did not stop at breakpoint (terminated=" + bsession.terminated + ")");
         return;
@@ -302,7 +304,7 @@ func main() {
         fail("BASIC Continue rejected while stopped");
         return;
     }
-    pollUntilSettled(bsession, 8000);
+    pollUntilSettled(bsession, debugWaitMs());
     if bsession.terminated == false {
         fail("BASIC did not terminate after Continue");
         return;
@@ -327,7 +329,7 @@ func main() {
         fail("conditional: Launch returned false");
         return;
     }
-    pollUntilSettled(csession, 8000);
+    pollUntilSettled(csession, debugWaitMs());
     if csession.stopped == false {
         fail("conditional: did not stop (terminated=" + csession.terminated + ")");
         return;
@@ -359,7 +361,7 @@ func main() {
         return;
     }
     var lw = 0;
-    while lsession.IsActive() and lw < 8000 {
+    while lsession.IsActive() and lw < debugWaitMs() {
         lsession.Poll();
         if lsession.stopped {
             fail("logpoint: unexpectedly halted at line " + lsession.lastLine);

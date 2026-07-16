@@ -109,15 +109,15 @@ static void test_try_num_valid() {
     // Non-finite spellings: the short "Inf" forms and the long "Infinity" form
     // emitted by Fmt.Num must both parse (VDOC-017).
     assert(rt_parse_try_num(make_str("Inf"), &result) == 1);
-    assert(isinf(result) && result > 0.0);
+    assert(std::isinf(result) && result > 0.0);
     assert(rt_parse_try_num(make_str("-Inf"), &result) == 1);
-    assert(isinf(result) && result < 0.0);
+    assert(std::isinf(result) && result < 0.0);
     assert(rt_parse_try_num(make_str("Infinity"), &result) == 1);
-    assert(isinf(result) && result > 0.0);
+    assert(std::isinf(result) && result > 0.0);
     assert(rt_parse_try_num(make_str("-Infinity"), &result) == 1);
-    assert(isinf(result) && result < 0.0);
+    assert(std::isinf(result) && result < 0.0);
     assert(rt_parse_try_num(make_str("infinity"), &result) == 1);
-    assert(isinf(result) && result > 0.0);
+    assert(std::isinf(result) && result > 0.0);
 
     printf("test_try_num_valid: PASSED\n");
 }
