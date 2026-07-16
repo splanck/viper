@@ -146,6 +146,7 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
             per_instance.vertices = rebased_vertices;
             per_instance.indices = rebased_indices;
             per_instance.geometry_key = NULL;
+            per_instance.geometry_identity = 0;
             per_instance.geometry_revision = 0;
             memcpy(per_instance.prev_model_matrix,
                    per_instance.model_matrix,
@@ -719,6 +720,7 @@ static int canvas3d_queue_instanced_batch_common(void *canvas_obj,
         (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents && !rebase_positions64_instances)
             ? mesh_obj
             : NULL;
+    base_cmd.geometry_identity = base_cmd.geometry_key ? mesh->identity_serial : 0;
     base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
     base_cmd.compact_vertex_stream = (base_cmd.geometry_key && mesh->compact_streams) ? 1 : 0;
     if (suppress_normal_map)

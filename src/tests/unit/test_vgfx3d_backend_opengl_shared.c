@@ -139,6 +139,10 @@ static void test_target_blend_motion_and_readback_helpers(void) {
                     vgfx3d_opengl_choose_color_format(VGFX3D_OPENGL_TARGET_RTT) ==
                         VGFX3D_OPENGL_COLOR_FORMAT_UNORM8,
                 "Swapchain and RTT targets use UNORM8 output");
+    EXPECT_TRUE(vgfx3d_opengl_choose_motion_format(1) == VGFX3D_OPENGL_COLOR_FORMAT_HDR16F,
+                "Float-capable OpenGL contexts keep motion vectors in high precision");
+    EXPECT_TRUE(vgfx3d_opengl_choose_motion_format(0) == VGFX3D_OPENGL_COLOR_FORMAT_UNORM8,
+                "OpenGL motion storage falls back to UNORM8 without float targets");
 
     cmd.workflow = RT_MATERIAL3D_WORKFLOW_PBR;
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
@@ -264,6 +268,17 @@ static void test_capacity_and_cache_helpers(void) {
     EXPECT_TRUE(vgfx3d_opengl_should_reuse_morph_cache(
                     cmd.morph_key, 4, VGFX3D_OPENGL_MAX_MORPH_SHAPES, 128, 1, &cmd) == 1,
                 "Morph cache reuse compares against the clamped OpenGL shape count");
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.geometry_key = &cmd;
+    cmd.geometry_identity = 17;
+    cmd.geometry_revision = 4;
+    cmd.vertex_count = 12;
+    cmd.index_count = 18;
+    EXPECT_TRUE(vgfx3d_opengl_mesh_cache_matches(17, 4, 12, 18, 0, &cmd) == 1,
+                "Mesh cache accepts matching allocation generations and content metadata");
+    EXPECT_TRUE(vgfx3d_opengl_mesh_cache_matches(16, 4, 12, 18, 0, &cmd) == 0,
+                "Mesh cache rejects allocator-reused addresses with a new generation");
 }
 
 static void test_shadow_projection_helper_handles_orthographic_and_perspective(void) {

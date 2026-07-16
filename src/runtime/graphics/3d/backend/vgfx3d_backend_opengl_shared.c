@@ -220,6 +220,15 @@ vgfx3d_opengl_color_format_t vgfx3d_opengl_choose_color_format(
                                                      : VGFX3D_OPENGL_COLOR_FORMAT_UNORM8;
 }
 
+/// @brief Select storage precision for encoded motion/history/mask data.
+/// @details Even though velocity is encoded into [0,1], eight-bit storage visibly quantizes
+/// sub-pixel motion used by TAA. Float-capable contexts therefore use RGBA16F; RGBA8 remains a
+/// compatibility fallback for drivers that cannot render to half-float attachments.
+vgfx3d_opengl_color_format_t vgfx3d_opengl_choose_motion_format(int8_t supports_float_target) {
+    return supports_float_target ? VGFX3D_OPENGL_COLOR_FORMAT_HDR16F
+                                 : VGFX3D_OPENGL_COLOR_FORMAT_UNORM8;
+}
+
 /// @brief Select the GL blend mode for a draw command.
 /// @details Explicit `additive_blend` wins outright (used by particles, decals of fire,
 ///   etc.). Otherwise the command's material alpha and vertex-color-alpha determine
@@ -336,6 +345,19 @@ int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
     return cached_key == cmd->morph_key && cached_revision == cmd->morph_revision &&
            cached_shape_count == shape_count && cached_vertex_count == cmd->vertex_count &&
            cached_has_normal_deltas == has_normal_deltas;
+}
+
+/// @brief Match a static mesh upload without trusting allocator addresses.
+int vgfx3d_opengl_mesh_cache_matches(uint32_t cached_identity,
+                                     uint32_t cached_revision,
+                                     uint32_t cached_vertex_count,
+                                     uint32_t cached_index_count,
+                                     int8_t cached_compact,
+                                     const vgfx3d_draw_cmd_t *cmd) {
+    return cmd && cmd->geometry_key && cmd->geometry_identity != 0 &&
+           cached_identity == cmd->geometry_identity && cached_revision == cmd->geometry_revision &&
+           cached_vertex_count == cmd->vertex_count && cached_index_count == cmd->index_count &&
+           (cached_compact ? 1 : 0) == (cmd->compact_vertex_stream ? 1 : 0);
 }
 
 /// @brief Decide whether a per-mesh GPU cache entry should be evicted this frame.

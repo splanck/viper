@@ -11,6 +11,23 @@ static int gl_u64_compare_ascending(const void *lhs, const void *rhs) {
     return (a > b) - (a < b);
 }
 
+/// @brief Return reusable context-owned storage for cache age selection.
+static uint64_t *gl_cache_age_scratch(gl_context_t *ctx, int32_t count) {
+    uint64_t *grown;
+    int32_t capacity;
+    if (!ctx || count <= 0)
+        return NULL;
+    if (ctx->cache_age_scratch_capacity >= count)
+        return ctx->cache_age_scratch;
+    capacity = vgfx3d_opengl_next_capacity(ctx->cache_age_scratch_capacity, count, 64);
+    grown = (uint64_t *)realloc(ctx->cache_age_scratch, (size_t)capacity * sizeof(*grown));
+    if (!grown)
+        return NULL;
+    ctx->cache_age_scratch = grown;
+    ctx->cache_age_scratch_capacity = capacity;
+    return grown;
+}
+
 /// @brief Release one texture-cache slot's owned texture objects and zero the entry.
 static void texture_cache_release_entry(gl_texture_cache_entry_t *entry) {
     if (!entry)
@@ -170,13 +187,7 @@ static void texture_cache_prune(gl_context_t *ctx) {
     ctx->texture_cache_count = write_index;
     if (ctx->texture_cache_count > GL_TEXTURE_CACHE_MAX_RESIDENT) {
         const int32_t remove_goal = ctx->texture_cache_count - GL_TEXTURE_CACHE_MAX_RESIDENT;
-        /* Per-prune malloc+qsort+free of the age array (same pattern in cubemap_cache_prune and
-         * morph_cache_prune). This runs only when a cache is over its resident cap, not every
-         * frame, so impact is bounded. Optimisation path: a context-owned reusable age scratch
-         * (grown once, freed in the GL context destroy) reused across the three caches would
-         * remove the allocation churn entirely — kept out of this change because the GL TU is
-         * not locally compilable on macOS and the win is small. */
-        uint64_t *ages = (uint64_t *)malloc((size_t)ctx->texture_cache_count * sizeof(*ages));
+        uint64_t *ages = gl_cache_age_scratch(ctx, ctx->texture_cache_count);
         if (ages) {
             uint64_t cutoff;
             int32_t remaining_to_remove = remove_goal;
@@ -186,7 +197,6 @@ static void texture_cache_prune(gl_context_t *ctx) {
             }
             qsort(ages, (size_t)ctx->texture_cache_count, sizeof(*ages), gl_u64_compare_ascending);
             cutoff = ages[remove_goal - 1];
-            free(ages);
             for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
                 const uint64_t age = ctx->texture_cache[i].last_used_frame;
                 int evict = 0;
@@ -253,7 +263,7 @@ static void cubemap_cache_prune(gl_context_t *ctx) {
     ctx->cubemap_cache_count = write_index;
     if (ctx->cubemap_cache_count > GL_CUBEMAP_CACHE_MAX_RESIDENT) {
         const int32_t remove_goal = ctx->cubemap_cache_count - GL_CUBEMAP_CACHE_MAX_RESIDENT;
-        uint64_t *ages = (uint64_t *)malloc((size_t)ctx->cubemap_cache_count * sizeof(*ages));
+        uint64_t *ages = gl_cache_age_scratch(ctx, ctx->cubemap_cache_count);
         if (ages) {
             uint64_t cutoff;
             int32_t remaining_to_remove = remove_goal;
@@ -263,7 +273,6 @@ static void cubemap_cache_prune(gl_context_t *ctx) {
             }
             qsort(ages, (size_t)ctx->cubemap_cache_count, sizeof(*ages), gl_u64_compare_ascending);
             cutoff = ages[remove_goal - 1];
-            free(ages);
             for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
                 const uint64_t age = ctx->cubemap_cache[i].last_used_frame;
                 int evict = 0;
@@ -328,7 +337,7 @@ static void morph_cache_prune(gl_context_t *ctx) {
     ctx->morph_cache_count = write_index;
     if (ctx->morph_cache_count > GL_MORPH_CACHE_MAX_RESIDENT) {
         const int32_t remove_goal = ctx->morph_cache_count - GL_MORPH_CACHE_MAX_RESIDENT;
-        uint64_t *ages = (uint64_t *)malloc((size_t)ctx->morph_cache_count * sizeof(*ages));
+        uint64_t *ages = gl_cache_age_scratch(ctx, ctx->morph_cache_count);
         if (ages) {
             uint64_t cutoff;
             int32_t remaining_to_remove = remove_goal;
@@ -338,7 +347,6 @@ static void morph_cache_prune(gl_context_t *ctx) {
             }
             qsort(ages, (size_t)ctx->morph_cache_count, sizeof(*ages), gl_u64_compare_ascending);
             cutoff = ages[remove_goal - 1];
-            free(ages);
             for (int32_t i = 0; i < ctx->morph_cache_count; i++) {
                 const uint64_t age = ctx->morph_cache[i].last_used_frame;
                 int evict = 0;
@@ -398,6 +406,9 @@ static void texture_cache_destroy(gl_context_t *ctx) {
     free(ctx->morph_cache);
     ctx->morph_cache = NULL;
     ctx->morph_cache_capacity = 0;
+    free(ctx->cache_age_scratch);
+    ctx->cache_age_scratch = NULL;
+    ctx->cache_age_scratch_capacity = 0;
 }
 
 /// @brief Add @p bytes to the context's running per-frame texture-upload total (saturating).
@@ -720,6 +731,7 @@ static int gl_continue_texture_upload(gl_context_t *ctx,
     int32_t slice_rows = 0;
     uint8_t *rgba = NULL;
     uint64_t bytes;
+    GLint unpack_alignment;
 
     if (!ctx || !entry || !pixels_ptr || !entry->upload_in_progress || !entry->tex)
         return 0;
@@ -742,7 +754,7 @@ static int gl_continue_texture_upload(gl_context_t *ctx,
     }
 
     gl.BindTexture(GL_TEXTURE_2D, entry->tex);
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    unpack_alignment = gl_set_pixel_store_alignment(GL_UNPACK_ALIGNMENT, 1);
     gl.TexSubImage2D(GL_TEXTURE_2D,
                      0,
                      0,
@@ -753,11 +765,11 @@ static int gl_continue_texture_upload(gl_context_t *ctx,
                      GL_UNSIGNED_BYTE,
                      rgba);
     if (!gl_upload_ok()) {
-        gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
         free(rgba);
         return 0;
     }
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
     bytes = (uint64_t)(uint32_t)slice_w * (uint64_t)(uint32_t)slice_rows * 4u;
     gl_record_texture_upload_bytes(ctx, bytes);
     free(rgba);
@@ -1068,8 +1080,9 @@ static void gl_apply_ibl_mips(gl_context_t *ctx,
     if (size != cubemap->ibl_base_size)
         return; /* unexpected geometry: leave box mips in place */
 
+    GLint unpack_alignment;
     gl.BindTexture(GL_TEXTURE_CUBE_MAP, entry->tex);
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    unpack_alignment = gl_set_pixel_store_alignment(GL_UNPACK_ALIGNMENT, 1);
     for (int32_t m = 0; m < cubemap->ibl_mip_count; m++) {
         for (int f = 0; f < 6; f++) {
             int32_t w = 0;
@@ -1078,7 +1091,7 @@ static void gl_apply_ibl_mips(gl_context_t *ctx,
 
             if (vgfx3d_unpack_pixels_rgba(cubemap->ibl_mips[m][f], &w, &h, &rgba) != 0 || !rgba) {
                 free(rgba);
-                gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
                 return;
             }
             gl.TexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)f,
@@ -1093,12 +1106,12 @@ static void gl_apply_ibl_mips(gl_context_t *ctx,
             gl_record_texture_upload_bytes(ctx, (uint64_t)(uint32_t)w * (uint32_t)h * 4u);
             free(rgba);
             if (!gl_upload_ok()) {
-                gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
                 return;
             }
         }
     }
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
     entry->applied_ibl_identity = cubemap->ibl_identity;
 }
 
@@ -1147,8 +1160,9 @@ static int gl_continue_cubemap_upload(gl_context_t *ctx,
             return 0;
         }
 
+        GLint unpack_alignment;
         gl.BindTexture(GL_TEXTURE_CUBE_MAP, entry->tex);
-        gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        unpack_alignment = gl_set_pixel_store_alignment(GL_UNPACK_ALIGNMENT, 1);
         gl.TexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)entry->upload_face,
                          0,
                          0,
@@ -1159,11 +1173,11 @@ static int gl_continue_cubemap_upload(gl_context_t *ctx,
                          GL_UNSIGNED_BYTE,
                          rgba);
         if (!gl_upload_ok()) {
-            gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+            gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
             free(rgba);
             return 0;
         }
-        gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
         bytes = (uint64_t)(uint32_t)slice_size * (uint64_t)(uint32_t)slice_rows * 4u;
         gl_record_texture_upload_bytes(ctx, bytes);
         free(rgba);
@@ -1296,4 +1310,42 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
         return entry->tex;
     ctx->stats.texture_fallback_binds++;
     return gl_fallback_white_cubemap(ctx);
+}
+
+/// @brief Fairly advance pending uploads even when their materials are not drawn first.
+///
+/// Each frame starts at the cursor following the last serviced entry. This prevents a stable
+/// draw order from letting early textures consume the whole byte budget indefinitely. One chunk
+/// per entry is attempted before wrapping; normal material lookup may spend any budget left over.
+static void gl_continue_pending_uploads(gl_context_t *ctx) {
+    int32_t count;
+    if (!ctx)
+        return;
+    count = ctx->texture_cache_count;
+    for (int32_t visited = 0; visited < count; visited++) {
+        int32_t index = (ctx->texture_upload_cursor + visited) % count;
+        gl_texture_cache_entry_t *entry = &ctx->texture_cache[index];
+        if (ctx->texture_upload_budget_bytes != UINT64_MAX &&
+            ctx->texture_upload_bytes >= ctx->texture_upload_budget_bytes)
+            break;
+        if (!entry->upload_in_progress)
+            continue;
+        if (entry->texture_asset)
+            gl_continue_native_texture_upload(ctx, entry);
+        else if (entry->pixels)
+            gl_continue_texture_upload(ctx, entry, entry->pixels);
+        ctx->texture_upload_cursor = (index + 1) % (count > 0 ? count : 1);
+    }
+    count = ctx->cubemap_cache_count;
+    for (int32_t visited = 0; visited < count; visited++) {
+        int32_t index = (ctx->cubemap_upload_cursor + visited) % count;
+        gl_cubemap_cache_entry_t *entry = &ctx->cubemap_cache[index];
+        if (ctx->texture_upload_budget_bytes != UINT64_MAX &&
+            ctx->texture_upload_bytes >= ctx->texture_upload_budget_bytes)
+            break;
+        if (!entry->upload_in_progress || !entry->cubemap)
+            continue;
+        gl_continue_cubemap_upload(ctx, entry, (const rt_cubemap3d *)entry->cubemap);
+        ctx->cubemap_upload_cursor = (index + 1) % (count > 0 ? count : 1);
+    }
 }

@@ -753,7 +753,7 @@ PRINT count
     EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
 }
 
-TEST(BasicRuntimeCalls, TemplateKeysObjectResultKeepsSeqSurface) {
+TEST(BasicRuntimeCalls, TemplateKeysObjectResultKeepsStringSetSurface) {
     auto module = compileModule(R"(
 DIM keys AS OBJECT
 DIM count AS INTEGER
@@ -764,7 +764,8 @@ PRINT count
     ASSERT_TRUE(module.has_value());
     const auto *mainFn = findFunction(*module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Count"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.StringSet.get_Count"),
+              static_cast<size_t>(1));
 }
 
 TEST(BasicRuntimeCalls, LazySeqToSeqNObjectResultKeepsSeqSurface) {

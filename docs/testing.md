@@ -704,3 +704,15 @@ Coverage/scaffolding metrics should not drop. See
 - LoopRotate, GVN, DSE, LICM edge-case tests
 - x86_64 codegen parity with AArch64 test coverage
 - Zia diagnostic golden test directory
+### OpenGL live-context coverage
+
+On Linux, `test_vgfx3d_backend_opengl_context` exercises the real GLX/OpenGL 3D backend rather
+than the pure shared-policy helper layer. Run it under an available X display:
+
+```sh
+ctest --test-dir build -R '^test_vgfx3d_backend_opengl_(shared|context)$' --output-on-failure
+```
+
+The context test is labeled `graphics3d`, `requires_display`, `requires_linux`, and `smoke`. It
+returns CTest skip code 77 when no display or GL 3.3 core driver exists. A Linux graphics sign-off
+must include at least one environment where the test runs and passes rather than skips.

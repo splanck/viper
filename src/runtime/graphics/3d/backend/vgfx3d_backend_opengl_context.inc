@@ -139,29 +139,38 @@ static void gl_probe_default_framebuffer_writable(gl_context_t *ctx) {
 }
 
 /// @brief Compile every shader used by the OpenGL backend context.
-static int gl_compile_context_shaders(gl_shader_set_t *shaders) {
+static int gl_compile_context_shaders(const gl_context_t *ctx, gl_shader_set_t *shaders) {
+    const int zero_to_one_clip = ctx && ctx->zero_to_one_clip;
     memset(shaders, 0, sizeof(*shaders));
     shaders->vs =
         compile_shader_parts(GL_VERTEX_SHADER,
                              glsl_vertex_src,
-                             (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])));
+                             (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])),
+                             zero_to_one_clip);
     shaders->fs =
         compile_shader_parts(GL_FRAGMENT_SHADER,
                              glsl_fragment_src,
-                             (GLsizei)(sizeof(glsl_fragment_src) / sizeof(glsl_fragment_src[0])));
-    shaders->shadow_vs = compile_shader(GL_VERTEX_SHADER, glsl_shadow_vertex_src);
-    shaders->shadow_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_shadow_fragment_src);
-    shaders->postfx_vs = compile_shader(GL_VERTEX_SHADER, glsl_postfx_vertex_src);
+                             (GLsizei)(sizeof(glsl_fragment_src) / sizeof(glsl_fragment_src[0])),
+                             zero_to_one_clip);
+    shaders->shadow_vs =
+        compile_shader(GL_VERTEX_SHADER, glsl_shadow_vertex_src, zero_to_one_clip);
+    shaders->shadow_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_shadow_fragment_src, zero_to_one_clip);
+    shaders->postfx_vs = compile_shader(GL_VERTEX_SHADER, glsl_postfx_vertex_src, zero_to_one_clip);
     shaders->postfx_fs = compile_shader_parts(
         GL_FRAGMENT_SHADER,
         glsl_postfx_fragment_src,
-        (GLsizei)(sizeof(glsl_postfx_fragment_src) / sizeof(glsl_postfx_fragment_src[0])));
-    shaders->skybox_vs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src);
-    shaders->skybox_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src);
-    shaders->bloom_down_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_down_fragment_src);
-    shaders->bloom_up_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_up_fragment_src);
-    shaders->taa_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_taa_fragment_src);
-    shaders->ssr_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_ssr_fragment_src);
+        (GLsizei)(sizeof(glsl_postfx_fragment_src) / sizeof(glsl_postfx_fragment_src[0])),
+        zero_to_one_clip);
+    shaders->skybox_vs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src, zero_to_one_clip);
+    shaders->skybox_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src, zero_to_one_clip);
+    shaders->bloom_down_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_down_fragment_src, zero_to_one_clip);
+    shaders->bloom_up_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_up_fragment_src, zero_to_one_clip);
+    shaders->taa_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_taa_fragment_src, zero_to_one_clip);
+    shaders->ssr_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_ssr_fragment_src, zero_to_one_clip);
     return shaders->vs && shaders->fs && shaders->shadow_vs && shaders->shadow_fs &&
            shaders->postfx_vs && shaders->postfx_fs && shaders->skybox_vs && shaders->skybox_fs &&
            shaders->bloom_down_fs && shaders->bloom_up_fs && shaders->taa_fs && shaders->ssr_fs;
@@ -254,7 +263,7 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->uMorphDeltas, GL_TU_MORPH_DELTAS);
     gl.Uniform1i(ctx->uMorphNormalDeltas, GL_TU_MORPH_NORMAL_DELTAS);
     gl.Uniform1i(ctx->uEnvMap, GL_TU_ENV_MAP);
-    gl.Uniform1i(ctx->uBrdfLut, GL_TU_BRDF_LUT);
+    gl.Uniform1i(ctx->uSplatLayer3, GL_TU_BRDF_LUT);
     gl.Uniform1i(ctx->uMetallicRoughnessTex, GL_TU_METALLIC_ROUGHNESS);
     gl.Uniform1i(ctx->uAOTex, GL_TU_AO);
     gl.UseProgram(ctx->shadow_program);
@@ -300,6 +309,48 @@ static void gl_bind_context_uniform_blocks(gl_context_t *ctx) {
         if (indices_block != GL_INVALID_INDEX)
             gl.UniformBlockBinding(ctx->program, indices_block, 3);
     }
+}
+
+/// @brief Verify the mandatory GLSL interface after every program has linked.
+/// @details Optional feature uniforms may be optimized out, but the core scene, shadow,
+/// fullscreen, and temporal paths cannot operate without these symbols. Naming the first missing
+/// interface turns a silent no-op into an actionable initialization failure.
+static int gl_validate_required_shader_interfaces(gl_context_t *ctx) {
+#define REQUIRE_UNIFORM(field, symbol)                                                            \
+    do {                                                                                           \
+        if ((field) < 0) {                                                                         \
+            fprintf(stderr, "[OpenGL] required shader uniform missing: %s\n", (symbol));          \
+            return 0;                                                                              \
+        }                                                                                          \
+    } while (0)
+    if (!ctx)
+        return 0;
+    REQUIRE_UNIFORM(ctx->uModelMatrix, "main.uModelMatrix");
+    REQUIRE_UNIFORM(ctx->uViewProjection, "main.uViewProjection");
+    REQUIRE_UNIFORM(ctx->uDiffuseColor, "main.uDiffuseColor");
+    REQUIRE_UNIFORM(ctx->uDiffuseTex, "main.uDiffuseTex");
+    REQUIRE_UNIFORM(ctx->shadow_uModelMatrix, "shadow.uModelMatrix");
+    REQUIRE_UNIFORM(ctx->shadow_uViewProjection, "shadow.uViewProjection");
+    REQUIRE_UNIFORM(ctx->skybox_uInverseProjection, "skybox.uInverseProjection");
+    REQUIRE_UNIFORM(ctx->skybox_uSkybox, "skybox.uSkybox");
+    REQUIRE_UNIFORM(ctx->postfx_uSceneTex, "postfx.uSceneTex");
+    REQUIRE_UNIFORM(ctx->postfx_uSceneDepthTex, "postfx.uSceneDepthTex");
+    REQUIRE_UNIFORM(ctx->postfx_uSceneMotionTex, "postfx.uSceneMotionTex");
+    REQUIRE_UNIFORM(ctx->taa_uCurrTex, "taa.uCurrTex");
+    REQUIRE_UNIFORM(ctx->taa_uHistTex, "taa.uHistTex");
+    REQUIRE_UNIFORM(ctx->taa_uMotionTex, "taa.uMotionTex");
+    REQUIRE_UNIFORM(ctx->ssr_uSceneTex, "ssr.uSceneTex");
+    REQUIRE_UNIFORM(ctx->ssr_uDepthTex, "ssr.uDepthTex");
+    if (gl.GetUniformBlockIndex(ctx->program, "Bones") == GL_INVALID_INDEX ||
+        gl.GetUniformBlockIndex(ctx->program, "PrevBones") == GL_INVALID_INDEX ||
+        gl.GetUniformBlockIndex(ctx->program, "ClusterOffsets") == GL_INVALID_INDEX ||
+        gl.GetUniformBlockIndex(ctx->program, "ClusterIndices") == GL_INVALID_INDEX ||
+        gl.GetUniformBlockIndex(ctx->shadow_program, "Bones") == GL_INVALID_INDEX) {
+        fprintf(stderr, "[OpenGL] required shader uniform block missing\n");
+        return 0;
+    }
+#undef REQUIRE_UNIFORM
+    return 1;
 }
 
 /// @brief Generate VAOs, buffers, UBOs, and morph texture-buffer handles for the context.
@@ -411,6 +462,7 @@ static int gl_init_static_geometry_buffers(gl_context_t *ctx) {
 /// @return Non-zero when the fallback texture is available.
 static int gl_create_default_white_texture(gl_context_t *ctx) {
     static const uint8_t kWhitePixel[4] = {255u, 255u, 255u, 255u};
+    GLint unpack_alignment;
 
     if (!ctx)
         return 0;
@@ -420,9 +472,9 @@ static int gl_create_default_white_texture(gl_context_t *ctx) {
     if (!ctx->default_white_tex)
         return 0;
     gl.BindTexture(GL_TEXTURE_2D, ctx->default_white_tex);
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    unpack_alignment = gl_set_pixel_store_alignment(GL_UNPACK_ALIGNMENT, 1);
     gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, kWhitePixel);
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -481,6 +533,7 @@ static int gl_create_brdf_lut_texture(gl_context_t *ctx) {
 /// @return Non-zero when the fallback cubemap is available.
 static int gl_create_default_white_cubemap(gl_context_t *ctx) {
     static const uint8_t kWhitePixel[4] = {255u, 255u, 255u, 255u};
+    GLint unpack_alignment;
 
     if (!ctx)
         return 0;
@@ -490,7 +543,7 @@ static int gl_create_default_white_cubemap(gl_context_t *ctx) {
     if (!ctx->default_white_cubemap)
         return 0;
     gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->default_white_cubemap);
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    unpack_alignment = gl_set_pixel_store_alignment(GL_UNPACK_ALIGNMENT, 1);
     for (int face = 0; face < 6; face++) {
         gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
                       0,
@@ -502,7 +555,7 @@ static int gl_create_default_white_cubemap(gl_context_t *ctx) {
                       GL_UNSIGNED_BYTE,
                       kWhitePixel);
     }
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
@@ -532,6 +585,7 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
     if (ctx->depth_probe_pbo)
         gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
+    gl.DeleteBuffers(2, ctx->present_readback_pbo);
     if (ctx->default_white_tex)
         gl.DeleteTextures(1, &ctx->default_white_tex);
     if (ctx->default_white_cubemap)
@@ -588,6 +642,9 @@ static void gl_init_default_render_state(void) {
     gl.CullFace(GL_BACK);
     gl.FrontFace(GL_CCW);
     gl.Disable(GL_BLEND);
+    /* Material shaders decode authored sRGB inputs and post-FX encodes display output. Keep
+     * fixed-function conversion disabled to avoid an accidental second gamma transform. */
+    gl.Disable(GL_FRAMEBUFFER_SRGB);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
@@ -701,11 +758,17 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->window = xwin;
     ctx->vgfx_win = win;
     ctx->glxCtx = glxCtx;
+    ctx->owner_thread = pthread_self();
     if (!gl_query_context_capabilities(ctx)) {
         glx.MakeCurrent(dpy, 0, NULL);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
+    }
+    if (gl_debug_enabled() && gl.DebugMessageCallback) {
+        gl.Enable(GL_DEBUG_OUTPUT);
+        gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+        gl.DebugMessageCallback(gl_debug_message_callback, ctx);
     }
     gl.Enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     /* Reversed-Z depth precision: with GL_ZERO_TO_ONE clip control the
@@ -714,13 +777,13 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
      * VIPER_GL_CLIP_CONTROL=1 until validated on a live Linux/GL machine
      * (this TU has no compile or run coverage on the macOS dev host); the
      * shader prologue (compile_shader_parts) and the VS z remap key off
-     * gl_zero_to_one_clip, so flipping the default is a one-line change. */
-    gl_zero_to_one_clip = 0;
+     * the context-owned zero_to_one_clip flag. */
+    ctx->zero_to_one_clip = 0;
     {
         const char *clip_opt = getenv("VIPER_GL_CLIP_CONTROL");
         if (clip_opt && strcmp(clip_opt, "1") == 0 && gl.ClipControl) {
             gl.ClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
-            gl_zero_to_one_clip = 1;
+            ctx->zero_to_one_clip = 1;
         }
     }
     gl_init_context_defaults(ctx, w, h);
@@ -730,10 +793,9 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         int present_override = gl_present_override_mode();
         if (present_override == 0) {
             /*
-             * Linux GLX default drawables can pass a clear/read probe while still rejecting the
-             * fullscreen shader resolve used by post-FX. Keep all final color composition in
-             * backend-owned FBOs and present through ViperGFX unless the user explicitly opts into
-             * auto/direct presentation for parity debugging.
+             * `offscreen` is an explicit compatibility override. The default `auto` path trusts
+             * the live drawable probe and avoids a synchronous full-frame CPU readback whenever
+             * native GLX presentation works.
              */
             ctx->default_framebuffer_writable = 0;
         } else if (present_override == 2) {
@@ -752,7 +814,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     }
     gl_query_anisotropy_support(ctx);
 
-    if (!gl_compile_context_shaders(&shaders)) {
+    if (!gl_compile_context_shaders(ctx, &shaders)) {
         gl_delete_context_shaders(&shaders);
         glx.MakeCurrent(dpy, 0, NULL);
         glx.DestroyContext(dpy, glxCtx);
@@ -775,6 +837,14 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     query_skybox_uniforms(ctx);
     query_postfx_uniforms(ctx);
     query_bloom_taa_uniforms(ctx);
+
+    if (!gl_validate_required_shader_interfaces(ctx)) {
+        gl_delete_context_programs(ctx);
+        glx.MakeCurrent(dpy, 0, NULL);
+        glx.DestroyContext(dpy, glxCtx);
+        free(ctx);
+        return NULL;
+    }
 
     gl_bind_default_sampler_uniforms(ctx);
     gl_bind_context_uniform_blocks(ctx);
@@ -802,6 +872,8 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 static void gl_destroy_ctx(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
+        return;
+    if (!gl_context_thread_is_owner(ctx, "destroy_ctx"))
         return;
 
     if (!(ctx->display && ctx->window && ctx->glxCtx) ||
@@ -839,6 +911,9 @@ static void gl_destroy_ctx(void *ctx_ptr) {
 
     if (ctx->fullscreen_vbo)
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
+    if (ctx->depth_probe_pbo)
+        gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
+    gl.DeleteBuffers(2, ctx->present_readback_pbo);
     if (ctx->skybox_vbo)
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
     if (ctx->default_white_tex)

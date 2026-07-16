@@ -59,14 +59,15 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
 
     if (out_compact)
         *out_compact = 0;
-    if (!ctx || !cmd || !out_vbo || !out_ibo || !cmd->geometry_key || cmd->geometry_revision == 0 ||
+    if (!ctx || !cmd || !out_vbo || !out_ibo || !cmd->geometry_key ||
+        cmd->geometry_identity == 0 || cmd->geometry_revision == 0 ||
         !cmd->vertices || !cmd->indices)
         return 0;
     wants_compact = cmd->compact_vertex_stream ? 1 : 0;
 
     for (int32_t i = 0; i < GL_MESH_CACHE_CAPACITY; i++) {
         gl_mesh_cache_entry_t *entry = &ctx->mesh_cache[i];
-        if (entry->key == cmd->geometry_key) {
+        if (entry->identity == cmd->geometry_identity) {
             slot = entry;
             break;
         }
@@ -81,9 +82,13 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
     if (!slot)
         return 0;
 
-    if (slot->key != cmd->geometry_key || slot->revision != cmd->geometry_revision ||
-        slot->vertex_count != cmd->vertex_count || slot->index_count != cmd->index_count ||
-        slot->compact != wants_compact || !slot->vbo || !slot->ibo) {
+    if (!vgfx3d_opengl_mesh_cache_matches(slot->identity,
+                                          slot->revision,
+                                          slot->vertex_count,
+                                          slot->index_count,
+                                          slot->compact,
+                                          cmd) ||
+        !slot->vbo || !slot->ibo) {
         size_t vbytes;
         size_t ibytes;
         ctx->stats.mesh_cache_misses++;
@@ -140,6 +145,7 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
         }
 
         slot->key = cmd->geometry_key;
+        slot->identity = cmd->geometry_identity;
         slot->revision = cmd->geometry_revision;
         slot->vertex_count = cmd->vertex_count;
         slot->index_count = cmd->index_count;
@@ -165,19 +171,24 @@ static int prepare_mesh_buffers(gl_context_t *ctx,
                                 const vgfx3d_draw_cmd_t *cmd,
                                 GLuint *out_vbo,
                                 GLuint *out_ibo,
+                                size_t *out_vbo_offset,
+                                size_t *out_ibo_offset,
                                 int *out_compact) {
     size_t vbytes;
     size_t ibytes;
 
     if (out_compact)
         *out_compact = 0;
-    if (!ctx || !cmd || !out_vbo || !out_ibo || !cmd->vertices || !cmd->indices ||
+    if (!ctx || !cmd || !out_vbo || !out_ibo || !out_vbo_offset || !out_ibo_offset ||
+        !cmd->vertices || !cmd->indices ||
         (size_t)cmd->vertex_count > (size_t)PTRDIFF_MAX / sizeof(vgfx3d_vertex_t) ||
         (size_t)cmd->index_count > (size_t)PTRDIFF_MAX / sizeof(uint32_t)) {
         return 0;
     }
     *out_vbo = 0;
     *out_ibo = 0;
+    *out_vbo_offset = 0;
+    *out_ibo_offset = 0;
     vbytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t);
     ibytes = (size_t)cmd->index_count * sizeof(uint32_t);
     if (gl_lookup_cached_mesh_buffers(ctx, cmd, out_vbo, out_ibo, out_compact))
@@ -185,41 +196,55 @@ static int prepare_mesh_buffers(gl_context_t *ctx,
     /* Streaming path always uploads the full layout. */
     ctx->stats.mesh_stream_uploads++;
 
+    if (ctx->mesh_vbo_offset > SIZE_MAX - vbytes || ctx->mesh_ibo_offset > SIZE_MAX - ibytes)
+        return 0;
     if (ensure_buffer_capacity(GL_ARRAY_BUFFER,
                                ctx->mesh_vbo,
                                &ctx->mesh_vbo_capacity,
-                               vbytes,
+                               ctx->mesh_vbo_offset + vbytes,
                                4u * 1024u * 1024u,
                                GL_STREAM_DRAW) != 0) {
         return 0;
     }
-    if (!orphan_stream_buffer(
+    if (ctx->mesh_vbo_offset == 0 &&
+        !orphan_stream_buffer(
             GL_ARRAY_BUFFER, ctx->mesh_vbo, ctx->mesh_vbo_capacity, GL_STREAM_DRAW)) {
         return 0;
     }
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->mesh_vbo);
-    gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)vbytes, cmd->vertices);
+    gl.BufferSubData(GL_ARRAY_BUFFER,
+                     (GLintptr)ctx->mesh_vbo_offset,
+                     (GLsizeiptr)vbytes,
+                     cmd->vertices);
     if (!gl_upload_ok())
         return 0;
 
     if (ensure_buffer_capacity(GL_ELEMENT_ARRAY_BUFFER,
                                ctx->mesh_ibo,
                                &ctx->mesh_ibo_capacity,
-                               ibytes,
+                               ctx->mesh_ibo_offset + ibytes,
                                1u * 1024u * 1024u,
                                GL_STREAM_DRAW) != 0) {
         return 0;
     }
-    if (!orphan_stream_buffer(
+    if (ctx->mesh_ibo_offset == 0 &&
+        !orphan_stream_buffer(
             GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo, ctx->mesh_ibo_capacity, GL_STREAM_DRAW)) {
         return 0;
     }
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo);
-    gl.BufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, (GLsizeiptr)ibytes, cmd->indices);
+    gl.BufferSubData(GL_ELEMENT_ARRAY_BUFFER,
+                     (GLintptr)ctx->mesh_ibo_offset,
+                     (GLsizeiptr)ibytes,
+                     cmd->indices);
     if (!gl_upload_ok())
         return 0;
     *out_vbo = ctx->mesh_vbo;
     *out_ibo = ctx->mesh_ibo;
+    *out_vbo_offset = ctx->mesh_vbo_offset;
+    *out_ibo_offset = ctx->mesh_ibo_offset;
+    ctx->mesh_vbo_offset += vbytes;
+    ctx->mesh_ibo_offset += ibytes;
     return 1;
 }
 
@@ -269,54 +294,63 @@ static void set_identity_instance_constants(void) {
 static void configure_mesh_attributes(gl_context_t *ctx,
                                       GLuint mesh_vbo,
                                       GLuint mesh_ibo,
+                                      size_t vertex_offset,
                                       int compact) {
     gl.BindVertexArray(ctx->vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, mesh_vbo);
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_ibo);
     if (compact) {
         GLsizei stride = (GLsizei)VGFX3D_COMPACT_VERTEX_STRIDE;
-        gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)(uintptr_t)0u);
+        gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)(uintptr_t)vertex_offset);
         gl.EnableVertexAttribArray(0);
-        gl.VertexAttribPointer(1, 4, GL_SHORT, GL_TRUE, stride, (void *)(uintptr_t)12u);
+        gl.VertexAttribPointer(1, 4, GL_SHORT, GL_TRUE, stride, (void *)(uintptr_t)(vertex_offset + 12u));
         gl.EnableVertexAttribArray(1);
-        gl.VertexAttribPointer(2, 2, GL_HALF_FLOAT, GL_FALSE, stride, (void *)(uintptr_t)20u);
+        gl.VertexAttribPointer(2, 2, GL_HALF_FLOAT, GL_FALSE, stride, (void *)(uintptr_t)(vertex_offset + 20u));
         gl.EnableVertexAttribArray(2);
-        gl.VertexAttribPointer(15, 2, GL_HALF_FLOAT, GL_FALSE, stride, (void *)(uintptr_t)24u);
+        gl.VertexAttribPointer(15, 2, GL_HALF_FLOAT, GL_FALSE, stride, (void *)(uintptr_t)(vertex_offset + 24u));
         gl.EnableVertexAttribArray(15);
-        gl.VertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void *)(uintptr_t)28u);
+        gl.VertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void *)(uintptr_t)(vertex_offset + 28u));
         gl.EnableVertexAttribArray(3);
-        gl.VertexAttribPointer(4, 4, GL_SHORT, GL_TRUE, stride, (void *)(uintptr_t)32u);
+        gl.VertexAttribPointer(4, 4, GL_SHORT, GL_TRUE, stride, (void *)(uintptr_t)(vertex_offset + 32u));
         gl.EnableVertexAttribArray(4);
-        gl.VertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, stride, (void *)(uintptr_t)40u);
+        gl.VertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, stride, (void *)(uintptr_t)(vertex_offset + 40u));
         gl.EnableVertexAttribArray(5);
-        gl.VertexAttribPointer(6, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void *)(uintptr_t)44u);
+        gl.VertexAttribPointer(6, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void *)(uintptr_t)(vertex_offset + 44u));
         gl.EnableVertexAttribArray(6);
         set_identity_instance_constants();
         return;
     }
     GLsizei stride = (GLsizei)sizeof(vgfx3d_vertex_t);
     gl.VertexAttribPointer(
-        0, 3, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, pos));
+        0, 3, GL_FLOAT, GL_FALSE, stride,
+        (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, pos)));
     gl.EnableVertexAttribArray(0);
     gl.VertexAttribPointer(
-        1, 3, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, normal));
+        1, 3, GL_FLOAT, GL_FALSE, stride,
+        (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, normal)));
     gl.EnableVertexAttribArray(1);
-    gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, uv));
+    gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
+                           (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, uv)));
     gl.EnableVertexAttribArray(2);
     gl.VertexAttribPointer(
-        15, 2, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, uv1));
+        15, 2, GL_FLOAT, GL_FALSE, stride,
+        (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, uv1)));
     gl.EnableVertexAttribArray(15);
     gl.VertexAttribPointer(
-        3, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, color));
+        3, 4, GL_FLOAT, GL_FALSE, stride,
+        (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, color)));
     gl.EnableVertexAttribArray(3);
     gl.VertexAttribPointer(
-        4, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, tangent));
+        4, 4, GL_FLOAT, GL_FALSE, stride,
+        (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, tangent)));
     gl.EnableVertexAttribArray(4);
     gl.VertexAttribIPointer(
-        5, 4, GL_UNSIGNED_BYTE, stride, (void *)offsetof(vgfx3d_vertex_t, bone_indices));
+        5, 4, GL_UNSIGNED_BYTE, stride,
+        (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, bone_indices)));
     gl.EnableVertexAttribArray(5);
     gl.VertexAttribPointer(
-        6, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_vertex_t, bone_weights));
+        6, 4, GL_FLOAT, GL_FALSE, stride,
+        (void *)(uintptr_t)(vertex_offset + offsetof(vgfx3d_vertex_t, bone_weights)));
     gl.EnableVertexAttribArray(6);
     set_identity_instance_constants();
 }
@@ -585,12 +619,14 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
     gl_morph_cache_entry_t *oldest = NULL;
     size_t bytes;
 
-    if (!ctx || !cmd || morph_count <= 0 || !cmd->morph_key || cmd->morph_revision == 0)
+    if (!ctx || !cmd || morph_count <= 0 || !cmd->morph_key || cmd->morph_identity == 0 ||
+        cmd->morph_revision == 0)
         return NULL;
 
     for (int32_t i = 0; i < ctx->morph_cache_count; i++) {
         gl_morph_cache_entry_t *entry = &ctx->morph_cache[i];
-        if (vgfx3d_opengl_should_reuse_morph_cache(entry->key,
+        if (entry->identity == cmd->morph_identity &&
+            vgfx3d_opengl_should_reuse_morph_cache(entry->key,
                                                    entry->revision,
                                                    entry->shape_count,
                                                    entry->vertex_count,
@@ -645,6 +681,7 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
         return NULL;
     }
     slot->key = cmd->morph_key;
+    slot->identity = cmd->morph_identity;
     slot->revision = cmd->morph_revision;
     slot->shape_count = morph_count;
     slot->vertex_count = cmd->vertex_count;

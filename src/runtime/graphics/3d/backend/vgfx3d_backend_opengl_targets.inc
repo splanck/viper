@@ -16,6 +16,8 @@ static void destroy_scene_targets(gl_context_t *ctx) {
         gl.DeleteTextures(1, &ctx->scene_depth_tex);
     if (ctx->scene_motion_tex)
         gl.DeleteTextures(1, &ctx->scene_motion_tex);
+    if (ctx->scene_postfx_tex)
+        gl.DeleteTextures(1, &ctx->scene_postfx_tex);
     if (ctx->scene_color_tex)
         gl.DeleteTextures(1, &ctx->scene_color_tex);
     if (ctx->scene_fbo)
@@ -23,6 +25,7 @@ static void destroy_scene_targets(gl_context_t *ctx) {
     ctx->scene_fbo = 0;
     ctx->scene_color_tex = 0;
     ctx->scene_motion_tex = 0;
+    ctx->scene_postfx_tex = 0;
     ctx->scene_depth_tex = 0;
     ctx->scene_width = 0;
     ctx->scene_height = 0;
@@ -58,6 +61,13 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     GLint depth_format;
     GLenum color_type;
     GLenum depth_type;
+    GLint motion_format;
+    GLenum motion_type;
+    GLuint new_fbo = 0;
+    GLuint new_color_tex = 0;
+    GLuint new_motion_tex = 0;
+    GLuint new_postfx_tex = 0;
+    GLuint new_depth_tex = 0;
     int want_hdr;
 
     if (!ctx || w <= 0 || h <= 0)
@@ -75,42 +85,64 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
                    : 0;
 
     for (;;) {
-        destroy_scene_targets(ctx);
+        new_fbo = new_color_tex = new_motion_tex = new_postfx_tex = new_depth_tex = 0;
         color_format = want_hdr ? GL_RGBA16F : GL_RGBA;
         color_type = want_hdr ? GL_FLOAT : GL_UNSIGNED_BYTE;
+        /* TAA, motion blur, and SSR need sub-pixel signed velocity precision. The
+         * shader keeps its portable [0,1] encoding, while RGBA16F prevents the
+         * severe quantization produced by the legacy RGBA8 attachment. Z stores
+         * object-history validity and W stores the SSR mask. */
+        motion_format = vgfx3d_opengl_choose_motion_format(ctx->supports_hdr_color_target) ==
+                                VGFX3D_OPENGL_COLOR_FORMAT_HDR16F
+                            ? GL_RGBA16F
+                            : GL_RGBA8;
+        motion_type = motion_format == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE;
         depth_format =
             ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
         depth_type = ctx->supports_depth_float_target ? GL_FLOAT : GL_UNSIGNED_INT;
 
-        gl.GenFramebuffers(1, &ctx->scene_fbo);
-        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+        (void)gl_drain_errors("pre-scene-target allocation");
+        gl.GenFramebuffers(1, &new_fbo);
+        gl.BindFramebuffer(GL_FRAMEBUFFER, new_fbo);
 
-        gl.GenTextures(1, &ctx->scene_color_tex);
-        gl.BindTexture(GL_TEXTURE_2D, ctx->scene_color_tex);
+        gl.GenTextures(1, &new_color_tex);
+        gl.BindTexture(GL_TEXTURE_2D, new_color_tex);
         gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         gl.FramebufferTexture2D(
-            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->scene_color_tex, 0);
-        gl.GenTextures(1, &ctx->scene_motion_tex);
-        gl.BindTexture(GL_TEXTURE_2D, ctx->scene_motion_tex);
-        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, new_color_tex, 0);
+        gl.GenTextures(1, &new_motion_tex);
+        gl.BindTexture(GL_TEXTURE_2D, new_motion_tex);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, motion_format, w, h, 0, GL_RGBA, motion_type, NULL);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         gl.FramebufferTexture2D(
-            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, ctx->scene_motion_tex, 0);
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, new_motion_tex, 0);
+        /* Dedicated scene-FBO ping-pong storage for drivers whose standalone
+         * post-FX FBOs discard writes. Never reuse the motion attachment: TAA,
+         * SSR, diagnostics, and overlay replay may still consume it. */
+        gl.GenTextures(1, &new_postfx_tex);
+        gl.BindTexture(GL_TEXTURE_2D, new_postfx_tex);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl.FramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, new_postfx_tex, 0);
         {
             const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
             gl.DrawBuffers(2, attachments);
         }
         gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
 
-        gl.GenTextures(1, &ctx->scene_depth_tex);
-        gl.BindTexture(GL_TEXTURE_2D, ctx->scene_depth_tex);
+        gl.GenTextures(1, &new_depth_tex);
+        gl.BindTexture(GL_TEXTURE_2D, new_depth_tex);
         gl.TexImage2D(
             GL_TEXTURE_2D, 0, depth_format, w, h, 0, GL_DEPTH_COMPONENT, depth_type, NULL);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -118,20 +150,38 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         gl.FramebufferTexture2D(
-            GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->scene_depth_tex, 0);
+            GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, new_depth_tex, 0);
 
         if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE &&
             gl_upload_ok()) {
             break;
         }
+        if (new_depth_tex)
+            gl.DeleteTextures(1, &new_depth_tex);
+        if (new_postfx_tex)
+            gl.DeleteTextures(1, &new_postfx_tex);
+        if (new_motion_tex)
+            gl.DeleteTextures(1, &new_motion_tex);
+        if (new_color_tex)
+            gl.DeleteTextures(1, &new_color_tex);
+        if (new_fbo)
+            gl.DeleteFramebuffers(1, &new_fbo);
         if (want_hdr) {
             want_hdr = 0; /* retry once with the legacy LDR layout */
             continue;
         }
-        destroy_scene_targets(ctx);
         return -1;
     }
 
+    /* Commit only after the complete replacement has been proven usable. A failed resize leaves
+     * the previous target intact instead of turning a transient allocation failure into a blank
+     * renderer. */
+    destroy_scene_targets(ctx);
+    ctx->scene_fbo = new_fbo;
+    ctx->scene_color_tex = new_color_tex;
+    ctx->scene_motion_tex = new_motion_tex;
+    ctx->scene_postfx_tex = new_postfx_tex;
+    ctx->scene_depth_tex = new_depth_tex;
     ctx->scene_hdr_active = (int8_t)want_hdr;
     /* Scene target recreation orphans any TAA history sized for the old target. */
     ctx->taa_history_valid = 0;
@@ -144,6 +194,8 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
 static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h) {
     GLint color_format;
     GLenum color_type;
+    GLuint new_fbo = 0;
+    GLuint new_tex = 0;
 
     if (!ctx || w <= 0 || h <= 0)
         return -1;
@@ -152,31 +204,36 @@ static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h
         return 0;
     }
 
-    destroy_postfx_readback_target(ctx);
-
     /* Plan 05: ping-pong intermediates follow the scene target's precision so HDR range
      * survives multi-pass chains; glReadPixels(GL_UNSIGNED_BYTE) still converts on read. */
     color_format = ctx->scene_hdr_active ? GL_RGBA16F : GL_RGBA;
     color_type = ctx->scene_hdr_active ? GL_FLOAT : GL_UNSIGNED_BYTE;
 
-    gl.GenFramebuffers(1, &ctx->postfx_readback_fbo);
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->postfx_readback_fbo);
-    gl.GenTextures(1, &ctx->postfx_readback_tex);
-    gl.BindTexture(GL_TEXTURE_2D, ctx->postfx_readback_tex);
+    (void)gl_drain_errors("pre-postfx-readback allocation");
+    gl.GenFramebuffers(1, &new_fbo);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, new_fbo);
+    gl.GenTextures(1, &new_tex);
+    gl.BindTexture(GL_TEXTURE_2D, new_tex);
     gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     gl.FramebufferTexture2D(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->postfx_readback_tex, 0);
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, new_tex, 0);
     gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
     if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
-        destroy_postfx_readback_target(ctx);
+        if (new_tex)
+            gl.DeleteTextures(1, &new_tex);
+        if (new_fbo)
+            gl.DeleteFramebuffers(1, &new_fbo);
         return -1;
     }
 
+    destroy_postfx_readback_target(ctx);
+    ctx->postfx_readback_fbo = new_fbo;
+    ctx->postfx_readback_tex = new_tex;
     ctx->postfx_readback_width = w;
     ctx->postfx_readback_height = h;
     return 0;
@@ -204,6 +261,8 @@ static void destroy_postfx_scratch_target(gl_context_t *ctx) {
 static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h) {
     GLint color_format;
     GLenum color_type;
+    GLuint new_fbo = 0;
+    GLuint new_tex = 0;
 
     if (!ctx || w <= 0 || h <= 0)
         return -1;
@@ -212,8 +271,6 @@ static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h)
         return 0;
     }
 
-    destroy_postfx_scratch_target(ctx);
-
     color_format = vgfx3d_opengl_choose_color_format(VGFX3D_OPENGL_TARGET_SCENE) ==
                                VGFX3D_OPENGL_COLOR_FORMAT_HDR16F &&
                            ctx->supports_hdr_color_target
@@ -221,24 +278,31 @@ static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h)
                        : GL_RGBA8;
     color_type = color_format == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE;
 
-    gl.GenFramebuffers(1, &ctx->postfx_scratch_fbo);
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->postfx_scratch_fbo);
-    gl.GenTextures(1, &ctx->postfx_scratch_tex);
-    gl.BindTexture(GL_TEXTURE_2D, ctx->postfx_scratch_tex);
+    (void)gl_drain_errors("pre-postfx-scratch allocation");
+    gl.GenFramebuffers(1, &new_fbo);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, new_fbo);
+    gl.GenTextures(1, &new_tex);
+    gl.BindTexture(GL_TEXTURE_2D, new_tex);
     gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     gl.FramebufferTexture2D(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->postfx_scratch_tex, 0);
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, new_tex, 0);
     gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
     if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
-        destroy_postfx_scratch_target(ctx);
+        if (new_tex)
+            gl.DeleteTextures(1, &new_tex);
+        if (new_fbo)
+            gl.DeleteFramebuffers(1, &new_fbo);
         return -1;
     }
 
+    destroy_postfx_scratch_target(ctx);
+    ctx->postfx_scratch_fbo = new_fbo;
+    ctx->postfx_scratch_tex = new_tex;
     ctx->postfx_scratch_width = w;
     ctx->postfx_scratch_height = h;
     return 0;
@@ -1139,8 +1203,9 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
 ///          default drawable rejects the fullscreen resolve used by post-FX. On the affected
 ///          stack, additional single-attachment FBOs can also report complete while discarding
 ///          color writes. The scene FBO is proven writable by the main render pass, so this
-///          fallback ping-pongs between scene color attachment 0 and the motion attachment after
-///          motion vectors are no longer needed. The final color is copied back to attachment 0
+///          fallback ping-pongs between scene color attachment 0 and a dedicated attachment 2,
+///          preserving motion vectors for later temporal consumers. The final color is copied
+///          back to attachment 0
 ///          so final-overlay replay, readback, and presentation all consume the normal scene
 ///          color target.
 /// @return Non-zero when every enabled effect pass resolves and the final color is in scene
@@ -1151,7 +1216,7 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
                                           const vgfx3d_postfx_chain_t *chain) {
     GLuint source_tex;
 
-    if (!ctx || !ctx->scene_fbo || !ctx->scene_color_tex || !ctx->scene_motion_tex || width <= 0 ||
+    if (!ctx || !ctx->scene_fbo || !ctx->scene_color_tex || !ctx->scene_postfx_tex || width <= 0 ||
         height <= 0 || !chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects) {
         return 0;
     }
@@ -1160,8 +1225,8 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
     for (int32_t i = 0; i < chain->effect_count; i++) {
         const int source_is_scene_color = (source_tex == ctx->scene_color_tex) ? 1 : 0;
         const GLenum dst_attachment =
-            source_is_scene_color ? GL_COLOR_ATTACHMENT1 : GL_COLOR_ATTACHMENT0;
-        const GLuint dst_tex = source_is_scene_color ? ctx->scene_motion_tex : ctx->scene_color_tex;
+            source_is_scene_color ? GL_COLOR_ATTACHMENT2 : GL_COLOR_ATTACHMENT0;
+        const GLuint dst_tex = source_is_scene_color ? ctx->scene_postfx_tex : ctx->scene_color_tex;
         if (!gl_draw_texture_to_target(ctx,
                                        source_tex,
                                        ctx->scene_fbo,
@@ -1384,7 +1449,7 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         return 0;
     }
 
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "sync_render_target_color"))
         return 0;
     gl_capture_framebuffer_state(&saved_state);
     gl.PixelStorei(GL_PACK_ALIGNMENT, 1);

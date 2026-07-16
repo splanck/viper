@@ -1024,6 +1024,16 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_vgfx3d_backend_opengl_shared test_vgfx3d_backend_opengl_shared)
     viper_add_test_labels(test_vgfx3d_backend_opengl_shared graphics3d unit)
 
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        viper_add_test(test_vgfx3d_backend_opengl_context ${VIPER_TESTS_DIR}/integration/test_vgfx3d_backend_opengl_context.c)
+        target_link_libraries(test_vgfx3d_backend_opengl_context PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+        viper_add_ctest(test_vgfx3d_backend_opengl_context test_vgfx3d_backend_opengl_context)
+        set_tests_properties(test_vgfx3d_backend_opengl_context PROPERTIES
+            SKIP_RETURN_CODE 77
+            ENVIRONMENT "VIPER_OPENGL_PRESENT=offscreen")
+        viper_add_test_labels(test_vgfx3d_backend_opengl_context graphics3d requires_display requires_linux smoke)
+    endif()
+
     viper_add_test(test_rt_postfx3d_snapshot ${VIPER_TESTS_DIR}/unit/test_rt_postfx3d_snapshot.c)
     target_link_libraries(test_rt_postfx3d_snapshot PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_postfx3d_snapshot test_rt_postfx3d_snapshot)

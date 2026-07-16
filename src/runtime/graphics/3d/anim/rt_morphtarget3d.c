@@ -66,6 +66,7 @@ typedef struct {
     float *packed_pos_deltas;
     float *packed_nrm_deltas;
     uint64_t payload_generation;
+    uint32_t identity_serial;
     uint64_t max_delta_generation;
     double max_position_delta_cache;
     int32_t shape_count;
@@ -483,6 +484,7 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
     mt->packed_pos_deltas = NULL;
     mt->packed_nrm_deltas = NULL;
     mt->payload_generation = 1;
+    mt->identity_serial = rt_g3d_next_identity_serial();
     mt->packed_dirty = 1;
     rt_obj_set_finalizer(mt, rt_morphtarget3d_finalize);
     return mt;
@@ -831,6 +833,12 @@ uint64_t rt_morphtarget3d_get_payload_generation(void *obj) {
     if (mt->payload_generation == 0)
         mt->payload_generation = 1;
     return mt->payload_generation;
+}
+
+/// @brief Allocation generation used to disambiguate recycled heap addresses in GPU caches.
+uint32_t rt_morphtarget3d_get_identity_serial(void *obj) {
+    rt_morphtarget3d *mt = morphtarget_checked(obj);
+    return mt ? mt->identity_serial : 0;
 }
 
 /// @brief Advance the previous-weight history by one frame for motion vectors.

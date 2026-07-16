@@ -271,11 +271,26 @@ This split keeps the no-postfx path cheap while preserving correct motion/depth 
 The OpenGL backend now follows the same high-level split, adapted to its GLX/swapchain model:
 
 - direct mode: when GPU postfx is disabled, window-backed draws render straight into the default framebuffer and `present()` only swaps buffers
+- presentation selection: the default `auto` mode probes the GLX drawable and uses native swap-buffer presentation when writable; `VIPER_OPENGL_PRESENT=offscreen` forces the checked CPU compatibility path, while `direct` bypasses the probe for driver diagnosis
 - postfx mode: the main scene renders into an HDR scene FBO, screenshots/readback can composite that scene through the backend-owned postfx shader, and 2D overlay passes preserve scene history instead of overwriting it
 - overlay composition: when a screen overlay follows a GPU-postfx main scene, OpenGL first composites the postfx result to the default framebuffer through `apply_postfx`, then renders the overlay directly on top so SSAO / DOF / motion-blur history remains sourced from the 3D scene; if the chain is absent or disabled, the backend still performs a no-op scene composite instead of presenting stale backbuffer contents
 - texture origin normalization: `Pixels` and `CubeMap3D` faces use a top-left origin, so OpenGL flips RGBA rows before `glTexImage2D` / cubemap face upload to match software, Metal, and D3D11 sampling
 - cubemap seam filtering: OpenGL enables `GL_TEXTURE_CUBE_MAP_SEAMLESS`, while the software backend remaps bilinear taps across neighboring faces so skyboxes and reflections do not introduce backend-specific face seams; failed cubemap reuploads invalidate the stale GL texture cache entry instead of reusing older face data
 - target/readback validation: OpenGL rejects invalid RTT dimensions, bounds HDR readback allocation math, sanitizes shadow indices against completed slots, and falls back to raw scene readback when postfx readback cannot allocate or apply the chain
+- target replacement is transactional for the scene and post-FX ping-pong targets: resize allocation is validated before the previous complete target is released
+- motion/history data uses RGBA16F when float color attachments are renderable (RGBA8 only as a compatibility fallback), and the scene-FBO compatibility post-FX path owns a separate attachment instead of overwriting motion vectors
+- context creation requires an actual OpenGL 3.3 core profile, validates draw-buffer, attachment, texture-unit, vertex-attribute, UBO, and texture-buffer limits, and verifies required shader uniforms/blocks after linking; full compile/link logs and optional `KHR_debug` messages remain available through `VIPER_OPENGL_DEBUG=1`
+- the clip-depth convention is context-local, and every backend entry point that acquires GL enforces the creating thread as the context owner
+- texture and cubemap streaming advances pending entries round-robin under the frame byte budget; cache pruning reuses context-owned age scratch, and dynamic mesh draws append into frame-scoped stream buffers instead of orphaning the same storage for every draw
+- offscreen ViperGFX presentation uses a double pixel-pack-buffer readback path, checks errors before publishing pixels, and preserves distinct read/draw framebuffer bindings plus viewport and pixel-store/PBO state around helper passes
+- cached mesh and morph payloads include allocation-generation identities as well as payload revisions, so allocator address reuse cannot match stale GPU resources
+- color space is explicit: material color textures are decoded to linear in GLSL, post-FX performs the single display-transfer encode, and `GL_FRAMEBUFFER_SRGB` remains disabled to prevent double conversion
+- the GL 3.3 core capability gate validates MRT, texture-buffer, UBO size/binding, attribute, and sampler requirements before resource creation; linked programs additionally validate mandatory uniforms and blocks
+
+Linux CTest coverage includes a display-required live-context smoke test. It creates a real GLX
+core context, compiles and links the complete shader set, allocates the HDR scene/MRT targets,
+clears a frame, and validates GPU readback. Display-less builders report this test as skipped via
+CTest return code 77 rather than substituting a mock context.
 
 Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
 

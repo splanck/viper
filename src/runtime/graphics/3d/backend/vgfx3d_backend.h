@@ -49,6 +49,9 @@ typedef struct {
     /* Stable identity for backend-side static geometry caches. NULL means the
      * geometry is transient and should use the streaming upload path. */
     const void *geometry_key;
+    /* Process-local allocation generation for geometry_key. Backends must include
+     * this in cache identity so allocator address reuse cannot alias stale GPU data. */
+    uint32_t geometry_identity;
     uint32_t geometry_revision;
     /* R20: upload this draw's cached static geometry in the compact 48-byte
      * vertex encoding (only meaningful when geometry_key is non-NULL; the
@@ -139,6 +142,7 @@ typedef struct {
     const float *prev_morph_weights;     /* previous-frame shape_count floats or NULL */
     int32_t morph_shape_count;           /* number of active morph shapes (0 = none) */
     const void *morph_key;               /* stable identity for backend morph-payload caches */
+    uint32_t morph_identity;              /* allocation generation; rejects recycled addresses */
     uint64_t morph_revision;             /* bumps when morph delta payload changes */
     const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
     int8_t has_prev_model_matrix;        /* 1 when prev_model_matrix is valid */

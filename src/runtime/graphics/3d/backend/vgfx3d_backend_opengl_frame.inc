@@ -78,10 +78,12 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     };
     if (!ctx || !cam)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "begin_frame"))
         return;
 
     ctx->frame_serial++;
+    ctx->mesh_vbo_offset = 0;
+    ctx->mesh_ibo_offset = 0;
     /* Plan 07: cluster tables are camera-dependent; a light revision surviving
      * into a new frame does not imply the same froxel contents. */
     ctx->uploaded_cluster_revision = 0;
@@ -95,6 +97,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->current_pass_is_overlay = (!ctx->rtt_active && cam->load_existing_color) ? 1 : 0;
     if (!ctx->current_pass_is_overlay)
         ctx->texture_upload_bytes = 0;
+    if (!ctx->current_pass_is_overlay)
+        gl_continue_pending_uploads(ctx);
     if (!ctx->current_pass_is_overlay) {
         ctx->scene_composited_to_backbuffer = 0;
         ctx->scene_postfx_pending = 0;
@@ -307,6 +311,7 @@ static void gl_submit_draw(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    size_t mesh_vbo_offset = 0, mesh_ibo_offset = 0;
     int mesh_compact = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
@@ -320,7 +325,13 @@ static void gl_submit_draw(void *ctx_ptr,
         ctx->stats.dropped_draws++;
         return;
     }
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact)) {
+    if (!prepare_mesh_buffers(ctx,
+                              cmd,
+                              &mesh_vbo,
+                              &mesh_ibo,
+                              &mesh_vbo_offset,
+                              &mesh_ibo_offset,
+                              &mesh_compact)) {
         ctx->stats.dropped_draws++;
         return;
     }
@@ -337,7 +348,7 @@ static void gl_submit_draw(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
-    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_vbo_offset, mesh_compact);
     if (gl_debug_enabled()) {
         GLint draw_buffer = 0;
         GLint framebuffer = 0;
@@ -384,7 +395,10 @@ static void gl_submit_draw(void *ctx_ptr,
                 (int)cmd->unlit,
                 (int)cmd->disable_depth_test);
     }
-    gl.DrawElements(GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL);
+    gl.DrawElements(GL_TRIANGLES,
+                    (GLsizei)index_count,
+                    GL_UNSIGNED_INT,
+                    (void *)(uintptr_t)mesh_ibo_offset);
     ctx->stats.draw_calls++;
     if (gl_debug_enabled()) {
         GLenum err = gl.GetError();
@@ -466,7 +480,7 @@ static void gl_set_vsync(void *ctx_ptr, int8_t enabled) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx || !glx.SwapIntervalEXT)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "set_vsync"))
         return;
     glx.SwapIntervalEXT(ctx->display, ctx->window, enabled ? 1 : 0);
 }
@@ -511,7 +525,7 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
     ctx->width = w;
     ctx->height = h;
     ctx->scene_composited_to_backbuffer = 0;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "resize"))
         return;
     if (!ctx->rtt_active) {
         destroy_scene_targets(ctx);
@@ -571,7 +585,7 @@ static int gl_readback_rgba(
     if (!ctx || !dst_rgba || !vgfx3d_opengl_validate_rgba8_destination(w, h, stride, &dst_bytes))
         return 0;
 
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "readback"))
         return 0;
     use_postfx_readback =
         ctx->default_framebuffer_writable && !ctx->scene_composited_to_backbuffer &&
@@ -657,6 +671,10 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     int32_t copy_h;
     uint8_t *tmp;
     size_t tmp_bytes;
+    int current_pbo;
+    int previous_pbo;
+    int have_pixels = 0;
+    const void *mapped;
     gl_framebuffer_state_t saved_state;
 
     if (!ctx || !ctx->vgfx_win)
@@ -688,11 +706,65 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
         return 0;
 
     gl_capture_framebuffer_state(&saved_state);
+    (void)gl_drain_errors("pre-present readback");
     gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
     gl.BindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
-    gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
-    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+    if (!ctx->present_readback_pbo[0] || !ctx->present_readback_pbo[1]) {
+        gl.GenBuffers(2, ctx->present_readback_pbo);
+        ctx->present_readback_pbo_bytes = 0;
+        ctx->present_readback_pbo_valid = 0;
+    }
+    if (!ctx->present_readback_pbo[0] || !ctx->present_readback_pbo[1]) {
+        gl_restore_framebuffer_state(&saved_state);
+        gl_restore_main_draw_state(ctx);
+        return 0;
+    }
+    if (ctx->present_readback_pbo_bytes != tmp_bytes) {
+        for (int i = 0; i < 2; i++) {
+            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[i]);
+            gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)tmp_bytes, NULL, GL_STREAM_READ);
+        }
+        if (!gl_upload_ok()) {
+            gl_restore_framebuffer_state(&saved_state);
+            gl_restore_main_draw_state(ctx);
+            return 0;
+        }
+        ctx->present_readback_pbo_bytes = tmp_bytes;
+        ctx->present_readback_pbo_valid = 0;
+        ctx->present_readback_pbo_index = 0;
+    }
+    current_pbo = ctx->present_readback_pbo_index;
+    previous_pbo = current_pbo ^ 1;
+    if (ctx->present_readback_pbo_valid) {
+        gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[previous_pbo]);
+        mapped = gl.MapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)tmp_bytes, GL_MAP_READ_BIT);
+        if (mapped) {
+            memcpy(tmp, mapped, tmp_bytes);
+            gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            have_pixels = 1;
+        }
+    }
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[current_pbo]);
+    gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)tmp_bytes, NULL, GL_STREAM_READ);
+    gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    if (!gl_drain_errors("present readback")) {
+        gl_restore_framebuffer_state(&saved_state);
+        gl_restore_main_draw_state(ctx);
+        return 0;
+    }
+    if (!have_pixels) {
+        mapped = gl.MapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)tmp_bytes, GL_MAP_READ_BIT);
+        if (!mapped) {
+            gl_restore_framebuffer_state(&saved_state);
+            gl_restore_main_draw_state(ctx);
+            return 0;
+        }
+        memcpy(tmp, mapped, tmp_bytes);
+        gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    }
+    ctx->present_readback_pbo_valid = 1;
+    ctx->present_readback_pbo_index = previous_pbo;
     vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
     for (int32_t y = 0; y < copy_h; y++)
         memcpy((uint8_t *)fb.pixels + (size_t)y * (size_t)fb.stride,
@@ -717,7 +789,7 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
 
     if (!ctx || ctx->rtt_active)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "present"))
         return;
     use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
@@ -782,7 +854,7 @@ static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) 
     int use_postfx;
     if (!ctx || ctx->rtt_active)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "apply_postfx"))
         return;
     use_postfx = (postfx && postfx->enabled && postfx->effect_count > 0 &&
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
@@ -856,7 +928,7 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current_checked(ctx, "set_render_target"))
         return;
     ctx->scene_postfx_pending = 0;
     ctx->scene_composited_to_backbuffer = 0;
@@ -876,7 +948,8 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 ///   opaque->transparent seam. The live depth attachment cannot be sampled by
 ///   the very pass writing it, so the depth planes are blitted into a dedicated
 ///   snapshot texture that blend draws (soft particles) read via
-///   `uOpaqueDepthTex`. The currently bound framebuffer is restored afterwards.
+///   the splat-control sampler unit (mutually exclusive with terrain splatting).
+///   The currently bound framebuffer is restored afterwards.
 static void gl_resolve_opaque_targets(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLint prev_fbo = 0;
@@ -973,6 +1046,7 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
     int mesh_compact = 0;
+    size_t mesh_vbo_offset = 0, mesh_ibo_offset = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || cmd->vertex_count == 0 ||
@@ -986,9 +1060,15 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     else
         gl.Enable(GL_CULL_FACE);
     gl_apply_depth_bias(cmd, 0);
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact))
+    if (!prepare_mesh_buffers(ctx,
+                              cmd,
+                              &mesh_vbo,
+                              &mesh_ibo,
+                              &mesh_vbo_offset,
+                              &mesh_ibo_offset,
+                              &mesh_compact))
         return;
-    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_vbo_offset, mesh_compact);
     gl.UniformMatrix4fv(ctx->shadow_uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
     gl.UniformMatrix4fv(
         ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
@@ -1048,7 +1128,10 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                                        cmd,
                                        RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
     }
-    gl.DrawElements(GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL);
+    gl.DrawElements(GL_TRIANGLES,
+                    (GLsizei)index_count,
+                    GL_UNSIGNED_INT,
+                    (void *)(uintptr_t)mesh_ibo_offset);
 }
 
 /// @brief Backend `shadow_end` op — exit shadow-pass mode and switch back to main.
@@ -1115,6 +1198,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    size_t mesh_vbo_offset = 0, mesh_ibo_offset = 0;
     int mesh_compact = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
@@ -1128,7 +1212,13 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
         ctx->stats.dropped_draws++;
         return;
     }
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact)) {
+    if (!prepare_mesh_buffers(ctx,
+                              cmd,
+                              &mesh_vbo,
+                              &mesh_ibo,
+                              &mesh_vbo_offset,
+                              &mesh_ibo_offset,
+                              &mesh_compact)) {
         ctx->stats.dropped_draws++;
         return;
     }
@@ -1145,7 +1235,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
     bind_material_textures(ctx, cmd);
-    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_vbo_offset, mesh_compact);
     if (!configure_instance_attributes(ctx,
                                        instance_matrices,
                                        cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices
@@ -1156,7 +1246,11 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
         return;
     }
     gl.DrawElementsInstanced(
-        GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);
+        GL_TRIANGLES,
+        (GLsizei)index_count,
+        GL_UNSIGNED_INT,
+        (void *)(uintptr_t)mesh_ibo_offset,
+        (GLsizei)instance_count);
     ctx->stats.draw_calls++;
     set_identity_instance_constants();
 }

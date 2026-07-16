@@ -120,6 +120,8 @@ vgfx3d_opengl_target_kind_t vgfx3d_opengl_choose_target_kind(int8_t rtt_active,
 /// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.
 vgfx3d_opengl_color_format_t vgfx3d_opengl_choose_color_format(
     vgfx3d_opengl_target_kind_t target_kind);
+/// @brief Choose high-precision motion storage when float render targets are available.
+vgfx3d_opengl_color_format_t vgfx3d_opengl_choose_motion_format(int8_t supports_float_target);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_opengl_blend_mode_t vgfx3d_opengl_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
 /// @brief Decide whether terrain splatting has every required texture bound.
@@ -148,6 +150,13 @@ int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
                                            uint32_t cached_vertex_count,
                                            int8_t cached_has_normal_deltas,
                                            const vgfx3d_draw_cmd_t *cmd);
+/// @brief Match a static mesh cache entry using allocation generation plus content metadata.
+int vgfx3d_opengl_mesh_cache_matches(uint32_t cached_identity,
+                                     uint32_t cached_revision,
+                                     uint32_t cached_vertex_count,
+                                     uint32_t cached_index_count,
+                                     int8_t cached_compact,
+                                     const vgfx3d_draw_cmd_t *cmd);
 /// @brief Decide whether a per-mesh GPU cache entry should be evicted (unused for > max_age
 /// frames).
 int vgfx3d_opengl_should_prune_cache_entry(uint64_t current_frame,

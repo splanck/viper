@@ -56,6 +56,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Backend-internal allocation identity; deliberately excluded from the runtime C ABI catalog. */
+uint32_t rt_morphtarget3d_get_identity_serial(void *mt);
+
 // Light flattening lives in rt_canvas3d_lighting.c; its prototype is declared here
 // (not in rt_canvas3d_internal.h) because vgfx3d_light_params_t needs vgfx3d_backend.h,
 // included above — keeping the type-less TUs that share the internal header clean.
@@ -1135,6 +1138,9 @@ static void canvas3d_bind_morph_cmd(rt_canvas3d *c,
     }
     cmd->morph_shape_count = shape_count;
     cmd->morph_key = mesh->morph_targets_ref;
+    cmd->morph_identity = mesh->morph_targets_ref
+                              ? rt_morphtarget3d_get_identity_serial(mesh->morph_targets_ref)
+                              : 0;
     cmd->morph_revision = mesh->morph_targets_ref
                               ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
                               : 0;

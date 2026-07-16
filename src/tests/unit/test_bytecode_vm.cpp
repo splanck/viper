@@ -2521,7 +2521,7 @@ static void test_thread_start_safe_reports_bytecode_trap() {
     std::cout << "PASSED\n";
 }
 
-/// Test that bytecode Async.Run retains its argument until the worker exits.
+/// Test that bytecode Async.RunOwned retains its argument until the worker exits.
 static void test_async_run_retains_bytecode_argument() {
     std::cout << "  test_async_run_retains_bytecode_argument: ";
 
@@ -2531,7 +2531,7 @@ static void test_async_run_retains_bytecode_argument() {
     bcModule.flags = 0;
 
     const uint16_t asyncRunIdx =
-        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Async.Run", 2, true));
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Async.RunOwned", 2, true));
     const uint16_t futureGetIdx =
         static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Future.Get", 1, true));
     const uint16_t makeMarkerIdx =

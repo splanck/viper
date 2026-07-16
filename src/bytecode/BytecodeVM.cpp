@@ -7119,6 +7119,13 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Async.RunOwned";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_async_run_owned_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
         ext.name = "Viper.Network.HttpServer.BindHandler";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_http_server_bind_handler);

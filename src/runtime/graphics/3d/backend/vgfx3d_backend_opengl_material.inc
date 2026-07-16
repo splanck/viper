@@ -539,8 +539,7 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
      * splat data, so the aliasing can never misread. */
     if (cmd->soft_particle_fade > 0.0f && !has_splat && ctx->opaque_depth_valid &&
         ctx->opaque_depth_tex)
-        bind_texture_unit(
-            ctx->uOpaqueDepthTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, ctx->opaque_depth_tex);
+        bind_texture_unit(ctx->uSplatTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, ctx->opaque_depth_tex);
     else
         bind_texture_unit(ctx->uSplatTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, splat_tex);
     bind_texture_unit(ctx->uSplatLayer0, GL_TU_SPLAT_LAYER0, GL_TEXTURE_2D, splat_layer0);
@@ -548,7 +547,7 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSplatLayer2, GL_TU_SPLAT_LAYER0 + 2, GL_TEXTURE_2D, splat_layer2);
     bind_texture_unit(ctx->uSplatLayer3, GL_TU_SPLAT_LAYER0 + 3, GL_TEXTURE_2D, splat_layer3);
     bind_texture_unit(ctx->uEnvMap, GL_TU_ENV_MAP, GL_TEXTURE_CUBE_MAP, env_tex);
-    bind_texture_unit(ctx->uBrdfLut, GL_TU_BRDF_LUT, GL_TEXTURE_2D, ctx->brdf_lut_tex);
+    bind_texture_unit(ctx->uSplatLayer3, GL_TU_BRDF_LUT, GL_TEXTURE_2D, ctx->brdf_lut_tex);
     bind_texture_unit_with_sampler(ctx,
                                    ctx->uMetallicRoughnessTex,
                                    GL_TU_METALLIC_ROUGHNESS,
@@ -756,7 +755,6 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uShadowSampleCount);
     U(uClusterGlobalCount);
     U(uClusterParams);
-    U(uOpaqueDepthTex);
     U(uUseInstancing);
     U(uHasPrevModelMatrix);
     U(uHasPrevInstanceMatrices);
@@ -776,7 +774,6 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uSpecularTex);
     U(uEmissiveTex);
     U(uEnvMap);
-    U(uBrdfLut);
     U(uMetallicRoughnessTex);
     U(uAOTex);
     U(uSplatTex);

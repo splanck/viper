@@ -42,6 +42,7 @@
 
 #include <dlfcn.h>
 #include <math.h>
+#include <pthread.h>
 #include <sched.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -60,6 +61,7 @@ typedef void GLvoid;
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef unsigned int GLbitfield;
+typedef void (*GLDEBUGPROC)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLchar *, const void *);
 
 #define VGFX3D_STR_IMPL(x) #x
 #define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
@@ -88,10 +90,14 @@ typedef unsigned int GLbitfield;
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_DEPTH_BUFFER_BIT 0x00000100
 #define GL_FRAMEBUFFER_BINDING 0x8CA6
+#define GL_READ_FRAMEBUFFER_BINDING 0x8CAA
 #define GL_READ_BUFFER 0x0C02
 #define GL_DEPTH_TEST 0x0B71
 #define GL_CULL_FACE 0x0B44
 #define GL_BLEND 0x0BE2
+#define GL_FRAMEBUFFER_SRGB 0x8DB9
+#define GL_DEBUG_OUTPUT 0x92E0
+#define GL_DEBUG_OUTPUT_SYNCHRONOUS 0x8242
 #define GL_POLYGON_OFFSET_FILL 0x8037
 #define GL_FRONT 0x0404
 #define GL_BACK 0x0405
@@ -156,6 +162,12 @@ typedef unsigned int GLbitfield;
 #define GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS 0x8B4D
 #define GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS 0x8B4C
 #define GL_MAX_TEXTURE_BUFFER_SIZE 0x8C2B
+#define GL_MAX_DRAW_BUFFERS 0x8824
+#define GL_MAX_COLOR_ATTACHMENTS 0x8CDF
+#define GL_MAX_UNIFORM_BLOCK_SIZE 0x8A30
+#define GL_MAX_UNIFORM_BUFFER_BINDINGS 0x8A2F
+#define GL_CONTEXT_PROFILE_MASK 0x9126
+#define GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
 #define GL_COMPRESSED_RGBA_BPTC_UNORM 0x8E8C
 #define GL_COMPRESSED_RGBA8_ETC2_EAC 0x9278
 #define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
@@ -186,6 +198,7 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_COMPARE_FUNC 0x884D
 #define GL_COMPARE_REF_TO_TEXTURE 0x884E
 #define GL_PIXEL_PACK_BUFFER 0x88EB
+#define GL_PIXEL_PACK_BUFFER_BINDING 0x88ED
 #define GL_STREAM_READ 0x88E1
 #define GL_MAP_READ_BIT 0x0001
 #define GL_ONE 1
@@ -202,6 +215,7 @@ typedef unsigned int GLbitfield;
 #define GL_RENDERBUFFER 0x8D41
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_COLOR_ATTACHMENT1 0x8CE1
+#define GL_COLOR_ATTACHMENT2 0x8CE2
 #define GL_DEPTH_ATTACHMENT 0x8D00
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
 #define GL_LINE 0x1B01
@@ -311,6 +325,7 @@ typedef GLboolean (*PFNGLUNMAPBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERSPROC)(GLsizei, const GLenum *);
 typedef void (*PFNGLREADBUFFERPROC)(GLenum);
+typedef void (*PFNGLDEBUGMESSAGECALLBACKPROC)(GLDEBUGPROC, const void *);
 typedef GLenum (*PFNGLGETERRORPROC)(void);
 typedef const unsigned char *(*PFNGLGETSTRINGPROC)(GLenum);
 typedef const unsigned char *(*PFNGLGETSTRINGIPROC)(GLenum, GLuint);
@@ -419,6 +434,7 @@ static struct {
     PFNGLDRAWBUFFERPROC DrawBuffer;
     PFNGLDRAWBUFFERSPROC DrawBuffers;
     PFNGLREADBUFFERPROC ReadBuffer;
+    PFNGLDEBUGMESSAGECALLBACKPROC DebugMessageCallback;
 } gl;
 
 static int gl_debug_enabled(void);
@@ -484,16 +500,34 @@ static int gl_debug_enabled(void) {
     return cached;
 }
 
+/// @brief Emit driver-originated KHR_debug diagnostics with stable identifying metadata.
+static void gl_debug_message_callback(GLenum source,
+                                      GLenum type,
+                                      GLuint id,
+                                      GLenum severity,
+                                      GLsizei length,
+                                      const GLchar *message,
+                                      const void *user_param) {
+    (void)source;
+    (void)type;
+    (void)length;
+    (void)user_param;
+    fprintf(stderr,
+            "[OpenGL] driver message id=%u severity=0x%04X: %s\n",
+            (unsigned)id,
+            (unsigned)severity,
+            message ? message : "<no message>");
+}
+
 /// @brief Parse the Linux OpenGL presentation override.
-/// @details The default path remains the conservative offscreen/ViperGFX resolve used by the
-///          existing backend. `VIPER_OPENGL_PRESENT=auto` trusts the framebuffer writability probe,
+/// @details The default `auto` path trusts the framebuffer writability probe,
 ///          `direct` forces native GLX/default-framebuffer presentation, and `offscreen` forces the
 ///          compatibility resolve path. Unknown values fall back to offscreen.
 /// @return 0 for offscreen, 1 for auto/probe, 2 for direct.
 static int gl_present_override_mode(void) {
     const char *value = getenv("VIPER_OPENGL_PRESENT");
     if (!value || value[0] == '\0')
-        return 0;
+        return 1;
     if (strcmp(value, "auto") == 0 || strcmp(value, "probe") == 0)
         return 1;
     if (strcmp(value, "direct") == 0 || strcmp(value, "glx") == 0)
@@ -624,6 +658,7 @@ typedef struct {
 
 typedef struct {
     const void *key;
+    uint32_t identity;
     uint64_t revision;
     int32_t shape_count;
     uint32_t vertex_count;
@@ -641,6 +676,7 @@ typedef struct {
 
 typedef struct {
     const void *key;
+    uint32_t identity;
     uint32_t revision;
     uint32_t vertex_count;
     uint32_t index_count;
@@ -655,6 +691,7 @@ typedef struct {
     Window window;
     vgfx_window_t vgfx_win;
     GLXContext glxCtx;
+    pthread_t owner_thread;
 
     GLuint program;
     GLuint shadow_program;
@@ -676,6 +713,8 @@ typedef struct {
     GLuint mesh_ibo;
     size_t mesh_vbo_capacity;
     size_t mesh_ibo_capacity;
+    size_t mesh_vbo_offset;
+    size_t mesh_ibo_offset;
 
     GLuint instance_vbo;
     size_t instance_vbo_capacity;
@@ -706,6 +745,7 @@ typedef struct {
     GLuint scene_fbo;
     GLuint scene_color_tex;
     GLuint scene_motion_tex;
+    GLuint scene_postfx_tex;
     GLuint scene_depth_tex;
     int32_t scene_width;
     int32_t scene_height;
@@ -783,6 +823,10 @@ typedef struct {
     uint64_t frame_serial;
     uint64_t texture_upload_bytes;
     uint64_t texture_upload_budget_bytes;
+    int32_t texture_upload_cursor;
+    int32_t cubemap_upload_cursor;
+    uint64_t *cache_age_scratch;
+    int32_t cache_age_scratch_capacity;
     int32_t gl_major_version;
     int32_t gl_minor_version;
     int32_t max_texture_size;
@@ -790,6 +834,11 @@ typedef struct {
     int32_t max_combined_texture_units;
     int32_t max_vertex_texture_units;
     int32_t max_texture_buffer_size;
+    int32_t max_draw_buffers;
+    int32_t max_color_attachments;
+    int32_t max_uniform_block_size;
+    int32_t max_uniform_buffer_bindings;
+    int8_t zero_to_one_clip;
     int8_t supports_hdr_color_target;
     int8_t supports_depth_float_target;
     int8_t supports_bc7;
@@ -857,13 +906,12 @@ typedef struct {
     GLint uShadowCount, uShadowBias;
     GLint uShadowSlopeBias, uShadowStrength, uShadowSampleCount;
     GLint uClusterGlobalCount, uClusterParams;
-    GLint uOpaqueDepthTex;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
     GLint uInstanceBoneStride;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
     GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex[VGFX3D_MAX_SHADOW_LIGHTS],
-        uEnvMap, uBrdfLut;
+        uEnvMap;
     GLint uMetallicRoughnessTex, uAOTex;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
     GLint uLightType[VGFX3D_MAX_LIGHTS], uLightShadowIndex[VGFX3D_MAX_LIGHTS],
@@ -919,10 +967,30 @@ typedef struct {
     float depth_probe_requests[VGFX3D_DEPTH_PROBE_MAX][2];
     int32_t depth_probe_request_count;
     GLuint depth_probe_pbo;
+    GLuint present_readback_pbo[2];
+    size_t present_readback_pbo_bytes;
+    int32_t present_readback_pbo_index;
+    int8_t present_readback_pbo_valid;
     int32_t depth_probe_pending_count;
     float depth_probe_results[VGFX3D_DEPTH_PROBE_MAX];
     int32_t depth_probe_result_count;
 } gl_context_t;
+
+/// @brief Enforce the context's creation-thread ownership contract.
+static int gl_context_thread_is_owner(const gl_context_t *ctx, const char *operation) {
+    if (ctx && pthread_equal(pthread_self(), ctx->owner_thread))
+        return 1;
+    fprintf(stderr,
+            "[OpenGL] context operation rejected on non-owner thread: %s\n",
+            operation ? operation : "unknown");
+    return 0;
+}
+
+/// @brief Validate thread affinity and make the context current for a public backend operation.
+static int gl_make_current_checked(gl_context_t *ctx, const char *operation) {
+    return gl_context_thread_is_owner(ctx, operation) && ctx->display && ctx->window && ctx->glxCtx &&
+           glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+}
 
 static void query_main_uniforms(gl_context_t *ctx);
 static void query_shadow_uniforms(gl_context_t *ctx);
@@ -950,6 +1018,7 @@ static void bind_morph_payload(gl_context_t *ctx,
 static void texture_cache_prune(gl_context_t *ctx);
 static void cubemap_cache_prune(gl_context_t *ctx);
 static void morph_cache_prune(gl_context_t *ctx);
+static void gl_continue_pending_uploads(gl_context_t *ctx);
 static void morph_cache_release_entry(gl_morph_cache_entry_t *entry);
 static void texture_cache_destroy(gl_context_t *ctx);
 static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr);
@@ -967,6 +1036,7 @@ static void set_identity_instance_constants(void);
 static void configure_mesh_attributes(gl_context_t *ctx,
                                       GLuint mesh_vbo,
                                       GLuint mesh_ibo,
+                                      size_t vertex_offset,
                                       int compact);
 static int configure_instance_attributes(gl_context_t *ctx,
                                          const float *instance_matrices,
@@ -976,6 +1046,8 @@ static int prepare_mesh_buffers(gl_context_t *ctx,
                                 const vgfx3d_draw_cmd_t *cmd,
                                 GLuint *out_vbo,
                                 GLuint *out_ibo,
+                                size_t *out_vbo_offset,
+                                size_t *out_ibo_offset,
                                 int *out_compact);
 static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain);
 static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap);
@@ -1047,12 +1119,14 @@ static GLuint gl_encode_taa_pass(gl_context_t *ctx,
 /// helpers restore the caller's binding instead of approximating it through
 /// `bind_main_framebuffer`, which can be wrong for nested operations.
 typedef struct {
-    GLint framebuffer;
+    GLint draw_framebuffer;
+    GLint read_framebuffer;
     GLint draw_buffer;
     GLint read_buffer;
     GLint viewport[4];
     GLint pack_alignment;
     GLint unpack_alignment;
+    GLint pixel_pack_buffer;
 } gl_framebuffer_state_t;
 
 /// @brief Capture the current framebuffer/read/draw/viewport state.
@@ -1060,12 +1134,14 @@ static void gl_capture_framebuffer_state(gl_framebuffer_state_t *state) {
     if (!state)
         return;
     memset(state, 0, sizeof(*state));
-    gl.GetIntegerv(GL_FRAMEBUFFER_BINDING, &state->framebuffer);
+    gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &state->draw_framebuffer);
+    gl.GetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &state->read_framebuffer);
     gl.GetIntegerv(GL_DRAW_BUFFER, &state->draw_buffer);
     gl.GetIntegerv(GL_READ_BUFFER, &state->read_buffer);
     gl.GetIntegerv(GL_VIEWPORT, state->viewport);
     gl.GetIntegerv(GL_PACK_ALIGNMENT, &state->pack_alignment);
     gl.GetIntegerv(GL_UNPACK_ALIGNMENT, &state->unpack_alignment);
+    gl.GetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &state->pixel_pack_buffer);
 }
 
 /// @brief Restore framebuffer/read/draw/viewport state captured by
@@ -1073,12 +1149,22 @@ static void gl_capture_framebuffer_state(gl_framebuffer_state_t *state) {
 static void gl_restore_framebuffer_state(const gl_framebuffer_state_t *state) {
     if (!state)
         return;
-    gl.BindFramebuffer(GL_FRAMEBUFFER, (GLuint)state->framebuffer);
+    gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)state->draw_framebuffer);
+    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)state->read_framebuffer);
     gl.DrawBuffer((GLenum)state->draw_buffer);
     gl.ReadBuffer((GLenum)state->read_buffer);
     gl.Viewport(state->viewport[0], state->viewport[1], state->viewport[2], state->viewport[3]);
     gl.PixelStorei(GL_PACK_ALIGNMENT, state->pack_alignment);
     gl.PixelStorei(GL_UNPACK_ALIGNMENT, state->unpack_alignment);
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)state->pixel_pack_buffer);
+}
+
+/// @brief Change one pixel-store alignment and return the value that must be restored.
+static GLint gl_set_pixel_store_alignment(GLenum pname, GLint alignment) {
+    GLint previous = 4;
+    gl.GetIntegerv(pname, &previous);
+    gl.PixelStorei(pname, alignment);
+    return previous;
 }
 
 /// @brief Restore the default draw state expected after helper full-screen passes.
@@ -1090,6 +1176,8 @@ static void gl_restore_main_draw_state(gl_context_t *ctx) {
     if (!ctx)
         return;
     gl.Disable(GL_BLEND);
+    /* Final transfer encoding is performed exactly once by the post-FX shader. */
+    gl.Disable(GL_FRAMEBUFFER_SRGB);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.Enable(GL_DEPTH_TEST);
     /* Reversed-Z initial state; scene draws pin GL_GREATER per draw. */
@@ -1365,6 +1453,8 @@ static int load_gl(void) {
     LOADP(ReadBuffer);
     LOADP(ColorMask);
     gl.GetStringi = (PFNGLGETSTRINGIPROC)glx.GetProcAddress((const unsigned char *)"glGetStringi");
+    gl.DebugMessageCallback = (PFNGLDEBUGMESSAGECALLBACKPROC)glx.GetProcAddress(
+        (const unsigned char *)"glDebugMessageCallback");
 
 #undef LOAD
 #undef LOADX
@@ -1396,8 +1486,6 @@ fail: {
  * glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE) is active for this context.
  * Injects the depth-convention macros into every GLSL compile so shader
  * bodies stay convention-agnostic (VIPER_DEPTH_TO_NDC + the VS z remap). */
-static int gl_zero_to_one_clip = 0;
-
 /// @brief Compile a GLSL shader from one-or-more source strings.
 ///
 /// `src_count` allows splicing multiple strings (e.g., a #version
@@ -1406,26 +1494,45 @@ static int gl_zero_to_one_clip = 0;
 /// (GLSL requires #version first). On compile failure dumps the GLSL
 /// info log to stderr and deletes the shader.
 /// Returns the shader handle, or 0 on failure.
-static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei src_count) {
+static GLuint compile_shader_parts(
+    GLenum type, const char *const *src, GLsizei src_count, int zero_to_one_clip) {
     const char *spliced[20];
-    const char *prologue = gl_zero_to_one_clip
+    GLint lengths[20];
+    const char *prologue = zero_to_one_clip
                                ? "#define VIPER_DEPTH_ZERO_TO_ONE 1\n"
                                  "#define VIPER_DEPTH_TO_NDC(d) (d)\n"
                                : "#define VIPER_DEPTH_TO_NDC(d) ((d) * 2.0 - 1.0)\n";
     GLuint shader = gl.CreateShader(type);
     if (!shader)
         return 0;
-    if (src_count > 0 && src_count < (GLsizei)(sizeof(spliced) / sizeof(spliced[0]))) {
+    if (src_count > 0 && src_count <= 17) {
         GLsizei out = 0;
         GLsizei start = 0;
+        memset(lengths, 0, sizeof(lengths));
         if (strncmp(src[0], "#version", 8) == 0) {
+            const char *version_end = strchr(src[0], '\n');
+            if (!version_end)
+                version_end = src[0] + strlen(src[0]);
+            else
+                version_end++;
             spliced[out++] = src[0];
+            lengths[out - 1] = (GLint)(version_end - src[0]);
+            spliced[out++] = prologue;
+            lengths[out - 1] = -1;
+            if (*version_end) {
+                spliced[out++] = version_end;
+                lengths[out - 1] = -1;
+            }
             start = 1;
+        } else {
+            spliced[out++] = prologue;
+            lengths[out - 1] = -1;
         }
-        spliced[out++] = prologue;
-        for (GLsizei i = start; i < src_count; i++)
+        for (GLsizei i = start; i < src_count; i++) {
             spliced[out++] = src[i];
-        gl.ShaderSource(shader, out, spliced, NULL);
+            lengths[out - 1] = -1;
+        }
+        gl.ShaderSource(shader, out, spliced, lengths);
     } else {
         gl.ShaderSource(shader, src_count, src, NULL);
     }
@@ -1433,13 +1540,20 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
     GLint ok = 0;
     gl.GetShaderiv(shader, GL_COMPILE_STATUS, &ok);
     if (!ok) {
-        char log[1024];
-        gl.GetShaderInfoLog(shader, (GLsizei)sizeof(log), NULL, log);
-        {
-            const char *debug = getenv("VIPER_OPENGL_DEBUG");
-            if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
-                fprintf(stderr, "[OpenGL] shader compile failed: %s\n", log);
+        GLint log_length = 0;
+        char *log = NULL;
+        gl.GetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
+        if (log_length > 1 && log_length <= INT32_MAX) {
+            log = (char *)malloc((size_t)log_length);
+            if (log)
+                gl.GetShaderInfoLog(shader, log_length, NULL, log);
         }
+        fprintf(stderr,
+                "[OpenGL] %s shader compilation failed%s%s\n",
+                type == GL_VERTEX_SHADER ? "vertex" : "fragment",
+                log ? ": " : "",
+                log ? log : " (driver returned no diagnostic log)");
+        free(log);
         gl.DeleteShader(shader);
         return 0;
     }
@@ -1447,9 +1561,9 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
 }
 
 /// @brief Single-source convenience wrapper around `compile_shader_parts`.
-static GLuint compile_shader(GLenum type, const char *src) {
+static GLuint compile_shader(GLenum type, const char *src, int zero_to_one_clip) {
     const char *parts[] = {src};
-    return compile_shader_parts(type, parts, 1);
+    return compile_shader_parts(type, parts, 1, zero_to_one_clip);
 }
 
 /// @brief Link a vertex + fragment shader pair into a program object.
@@ -1467,13 +1581,19 @@ static GLuint link_program(GLuint vs, GLuint fs) {
     GLint ok = 0;
     gl.GetProgramiv(program, GL_LINK_STATUS, &ok);
     if (!ok) {
-        char log[1024];
-        gl.GetProgramInfoLog(program, (GLsizei)sizeof(log), NULL, log);
-        {
-            const char *debug = getenv("VIPER_OPENGL_DEBUG");
-            if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
-                fprintf(stderr, "[OpenGL] program link failed: %s\n", log);
+        GLint log_length = 0;
+        char *log = NULL;
+        gl.GetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
+        if (log_length > 1 && log_length <= INT32_MAX) {
+            log = (char *)malloc((size_t)log_length);
+            if (log)
+                gl.GetProgramInfoLog(program, log_length, NULL, log);
         }
+        fprintf(stderr,
+                "[OpenGL] shader program link failed%s%s\n",
+                log ? ": " : "",
+                log ? log : " (driver returned no diagnostic log)");
+        free(log);
         gl.DeleteProgram(program);
         return 0;
     }
@@ -1643,6 +1763,7 @@ static int gl_probe_depth_renderable_format(GLint internal_format, GLenum data_t
 /// advertises them.
 static int gl_query_context_capabilities(gl_context_t *ctx) {
     const char *version = NULL;
+    GLint profile_mask = 0;
 
     if (!ctx || !gl.GetIntegerv || !gl.GetString)
         return 0;
@@ -1664,27 +1785,50 @@ static int gl_query_context_capabilities(gl_context_t *ctx) {
                 ctx->gl_minor_version);
         return 0;
     }
+    gl.GetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile_mask);
+    if ((profile_mask & GL_CONTEXT_CORE_PROFILE_BIT) == 0) {
+        fprintf(stderr,
+                "[OpenGL] GL 3.3 core profile required (profile mask=0x%X)\n",
+                (unsigned)profile_mask);
+        return 0;
+    }
 
     gl.GetIntegerv(GL_MAX_TEXTURE_SIZE, &ctx->max_texture_size);
     gl.GetIntegerv(GL_MAX_VERTEX_ATTRIBS, &ctx->max_vertex_attribs);
     gl.GetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &ctx->max_combined_texture_units);
     gl.GetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &ctx->max_vertex_texture_units);
     gl.GetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &ctx->max_texture_buffer_size);
+    gl.GetIntegerv(GL_MAX_DRAW_BUFFERS, &ctx->max_draw_buffers);
+    gl.GetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &ctx->max_color_attachments);
+    gl.GetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &ctx->max_uniform_block_size);
+    gl.GetIntegerv(GL_MAX_UNIFORM_BUFFER_BINDINGS, &ctx->max_uniform_buffer_bindings);
     if (!gl_drain_errors("capability query")) {
         ctx->max_texture_size = 0;
         ctx->max_vertex_attribs = 0;
         ctx->max_combined_texture_units = 0;
         ctx->max_vertex_texture_units = 0;
         ctx->max_texture_buffer_size = 0;
+        ctx->max_draw_buffers = 0;
+        ctx->max_color_attachments = 0;
+        ctx->max_uniform_block_size = 0;
+        ctx->max_uniform_buffer_bindings = 0;
     }
     if (ctx->max_vertex_attribs < 16 ||
         ctx->max_combined_texture_units <= GL_TU_MORPH_NORMAL_DELTAS ||
-        ctx->max_vertex_texture_units < 2) {
+        ctx->max_vertex_texture_units < 2 || ctx->max_texture_buffer_size <= 0 ||
+        ctx->max_draw_buffers < 2 || ctx->max_color_attachments < 3 ||
+        ctx->max_uniform_block_size < 16384 || ctx->max_uniform_buffer_bindings < 4) {
         fprintf(stderr,
-                "[OpenGL] backend limits insufficient: attribs=%d combinedTex=%d vertexTex=%d\n",
+                "[OpenGL] backend limits insufficient: attribs=%d combinedTex=%d vertexTex=%d "
+                "tbo=%d drawBuffers=%d colorAttachments=%d uboSize=%d uboBindings=%d\n",
                 ctx->max_vertex_attribs,
                 ctx->max_combined_texture_units,
-                ctx->max_vertex_texture_units);
+                ctx->max_vertex_texture_units,
+                ctx->max_texture_buffer_size,
+                ctx->max_draw_buffers,
+                ctx->max_color_attachments,
+                ctx->max_uniform_block_size,
+                ctx->max_uniform_buffer_bindings);
         return 0;
     }
 

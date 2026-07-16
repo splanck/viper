@@ -1674,6 +1674,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
         (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents && !rebase_identity_vertices)
             ? mesh_obj
             : NULL;
+    dd->cmd.geometry_identity = dd->cmd.geometry_key ? mesh->identity_serial : 0;
     dd->cmd.geometry_revision = dd->cmd.geometry_key ? mesh->geometry_revision : 0;
     dd->cmd.compact_vertex_stream = (dd->cmd.geometry_key && mesh->compact_streams) ? 1 : 0;
     memcpy(dd->cmd.model_matrix, validated_model_matrix, sizeof(dd->cmd.model_matrix));
