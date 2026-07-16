@@ -65,7 +65,7 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
         if (n < 0) {
             if (errno == EINTR)
                 continue;
-            if (errno == ENOSYS)
+            if (errno == ENOSYS || errno == EPERM || errno == EACCES)
                 break;
             return -1;
         }

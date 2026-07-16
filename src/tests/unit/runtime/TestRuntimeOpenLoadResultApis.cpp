@@ -9,12 +9,23 @@
 // Purpose: Tests Result-returning connect/open/load APIs added by the runtime
 //          public API overhaul.
 //
+// Key invariants:
+//   - Validation and platform startup failures become Result.Err values with useful messages.
+//   - Successful scene loads retain the existing Result.Ok ownership contract.
+//
+// Ownership/Lifetime:
+//   - Every Result and runtime object created by a test is released before the test returns.
+//
+// Links: src/runtime/system/rt_pty.c, src/runtime/network/rt_tls.c,
+//        src/runtime/game/rt_scene_editor.cpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
 
 extern "C" {
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_pty.h"
 #include "rt_result.h"
 #include "rt_scene_editor.h"
@@ -55,6 +66,21 @@ TEST(RuntimeOpenLoadResultApis, PtyOpenResultWrapsValidationTraps) {
     expect_err_with_message(result);
     release_obj(result);
 }
+
+#if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_VIPERDOS
+TEST(RuntimeOpenLoadResultApis, PtyOpenResultReportsExecFailureSynchronously) {
+    void *result = rt_pty_open_result(rt_const_cstr("/definitely/missing/viper-pty-program"),
+                                      nullptr,
+                                      nullptr,
+                                      nullptr,
+                                      80,
+                                      24);
+    expect_err_with_message(result);
+    rt_string message = rt_result_unwrap_err_str(result);
+    EXPECT_CONTAINS(rt_string_cstr(message), "execute program");
+    release_obj(result);
+}
+#endif
 
 TEST(RuntimeOpenLoadResultApis, SceneDocumentLoadJsonResultWrapsDiagnostics) {
     void *scene = rt_game_scene_new(4, 3, 16, 16);

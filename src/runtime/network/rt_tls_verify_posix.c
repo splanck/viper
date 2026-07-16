@@ -10,6 +10,15 @@
 //   and Linux. Compiled on non-_WIN32 platforms; the Windows CryptoAPI path lives in
 //   rt_tls_verify_win.c.
 //
+// Key invariants:
+//   - Trust bundles are streamed with an 8 MiB limit and embedded NUL bytes are rejected.
+//   - Environment trust overrides are ignored for elevated effective credentials.
+//   - Certificate and signature verification is implemented without external dependencies.
+//
+// Ownership/Lifetime:
+//   - Trust-bundle buffers are heap-owned by the verifier and freed after parsing.
+//   - Parsed certificate views borrow storage from their source DER buffers.
+//
 // Links: rt_tls_verify_internal.h (shared helpers), rt_tls_verify_win.c, rt_tls_internal.h
 //
 //===----------------------------------------------------------------------===//
@@ -18,6 +27,7 @@
 
 #if !defined(_WIN32)
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -1190,7 +1200,8 @@ static RT_TLS_MAYBE_UNUSED int verify_cert_signature(const uint8_t *cert_der,
 static RT_TLS_MAYBE_UNUSED char *tls_read_file_text(const char *path, size_t *len_out) {
     FILE *f = NULL;
     char *buf = NULL;
-    long len = 0;
+    size_t len = 0;
+    size_t capacity = 0;
     if (len_out)
         *len_out = 0;
     if (!path || !*path)
@@ -1198,22 +1209,41 @@ static RT_TLS_MAYBE_UNUSED char *tls_read_file_text(const char *path, size_t *le
     f = fopen(path, "rb");
     if (!f)
         return NULL;
-    if (fseek(f, 0, SEEK_END) != 0)
-        goto fail;
-    len = ftell(f);
-    if (len < 0 || fseek(f, 0, SEEK_SET) != 0)
-        goto fail;
-    if ((unsigned long)len > TLS_TRUST_BUNDLE_MAX_BYTES)
-        goto fail;
-    buf = (char *)malloc((size_t)len + 1);
-    if (!buf)
-        goto fail;
-    if ((long)fread(buf, 1, (size_t)len, f) != len)
-        goto fail;
+    for (;;) {
+        if (len == capacity) {
+            if (capacity == TLS_TRUST_BUNDLE_MAX_BYTES + 1u)
+                goto fail;
+            size_t next = capacity ? capacity * 2u : 16384u;
+            if (next > TLS_TRUST_BUNDLE_MAX_BYTES + 1u)
+                next = TLS_TRUST_BUNDLE_MAX_BYTES + 1u;
+            char *grown = (char *)realloc(buf, next + 1u);
+            if (!grown)
+                goto fail;
+            buf = grown;
+            capacity = next;
+        }
+        size_t count = fread(buf + len, 1, capacity - len, f);
+        if (count > 0) {
+            if (memchr(buf + len, '\0', count) != NULL)
+                goto fail;
+            len += count;
+            if (len > TLS_TRUST_BUNDLE_MAX_BYTES)
+                goto fail;
+        }
+        if (count == 0) {
+            if (feof(f))
+                break;
+            if (ferror(f) && errno == EINTR) {
+                clearerr(f);
+                continue;
+            }
+            goto fail;
+        }
+    }
     buf[len] = '\0';
     fclose(f);
     if (len_out)
-        *len_out = (size_t)len;
+        *len_out = len;
     return buf;
 fail:
     if (f)

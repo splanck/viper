@@ -17,8 +17,8 @@
 //   - OS name strings are statically determined at compile time from predefined
 //     platform macros, including ViperDOS, and never change at runtime.
 //   - Hostname is queried fresh on each call; it is not cached.
-//   - Memory queries use GlobalMemoryStatusEx (Win32) or sysinfo (Linux) or
-//     host_statistics64 (macOS).
+//   - Memory queries use GlobalMemoryStatusEx (Win32), MemAvailable/sysinfo
+//     (Linux), or host_statistics64 (macOS), with checked byte conversion.
 //   - Query failures use API-specific fallbacks such as 0, 1, 4096, empty, or
 //     "unknown"; the macOS core-count fallback currently leaks sysconf's -1.
 //
@@ -44,6 +44,7 @@
 
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,6 +72,34 @@
 
 #ifdef __linux__
 #include <sys/sysinfo.h>
+
+/// @brief Convert a Linux page/RAM count and unit to the public signed byte range.
+static int64_t linux_memory_bytes(unsigned long count, unsigned int unit) {
+    uint64_t value = (uint64_t)count;
+    if (unit != 0 && value > (uint64_t)INT64_MAX / (uint64_t)unit)
+        return INT64_MAX;
+    value *= (uint64_t)unit;
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+}
+
+/// @brief Read Linux's reclaim-aware MemAvailable value from procfs.
+static int64_t linux_mem_available(void) {
+    FILE *file = fopen("/proc/meminfo", "r");
+    if (!file)
+        return -1;
+    char line[256];
+    int64_t result = -1;
+    while (fgets(line, sizeof(line), file)) {
+        unsigned long long kib = 0;
+        if (sscanf(line, "MemAvailable: %llu kB", &kib) == 1) {
+            result = kib > (unsigned long long)INT64_MAX / 1024u ? INT64_MAX
+                                                                  : (int64_t)(kib * 1024u);
+            break;
+        }
+    }
+    fclose(file);
+    return result;
+}
 #endif
 
 /// @brief Helper to create a string from a C string.
@@ -398,7 +427,7 @@ int64_t rt_machine_mem_total(void) {
 #elif defined(__linux__)
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
-        return (int64_t)si.totalram * (int64_t)si.mem_unit;
+        return linux_memory_bytes(si.totalram, si.mem_unit);
     }
     return 0;
 
@@ -455,9 +484,12 @@ int64_t rt_machine_mem_free(void) {
     return free_mem;
 
 #elif defined(__linux__)
+    int64_t available = linux_mem_available();
+    if (available >= 0)
+        return available;
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
-        return (int64_t)si.freeram * (int64_t)si.mem_unit;
+        return linux_memory_bytes(si.freeram, si.mem_unit);
     }
     return 0;
 

@@ -28,7 +28,7 @@ static GLXFBConfig gl_pick_matching_fb_config(Display *dpy,
     XWindowAttributes window_attrs;
     if (!dpy || !configs || fb_count <= 0)
         return NULL;
-    chosen = configs[0];
+    chosen = NULL;
     if (XGetWindowAttributes(dpy, xwin, &window_attrs)) {
         for (int i = 0; i < fb_count; ++i) {
             XVisualInfo *visual_info = glx.GetVisualFromFBConfig(dpy, configs[i]);
@@ -44,6 +44,72 @@ static GLXFBConfig gl_pick_matching_fb_config(Display *dpy,
         }
     }
     return chosen;
+}
+
+/// @brief Create a GLX context while containing asynchronous X errors.
+static GLXContext gl_create_glx_context_checked(Display *dpy, GLXFBConfig config) {
+    GLXContext result = NULL;
+    glx_context_lock();
+    XSync(dpy, False);
+    glx_context_create_error = 0;
+    int (*previous_handler)(Display *, XErrorEvent *) = XSetErrorHandler(glx_context_error_handler);
+    if (glx.CreateContextAttribsARB) {
+        const int attributes[] = {GLX_CONTEXT_MAJOR_VERSION_ARB,
+                                  3,
+                                  GLX_CONTEXT_MINOR_VERSION_ARB,
+                                  3,
+                                  GLX_CONTEXT_PROFILE_MASK_ARB,
+                                  GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+                                  0};
+        result = glx.CreateContextAttribsARB(dpy, config, NULL, 1, attributes);
+        XSync(dpy, False);
+        if (glx_context_create_error) {
+            if (result)
+                glx.DestroyContext(dpy, result);
+            result = NULL;
+        }
+    }
+    if (!result) {
+        glx_context_create_error = 0;
+        result = glx.CreateNewContext(dpy, config, GLX_RGBA_TYPE, NULL, 1);
+        XSync(dpy, False);
+        if (glx_context_create_error) {
+            if (result)
+                glx.DestroyContext(dpy, result);
+            result = NULL;
+        }
+    }
+    XSetErrorHandler(previous_handler);
+    glx_context_unlock();
+    return result;
+}
+
+/// @brief Attempt a GLX ownership transfer without exposing BadAccess to the process handler.
+static int gl_make_current_for_destroy_checked(Display *dpy, Window window, GLXContext context) {
+    int result;
+    glx_context_lock();
+    XSync(dpy, False);
+    glx_context_create_error = 0;
+    int (*previous_handler)(Display *, XErrorEvent *) = XSetErrorHandler(glx_context_error_handler);
+    result = glx.MakeCurrent(dpy, window, context);
+    XSync(dpy, False);
+    if (glx_context_create_error)
+        result = 0;
+    XSetErrorHandler(previous_handler);
+    glx_context_unlock();
+    return result;
+}
+
+/// @brief Destroy a GLX context while containing asynchronous protocol errors.
+static void gl_destroy_glx_context_checked(Display *dpy, GLXContext context) {
+    glx_context_lock();
+    XSync(dpy, False);
+    glx_context_create_error = 0;
+    int (*previous_handler)(Display *, XErrorEvent *) = XSetErrorHandler(glx_context_error_handler);
+    glx.DestroyContext(dpy, context);
+    XSync(dpy, False);
+    XSetErrorHandler(previous_handler);
+    glx_context_unlock();
 }
 
 /// @brief Initialize all per-context matrices and default target/upload state.
@@ -112,6 +178,7 @@ static void gl_query_default_framebuffer_buffer(gl_context_t *ctx) {
 ///          context creation before user-visible rendering begins.
 static void gl_probe_default_framebuffer_writable(gl_context_t *ctx) {
     gl_framebuffer_state_t saved;
+    uint8_t original[4] = {0, 0, 0, 0};
     uint8_t sample[4] = {0, 0, 0, 0};
     if (!ctx || !gl.ReadPixels)
         return;
@@ -119,13 +186,24 @@ static void gl_probe_default_framebuffer_writable(gl_context_t *ctx) {
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
     gl.DrawBuffer(ctx->default_draw_buffer);
     gl.ReadBuffer(ctx->default_draw_buffer);
+    const GLint probe_x = ctx->width / 2;
+    const GLint probe_y = ctx->height / 2;
     gl.Viewport(0, 0, ctx->width, ctx->height);
-    gl.Disable(GL_SCISSOR_TEST);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
+    gl.ReadPixels(probe_x, probe_y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, original);
+    gl.Enable(GL_SCISSOR_TEST);
+    gl.Scissor(probe_x, probe_y, 1, 1);
+    gl.Disable(GL_FRAMEBUFFER_SRGB);
     gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     gl.ClearColor(1.0f, 0.0f, 0.0f, 1.0f);
     gl.Clear(GL_COLOR_BUFFER_BIT);
-    gl.ReadPixels(ctx->width / 2, ctx->height / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, sample);
+    gl.ReadPixels(probe_x, probe_y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, sample);
     ctx->default_framebuffer_writable = sample[0] > 200 && sample[1] < 32 && sample[2] < 32;
+    gl.ClearColor((float)original[0] / 255.0f,
+                  (float)original[1] / 255.0f,
+                  (float)original[2] / 255.0f,
+                  (float)original[3] / 255.0f);
+    gl.Clear(GL_COLOR_BUFFER_BIT);
     if (gl_debug_enabled()) {
         fprintf(stderr,
                 "[OpenGL] default framebuffer writable=%d sample=%u,%u,%u,%u\n",
@@ -172,8 +250,7 @@ static int gl_compile_context_shaders(const gl_context_t *ctx, gl_shader_set_t *
     shaders->taa_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_taa_fragment_src, zero_to_one_clip);
     shaders->ssr_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_ssr_fragment_src, zero_to_one_clip);
     return shaders->vs && shaders->fs && shaders->shadow_vs && shaders->shadow_fs &&
-           shaders->postfx_vs && shaders->postfx_fs && shaders->skybox_vs && shaders->skybox_fs &&
-           shaders->bloom_down_fs && shaders->bloom_up_fs && shaders->taa_fs && shaders->ssr_fs;
+           shaders->postfx_vs && shaders->postfx_fs && shaders->skybox_vs && shaders->skybox_fs;
 }
 
 /// @brief Delete all shaders in a temporary context shader bundle.
@@ -200,6 +277,8 @@ static void gl_delete_context_shaders(gl_shader_set_t *shaders) {
         gl.DeleteShader(shaders->bloom_up_fs);
     if (shaders->taa_fs)
         gl.DeleteShader(shaders->taa_fs);
+    if (shaders->ssr_fs)
+        gl.DeleteShader(shaders->ssr_fs);
     memset(shaders, 0, sizeof(*shaders));
 }
 
@@ -210,12 +289,23 @@ static int gl_link_context_programs(gl_context_t *ctx, const gl_shader_set_t *sh
     ctx->postfx_program = link_program(shaders->postfx_vs, shaders->postfx_fs);
     ctx->skybox_program = link_program(shaders->skybox_vs, shaders->skybox_fs);
     /* Plan 05 pass programs share the fullscreen post-FX vertex shader. */
-    ctx->bloom_down_program = link_program(shaders->postfx_vs, shaders->bloom_down_fs);
-    ctx->bloom_up_program = link_program(shaders->postfx_vs, shaders->bloom_up_fs);
-    ctx->taa_program = link_program(shaders->postfx_vs, shaders->taa_fs);
-    ctx->ssr_program = link_program(shaders->postfx_vs, shaders->ssr_fs);
-    return ctx->program && ctx->shadow_program && ctx->postfx_program && ctx->skybox_program &&
-           ctx->bloom_down_program && ctx->bloom_up_program && ctx->taa_program && ctx->ssr_program;
+    if (shaders->bloom_down_fs && shaders->bloom_up_fs) {
+        ctx->bloom_down_program = link_program(shaders->postfx_vs, shaders->bloom_down_fs);
+        ctx->bloom_up_program = link_program(shaders->postfx_vs, shaders->bloom_up_fs);
+        if (!ctx->bloom_down_program || !ctx->bloom_up_program) {
+            if (ctx->bloom_down_program)
+                gl.DeleteProgram(ctx->bloom_down_program);
+            if (ctx->bloom_up_program)
+                gl.DeleteProgram(ctx->bloom_up_program);
+            ctx->bloom_down_program = 0;
+            ctx->bloom_up_program = 0;
+        }
+    }
+    if (shaders->taa_fs)
+        ctx->taa_program = link_program(shaders->postfx_vs, shaders->taa_fs);
+    if (shaders->ssr_fs)
+        ctx->ssr_program = link_program(shaders->postfx_vs, shaders->ssr_fs);
+    return ctx->program && ctx->shadow_program && ctx->postfx_program && ctx->skybox_program;
 }
 
 /// @brief Delete shader programs created during context setup.
@@ -263,7 +353,6 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->uMorphDeltas, GL_TU_MORPH_DELTAS);
     gl.Uniform1i(ctx->uMorphNormalDeltas, GL_TU_MORPH_NORMAL_DELTAS);
     gl.Uniform1i(ctx->uEnvMap, GL_TU_ENV_MAP);
-    gl.Uniform1i(ctx->uSplatLayer3, GL_TU_BRDF_LUT);
     gl.Uniform1i(ctx->uMetallicRoughnessTex, GL_TU_METALLIC_ROUGHNESS);
     gl.Uniform1i(ctx->uAOTex, GL_TU_AO);
     gl.UseProgram(ctx->shadow_program);
@@ -279,15 +368,19 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->postfx_uSceneMotionTex, 2);
     gl.Uniform1i(ctx->postfx_uBloomTex, 3);
 
-    gl.UseProgram(ctx->bloom_down_program);
-    gl.Uniform1i(ctx->bloom_down_uSrcTex, 0);
-    gl.UseProgram(ctx->bloom_up_program);
-    gl.Uniform1i(ctx->bloom_up_uSrcTex, 0);
-    gl.UseProgram(ctx->taa_program);
-    gl.Uniform1i(ctx->taa_uCurrTex, 0);
-    gl.Uniform1i(ctx->taa_uHistTex, 1);
-    gl.Uniform1i(ctx->taa_uMotionTex, 2);
-    gl.Uniform1i(ctx->taa_uDepthTex, 3);
+    if (ctx->bloom_down_program && ctx->bloom_up_program) {
+        gl.UseProgram(ctx->bloom_down_program);
+        gl.Uniform1i(ctx->bloom_down_uSrcTex, 0);
+        gl.UseProgram(ctx->bloom_up_program);
+        gl.Uniform1i(ctx->bloom_up_uSrcTex, 0);
+    }
+    if (ctx->taa_program) {
+        gl.UseProgram(ctx->taa_program);
+        gl.Uniform1i(ctx->taa_uCurrTex, 0);
+        gl.Uniform1i(ctx->taa_uHistTex, 1);
+        gl.Uniform1i(ctx->taa_uMotionTex, 2);
+        gl.Uniform1i(ctx->taa_uDepthTex, 3);
+    }
 }
 
 /// @brief Bind uniform-block indices for current/previous bone palettes.
@@ -336,11 +429,6 @@ static int gl_validate_required_shader_interfaces(gl_context_t *ctx) {
     REQUIRE_UNIFORM(ctx->postfx_uSceneTex, "postfx.uSceneTex");
     REQUIRE_UNIFORM(ctx->postfx_uSceneDepthTex, "postfx.uSceneDepthTex");
     REQUIRE_UNIFORM(ctx->postfx_uSceneMotionTex, "postfx.uSceneMotionTex");
-    REQUIRE_UNIFORM(ctx->taa_uCurrTex, "taa.uCurrTex");
-    REQUIRE_UNIFORM(ctx->taa_uHistTex, "taa.uHistTex");
-    REQUIRE_UNIFORM(ctx->taa_uMotionTex, "taa.uMotionTex");
-    REQUIRE_UNIFORM(ctx->ssr_uSceneTex, "ssr.uSceneTex");
-    REQUIRE_UNIFORM(ctx->ssr_uDepthTex, "ssr.uDepthTex");
     if (gl.GetUniformBlockIndex(ctx->program, "Bones") == GL_INVALID_INDEX ||
         gl.GetUniformBlockIndex(ctx->program, "PrevBones") == GL_INVALID_INDEX ||
         gl.GetUniformBlockIndex(ctx->program, "ClusterOffsets") == GL_INVALID_INDEX ||
@@ -489,41 +577,6 @@ static int gl_create_default_white_texture(gl_context_t *ctx) {
     return 1;
 }
 
-/// @brief Create the context-owned split-sum environment-BRDF lookup texture
-/// from the shared CPU precomputation (RG32F, clamped bilinear).
-/// @return Non-zero when the table texture is available.
-static int gl_create_brdf_lut_texture(gl_context_t *ctx) {
-    if (!ctx)
-        return 0;
-    if (ctx->brdf_lut_tex)
-        return 1;
-    gl.GenTextures(1, &ctx->brdf_lut_tex);
-    if (!ctx->brdf_lut_tex)
-        return 0;
-    gl.BindTexture(GL_TEXTURE_2D, ctx->brdf_lut_tex);
-    gl.TexImage2D(GL_TEXTURE_2D,
-                  0,
-                  GL_RG32F,
-                  VGFX3D_BRDF_LUT_SIZE,
-                  VGFX3D_BRDF_LUT_SIZE,
-                  0,
-                  GL_RG,
-                  GL_FLOAT,
-                  vgfx3d_brdf_lut_data());
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    if (!gl_upload_ok()) {
-        gl.DeleteTextures(1, &ctx->brdf_lut_tex);
-        ctx->brdf_lut_tex = 0;
-        return 0;
-    }
-    return 1;
-}
-
 /// @brief Create the context-owned 1x1 white fallback cubemap.
 ///
 /// Budgeted cubemap uploads reserve a texture object before all six faces have
@@ -585,6 +638,10 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
     if (ctx->depth_probe_pbo)
         gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
+    for (int i = 0; i < 2; i++) {
+        if (ctx->present_readback_fence[i])
+            gl.DeleteSync(ctx->present_readback_fence[i]);
+    }
     gl.DeleteBuffers(2, ctx->present_readback_pbo);
     if (ctx->default_white_tex)
         gl.DeleteTextures(1, &ctx->default_white_tex);
@@ -687,6 +744,8 @@ static void gl_release_host_only_context_storage(gl_context_t *ctx) {
 /// X visual to avoid drawable-incompatibility errors at MakeCurrent.
 static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_shader_set_t shaders;
+    if (!win || w <= 0 || h <= 0)
+        return NULL;
     if (load_gl() != 0)
         return NULL;
 
@@ -726,19 +785,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         XFree(configs);
         return NULL;
     }
-    GLXContext glxCtx = NULL;
-    if (glx.CreateContextAttribsARB) {
-        const int ctx_attribs[] = {GLX_CONTEXT_MAJOR_VERSION_ARB,
-                                   3,
-                                   GLX_CONTEXT_MINOR_VERSION_ARB,
-                                   3,
-                                   GLX_CONTEXT_PROFILE_MASK_ARB,
-                                   GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
-                                   0};
-        glxCtx = glx.CreateContextAttribsARB(dpy, chosen, NULL, 1, ctx_attribs);
-    }
-    if (!glxCtx)
-        glxCtx = glx.CreateNewContext(dpy, chosen, GLX_RGBA_TYPE, NULL, 1);
+    GLXContext glxCtx = gl_create_glx_context_checked(dpy, chosen);
     XFree(configs);
     if (!glxCtx)
         return NULL;
@@ -850,7 +897,6 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_bind_context_uniform_blocks(ctx);
     if (!gl_generate_context_objects(ctx) || !gl_init_streaming_buffers(ctx) ||
         !gl_init_static_geometry_buffers(ctx) || !gl_create_default_white_texture(ctx) ||
-        !gl_create_brdf_lut_texture(ctx) ||
         !gl_create_default_white_cubemap(ctx)) {
         gl_release_fixed_context_objects(ctx);
         gl_delete_context_programs(ctx);
@@ -873,17 +919,18 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
-    if (!gl_context_thread_is_owner(ctx, "destroy_ctx"))
-        return;
+    if (!pthread_equal(pthread_self(), ctx->owner_thread) && gl_debug_enabled())
+        fprintf(stderr, "[OpenGL] destroy_ctx transferring context ownership for teardown\n");
 
     if (!(ctx->display && ctx->window && ctx->glxCtx) ||
-        !glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx)) {
+        !gl_make_current_for_destroy_checked(ctx->display, ctx->window, ctx->glxCtx)) {
         gl_release_host_only_context_storage(ctx);
         if (ctx->glxCtx && ctx->display)
-            glx.DestroyContext(ctx->display, ctx->glxCtx);
+            gl_destroy_glx_context_checked(ctx->display, ctx->glxCtx);
         free(ctx);
         return;
     }
+    ctx->owner_thread = pthread_self();
 
     texture_cache_destroy(ctx);
     gl_destroy_mesh_cache(ctx);
@@ -913,6 +960,10 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
     if (ctx->depth_probe_pbo)
         gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
+    for (int i = 0; i < 2; i++) {
+        if (ctx->present_readback_fence[i])
+            gl.DeleteSync(ctx->present_readback_fence[i]);
+    }
     gl.DeleteBuffers(2, ctx->present_readback_pbo);
     if (ctx->skybox_vbo)
         gl.DeleteBuffers(1, &ctx->skybox_vbo);

@@ -716,3 +716,10 @@ ctest --test-dir build -R '^test_vgfx3d_backend_opengl_(shared|context)$' --outp
 The context test is labeled `graphics3d`, `requires_display`, `requires_linux`, and `smoke`. It
 returns CTest skip code 77 when no display or GL 3.3 core driver exists. A Linux graphics sign-off
 must include at least one environment where the test runs and passes rather than skips.
+For presentation synchronization or context-lifecycle changes, repeat the live test to catch
+driver timing failures:
+
+```sh
+ctest --test-dir build -R '^test_vgfx3d_backend_opengl_context$' \
+  --repeat until-fail:20 --output-on-failure
+```

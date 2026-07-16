@@ -35,7 +35,6 @@
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_opengl_shared.h"
 #include "vgfx3d_backend_utils.h"
-#include "vgfx3d_brdf_lut.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -58,6 +57,7 @@ typedef float GLfloat;
 typedef char GLchar;
 typedef unsigned char GLboolean;
 typedef void GLvoid;
+typedef struct __GLsync *GLsync;
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef unsigned int GLbitfield;
@@ -74,12 +74,9 @@ typedef void (*GLDEBUGPROC)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLcha
 #define GL_TU_AO 15
 #define GL_TU_MORPH_DELTAS 16
 #define GL_TU_MORPH_NORMAL_DELTAS 17
-/* Fragment units 0-15 are the GL 3.3 min-spec budget and the main FS already
- * assigns all of them; the BRDF LUT aliases the last splat layer unit, bound
- * per draw. Splat terrain draws that also run IBL sample the splat layer as
- * their environment-BRDF instead (bounded error; resolved by the planned
- * array-texture shadow/splat consolidation). */
-#define GL_TU_BRDF_LUT (GL_TU_SPLAT_LAYER0 + 3)
+/* Fragment units 0-15 are the GL 3.3 min-spec budget. Environment BRDF uses
+ * the shader's analytic approximation so all four terrain splat layers retain
+ * distinct bindings without aliasing another material input. */
 
 #define GL_TRUE 1
 #define GL_FALSE 0
@@ -201,6 +198,9 @@ typedef void (*GLDEBUGPROC)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLcha
 #define GL_PIXEL_PACK_BUFFER_BINDING 0x88ED
 #define GL_STREAM_READ 0x88E1
 #define GL_MAP_READ_BIT 0x0001
+#define GL_SYNC_GPU_COMMANDS_COMPLETE 0x9117
+#define GL_ALREADY_SIGNALED 0x911A
+#define GL_CONDITION_SATISFIED 0x911C
 #define GL_ONE 1
 #define GL_SRC_ALPHA 0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
@@ -211,7 +211,9 @@ typedef void (*GLDEBUGPROC)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLcha
 #define GL_DRAW_BUFFER 0x0C01
 #define GL_VIEWPORT 0x0BA2
 #define GL_SCISSOR_TEST 0x0C11
+#define GL_SCISSOR_BOX 0x0C10
 #define GL_COLOR_WRITEMASK 0x0C23
+#define GL_COLOR_CLEAR_VALUE 0x0C22
 #define GL_RENDERBUFFER 0x8D41
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_COLOR_ATTACHMENT1 0x8CE1
@@ -227,6 +229,7 @@ typedef void (*GLDEBUGPROC)(GLenum, GLenum, GLuint, GLenum, GLsizei, const GLcha
 
 typedef void (*PFNGLCLIPCONTROLPROC)(GLenum, GLenum);
 typedef void (*PFNGLCLEARPROC)(GLbitfield);
+typedef void (*PFNGLFLUSHPROC)(void);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat, GLfloat, GLfloat, GLfloat);
 typedef void (*PFNGLCLEARDEPTHPROC)(double);
 typedef void (*PFNGLENABLEPROC)(GLenum);
@@ -235,6 +238,9 @@ typedef void (*PFNGLDEPTHFUNCPROC)(GLenum);
 typedef void (*PFNGLCULLFACEPROC)(GLenum);
 typedef void (*PFNGLFRONTFACEPROC)(GLenum);
 typedef void (*PFNGLVIEWPORTPROC)(GLint, GLint, GLsizei, GLsizei);
+typedef void (*PFNGLSCISSORPROC)(GLint, GLint, GLsizei, GLsizei);
+typedef GLboolean (*PFNGLISENABLEDPROC)(GLenum);
+typedef void (*PFNGLGETBOOLEANVPROC)(GLenum, GLboolean *);
 typedef void (*PFNGLPOLYGONMODEPROC)(GLenum, GLenum);
 typedef void (*PFNGLPOLYGONOFFSETPROC)(GLfloat, GLfloat);
 typedef void (*PFNGLDRAWELEMENTSPROC)(GLenum, GLsizei, GLenum, const void *);
@@ -322,6 +328,9 @@ typedef void (*PFNGLFRAMEBUFFERRENDERBUFFERPROC)(GLenum, GLenum, GLenum, GLuint)
 typedef void (*PFNGLREADPIXELSPROC)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *);
 typedef void *(*PFNGLMAPBUFFERRANGEPROC)(GLenum, GLintptr, GLsizeiptr, GLbitfield);
 typedef GLboolean (*PFNGLUNMAPBUFFERPROC)(GLenum);
+typedef GLsync (*PFNGLFENCESYNCPROC)(GLenum, GLbitfield);
+typedef GLenum (*PFNGLCLIENTWAITSYNCPROC)(GLsync, GLbitfield, uint64_t);
+typedef void (*PFNGLDELETESYNCPROC)(GLsync);
 typedef void (*PFNGLDRAWBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERSPROC)(GLsizei, const GLenum *);
 typedef void (*PFNGLREADBUFFERPROC)(GLenum);
@@ -340,6 +349,7 @@ static struct {
     PFNGLGETINTEGERVPROC GetIntegerv;
     PFNGLGETFLOATVPROC GetFloatv;
     PFNGLCLEARPROC Clear;
+    PFNGLFLUSHPROC Flush;
     PFNGLCLEARCOLORPROC ClearColor;
     PFNGLCLEARDEPTHPROC ClearDepth;
     PFNGLENABLEPROC Enable;
@@ -348,6 +358,9 @@ static struct {
     PFNGLCULLFACEPROC CullFace;
     PFNGLFRONTFACEPROC FrontFace;
     PFNGLVIEWPORTPROC Viewport;
+    PFNGLSCISSORPROC Scissor;
+    PFNGLISENABLEDPROC IsEnabled;
+    PFNGLGETBOOLEANVPROC GetBooleanv;
     PFNGLPOLYGONMODEPROC PolygonMode;
     PFNGLPOLYGONOFFSETPROC PolygonOffset;
     PFNGLDRAWELEMENTSPROC DrawElements;
@@ -431,6 +444,9 @@ static struct {
     PFNGLREADPIXELSPROC ReadPixels;
     PFNGLMAPBUFFERRANGEPROC MapBufferRange;
     PFNGLUNMAPBUFFERPROC UnmapBuffer;
+    PFNGLFENCESYNCPROC FenceSync;
+    PFNGLCLIENTWAITSYNCPROC ClientWaitSync;
+    PFNGLDELETESYNCPROC DeleteSync;
     PFNGLDRAWBUFFERPROC DrawBuffer;
     PFNGLDRAWBUFFERSPROC DrawBuffers;
     PFNGLREADBUFFERPROC ReadBuffer;
@@ -568,6 +584,29 @@ static struct {
 
 static int gl_loaded = 0;
 static int gl_load_lock = 0;
+static int glx_context_create_lock = 0;
+static int glx_context_create_error = 0;
+
+/// @brief Capture asynchronous GLX context-creation errors during a scoped XSync.
+static int glx_context_error_handler(Display *display, XErrorEvent *event) {
+    (void)display;
+    glx_context_create_error = event ? event->error_code : 1;
+    return 0;
+}
+
+static void glx_context_lock(void) {
+    int spins = 0;
+    while (rt_atomic_test_and_set(&glx_context_create_lock, __ATOMIC_ACQUIRE)) {
+        if (++spins >= 1024) {
+            sched_yield();
+            spins = 0;
+        }
+    }
+}
+
+static void glx_context_unlock(void) {
+    rt_atomic_clear(&glx_context_create_lock, __ATOMIC_RELEASE);
+}
 
 /// @brief Acquire the process-global OpenGL dispatch table lock.
 ///
@@ -706,7 +745,6 @@ typedef struct {
     GLuint skybox_vao;
     GLuint skybox_vbo;
     GLuint default_white_tex;
-    GLuint brdf_lut_tex;
     GLuint default_white_cubemap;
 
     GLuint mesh_vbo;
@@ -968,6 +1006,7 @@ typedef struct {
     int32_t depth_probe_request_count;
     GLuint depth_probe_pbo;
     GLuint present_readback_pbo[2];
+    GLsync present_readback_fence[2];
     size_t present_readback_pbo_bytes;
     int32_t present_readback_pbo_index;
     int8_t present_readback_pbo_valid;
@@ -1127,6 +1166,11 @@ typedef struct {
     GLint pack_alignment;
     GLint unpack_alignment;
     GLint pixel_pack_buffer;
+    GLint scissor_box[4];
+    GLboolean color_mask[4];
+    GLfloat clear_color[4];
+    GLboolean scissor_enabled;
+    GLboolean framebuffer_srgb_enabled;
 } gl_framebuffer_state_t;
 
 /// @brief Capture the current framebuffer/read/draw/viewport state.
@@ -1142,6 +1186,11 @@ static void gl_capture_framebuffer_state(gl_framebuffer_state_t *state) {
     gl.GetIntegerv(GL_PACK_ALIGNMENT, &state->pack_alignment);
     gl.GetIntegerv(GL_UNPACK_ALIGNMENT, &state->unpack_alignment);
     gl.GetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &state->pixel_pack_buffer);
+    gl.GetIntegerv(GL_SCISSOR_BOX, state->scissor_box);
+    gl.GetBooleanv(GL_COLOR_WRITEMASK, state->color_mask);
+    gl.GetFloatv(GL_COLOR_CLEAR_VALUE, state->clear_color);
+    state->scissor_enabled = gl.IsEnabled(GL_SCISSOR_TEST);
+    state->framebuffer_srgb_enabled = gl.IsEnabled(GL_FRAMEBUFFER_SRGB);
 }
 
 /// @brief Restore framebuffer/read/draw/viewport state captured by
@@ -1157,6 +1206,22 @@ static void gl_restore_framebuffer_state(const gl_framebuffer_state_t *state) {
     gl.PixelStorei(GL_PACK_ALIGNMENT, state->pack_alignment);
     gl.PixelStorei(GL_UNPACK_ALIGNMENT, state->unpack_alignment);
     gl.BindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)state->pixel_pack_buffer);
+    gl.Scissor(state->scissor_box[0],
+               state->scissor_box[1],
+               state->scissor_box[2],
+               state->scissor_box[3]);
+    gl.ColorMask(
+        state->color_mask[0], state->color_mask[1], state->color_mask[2], state->color_mask[3]);
+    gl.ClearColor(
+        state->clear_color[0], state->clear_color[1], state->clear_color[2], state->clear_color[3]);
+    if (state->scissor_enabled)
+        gl.Enable(GL_SCISSOR_TEST);
+    else
+        gl.Disable(GL_SCISSOR_TEST);
+    if (state->framebuffer_srgb_enabled)
+        gl.Enable(GL_FRAMEBUFFER_SRGB);
+    else
+        gl.Disable(GL_FRAMEBUFFER_SRGB);
 }
 
 /// @brief Change one pixel-store alignment and return the value that must be restored.
@@ -1340,6 +1405,7 @@ static int load_gl(void) {
     LOAD(GetIntegerv);
     LOAD(GetFloatv);
     LOAD(Clear);
+    LOAD(Flush);
     LOAD(ClearColor);
     LOAD(ClearDepth);
     LOAD(Enable);
@@ -1348,6 +1414,9 @@ static int load_gl(void) {
     LOAD(CullFace);
     LOAD(FrontFace);
     LOAD(Viewport);
+    LOAD(Scissor);
+    LOAD(IsEnabled);
+    LOAD(GetBooleanv);
     LOAD(BlendFunc);
     LOAD(DepthMask);
 
@@ -1448,6 +1517,9 @@ static int load_gl(void) {
     LOADP(ReadPixels);
     LOADP(MapBufferRange);
     LOADP(UnmapBuffer);
+    LOADP(FenceSync);
+    LOADP(ClientWaitSync);
+    LOADP(DeleteSync);
     LOADP(DrawBuffer);
     LOADP(DrawBuffers);
     LOADP(ReadBuffer);

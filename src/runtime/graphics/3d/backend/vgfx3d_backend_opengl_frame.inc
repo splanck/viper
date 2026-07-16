@@ -674,6 +674,7 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     int current_pbo;
     int previous_pbo;
     int have_pixels = 0;
+    int issued_read = 0;
     const void *mapped;
     gl_framebuffer_state_t saved_state;
 
@@ -722,6 +723,12 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     }
     if (ctx->present_readback_pbo_bytes != tmp_bytes) {
         for (int i = 0; i < 2; i++) {
+            if (ctx->present_readback_fence[i]) {
+                gl.DeleteSync(ctx->present_readback_fence[i]);
+                ctx->present_readback_fence[i] = NULL;
+            }
+        }
+        for (int i = 0; i < 2; i++) {
             gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[i]);
             gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)tmp_bytes, NULL, GL_STREAM_READ);
         }
@@ -737,23 +744,51 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     current_pbo = ctx->present_readback_pbo_index;
     previous_pbo = current_pbo ^ 1;
     if (ctx->present_readback_pbo_valid) {
-        gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[previous_pbo]);
-        mapped = gl.MapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)tmp_bytes, GL_MAP_READ_BIT);
-        if (mapped) {
-            memcpy(tmp, mapped, tmp_bytes);
-            gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
-            have_pixels = 1;
+        GLenum wait_result = ctx->present_readback_fence[previous_pbo]
+                                 ? gl.ClientWaitSync(ctx->present_readback_fence[previous_pbo], 0, 0)
+                                 : GL_ALREADY_SIGNALED;
+        if (wait_result == GL_ALREADY_SIGNALED || wait_result == GL_CONDITION_SATISFIED) {
+            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[previous_pbo]);
+            mapped =
+                gl.MapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)tmp_bytes, GL_MAP_READ_BIT);
+            if (mapped) {
+                memcpy(tmp, mapped, tmp_bytes);
+                gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+                have_pixels = 1;
+            }
+            if (ctx->present_readback_fence[previous_pbo]) {
+                gl.DeleteSync(ctx->present_readback_fence[previous_pbo]);
+                ctx->present_readback_fence[previous_pbo] = NULL;
+            }
+        } else {
+            /* Preserve the last completed top-down frame instead of stalling the CPU. */
+            have_pixels = 2;
         }
     }
-    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[current_pbo]);
-    gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)tmp_bytes, NULL, GL_STREAM_READ);
-    gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    if (!gl_drain_errors("present readback")) {
-        gl_restore_framebuffer_state(&saved_state);
-        gl_restore_main_draw_state(ctx);
-        return 0;
+    GLenum current_wait = ctx->present_readback_fence[current_pbo]
+                              ? gl.ClientWaitSync(ctx->present_readback_fence[current_pbo], 0, 0)
+                              : GL_ALREADY_SIGNALED;
+    if (current_wait == GL_ALREADY_SIGNALED || current_wait == GL_CONDITION_SATISFIED) {
+        if (ctx->present_readback_fence[current_pbo]) {
+            gl.DeleteSync(ctx->present_readback_fence[current_pbo]);
+            ctx->present_readback_fence[current_pbo] = NULL;
+        }
+        gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->present_readback_pbo[current_pbo]);
+        gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)tmp_bytes, NULL, GL_STREAM_READ);
+        gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        ctx->present_readback_fence[current_pbo] = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        issued_read = 1;
+        if (!gl_drain_errors("present readback")) {
+            gl_restore_framebuffer_state(&saved_state);
+            gl_restore_main_draw_state(ctx);
+            return 0;
+        }
+    } else {
+        /* Do not reuse an in-flight PBO; publish the newest completed frame. */
+        if (!have_pixels)
+            have_pixels = 2;
     }
-    if (!have_pixels) {
+    if (!have_pixels && issued_read) {
         mapped = gl.MapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)tmp_bytes, GL_MAP_READ_BIT);
         if (!mapped) {
             gl_restore_framebuffer_state(&saved_state);
@@ -762,10 +797,16 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
         }
         memcpy(tmp, mapped, tmp_bytes);
         gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        if (ctx->present_readback_fence[current_pbo]) {
+            gl.DeleteSync(ctx->present_readback_fence[current_pbo]);
+            ctx->present_readback_fence[current_pbo] = NULL;
+        }
     }
     ctx->present_readback_pbo_valid = 1;
-    ctx->present_readback_pbo_index = previous_pbo;
-    vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
+    if (issued_read)
+        ctx->present_readback_pbo_index = previous_pbo;
+    if (have_pixels != 2)
+        vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
     for (int32_t y = 0; y < copy_h; y++)
         memcpy((uint8_t *)fb.pixels + (size_t)y * (size_t)fb.stride,
                tmp + (size_t)y * (size_t)copy_w * 4u,
@@ -774,9 +815,9 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     gl_restore_main_draw_state(ctx);
 
     vgfx_set_gpu_present(ctx->vgfx_win, 0);
-    (void)vgfx_update(ctx->vgfx_win);
+    const int updated = vgfx_update(ctx->vgfx_win);
     vgfx_set_gpu_present(ctx->vgfx_win, 1);
-    return 1;
+    return updated ? 1 : 0;
 }
 
 /// @brief Internal present — composite scene to backbuffer (if needed) then SwapBuffers.
@@ -816,14 +857,20 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
                 use_postfx);
     }
     if (!ctx->default_framebuffer_writable) {
-        (void)gl_present_offscreen_vgfx(ctx);
-        ctx->stats.offscreen_presents++;
-        ctx->stats.present_path = 2;
-        ctx->scene_postfx_pending = 0;
-        ctx->scene_composited_to_backbuffer = 0;
+        if (gl_present_offscreen_vgfx(ctx)) {
+            ctx->stats.offscreen_presents++;
+            ctx->stats.present_path = 2;
+            ctx->scene_postfx_pending = 0;
+            ctx->scene_composited_to_backbuffer = 0;
+        } else if (gl_debug_enabled()) {
+            fprintf(stderr, "[OpenGL] offscreen presentation failed; frame remains pending\n");
+        }
         return;
     }
-    glx.SwapBuffers(ctx->display, ctx->window);
+    if (ctx->default_doublebuffered)
+        glx.SwapBuffers(ctx->display, ctx->window);
+    else
+        gl.Flush();
     ctx->stats.direct_presents++;
     ctx->stats.present_path = 1;
     ctx->scene_postfx_pending = 0;

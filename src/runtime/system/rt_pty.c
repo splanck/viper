@@ -17,6 +17,8 @@
 //   - Read is non-blocking and incremental; output is a single merged stream.
 //   - Poll/IsRunning reap the child once and preserve the exit code.
 //   - Destroy is idempotent and releases all OS resources.
+//   - POSIX child setup failures are returned synchronously over a close-on-exec pipe.
+//   - POSIX termination targets the child session process group so descendants do not survive.
 //
 // Ownership/Lifetime:
 //   - Handles are rt_obj_new_i64-allocated and GC-managed; Destroy or the
@@ -119,7 +121,7 @@ typedef struct rt_pty_impl {
 } rt_pty_impl;
 
 static void pty_finalize(void *obj);
-static char pty_last_error[PTY_LAST_ERROR_MAX];
+static RT_THREAD_LOCAL char pty_last_error[PTY_LAST_ERROR_MAX];
 
 static rt_string empty_string(void) {
     return rt_string_from_bytes("", 0);
@@ -870,6 +872,64 @@ static void set_nonblocking(int fd) {
         (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+typedef struct pty_child_error {
+    int stage;
+    int error_number;
+} pty_child_error;
+
+enum {
+    PTY_CHILD_STAGE_SETSID = 1,
+    PTY_CHILD_STAGE_OPEN_SLAVE,
+    PTY_CHILD_STAGE_CONTROLLING_TTY,
+    PTY_CHILD_STAGE_RESIZE,
+    PTY_CHILD_STAGE_DUP_STDIN,
+    PTY_CHILD_STAGE_DUP_STDOUT,
+    PTY_CHILD_STAGE_DUP_STDERR,
+    PTY_CHILD_STAGE_CHDIR,
+    PTY_CHILD_STAGE_EXEC,
+};
+
+static void pty_child_report_error(int fd, int stage) {
+    pty_child_error error = {stage, errno};
+    const char *bytes = (const char *)&error;
+    size_t offset = 0;
+    while (offset < sizeof(error)) {
+        ssize_t written = write(fd, bytes + offset, sizeof(error) - offset);
+        if (written > 0)
+            offset += (size_t)written;
+        else if (written < 0 && errno == EINTR)
+            continue;
+        else
+            break;
+    }
+    _exit(127);
+}
+
+static const char *pty_child_stage_name(int stage) {
+    switch (stage) {
+    case PTY_CHILD_STAGE_SETSID:
+        return "setsid";
+    case PTY_CHILD_STAGE_OPEN_SLAVE:
+        return "open PTY slave";
+    case PTY_CHILD_STAGE_CONTROLLING_TTY:
+        return "acquire controlling terminal";
+    case PTY_CHILD_STAGE_RESIZE:
+        return "set PTY window size";
+    case PTY_CHILD_STAGE_DUP_STDIN:
+        return "redirect standard input";
+    case PTY_CHILD_STAGE_DUP_STDOUT:
+        return "redirect standard output";
+    case PTY_CHILD_STAGE_DUP_STDERR:
+        return "redirect standard error";
+    case PTY_CHILD_STAGE_CHDIR:
+        return "change working directory";
+    case PTY_CHILD_STAGE_EXEC:
+        return "execute program";
+    default:
+        return "initialize child";
+    }
+}
+
 static void pty_drain(rt_pty_impl *pty) {
     if (!pty || pty->master_fd < 0)
         return;
@@ -1021,7 +1081,11 @@ static rt_pty_impl *pty_open_impl(
         return NULL;
     }
 
-    int master = posix_openpt(O_RDWR | O_NOCTTY);
+    int master_flags = O_RDWR | O_NOCTTY;
+#if defined(O_CLOEXEC)
+    master_flags |= O_CLOEXEC;
+#endif
+    int master = posix_openpt(master_flags);
     if (master < 0 || grantpt(master) != 0 || unlockpt(master) != 0) {
         pty_set_last_errno("posix_openpt/grantpt/unlockpt failed");
         if (master >= 0)
@@ -1057,9 +1121,32 @@ static rt_pty_impl *pty_open_impl(
     }
 #endif
 
+    int error_pipe[2] = {-1, -1};
+    if (pipe(error_pipe) != 0) {
+        pty_set_last_errno("PTY error pipe creation failed");
+        close(master);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        return NULL;
+    }
+    for (int i = 0; i < 2; i++) {
+        int flags = fcntl(error_pipe[i], F_GETFD, 0);
+        if (flags < 0 || fcntl(error_pipe[i], F_SETFD, flags | FD_CLOEXEC) != 0) {
+            pty_set_last_errno("PTY error pipe setup failed");
+            close(error_pipe[0]);
+            close(error_pipe[1]);
+            close(master);
+            free_string_vector(&envp);
+            free_string_vector(&argv);
+            return NULL;
+        }
+    }
+
     pid_t pid = fork();
     if (pid < 0) {
         pty_set_last_errno("fork failed");
+        close(error_pipe[0]);
+        close(error_pipe[1]);
         close(master);
         free_string_vector(&envp);
         free_string_vector(&argv);
@@ -1068,34 +1155,68 @@ static rt_pty_impl *pty_open_impl(
 
     if (pid == 0) {
         // CHILD — only async-signal-safe calls until exec.
-        setsid();
+        close(error_pipe[0]);
+        if (setsid() < 0)
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_SETSID);
         int slave = open(slave_name, O_RDWR);
         if (slave < 0)
-            _exit(127);
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_OPEN_SLAVE);
 #if defined(TIOCSCTTY)
-        (void)ioctl(slave, TIOCSCTTY, 0);
+        if (ioctl(slave, TIOCSCTTY, 0) != 0)
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_CONTROLLING_TTY);
 #endif
         struct winsize ws;
         memset(&ws, 0, sizeof(ws));
         ws.ws_col = (unsigned short)cols;
         ws.ws_row = (unsigned short)rows;
-        (void)ioctl(slave, TIOCSWINSZ, &ws);
-        (void)dup2(slave, STDIN_FILENO);
-        (void)dup2(slave, STDOUT_FILENO);
-        (void)dup2(slave, STDERR_FILENO);
+        if (ioctl(slave, TIOCSWINSZ, &ws) != 0)
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_RESIZE);
+        if (dup2(slave, STDIN_FILENO) < 0)
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_DUP_STDIN);
+        if (dup2(slave, STDOUT_FILENO) < 0)
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_DUP_STDOUT);
+        if (dup2(slave, STDERR_FILENO) < 0)
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_DUP_STDERR);
         if (slave > STDERR_FILENO)
             close(slave);
         close(master);
         if (cwd_text && chdir(cwd_text) != 0)
-            _exit(127);
+            pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_CHDIR);
         if (envp.values)
             execve(program_text, argv.values, envp.values);
         else
             execvp(program_text, argv.values);
-        _exit(127);
+        pty_child_report_error(error_pipe[1], PTY_CHILD_STAGE_EXEC);
     }
 
     // PARENT
+    close(error_pipe[1]);
+    pty_child_error child_error;
+    size_t error_bytes = 0;
+    while (error_bytes < sizeof(child_error)) {
+        ssize_t count = read(error_pipe[0], (char *)&child_error + error_bytes,
+                             sizeof(child_error) - error_bytes);
+        if (count > 0)
+            error_bytes += (size_t)count;
+        else if (count < 0 && errno == EINTR)
+            continue;
+        else
+            break;
+    }
+    close(error_pipe[0]);
+    if (error_bytes != 0) {
+        if (error_bytes == sizeof(child_error)) {
+            errno = child_error.error_number;
+            pty_set_last_errno(pty_child_stage_name(child_error.stage));
+        } else {
+            pty_set_last_error("PTY child initialization returned a truncated error");
+        }
+        (void)waitpid(pid, NULL, 0);
+        close(master);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        return NULL;
+    }
     set_nonblocking(master);
 #if defined(FD_CLOEXEC)
     {
@@ -1109,7 +1230,7 @@ static rt_pty_impl *pty_open_impl(
 
     rt_pty_impl *pty = pty_alloc();
     if (!pty) {
-        (void)kill(pid, SIGTERM);
+        (void)kill(-pid, SIGTERM);
         (void)waitpid(pid, NULL, 0);
         close(master);
         return NULL;
@@ -1125,10 +1246,10 @@ static void pty_close(rt_pty_impl *pty) {
     if (!pty || pty->destroyed)
         return;
     if (pty->running && pty->pid > 0) {
-        (void)kill(pty->pid, SIGTERM);
+        (void)kill(-pty->pid, SIGTERM);
         pty_wait_after_sigterm(pty, 500);
         if (pty->running) {
-            (void)kill(pty->pid, SIGKILL);
+            (void)kill(-pty->pid, SIGKILL);
             pty_poll_internal(pty, 1);
         }
     } else {
@@ -1292,7 +1413,7 @@ int64_t rt_pty_kill(void *handle) {
 #else
     if (pty->pid <= 0)
         return 0;
-    return kill(pty->pid, SIGTERM) == 0 ? 1 : 0;
+    return kill(-pty->pid, SIGTERM) == 0 ? 1 : 0;
 #endif
 }
 

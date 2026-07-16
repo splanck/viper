@@ -547,7 +547,6 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSplatLayer2, GL_TU_SPLAT_LAYER0 + 2, GL_TEXTURE_2D, splat_layer2);
     bind_texture_unit(ctx->uSplatLayer3, GL_TU_SPLAT_LAYER0 + 3, GL_TEXTURE_2D, splat_layer3);
     bind_texture_unit(ctx->uEnvMap, GL_TU_ENV_MAP, GL_TEXTURE_CUBE_MAP, env_tex);
-    bind_texture_unit(ctx->uSplatLayer3, GL_TU_BRDF_LUT, GL_TEXTURE_2D, ctx->brdf_lut_tex);
     bind_texture_unit_with_sampler(ctx,
                                    ctx->uMetallicRoughnessTex,
                                    GL_TU_METALLIC_ROUGHNESS,
@@ -905,28 +904,40 @@ static void query_postfx_uniforms(gl_context_t *ctx) {
 
 /// @brief Cache uniform locations for the Plan 05 bloom-chain and TAA pass programs.
 static void query_bloom_taa_uniforms(gl_context_t *ctx) {
-    ctx->bloom_down_uSrcTex = gl.GetUniformLocation(ctx->bloom_down_program, "uSrcTex");
-    ctx->bloom_down_uSrcInvSize = gl.GetUniformLocation(ctx->bloom_down_program, "uSrcInvSize");
-    ctx->bloom_down_uThreshold = gl.GetUniformLocation(ctx->bloom_down_program, "uThreshold");
-    ctx->bloom_down_uFirstPass = gl.GetUniformLocation(ctx->bloom_down_program, "uFirstPass");
-    ctx->bloom_up_uSrcTex = gl.GetUniformLocation(ctx->bloom_up_program, "uSrcTex");
-    ctx->bloom_up_uSrcInvSize = gl.GetUniformLocation(ctx->bloom_up_program, "uSrcInvSize");
-    ctx->taa_uCurrTex = gl.GetUniformLocation(ctx->taa_program, "uCurrTex");
-    ctx->taa_uHistTex = gl.GetUniformLocation(ctx->taa_program, "uHistTex");
-    ctx->taa_uMotionTex = gl.GetUniformLocation(ctx->taa_program, "uMotionTex");
-    ctx->taa_uDepthTex = gl.GetUniformLocation(ctx->taa_program, "uDepthTex");
-    ctx->taa_uInvResolution = gl.GetUniformLocation(ctx->taa_program, "uInvResolution");
-    ctx->taa_uJitterDelta = gl.GetUniformLocation(ctx->taa_program, "uJitterDelta");
-    ctx->taa_uBlend = gl.GetUniformLocation(ctx->taa_program, "uBlend");
-    ctx->taa_uHistoryValid = gl.GetUniformLocation(ctx->taa_program, "uHistoryValid");
-    ctx->taa_uInvViewProjection = gl.GetUniformLocation(ctx->taa_program, "uInvViewProjection");
-    ctx->taa_uPrevViewProjection = gl.GetUniformLocation(ctx->taa_program, "uPrevViewProjection");
-    ctx->ssr_uSceneTex = gl.GetUniformLocation(ctx->ssr_program, "uSceneTex");
-    ctx->ssr_uDepthTex = gl.GetUniformLocation(ctx->ssr_program, "uDepthTex");
-    ctx->ssr_uMotionTex = gl.GetUniformLocation(ctx->ssr_program, "uMotionTex");
-    ctx->ssr_uInvResolution = gl.GetUniformLocation(ctx->ssr_program, "uInvResolution");
-    ctx->ssr_uParams0 = gl.GetUniformLocation(ctx->ssr_program, "uParams0");
-    ctx->ssr_uCamPos = gl.GetUniformLocation(ctx->ssr_program, "uCamPos");
-    ctx->ssr_uInvViewProjection = gl.GetUniformLocation(ctx->ssr_program, "uInvViewProjection");
-    ctx->ssr_uViewProjection = gl.GetUniformLocation(ctx->ssr_program, "uViewProjection");
+    if (ctx->bloom_down_program && ctx->bloom_up_program) {
+        ctx->bloom_down_uSrcTex = gl.GetUniformLocation(ctx->bloom_down_program, "uSrcTex");
+        ctx->bloom_down_uSrcInvSize =
+            gl.GetUniformLocation(ctx->bloom_down_program, "uSrcInvSize");
+        ctx->bloom_down_uThreshold =
+            gl.GetUniformLocation(ctx->bloom_down_program, "uThreshold");
+        ctx->bloom_down_uFirstPass =
+            gl.GetUniformLocation(ctx->bloom_down_program, "uFirstPass");
+        ctx->bloom_up_uSrcTex = gl.GetUniformLocation(ctx->bloom_up_program, "uSrcTex");
+        ctx->bloom_up_uSrcInvSize = gl.GetUniformLocation(ctx->bloom_up_program, "uSrcInvSize");
+    }
+    if (ctx->taa_program) {
+        ctx->taa_uCurrTex = gl.GetUniformLocation(ctx->taa_program, "uCurrTex");
+        ctx->taa_uHistTex = gl.GetUniformLocation(ctx->taa_program, "uHistTex");
+        ctx->taa_uMotionTex = gl.GetUniformLocation(ctx->taa_program, "uMotionTex");
+        ctx->taa_uDepthTex = gl.GetUniformLocation(ctx->taa_program, "uDepthTex");
+        ctx->taa_uInvResolution = gl.GetUniformLocation(ctx->taa_program, "uInvResolution");
+        ctx->taa_uJitterDelta = gl.GetUniformLocation(ctx->taa_program, "uJitterDelta");
+        ctx->taa_uBlend = gl.GetUniformLocation(ctx->taa_program, "uBlend");
+        ctx->taa_uHistoryValid = gl.GetUniformLocation(ctx->taa_program, "uHistoryValid");
+        ctx->taa_uInvViewProjection =
+            gl.GetUniformLocation(ctx->taa_program, "uInvViewProjection");
+        ctx->taa_uPrevViewProjection =
+            gl.GetUniformLocation(ctx->taa_program, "uPrevViewProjection");
+    }
+    if (ctx->ssr_program) {
+        ctx->ssr_uSceneTex = gl.GetUniformLocation(ctx->ssr_program, "uSceneTex");
+        ctx->ssr_uDepthTex = gl.GetUniformLocation(ctx->ssr_program, "uDepthTex");
+        ctx->ssr_uMotionTex = gl.GetUniformLocation(ctx->ssr_program, "uMotionTex");
+        ctx->ssr_uInvResolution = gl.GetUniformLocation(ctx->ssr_program, "uInvResolution");
+        ctx->ssr_uParams0 = gl.GetUniformLocation(ctx->ssr_program, "uParams0");
+        ctx->ssr_uCamPos = gl.GetUniformLocation(ctx->ssr_program, "uCamPos");
+        ctx->ssr_uInvViewProjection =
+            gl.GetUniformLocation(ctx->ssr_program, "uInvViewProjection");
+        ctx->ssr_uViewProjection = gl.GetUniformLocation(ctx->ssr_program, "uViewProjection");
+    }
 }

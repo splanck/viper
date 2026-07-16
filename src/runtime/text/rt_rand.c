@@ -7,9 +7,8 @@
 //
 // File: src/runtime/text/rt_rand.c
 // Purpose: Implements Viper.Crypto.Rand.Bytes and Int. Compatibility mode uses
-//          platform CSPRNGs (`getrandom` with `/dev/urandom` fallback on Linux,
-//          `arc4random_buf` on macOS, BCryptGenRandom on Windows); approved mode
-//          uses the locked module HMAC-DRBG.
+//          the shared OS entropy adapter; approved mode uses the locked module
+//          HMAC-DRBG.
 //
 // Key invariants:
 //   - Compatibility output comes directly from the OS CSPRNG; approved output
@@ -17,8 +16,7 @@
 //   - RandomInt(min, max) is inclusive on both ends; bias is eliminated via
 //     rejection sampling.
 //   - Failure to read from the CSPRNG traps with a descriptive error.
-//   - Direct platform calls and approved DRBG access are thread-safe. The cached
-//     non-Apple POSIX `/dev/urandom` descriptor has a known first-use data race.
+//   - Platform entropy and approved DRBG access are thread-safe.
 //
 // Ownership/Lifetime:
 //   - All returned rt_string and rt_bytes values are fresh allocations.
@@ -32,66 +30,12 @@
 
 #include "rt_bytes.h"
 #include "rt_crypto_module.h"
+#include "rt_entropy_platform.h"
 #include "rt_internal.h"
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(__APPLE__)
-extern void arc4random_buf(void *buf, size_t nbytes);
-#endif
-
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-// Use BCrypt on Windows Vista+ (available in all modern Windows)
-#include <bcrypt.h>
-#pragma comment(lib, "bcrypt.lib")
-// NT_SUCCESS is defined in ntdef.h but we provide it here to avoid dependency
-#ifndef NT_SUCCESS
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
-#endif
-#elif defined(__viperdos__)
-// ViperDOS provides /dev/urandom via VirtIO-RNG.
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
-#else
-#if defined(__linux__)
-#include <sys/random.h>
-#endif
-#include <errno.h>
-#include <fcntl.h>
-#include <pthread.h>
-#include <unistd.h>
-
-/// @brief Return a cached `/dev/urandom` descriptor for Unix fallback reads.
-/// @details The descriptor is opened once with close-on-exec where supported and
-///          retained for process lifetime. Creation is mutex-protected, but the
-///          unlocked fast-path read currently races with the first write under
-///          concurrent initialization.
-/// @return Non-negative file descriptor on success; -1 when opening failed.
-static int rand_urandom_fd(void) {
-    static int fd = -1;
-    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-    if (fd >= 0)
-        return fd;
-    pthread_mutex_lock(&lock);
-    if (fd < 0) {
-#ifdef O_CLOEXEC
-        fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-#else
-        fd = open("/dev/urandom", O_RDONLY);
-#endif
-    }
-    int result = fd;
-    pthread_mutex_unlock(&lock);
-    return result;
-}
-#endif
 
 static void rand_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
@@ -134,80 +78,7 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
         return 0;
     }
 
-#ifdef _WIN32
-    // Use BCryptGenRandom on Windows
-    size_t off = 0;
-    while (off < len) {
-        size_t chunk = len - off;
-        if (chunk > ULONG_MAX)
-            chunk = ULONG_MAX;
-        NTSTATUS status =
-            BCryptGenRandom(NULL, buf + off, (ULONG)chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-        if (!NT_SUCCESS(status))
-            return -1;
-        off += chunk;
-    }
-    return 0;
-#else
-#if defined(__APPLE__)
-    arc4random_buf(buf, len);
-    return 0;
-#elif defined(__linux__)
-    size_t bytes_read = 0;
-    while (bytes_read < len) {
-        ssize_t result = getrandom(buf + bytes_read, len - bytes_read, 0);
-        if (result < 0) {
-            if (errno == EINTR)
-                continue;
-            if (errno == ENOSYS)
-                break;
-            return -1;
-        }
-        if (result == 0)
-            return -1;
-        bytes_read += (size_t)result;
-    }
-    if (bytes_read == len)
-        return 0;
-#endif
-    // Unix and ViperDOS: use /dev/urandom.
-#if defined(__viperdos__)
-#ifdef O_CLOEXEC
-    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-#else
-    int fd = open("/dev/urandom", O_RDONLY);
-#endif
-    int close_after_read = 1;
-#else
-    int fd = rand_urandom_fd();
-    int close_after_read = 0;
-#endif
-    if (fd < 0)
-        return -1;
-
-    size_t urandom_bytes_read = 0;
-    while (urandom_bytes_read < len) {
-        ssize_t result = read(fd, buf + urandom_bytes_read, len - urandom_bytes_read);
-        if (result < 0) {
-            if (errno == EINTR)
-                continue; // Interrupted, retry
-            if (close_after_read)
-                close(fd);
-            return -1;
-        }
-        if (result == 0) {
-            // EOF on /dev/urandom shouldn't happen, but handle it
-            if (close_after_read)
-                close(fd);
-            return -1;
-        }
-        urandom_bytes_read += (size_t)result;
-    }
-
-    if (close_after_read)
-        close(fd);
-    return 0;
-#endif
+    return rt_entropy_platform_random_bytes(buf, len);
 }
 
 /// @brief Generate cryptographically secure random bytes.

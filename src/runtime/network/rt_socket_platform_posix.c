@@ -23,7 +23,9 @@
 
 #include "rt_socket_platform.h"
 
+#include <limits.h>
 #include <string.h>
+#include <time.h>
 
 /// @brief No-op WinSock initializer for POSIX-style socket stacks.
 /// @details Keeps call sites platform-neutral; only the Windows adapter has
@@ -161,9 +163,38 @@ int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
     pfd.events = for_write ? POLLOUT : POLLIN;
     pfd.revents = 0;
     int result;
+    struct timespec deadline;
+    if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0)
+        return -1;
+    deadline.tv_sec += timeout_ms / 1000;
+    deadline.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec++;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    int remaining_ms = timeout_ms;
     do {
-        result = poll(&pfd, 1, timeout_ms);
-    } while (result < 0 && errno == EINTR);
+        result = poll(&pfd, 1, remaining_ms);
+        if (result >= 0 || errno != EINTR)
+            break;
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+            return -1;
+        time_t seconds = deadline.tv_sec - now.tv_sec;
+        long nanoseconds = deadline.tv_nsec - now.tv_nsec;
+        if (nanoseconds < 0) {
+            seconds--;
+            nanoseconds += 1000000000L;
+        }
+        if (seconds < 0 || (seconds == 0 && nanoseconds == 0))
+            return 0;
+        if (seconds > INT_MAX / 1000)
+            remaining_ms = INT_MAX;
+        else {
+            int64_t rounded_ms = (int64_t)seconds * 1000 + (nanoseconds + 999999L) / 1000000L;
+            remaining_ms = rounded_ms > INT_MAX ? INT_MAX : (int)rounded_ms;
+        }
+    } while (1);
     if (result > 0 && (pfd.revents & POLLNVAL)) {
         errno = EBADF;
         return -1;

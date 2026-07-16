@@ -184,6 +184,7 @@ static void rt_args_populate_host(RtArgsState *state) {
     }
 }
 #elif defined(__linux__)
+#define RT_ARGS_HOST_CMDLINE_MAX_BYTES (16u * 1024u * 1024u)
 static void rt_args_populate_host(RtArgsState *state) {
     FILE *file = fopen("/proc/self/cmdline", "rb");
     if (!file)
@@ -196,10 +197,22 @@ static void rt_args_populate_host(RtArgsState *state) {
     while (1) {
         size_t n = fread(chunk, 1, sizeof(chunk), file);
         if (n > 0) {
-            if (size + n > cap) {
-                size_t next_cap = cap ? cap * 2 : 1024;
-                while (next_cap < size + n)
+            if (size > RT_ARGS_HOST_CMDLINE_MAX_BYTES - n) {
+                free(data);
+                fclose(file);
+                rt_trap("Environment: command line exceeds 16 MiB limit");
+                return;
+            }
+            const size_t needed = size + n;
+            if (needed > cap) {
+                size_t next_cap = cap ? cap : 1024;
+                while (next_cap < needed) {
+                    if (next_cap > RT_ARGS_HOST_CMDLINE_MAX_BYTES / 2) {
+                        next_cap = RT_ARGS_HOST_CMDLINE_MAX_BYTES;
+                        break;
+                    }
                     next_cap *= 2;
+                }
                 char *next = (char *)realloc(data, next_cap);
                 if (!next) {
                     free(data);

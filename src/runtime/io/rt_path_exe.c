@@ -16,8 +16,8 @@
 //   - Windows: uses GetModuleFileNameA + strip filename.
 //   - Linux: uses readlink("/proc/self/exe") + dirname.
 //   - ViperDOS: returns "." (no meaningful exe path).
-//   - Platform probes use fixed MAX_PATH/PATH_MAX buffers. Overlong paths fail;
-//     the runtime wrapper falls back to "." (macOS also does so for probe errors).
+//   - Linux grows its `/proc/self/exe` buffer up to a bounded 16 MiB limit;
+//     fixed-buffer platforms fail cleanly on overlong paths.
 //   - Windows uses the process ANSI code page through GetModuleFileNameA, so a
 //     path not representable there is not guaranteed to round-trip as UTF-8.
 //   - Returned C strings are malloc'd; caller must free.
@@ -121,13 +121,28 @@ char *rt_path_exe_dir_cstr(void) {
 
 #elif defined(__linux__)
     // Linux: readlink("/proc/self/exe") → dirname
-    char buf[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len <= 0)
-        return NULL;
-    buf[len] = '\0';
-    strip_filename(buf);
-    return strdup(buf);
+    size_t cap = 256;
+    const size_t max_cap = 16u * 1024u * 1024u;
+    while (cap <= max_cap) {
+        char *buf = (char *)malloc(cap);
+        if (!buf)
+            return NULL;
+        ssize_t len = readlink("/proc/self/exe", buf, cap - 1);
+        if (len < 0) {
+            free(buf);
+            return NULL;
+        }
+        if ((size_t)len < cap - 1) {
+            buf[len] = '\0';
+            strip_filename(buf);
+            return buf;
+        }
+        free(buf);
+        if (cap > max_cap / 2)
+            break;
+        cap *= 2;
+    }
+    return NULL;
 
 #elif defined(__viperdos__)
     // ViperDOS: no meaningful exe path; return current directory.
