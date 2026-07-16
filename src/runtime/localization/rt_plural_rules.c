@@ -115,12 +115,14 @@ static int plural_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
 
 /// @brief CLDR operands packed for rule evaluation.
 typedef struct {
-    double n;   ///< absolute value
-    double i_d; ///< integer part as double, preserving INT64_MIN magnitude
-    int64_t i;  ///< integer part
-    int64_t v;  ///< visible fraction digit count (with trailing zeros)
-    int64_t f;  ///< visible fraction digits as integer (with trailing zeros)
-    int64_t t;  ///< visible fraction digits as integer (without trailing zeros)
+    double n;       ///< absolute value
+    double i_d;     ///< integer part as double, preserving INT64_MIN magnitude
+    int64_t i;      ///< integer part
+    int64_t v;      ///< visible fraction digit count (with trailing zeros)
+    int64_t f;      ///< visible fraction digits as integer (with trailing zeros)
+    int64_t t;      ///< visible fraction digits as integer (without trailing zeros)
+    int int_exact;  ///< 1 when the input was an integer; `mag` is exact
+    uint64_t mag;   ///< exact magnitude for integer inputs (VDOC-083)
 } plural_operands_t;
 
 /// @brief Compute plural operands from an integer input (all-integer path).
@@ -133,6 +135,8 @@ static plural_operands_t operands_from_int(int64_t n) {
     op.v = 0;
     op.f = 0;
     op.t = 0;
+    op.int_exact = 1;
+    op.mag = mag;
     return op;
 }
 
@@ -146,6 +150,8 @@ static plural_operands_t operands_from_double(double n) {
     plural_operands_t op;
     op.n = abs_n;
     op.i_d = 0.0;
+    op.int_exact = 0;
+    op.mag = 0;
 
     if (!isfinite(abs_n)) {
         op.n = 0.0;
@@ -178,36 +184,53 @@ static plural_operands_t operands_from_double(double n) {
         return op;
     }
 
-    // Find decimal point.
-    const char *dot = strchr(buf, '.');
-    if (!dot) {
-        op.i = (int64_t)abs_n;
+    // Parse mantissa digits, dot position, and any exponent so scientific
+    // spellings like "1e-07" derive the same operands as their fixed-point
+    // form "0.0000001" (VDOC-076).
+    char digits[32];
+    int nd = 0;
+    int dot_pos = -1; // mantissa digits before the '.'
+    const char *p = buf;
+    for (; *p && *p != 'e' && *p != 'E'; ++p) {
+        if (*p == '.') {
+            dot_pos = nd;
+            continue;
+        }
+        if (*p >= '0' && *p <= '9' && nd < (int)sizeof(digits))
+            digits[nd++] = *p;
+    }
+    if (dot_pos < 0)
+        dot_pos = nd;
+    long expo = 0;
+    if (*p == 'e' || *p == 'E')
+        expo = strtol(p + 1, NULL, 10);
+
+    op.i_d = floor(abs_n);
+    op.i = (int64_t)floor(abs_n);
+
+    // Number of mantissa digits left of the decimal point in fixed notation.
+    long int_digits = dot_pos + expo;
+    if (int_digits >= nd) {
+        // Integer-valued spelling (possibly with trailing zeros).
         op.v = 0;
         op.f = 0;
         op.t = 0;
         return op;
     }
 
-    // Integer part before the dot.
-    op.i_d = floor(abs_n);
-    op.i = (int64_t)floor(abs_n);
-
-    // Fraction string starts after the dot and ends before any 'e'/'E'.
-    const char *frac_start = dot + 1;
-    const char *frac_end = frac_start;
-    while (*frac_end && *frac_end != 'e' && *frac_end != 'E')
-        ++frac_end;
-
+    // Fixed-notation fraction: leading zeros (negative int_digits) followed
+    // by the mantissa digits after the decimal point. %g strips trailing
+    // zeros, so the fraction string is already minimal.
+    long lead_zeros = int_digits < 0 ? -int_digits : 0;
+    long frac_start_idx = int_digits > 0 ? int_digits : 0;
     int64_t frac_val = 0;
-    int64_t frac_digits = 0;
-    for (const char *p = frac_start; p < frac_end; ++p) {
-        if (*p < '0' || *p > '9')
-            break;
-        frac_val = frac_val * 10 + (*p - '0');
-        ++frac_digits;
+    for (int k = (int)frac_start_idx; k < nd; ++k) {
+        int digit = digits[k] - '0';
+        if (frac_val <= (INT64_MAX - digit) / 10)
+            frac_val = frac_val * 10 + digit;
     }
 
-    op.v = frac_digits;
+    op.v = lead_zeros + (nd - frac_start_idx);
     op.f = frac_val;
 
     // t: strip trailing zeros from f.
@@ -266,12 +289,77 @@ static int plural_is_integral(double x) {
     return isfinite(x) && floor(x) == x;
 }
 
+/// @brief Exact unsigned-64 expression evaluation (VDOC-083).
+/// @details Succeeds when the expression's value is exactly representable:
+///          rule integer literals, the always-integral v/f/t operands, and
+///          n/i for integer inputs (tracked via `mag`, which also preserves
+///          the INT64_MIN magnitude). Modulo is applied in integer space.
+/// @return 1 with @p *out set when exact; 0 to fall back to the double path.
+static int eval_expr_u64(const rt_plural_rule_node_t *node,
+                         const plural_operands_t *op,
+                         uint64_t *out) {
+    if (!node)
+        return 0;
+    switch (node->kind) {
+        case RT_PRN_INT:
+            if (node->u.int_val < 0)
+                return 0;
+            *out = (uint64_t)node->u.int_val;
+            return 1;
+        case RT_PRN_VAR: {
+            uint64_t v;
+            switch (node->u.var.var) {
+                case RT_PVAR_N:
+                case RT_PVAR_I:
+                    if (!op->int_exact)
+                        return 0;
+                    v = op->mag;
+                    break;
+                case RT_PVAR_V:
+                    v = (uint64_t)op->v;
+                    break;
+                case RT_PVAR_F:
+                    v = (uint64_t)op->f;
+                    break;
+                case RT_PVAR_T:
+                    v = (uint64_t)op->t;
+                    break;
+                default:
+                    return 0;
+            }
+            if (node->u.var.mod > 0)
+                v %= (uint64_t)node->u.var.mod;
+            *out = v;
+            return 1;
+        }
+        default:
+            return 0;
+    }
+}
+
 /// @brief Evaluate a CLDR range predicate (`n in/within a..b, c..d`).
 /// @param allow_fraction 0 for "in" (integers only), 1 for "within".
 /// @return 1 if the operand expression's value lands in any listed range.
 static int eval_range_pred(const rt_plural_rule_node_t *node,
                            const plural_operands_t *op,
                            int allow_fraction) {
+    // Exact-integer path: full 64-bit precision for integer inputs
+    // (VDOC-083).
+    uint64_t exact;
+    if (eval_expr_u64(node->u.range.expr, op, &exact)) {
+        for (size_t i = 0; i < node->u.range.range_count; ++i) {
+            int64_t start = node->u.range.ranges[i].start;
+            int64_t end = node->u.range.ranges[i].end;
+            if (start < 0)
+                start = 0;
+            if (end < 0)
+                continue;
+            if (exact >= (uint64_t)start && exact <= (uint64_t)end)
+                return 1;
+        }
+        return 0;
+    }
+
     double value = eval_expr(node->u.range.expr, op);
     if (!isfinite(value))
         return 0;
@@ -297,10 +385,18 @@ static int eval_pred(const rt_plural_rule_node_t *node, const plural_operands_t 
             return eval_pred(node->u.bin.l, op) || eval_pred(node->u.bin.r, op);
         case RT_PRN_AND:
             return eval_pred(node->u.bin.l, op) && eval_pred(node->u.bin.r, op);
-        case RT_PRN_EQ:
+        case RT_PRN_EQ: {
+            uint64_t le, re;
+            if (eval_expr_u64(node->u.bin.l, op, &le) && eval_expr_u64(node->u.bin.r, op, &re))
+                return le == re;
             return eval_expr(node->u.bin.l, op) == eval_expr(node->u.bin.r, op);
-        case RT_PRN_NE:
+        }
+        case RT_PRN_NE: {
+            uint64_t le, re;
+            if (eval_expr_u64(node->u.bin.l, op, &le) && eval_expr_u64(node->u.bin.r, op, &re))
+                return le != re;
             return eval_expr(node->u.bin.l, op) != eval_expr(node->u.bin.r, op);
+        }
         case RT_PRN_IN:
             return eval_range_pred(node, op, 0);
         case RT_PRN_NOT_IN:
@@ -450,7 +546,11 @@ void *rt_plural_rules_categories(void *self_obj) {
 
     for (size_t i = 0; i < order_len; ++i) {
         const char *name = rt_plural_rules_category_name(order[i]);
-        rt_list_push(list, rt_string_from_bytes(name, strlen(name)));
+        // rt_list_push retains; release the fresh string's initial reference
+        // so the list holds the only one (VDOC-077).
+        rt_string entry = rt_string_from_bytes(name, strlen(name));
+        rt_list_push(list, entry);
+        rt_string_unref(entry);
     }
     return list;
 }

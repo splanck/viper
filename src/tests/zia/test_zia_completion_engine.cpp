@@ -252,6 +252,29 @@ TEST(CompletionEngine, Serialize_ProducesTabDelimited) {
     EXPECT_TRUE(out.find("\t2\t") != std::string::npos);
 }
 
+TEST(CompletionEngine, Serialize_EscapesMultilineSnippets) {
+    // VDOC-111: multiline snippet insertion text must stay on one wire row.
+    std::vector<CompletionItem> items;
+    CompletionItem snippet;
+    snippet.label = "if";
+    snippet.insertText = "if  {\n    \n}";
+    snippet.kind = CompletionKind::Snippet;
+    snippet.detail = "if statement";
+    items.push_back(snippet);
+
+    std::string out = serialize(items);
+
+    // Exactly one record: one literal newline, at the very end.
+    EXPECT_EQ(std::count(out.begin(), out.end(), '\n'), 1);
+    EXPECT_TRUE(!out.empty() && out.back() == '\n');
+
+    // The newlines inside the snippet are escaped as backslash-n.
+    EXPECT_TRUE(out.find("if  {\\n    \\n}") != std::string::npos);
+
+    // Exactly three literal tab delimiters.
+    EXPECT_EQ(std::count(out.begin(), out.end(), '\t'), 3);
+}
+
 // ---------------------------------------------------------------------------
 // Cache reuse
 // ---------------------------------------------------------------------------

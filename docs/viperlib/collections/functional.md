@@ -85,14 +85,14 @@ push/pop, insert/remove, and slicing operations.
   string handle.
 - `Has()` and `Find()` use the same boxed-value equality as List: boxed integers, booleans, floats,
   and strings compare by value; other objects compare by identity. Queue, Stack, Deque, and Ring
-  use identity for all membership checks (VDOC-086).
+  membership uses this same relation.
 - `Slice()`, `Keep()`, `Reject()`, `Take()`, and `TakeWhile()` preserve owned-element mode in the returned sequence when the source sequence owns its elements; `Apply()` always returns an owning output sequence.
 - `ToBag()` accepts raw runtime strings and boxed strings; any other element type traps.
 - `Push`, `PushAll`, and capacity growth trap on length or allocation overflow instead of wrapping.
-- The default Seq comparator recognizes only raw runtime string handles. Strings passed through
-  the public Object ABI are boxed, so ordinary Zia/BASIC string sequences are currently ordered by
-  the unsafe pointer fallback rather than alphabetically. Boxed integers are also not compared
-  numerically. Use List's default sort for those values (VDOC-089).
+- The default Seq comparator matches List: raw and boxed strings order lexicographically and
+  boxed integers/booleans/floats numerically, so ordinary Zia/BASIC sequences sort
+  alphabetically. Elements rank by type class first (null < numeric < string < other), which
+  keeps the order total even for mixed-type sequences.
 - Prefer `FindOption()` and `FindWhereOption()` for new code. `Find()` and `FindWhere()` remain available for compatibility with existing sentinel/null checks.
 
 ### Zia Example
@@ -420,30 +420,29 @@ PRINT firstTwo.Count                                       ' 2
 - **Shared cursors:** A transformation retains its source LazySeq object, but it does not clone its
   cursor. Consuming a derived pipeline also advances the original source and any sibling pipeline.
   Concatenating a source with itself therefore does not replay it a second time.
-- **Borrowed values:** `Repeat` does not retain its value, and `Next()` / `Peek()` do not return an
-  owned reference. Keep the repeated value alive for the full traversal. `ToSeq()` and `ToSeqN()`
-  currently construct lower-level borrowed-element Seqs as well, so collection does not make
-  values independently long-lived (VDOC-091).
-- **Null ambiguity:** `Repeat(null, count)` is accepted, but public `Next()` and `Peek()` also use
-  null to report exhaustion. Inspect `Index`/`IsExhausted` after a read if null is a legitimate
-  element; there is no `NextOption()` counterpart (VDOC-095).
+- **Ownership:** `Repeat` retains its value for the node's lifetime, and `ToSeq()` /
+  `ToSeqN()` return owning Seqs, so collected values are independently long-lived. `Next()` /
+  `Peek()` still return borrowed references bounded by the source's lifetime.
+- **Null ambiguity:** `Repeat(null, count)` is accepted, and `Next()` / `Peek()` also use null
+  to report exhaustion. Use `NextOption()` / `PeekOption()` when null is a legitimate element:
+  they return `Some(value)` for every yielded element (including null) and `None` only at
+  end of stream.
 - **Range values:** `Range` currently exposes each integer through transient internal storage rather
   than as a boxed runtime object. `Count()` and other operations that only count/skip values are
   safe, but do not retain, unbox, collect, or pass `Range` elements to object callbacks. Use
   `Repeat()` with explicitly boxed values when object-valued elements are required.
 - **Transformation chaining:** Transformations like `Map()`, `Filter()`, `Take()` return new
   LazySeq instances and do no work until elements are requested.
-- **Bounds and factory validation:** a zero range step returns null. The documented infinite-repeat
-  sentinel is `-1`, but the implementation currently treats every negative repeat count as
-  infinite. Negative `Take` and `Drop` limits return null (VDOC-092).
+- **Bounds and factory validation:** invalid bounds trap: a zero `Range` step, a negative
+  `Take`/`Drop` limit, and any repeat count below `-1` (only `-1` means an infinite repeat).
 - **Filtering infinite sources:** putting `Take(n)` after a filter does not bound how many source
   elements the filter may inspect. An infinite source whose predicate never matches still does not
   yield or terminate.
 - **Language callbacks:** The same VM callback limitation described for `Seq` applies to
   `Map()`, `Filter()`, `TakeWhile()`, `DropWhile()`, `Find()`, `FindOption()`, `Any()`, and `All()`.
-- **Explicit receiver safety:** Do not pass an arbitrary Object to a qualified call such as
-  `Viper.Functional.LazySeq.Reset(value)`. The runtime currently omits a LazySeq class check and
-  can interpret or overwrite the unrelated object's fields (VDOC-090).
+- **Explicit receiver safety:** Qualified calls such as
+  `Viper.Functional.LazySeq.Reset(value)` validate the receiver's class and trap with
+  `LazySeq: invalid LazySeq object` when passed anything that is not a LazySeq.
 
 ### Use Cases
 

@@ -13,8 +13,10 @@
 #include "rt_compiled_pattern.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstring>
 
@@ -315,7 +317,105 @@ static void test_quantifiers() {
 // Main
 //=============================================================================
 
+static void test_zero_width_replace_split() {
+    // VDOC-054: zero-width matches must not drop source bytes.
+    void *pattern = rt_compiled_pattern_new(rt_const_cstr(""));
+    rt_string out = rt_compiled_pattern_replace(pattern, rt_const_cstr("abc"), rt_const_cstr("-"));
+    test_result(strcmp(rt_string_cstr(out), "-a-b-c-") == 0,
+                "replace: empty pattern keeps source bytes");
+
+    void *parts = rt_compiled_pattern_split(pattern, rt_const_cstr("abc"));
+    test_result(rt_seq_len(parts) == 3, "split: empty pattern piece count");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 0)), "a") == 0 &&
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 1)), "b") == 0 &&
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 2)), "c") == 0,
+                "split: empty pattern pieces");
+
+    void *comma = rt_compiled_pattern_new(rt_const_cstr(","));
+    parts = rt_compiled_pattern_split_n(comma, rt_const_cstr("a,b,c"), 2);
+    test_result(rt_seq_len(parts) == 2 &&
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 1)), "b,c") == 0,
+                "split_n: limit keeps remainder intact");
+}
+
+static void test_captures_backtracking_and_numbering() {
+    // VDOC-057: Captures uses the same match language as Find, and group
+    // indexes follow lexical (opening-parenthesis) numbering.
+    void *pattern = rt_compiled_pattern_new(rt_const_cstr("a*(a)"));
+    void *caps = rt_compiled_pattern_captures(pattern, rt_const_cstr("aaa"));
+    test_result(rt_seq_len(caps) == 2, "captures: a*(a) succeeds like Find");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 0)), "aaa") == 0,
+                "captures: a*(a) full match is 'aaa'");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 1)), "a") == 0,
+                "captures: a*(a) group 1 is 'a'");
+
+    // Alternation keeps lexical slots: the untaken branch reports empty.
+    pattern = rt_compiled_pattern_new(rt_const_cstr("(a)|(b)"));
+    caps = rt_compiled_pattern_captures(pattern, rt_const_cstr("b"));
+    test_result(rt_seq_len(caps) == 3, "captures: (a)|(b) reports both slots");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 1)), "") == 0,
+                "captures: untaken branch group is empty");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 2)), "b") == 0,
+                "captures: taken branch keeps lexical index");
+
+    // Nested groups number by opening parenthesis.
+    pattern = rt_compiled_pattern_new(rt_const_cstr("((a)b)"));
+    caps = rt_compiled_pattern_captures(pattern, rt_const_cstr("ab"));
+    test_result(rt_seq_len(caps) == 3, "captures: nested group count");
+    test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 1)), "ab") == 0 &&
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 2)), "a") == 0,
+                "captures: outer group first, inner second");
+
+    // VDOC-058: more than 32 groups is fully supported (no OOB, no cap).
+    {
+        char pat[34 * 3 + 1];
+        char txt[34];
+        int n = 0;
+        for (int i = 0; i < 33; i++) {
+            pat[n++] = '(';
+            pat[n++] = (char)('a' + (i % 26));
+            pat[n++] = ')';
+            txt[i] = (char)('a' + (i % 26));
+        }
+        pat[n] = '\0';
+        txt[33] = '\0';
+        void *many = rt_compiled_pattern_new(rt_string_from_bytes(pat, (size_t)n));
+        void *mc = rt_compiled_pattern_captures(many, rt_string_from_bytes(txt, 33));
+        test_result(rt_seq_len(mc) == 34, "captures: 33 groups all reported");
+        test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(mc, 33)), "g") == 0,
+                    "captures: 33rd group correct");
+    }
+
+    // Quantified group captures the last repetition.
+    pattern = rt_compiled_pattern_new(rt_const_cstr("(ab)+"));
+    caps = rt_compiled_pattern_captures(pattern, rt_const_cstr("abab"));
+    test_result(rt_seq_len(caps) == 2 &&
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 0)), "abab") == 0 &&
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(caps, 1)), "ab") == 0,
+                "captures: quantified group keeps last repetition");
+}
+
+static void test_nul_pattern_rejected() {
+    // VDOC-053: CompiledPattern construction must reject embedded NUL so the
+    // Pattern property can always round-trip the constructor input.
+    const char pat_bytes[] = {'a', '\0', 'b'};
+    rt_string pat = rt_string_from_bytes(pat_bytes, sizeof(pat_bytes));
+
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    bool trapped = true;
+    if (setjmp(env) == 0) {
+        (void)rt_compiled_pattern_new(pat);
+        trapped = false;
+    }
+    rt_trap_clear_recovery();
+    test_result(trapped, "New traps on NUL-containing pattern");
+}
+
 int main() {
+    test_nul_pattern_rejected();
+    test_zero_width_replace_split();
+    test_captures_backtracking_and_numbering();
     // Basic matching
     test_basic_match();
     test_regex_match();

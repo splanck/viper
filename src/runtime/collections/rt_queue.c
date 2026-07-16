@@ -19,9 +19,10 @@
 //   - tail is computed as (head + count) % capacity (next write position).
 //   - When head == (head + count) % capacity the buffer is full and must grow.
 //   - Dequeue on an empty queue traps with an error message.
-//   - Peek returns the head element without removing it; returns NULL if empty.
-//   - Owning queues retain enqueued values and return retained transfers from
-//     Take; borrowing queues store raw pointers without retain/release.
+//   - Peek returns the head element without removing it; Peek and Pop trap
+//     on an empty queue (TryPop returns None instead).
+//   - Owning queues retain pushed values and return retained transfers from
+//     Pop; borrowing queues store raw pointers without retain/release.
 //   - Not thread-safe; external synchronization required.
 //
 // Ownership/Lifetime:
@@ -34,6 +35,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_collection_ids.h"
+
+#include "rt_box.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -72,8 +75,8 @@
 /// ```
 ///
 /// The circular design means:
-/// - Add (enqueue) at tail: O(1)
-/// - Take (dequeue) from head: O(1)
+/// - Push (enqueue) at tail: O(1)
+/// - Pop (dequeue) from head: O(1)
 /// - No element shifting needed
 typedef struct rt_queue_impl {
     int64_t len;  ///< Number of elements currently in the queue
@@ -211,10 +214,10 @@ static int queue_grow(rt_queue_impl *q) {
 /// **Usage example:**
 /// ```
 /// Dim queue = Queue.New()
-/// queue.Add("first")
-/// queue.Add("second")
-/// queue.Add("third")
-/// Print queue.Take()   ' Outputs: first
+/// queue.Push("first")
+/// queue.Push("second")
+/// queue.Push("third")
+/// PRINT queue.Pop()   ' Outputs: first
 /// Print queue.Take()   ' Outputs: second
 /// Print queue.Take()   ' Outputs: third
 /// ```
@@ -303,7 +306,7 @@ int64_t rt_queue_len(void *obj) {
 /// - After all elements have been taken
 /// - After calling rt_queue_clear
 ///
-/// Calling Take or Peek on an empty Queue will trap with an error.
+/// Calling Pop or Peek on an empty Queue will trap with an error.
 ///
 /// @param obj Pointer to a Queue object. If NULL, returns true (1).
 ///
@@ -524,7 +527,7 @@ int8_t rt_queue_has(void *obj, void *elem) {
 
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     for (int64_t i = 0; i < q->len; i++) {
-        if (q->items[(q->head + i) % q->cap] == elem)
+        if (rt_box_equal(q->items[(q->head + i) % q->cap], elem))
             return 1;
     }
     return 0;

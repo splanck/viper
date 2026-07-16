@@ -14,7 +14,10 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include "rt_trap.h"
+
 #include <cassert>
+#include <csetjmp>
 #include <cstring>
 #include <string>
 
@@ -572,7 +575,35 @@ static void test_case_conversion_more_than_128_words() {
 // Main
 //===----------------------------------------------------------------------===//
 
+static void test_like_strict_utf8() {
+    // Valid multi-byte sequences: one `_` consumes one code point.
+    const char two_byte[] = {(char)0xC3, (char)0xA9}; // U+00E9
+    assert(rt_str_like(rt_string_from_bytes(two_byte, 2), rt_const_cstr("_")) == 1);
+
+    // VDOC-060: overlong encodings, surrogates, and out-of-range code points
+    // trap instead of counting as a code point.
+    const char cases[][4] = {
+        {(char)0xC0, (char)0x80, 0, 0},             // overlong NUL
+        {(char)0xE0, (char)0x80, (char)0xAF, 0},    // overlong 3-byte
+        {(char)0xED, (char)0xA0, (char)0x80, 0},    // UTF-16 surrogate D800
+        {(char)0xF5, (char)0x80, (char)0x80, 0},    // lead beyond U+10FFFF
+    };
+    const size_t lens[] = {2, 3, 3, 3};
+    for (int i = 0; i < 4; i++) {
+        jmp_buf env;
+        rt_trap_set_recovery(&env);
+        bool trapped = true;
+        if (setjmp(env) == 0) {
+            (void)rt_str_like(rt_string_from_bytes(cases[i], lens[i]), rt_const_cstr("_"));
+            trapped = false;
+        }
+        rt_trap_clear_recovery();
+        assert(trapped && "malformed UTF-8 must trap in String.Like");
+    }
+}
+
 int main() {
+    test_like_strict_utf8();
     // Replace tests
     test_replace_basic();
     test_replace_multiple();

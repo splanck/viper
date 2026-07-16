@@ -5,7 +5,7 @@
 //
 // File: src/runtime/collections/rt_iter.h
 // Purpose: Unified stateful iterator protocol for all collection types, providing a common
-// next/has_next interface over Seq, List, Deque, Map, Set, Stack, Queue, Ring, and Trie.
+// next/has_next interface over Seq, List, Deque, Ring, Map keys/values, Set, and Stack.
 //
 // Key invariants:
 //   - Iterators are lightweight handles wrapping a collection reference and a position.
@@ -15,7 +15,8 @@
 //
 // Ownership/Lifetime:
 //   - Iterator objects are heap-allocated; caller must free after use.
-//   - Iterators hold a borrowed reference to the underlying collection.
+//   - Iterators retain the live source collection (or own a snapshot Seq)
+//     and release it when the iterator is collected.
 //
 // Links: src/runtime/collections/rt_iter.c (implementation), src/runtime/core/rt_string.h
 //

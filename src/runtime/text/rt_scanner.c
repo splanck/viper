@@ -7,16 +7,19 @@
 //
 // File: src/runtime/text/rt_scanner.c
 // Purpose: Implements a cursor-based string scanner for the Viper.Text.Scanner
-//          class. Provides character-by-character and token-level scanning
-//          with Peek, Read, SkipWhile, ReadWhile, Match, and Expect operations.
+//          class. Registered surface: Position/IsEnd/Remaining/Length props,
+//          Reset, Peek/PeekAt/PeekStr, Read/ReadStr/ReadUntil/ReadUntilAny,
+//          Match/MatchStr (non-consuming), Accept/AcceptStr/AcceptAny
+//          (consuming), Skip, SkipWhitespace, and the token readers
+//          ReadIdent/ReadIntToken/ReadNumberToken/ReadQuoted/ReadLine.
 //
 // Key invariants:
-//   - The scanner maintains a position cursor into the source string.
-//   - Peek returns the character at the current position without advancing.
-//   - Read returns the current character and advances the cursor by one.
-//   - AtEnd returns true when position >= length; Peek/Read at end return '\0'.
-//   - Match advances only if the current character equals the expected one.
-//   - Expect advances unconditionally and traps if the character is unexpected.
+//   - The scanner maintains a byte-position cursor into the source string.
+//   - Peek returns the byte at the current position without advancing.
+//   - Read returns the current byte and advances the cursor by one.
+//   - IsEnd returns true when position >= length; Peek/Read at end return -1.
+//   - Match/MatchStr test without consuming; Accept/AcceptStr consume on
+//     success and return whether they matched. There is no trapping Expect.
 //   - The source string is retained by the scanner for the scanner lifetime.
 //
 // Ownership/Lifetime:

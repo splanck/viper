@@ -57,6 +57,7 @@ cache key and supplies the base directory for relative `bind` resolution.
 | `BeginSymbolsForFile` | `SemanticJobHandle(String, String)` | Start an asynchronous symbol query. |
 | `BeginTokensForFile` | `SemanticJobHandle(String, String)` | Start an asynchronous semantic-token query. |
 | `ClearCache` | `Void()` | Drop the singleton completion/signature analysis cache. |
+| `IsAvailable` | `Boolean()` | True when the full editor-service bridge is linked; the weak stub returns false. |
 
 `ClearCache` affects the synchronous `Complete*`, `Items*`, and
 `Signature*` calls that share the singleton completion engine. Hover and
@@ -92,8 +93,8 @@ the corresponding lower-case names, except `runtimeClass` uses camel case.
 
 `SignatureInfo*` and `SemanticJob.SignatureInfo` always return a map. With the
 full service, `available` is false when no call resolves; the remaining scalar
-fields are then empty or zero and the sequences are empty. The weak-stub shape
-exception is described under SemanticJob below.
+fields are then empty or zero and the sequences are empty. The weak stub
+returns the same map shape with `source = "unavailable"`.
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -123,26 +124,18 @@ the same map shape with `available = false` and empty display fields.
 
 The String-returning methods are compatibility protocols:
 
-- `Complete*`: `label<TAB>insertText<TAB>kind<TAB>detail<LF>`.
+- `Complete*`: `label<TAB>insertText<TAB>kind<TAB>detail<LF>`. Field content escapes
+  backslash, tab, newline, and CR as `\\`, `\t`, `\n`, `\r`, so multiline snippets stay on
+  one row; unescape after splitting on the literal delimiters.
 - `Check*`: `severity<TAB>line<TAB>column<TAB>code<TAB>message<LF>`, with
   severity `0` error, `1` warning, and `2` note; line and column are 1-based.
-- `Symbols*`: `name<TAB>kind<TAB>type<TAB>line<LF>`, with a 1-based source
-  line and `0` for symbols not declared in the active file.
+- `Symbols*`: `name<TAB>kind<TAB>type<TAB>line<LF>`, with a 1-based source line. Only
+  symbols declared in the active file are emitted.
 - `SemanticJob.Tokens`: `line<TAB>start<TAB>end<TAB>kind<LF>`, using 0-based
   byte coordinates and an end-exclusive column.
 
-Prefer the structured item, signature, hover, and Toolchain APIs. In
-particular, the legacy completion serializer does not escape the embedded
-newlines in snippet `insertText`, so its nominal one-row-per-item framing does
-not hold for snippets.
-
-`Symbols*` currently includes the complete runtime function inventory as
-line-zero rows and adds declared types a second time as line-zero rows. It also
-includes symbols imported from bound source files with the imported file's
-positive line number, but the wire row has no file field. Filtering line `0`
-removes the runtime noise but cannot distinguish imported declarations from
-the active document. This behavior is tracked as a tooling defect in the
-[review findings](../documentation-review-findings.md).
+Prefer the structured item, signature, hover, and Toolchain APIs for new code; the
+String-returning forms remain for compatibility.
 
 ### Zia Example
 
@@ -206,10 +199,9 @@ Structured diagnostics and compile results for Zia source buffers.
 | `fixitStartLine` / `fixitStartColumn` | Integer | Compatibility copy of the first fix-it start, or 0. |
 | `fixitEndLine` / `fixitEndColumn` | Integer | Compatibility copy of the first fix-it end, or 0. |
 
-`Check*` and `Compile*` include both the complete `fixits` sequence and the
-legacy first-fix fields. Diagnostics materialized from an asynchronous
-`SemanticJob` currently include `hasFixit` and the legacy first-fix fields, but
-not the `fixits` sequence.
+`Check*`, `Compile*`, and diagnostics materialized from an asynchronous
+`SemanticJob` all include the complete `fixits` sequence plus the legacy
+first-fix fields, so the map schema does not depend on scheduling choice.
 
 ### Compile Result Map
 
@@ -253,7 +245,7 @@ func start() {
 - Use `CheckForFile`, `BeginCheckForFile`, and `CompileForFile` from editors so relative `bind` paths resolve against the active document.
 - The legacy `Viper.Zia.Completion.CheckForFile` API still returns tab-delimited text for compatibility. New IDE surfaces should consume `Viper.Zia.Toolchain` instead.
 - At most two semantic workers run concurrently. A request made while both slots are occupied returns a completed job whose error is `semantic worker pool busy`.
-- The weak runtime stub returns empty diagnostics, a null async-job handle, and a failed compile result with empty diagnostics, paths, and IL when the editor-service bridge is absent. Consequently, an empty Check result alone does not prove that analysis ran.
+- The weak runtime stub returns empty diagnostics, a null async-job handle, and a failed compile result with empty diagnostics, paths, and IL when the editor-service bridge is absent. Call `Viper.Zia.Completion.IsAvailable` first: when it returns false, empty Check results mean "no analysis ran", not "clean".
 - Statically linked IDE hosts must force-load `zia_editor_services` (which links `fe_zia`) so its strong `rt_zia_*` definitions override the weak runtime stubs. The repository's `zia` executable does this with the platform-equivalent whole-archive option.
 
 ---
@@ -274,6 +266,7 @@ Document does not normalize or canonicalize that key.
 | `SyncDelta` | `Boolean(String, String, Integer)` | Apply a batch of edit deltas sequentially and record `endRevision`. |
 | `Close` | `Void(String)` | Remove the mirror for a path. |
 | `Text` | `String(String)` | Return the mirrored bytes, or empty when the path is absent. |
+| `Has` | `Boolean(String)` | True when a mirror exists for the path, even if its text is empty. |
 | `CheckForFile` | `String(String)` | Run the legacy tab-delimited diagnostic check against mirrored text. |
 | `BeginCheckForFile` | `SemanticJobHandle(String)` | Start a structured diagnostic job from mirrored text. |
 
@@ -301,19 +294,16 @@ The safe editor loop is:
 4. Advance the caller's `lastSyncedRevision` only after a successful sync.
 5. Call `Close` when the document is no longer needed.
 
-There are two current limitations. The mirror stores revision values but does
-not validate the per-delta `r` values or `endRevision`; stale and out-of-order
-deltas can therefore be accepted. It also clamps out-of-range or reversed
-coordinates rather than rejecting them. Only pass journal output associated
-with the mirror's own last successful sync. These defects are recorded in the
-[review findings](../documentation-review-findings.md).
+`SyncDelta` validates its input: `endRevision` must not move the mirror backwards, each
+delta's `r` must lie strictly after the mirror's stored revision and within `endRevision`
+in increasing order, and out-of-range or reversed coordinates are rejected rather than
+clamped. Any rejection returns `false`, which is the signal to recover with `SyncFull`.
 
-`Text` returns empty for both an absent mirror and a present empty document.
-Likewise, synchronous `CheckForFile` returns empty for an absent mirror, a
-clean document, or an unavailable weak bridge. Use `BeginCheckForFile` when
-the missing-mirror distinction matters: the full service returns null when no
-mirror exists. The weak bridge also returns null, so callers should still have
-a full-buffer Toolchain fallback.
+`Text` returns empty for both an absent mirror and a present empty document; use `Has`
+when the distinction matters. Synchronous `CheckForFile` returns empty for an absent
+mirror, a clean document, or an unavailable weak bridge — combine
+`Completion.IsAvailable` (bridge linked?) with `Has` (mirror exists?) to interpret an empty
+result definitively, or use `BeginCheckForFile`, which returns null when no mirror exists.
 
 ### Zia Example
 
@@ -377,18 +367,16 @@ marks the job cancelled; an already-running worker can continue to completion,
 but its result is discarded. Letting the handle become unreachable also asks
 for cancellation; no explicit destroy call is required.
 
-Check for null immediately after every `Begin*` call. Null-handle polling is
-currently bridge-dependent: the full editor service reports
-`IsDone(null) == false`, while the weak stub reports true. The other status
-methods return no error/kind for null. This inconsistency is tracked in the
-[review findings](../documentation-review-findings.md).
+Check for null immediately after every `Begin*` call. `IsDone(null)` is `false` in both the
+full editor service and the weak stub, so never poll a null handle — it will never complete.
+The other status methods return no error/kind for null.
 
 Weak-stub materializers return compatibility payloads rather than uniformly
 empty values: `CompletionItems(null)` contains one `source = "unavailable"`
-row, and signature/hover maps use `source = "unavailable"`. The weak
-completion row omits `cursorOffset`, and its signature map omits `overloads`,
-so consumers should use default-valued map access and should not materialize a
-null job unless they deliberately want a fallback payload.
+row, and signature/hover maps use `source = "unavailable"`. The stub payloads
+carry the full schema (including `cursorOffset = -1` and an empty `overloads`
+Seq), so the structured map shape is link-configuration invariant; still, do
+not materialize a null job unless you deliberately want a fallback payload.
 
 ---
 
@@ -518,7 +506,7 @@ func start() {
 - Always call `UpdateFile` when a buffer changes. Query calls also accept current source to cover the active dirty buffer.
 - Add all open project files to the index for best reference and rename results. Files absent from the index can still be resolved from disk through normal `bind` loading, but they are not scanned for references.
 - `References` returns an empty Seq for both an invalid index and an unresolved cursor; it does not return a reason field.
-- Rename accepts a non-keyword identifier beginning with `_` or a byte that the active C locale classifies as a letter; later bytes may also be locale-classified letters or digits. This differs from the lexer's deterministic ASCII and 1,024-byte identifier rules, so callers should enforce those stricter rules before applying edits. A successful call still only returns edits; it never changes indexed buffers or files.
+- Rename validates the replacement with the Zia lexer's exact identifier rules: ASCII letters/digits/underscore (no locale sensitivity), a non-keyword, and at most 1,024 bytes. A successful call therefore always produces lexer-valid output — but it still only returns edits; it never changes indexed buffers or files.
 - Reference rows are ordered by normalized indexed path and then source order. ProjectIndex instances have no internal lock; serialize updates and queries for a given handle.
 - `Destroy` is optional when ordinary garbage collection owns the handle, but it can release the native index early. Repeated `Destroy`, `Clear`, and invalid-handle calls are safe no-ops.
 - Native IDE builds must link and force-load `zia_editor_services`; the weak runtime stub returns an invalid handle and empty or `unavailable` results.

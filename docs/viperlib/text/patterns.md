@@ -75,24 +75,22 @@ The following advanced regex features are not implemented:
   and returned. Dot, classes, shorthands, literals, and quantifiers all operate on bytes; `\d` and
   `\w` are ASCII-only, and `\s` is the six-byte set space, tab, `LF`, `CR`, form feed, and vertical
   tab.
-- Pattern source is not length-aware: compilation stops at the first embedded `NUL` and silently
-  ignores the suffix. See
-  [VDOC-053](../../documentation-review-findings.md#vdoc-053--regex-patterns-ignore-bytes-after-an-embedded-nul).
+- Pattern source must not contain embedded `NUL` bytes: any `Pattern.*` call traps with
+  `Pattern: pattern contains NUL byte` rather than silently compiling only the prefix.
 - Match positions and `FindFrom` start values are byte offsets. Negative starts clamp to zero; a
   start beyond the text returns no match.
 - Replacement text is literal; `$1`, `\1`, and similar capture-reference spellings are not
   expanded.
-- Avoid patterns that can match an empty string with `Replace` or `Split`: their zero-width
-  advancement currently drops source bytes. See
-  [VDOC-054](../../documentation-review-findings.md#vdoc-054--zero-width-regex-replace-and-split-drop-source-bytes).
-- Parentheses are not always semantics-neutral around quantified expressions, and capture
-  extraction has additional backtracking limitations. See
-  [VDOC-056](../../documentation-review-findings.md#vdoc-056--regex-groups-block-required-quantifier-backtracking)
-  and
-  [VDOC-057](../../documentation-review-findings.md#vdoc-057--compiledpattern-captures-uses-a-different-matcher-and-group-numbering).
-- Do not combine uppercase complement shorthands such as `\D`, `\W`, or `\S` with other members
-  inside one character class; the current class representation computes the wrong union. See
-  [VDOC-055](../../documentation-review-findings.md#vdoc-055--complement-shorthands-break-mixed-regex-character-classes).
+- Zero-width matches follow ECMAScript-style semantics: `Replace("abc", "", "-")` yields
+  `-a-b-c-` (the stepped-over byte is preserved), and `Split("abc", "")` yields `a`, `b`, `c`
+  (an empty match never splits at the current segment start or at end-of-text).
+- Parentheses are semantics-neutral: `(a*)a` matches exactly what `a*a` matches, and
+  `Captures` succeeds whenever `Find` succeeds. Capture groups are numbered lexically by
+  opening parenthesis; a group in an untaken alternation branch reports an empty string, and
+  a quantified group reports its last repetition.
+- Uppercase complement shorthands (`\D`, `\W`, `\S`) may be combined freely with other
+  members inside a character class; each shorthand contributes its own byte set to the union
+  (`[a\D]` matches `a` and every non-digit).
 - The regex cache is safe for concurrent users of cached patterns; in-use compiled entries are not evicted.
 - Prefer `FindOption()`, `FindFromOption()`, and `FindPosOption()` for new code. The legacy string-returning forms cannot distinguish no match from a valid empty-string match.
 
@@ -284,13 +282,13 @@ when the pattern itself can match an empty string.
 - Null text and replacement arguments are treated as empty strings.
 - Returned matches preserve runtime string byte length, including embedded `NUL` bytes.
 - A null pattern passed to the constructor traps.
-- Pattern source stops at an embedded `NUL`, as described in
-  [VDOC-053](../../documentation-review-findings.md#vdoc-053--regex-patterns-ignore-bytes-after-an-embedded-nul).
+- A pattern containing an embedded `NUL` byte traps at construction
+  (`CompiledPattern: pattern contains NUL byte`), so `Pattern` always round-trips the
+  constructor input.
 - `FindFrom` and `CapturesFrom` use byte offsets, clamp negative starts to zero, and return no
   result when the start is beyond the text.
 - `Replace` and `ReplaceFirst` insert the replacement literally; they do not expand capture-group
-  references. Avoid zero-width patterns with `Replace` and `Split` because of
-  [VDOC-054](../../documentation-review-findings.md#vdoc-054--zero-width-regex-replace-and-split-drop-source-bytes).
+  references. Zero-width matches preserve every source byte (see the static `Pattern` notes).
 - `SplitN` returns at most `limit` pieces when `limit > 0`; zero or a negative limit is unlimited.
 
 ### Zia Example
@@ -390,10 +388,9 @@ PRINT Viper.Collections.Seq.GetStr(limited, 2) ' Output: c,d,e (rest in last ele
 - Compilation is paid once per `CompiledPattern` instance, while matching still depends on both pattern and input complexity
 - The matcher is a backtracking engine with a per-search step cap; pathological patterns can stop matching at that cap rather than backtrack indefinitely
 - Static `Pattern` operations share a lock-protected 16-entry LRU compile cache. An explicit `CompiledPattern` is useful when a pattern must remain compiled independently of that cache.
-- Capture extraction has fixed storage for 32 explicit groups, plus element 0 for the whole match.
-  More than 32 groups are not rejected and can read beyond that storage; do not use them until
-  [VDOC-058](../../documentation-review-findings.md#vdoc-058--more-than-32-regex-capture-groups-read-out-of-bounds)
-  is fixed. Captures inside quantified groups are best-effort rather than PCRE-compatible.
+- Capture extraction supports any number of groups (storage is sized from the compiled
+  pattern), plus element 0 for the whole match. A quantified group captures its last
+  repetition.
 
 ---
 
@@ -575,9 +572,10 @@ Line-based text differencing using a longest-common-subsequence table. It comput
 - Each entry in the `Lines` result is prefixed: `" "` (unchanged), `"+"` (added), `"-"` (removed)
 - `Lines` is registered as `seq<str>`, so chained access such as `Diff.Lines(a, b).Count`
   resolves against the returned sequence.
-- `Patch` reconstructs the modified text entirely from the full `Lines` records. Its `original`
-  argument is currently ignored and is not validated; see
-  [VDOC-061](../../documentation-review-findings.md#vdoc-061--diffpatch-ignores-its-original-argument).
+- `Patch` reconstructs the modified text from the full `Lines` records and validates the diff
+  against `original`: every context and removed line must match the corresponding original
+  line, and the diff must consume the original exactly, or the call traps with
+  `Diff.Patch: diff does not apply to the original text`.
 - `Unified` emits `--- a` / `+++ b` headers and selected prefixed lines, but no `@@` hunk headers; it is diagnostic text, not a patch-applicable standard unified diff
 - `Unified` treats a negative context as 3; zero includes only added and removed records.
 - Lines split only at `LF`. A preceding `CR` remains part of line content, so LF and CRLF inputs
@@ -671,11 +669,11 @@ SQL-style LIKE pattern matching on strings. These are methods available on any S
 | `\`     | Escape character for literal `%`, `_`, or `\`   | `"100%".Like("100\%")` is true   |
 
 Matching covers the entire string, rather than searching for a matching substring. `_` and `%`
-advance according to UTF-8 leading/continuation-byte shape, while literal matching remains
-bytewise. This check accepts some invalid Unicode encodings; see
-[VDOC-060](../../documentation-review-findings.md#vdoc-060--stringlike-accepts-malformed-utf-8-as-code-points).
-`LikeIgnoreCase` folds bytes with the process C character locale rather than a Unicode case algorithm; see
-[VDOC-063](../../documentation-review-findings.md#vdoc-063--case-insensitive-pattern-helpers-depend-on-the-process-c-locale).
+advance by strictly validated UTF-8 code points (overlong encodings, UTF-16 surrogates, and
+code points above U+10FFFF trap with `String.Like: invalid UTF-8 sequence`), while literal
+matching remains bytewise.
+`LikeIgnoreCase` folds ASCII letters only, independent of the process locale; it is not a
+Unicode case algorithm.
 A null receiver or pattern is treated as an empty string. A backslash quotes any following pattern
 byte; a final backslash matches a literal backslash.
 
@@ -754,12 +752,10 @@ byte offsets into the candidate, and `end` is exclusive.
 - Matching is a greedy, case-insensitive byte-subsequence search. Exact-case, separator,
   camel-case, and consecutive-byte hits score higher; gaps, a late first hit, and longer candidates
   lower the score.
-- A successful match can have a score below `-1`, so score sign and the `-1` value cannot reliably
-  distinguish a match from a miss. Use `Match(...).GetBool("matched")`; see
-  [VDOC-059](../../documentation-review-findings.md#vdoc-059--fuzzymatch-can-assign-negative-scores-to-successful-matches).
-- Case conversion and boundary detection use the process C character locale and are not
-  Unicode-aware; see
-  [VDOC-063](../../documentation-review-findings.md#vdoc-063--case-insensitive-pattern-helpers-depend-on-the-process-c-locale).
+- A successful match always scores `>= 0` (heavily penalized matches clamp to `0`), so `-1`
+  from `Score` reliably means the query did not match.
+- Case conversion and boundary detection are ASCII-only and locale-independent; bytes above
+  0x7F never fold or count as letters, so results are identical on every host.
 - Null query/candidate values are treated as empty strings. Returned query/candidate strings and
   byte ranges preserve embedded `NUL` bytes.
 

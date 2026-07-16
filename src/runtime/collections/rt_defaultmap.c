@@ -373,7 +373,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
 /// @details Hashes the key with the runtime keyed hash, indexes into the bucket array, and
 ///          walks the separate-chaining linked list comparing by key length
 ///          and content. Returns 1 if found, 0 otherwise.
-int64_t rt_defaultmap_has(void *map, rt_string key) {
+int8_t rt_defaultmap_has(void *map, rt_string key) {
     if (!map)
         return 0;
     rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Has: invalid DefaultMap object");

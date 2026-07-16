@@ -21,11 +21,13 @@
 //     never loops even on malformed handles because each step strips one
 //     subtag at a minimum.
 //   - Locale handles are allocated via rt_obj_new_i64 so they participate in
-//     the GC lifetime system; finalizers are no-ops (no heap resources held).
+//     the GC lifetime system; the finalizer releases the handle's retained
+//     locale-data reference back to the LocaleManager registry.
 //
 // Ownership/Lifetime:
 //   - Handles own their subtag string bytes (embedded in the struct).
-//   - `data` is non-owning; the LocaleManager registry is the sole owner.
+//   - `data` is a retained reference to a registry-owned record; the handle
+//     releases it on finalize and the registry remains the allocator/owner.
 //
 // Links: src/runtime/localization/rt_locale.h (interface),
 //        src/runtime/localization/rt_locale_manager.h (registry bridge),
@@ -85,6 +87,14 @@ static char loc_to_upper(char c) {
 /// @brief Check whether @p c is a BCP-47 subtag separator ('-' or '_').
 static int loc_is_separator(char c) {
     return c == '-' || c == '_';
+}
+
+/// @brief True when the byte span contains any subtag separator.
+static int loc_str_has_separator(const char *s, size_t len) {
+    for (size_t i = 0; i < len; ++i)
+        if (loc_is_separator(s[i]))
+            return 1;
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -169,7 +179,18 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
     canonical[0] = '\0';
     int after_extension = 0;
     int saw_private = 0;
+    int saw_variant = 0;
+    int extlang_count = 0;
+    int ext_needs_subtag = 0; // last extension singleton still lacks a subtag
     uint64_t extension_singletons = 0;
+    char variants_seen[MAX_SUBTAGS][9];
+    size_t variants_seen_lens[MAX_SUBTAGS];
+    size_t variants_seen_count = 0;
+
+    // Pure private-use tag: `x-...` with no primary language (RFC 5646
+    // `privateuse`). Language/script/region stay empty; only the canonical
+    // tag carries content (VDOC-065).
+    int private_only = sub_lens[0] == 1 && (subtags[0][0] == 'x' || subtags[0][0] == 'X');
 
     for (size_t st = 0; st < sub_count; ++st) {
         char *sub = subtags[st];
@@ -178,7 +199,11 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
         int is_region_subtag = 0;
 
         // Classification: position-sensitive, per RFC 5646 conventions
-        if (subtag_idx == 0) {
+        if (subtag_idx == 0 && private_only) {
+            if (st + 1 >= sub_count)
+                return -1;
+            saw_private = 1;
+        } else if (subtag_idx == 0) {
             // Primary language: 2-3 alpha (occasionally 4-8 for registered)
             if (sub_len < 2 || sub_len > 8)
                 return -1;
@@ -190,16 +215,24 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
             for (size_t k = 0; k < sub_len; ++k)
                 out->language[k] = loc_to_lower(sub[k]);
             out->language[sub_len] = '\0';
-        } else if (!after_extension && !saw_private && sub_len == 4 && out->script[0] == '\0' &&
-                   out->region[0] == '\0' && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1]) &&
-                   loc_is_alpha(sub[2]) && loc_is_alpha(sub[3])) {
+        } else if (!after_extension && !saw_private && !saw_variant && sub_len == 3 &&
+                   out->script[0] == '\0' && out->region[0] == '\0' && extlang_count < 3 &&
+                   (size_t)subtag_idx == (size_t)(1 + extlang_count) &&
+                   strlen(out->language) <= 3 && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1]) &&
+                   loc_is_alpha(sub[2])) {
+            // Extended language subtag: up to three 3-letter subtags directly
+            // after a 2-3 letter primary language (e.g. zh-cmn-Hans-CN).
+            extlang_count++;
+        } else if (!after_extension && !saw_private && !saw_variant && sub_len == 4 &&
+                   out->script[0] == '\0' && out->region[0] == '\0' && loc_is_alpha(sub[0]) &&
+                   loc_is_alpha(sub[1]) && loc_is_alpha(sub[2]) && loc_is_alpha(sub[3])) {
             // Script: exactly 4 letters, Title-case
             is_script_subtag = 1;
             out->script[0] = loc_to_upper(sub[0]);
             for (size_t k = 1; k < 4; ++k)
                 out->script[k] = loc_to_lower(sub[k]);
             out->script[4] = '\0';
-        } else if (!after_extension && !saw_private && out->region[0] == '\0' &&
+        } else if (!after_extension && !saw_private && !saw_variant && out->region[0] == '\0' &&
                    ((sub_len == 2 && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1])) ||
                     (sub_len == 3 && loc_is_digit(sub[0]) && loc_is_digit(sub[1]) &&
                      loc_is_digit(sub[2])))) {
@@ -217,10 +250,18 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
                 if (sub_len < 1 || sub_len > 8)
                     return -1;
             } else if (is_private_singleton) {
+                // An extension singleton must own at least one subtag before
+                // the private-use section starts (rejects `en-a-x-foo`).
+                if (ext_needs_subtag)
+                    return -1;
                 if (st + 1 >= sub_count)
                     return -1;
                 saw_private = 1;
             } else if (is_singleton) {
+                // Back-to-back singletons form an empty extension
+                // (rejects `en-a-b-foo`).
+                if (ext_needs_subtag)
+                    return -1;
                 if (st + 1 >= sub_count)
                     return -1;
                 char sc = loc_to_lower(sub[0]);
@@ -232,14 +273,30 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
                     return -1;
                 extension_singletons |= mask;
                 after_extension = 1;
+                ext_needs_subtag = 1;
             } else if (after_extension) {
                 if (sub_len < 2 || sub_len > 8)
                     return -1;
+                ext_needs_subtag = 0;
             } else {
                 int valid_variant =
                     (sub_len >= 5 && sub_len <= 8) || (sub_len == 4 && loc_is_digit(sub[0]));
                 if (!valid_variant)
                     return -1;
+                // Duplicate variants are invalid (rejects `sl-rozaj-rozaj`).
+                char lowered[9];
+                for (size_t k = 0; k < sub_len; ++k)
+                    lowered[k] = loc_to_lower(sub[k]);
+                lowered[sub_len] = '\0';
+                for (size_t v = 0; v < variants_seen_count; ++v) {
+                    if (variants_seen_lens[v] == sub_len &&
+                        memcmp(variants_seen[v], lowered, sub_len) == 0)
+                        return -1;
+                }
+                memcpy(variants_seen[variants_seen_count], lowered, sub_len + 1);
+                variants_seen_lens[variants_seen_count] = sub_len;
+                variants_seen_count++;
+                saw_variant = 1;
             }
         }
 
@@ -273,7 +330,10 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
         ++subtag_idx;
     }
 
-    if (out->language[0] == '\0')
+    if (out->language[0] == '\0' && !private_only)
+        return -1;
+    // A trailing extension singleton with no subtags is invalid (`en-a`).
+    if (ext_needs_subtag)
         return -1;
 
     if (canonical_len + 1 > RT_LOCALE_TAG_CAP)
@@ -288,7 +348,7 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
 
 /// @brief GC finalizer for Locale handles — releases the retained locale-data pointer.
 /// @details Called by the GC when the Locale handle's reference count drops to zero.
-///          Releases the non-owning `data` pointer back to the LocaleManager registry
+///          Releases the handle's retained `data` reference back to the LocaleManager registry
 ///          so the data record's formatter_refs counter stays accurate.
 /// @param obj Pointer to the rt_locale_t being collected; NULL is safe.
 void rt_locale_internal_finalizer(void *obj);
@@ -472,6 +532,14 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
         return NULL;
     }
 
+    // Each argument must be exactly one pre-split subtag: embedded
+    // separators would let a caller smuggle extra components through any
+    // field (VDOC-066).
+    if (loc_str_has_separator(ls, (size_t)ll)) {
+        rt_trap("Viper.Localization.Locale: language must be a single subtag");
+        return NULL;
+    }
+
     // Build a canonical string and reuse the parser — keeps validation logic
     // in one place and ensures FromParts and Parse agree byte-for-byte.
     char buf[RT_LOCALE_TAG_CAP];
@@ -483,10 +551,17 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
     memcpy(buf, ls, (size_t)ll);
     pos = (size_t)ll;
 
+    int script_given = 0;
+    int region_given = 0;
     if (script) {
         const char *ss = rt_string_cstr(script);
         int64_t sll = rt_str_len(script);
         if (ss && sll > 0) {
+            if (loc_str_has_separator(ss, (size_t)sll)) {
+                rt_trap("Viper.Localization.Locale: script must be a single subtag");
+                return NULL;
+            }
+            script_given = 1;
             if (pos + 1 + (size_t)sll >= sizeof(buf)) {
                 rt_trap("Viper.Localization.Locale: script subtag overflow");
                 return NULL;
@@ -500,6 +575,11 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
         const char *rs = rt_string_cstr(region);
         int64_t rl = rt_str_len(region);
         if (rs && rl > 0) {
+            if (loc_str_has_separator(rs, (size_t)rl)) {
+                rt_trap("Viper.Localization.Locale: region must be a single subtag");
+                return NULL;
+            }
+            region_given = 1;
             if (pos + 1 + (size_t)rl >= sizeof(buf)) {
                 rt_trap("Viper.Localization.Locale: region subtag overflow");
                 return NULL;
@@ -514,6 +594,20 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
     rt_locale_t parsed;
     if (rt_locale_internal_parse_into(buf, pos, &parsed) != 0) {
         rt_trap("Viper.Localization.Locale: invalid subtag combination");
+        return NULL;
+    }
+    // The parser classifies by shape; verify each supplied part landed in
+    // the field the caller named (rejects FromParts("en", "US", "")).
+    if (parsed.language[0] == '\0') {
+        rt_trap("Viper.Localization.Locale: language is not a valid language subtag");
+        return NULL;
+    }
+    if (script_given && parsed.script[0] == '\0') {
+        rt_trap("Viper.Localization.Locale: script is not a valid script subtag");
+        return NULL;
+    }
+    if (region_given && parsed.region[0] == '\0') {
+        rt_trap("Viper.Localization.Locale: region is not a valid region subtag");
         return NULL;
     }
     rt_locale_t *loc = (rt_locale_t *)loc_alloc();
@@ -597,14 +691,15 @@ rt_string rt_locale_to_string(void *locale) {
 int8_t rt_locale_equals(void *a, void *b) {
     if (a == b)
         return 1;
-    if (!a || !b)
-        return 0;
+    // A null handle is invariant-shaped everywhere else in the API
+    // (Tag/ToString/Fallbacks), so equality treats it as "root" too
+    // (VDOC-067).
     rt_locale_t *la = (rt_locale_t *)a;
     rt_locale_t *lb = (rt_locale_t *)b;
     // Compare canonical tags directly; both sides are already normalized so
-    // strcmp suffices. Tag "root" and empty tag both represent invariant.
-    const char *ta = la->tag[0] ? la->tag : "root";
-    const char *tb = lb->tag[0] ? lb->tag : "root";
+    // strcmp suffices. Tag "root", empty tag, and NULL all represent invariant.
+    const char *ta = (la && la->tag[0]) ? la->tag : "root";
+    const char *tb = (lb && lb->tag[0]) ? lb->tag : "root";
     return strcmp(ta, tb) == 0 ? (int8_t)1 : (int8_t)0;
 }
 

@@ -400,6 +400,8 @@ RT_FUNC(ZiaDocSyncFull,     rt_zia_doc_sync_full,          "Viper.Zia.Document.S
 RT_FUNC(ZiaDocSyncDelta,    rt_zia_doc_sync_delta,         "Viper.Zia.Document.SyncDelta",    "i1(str,str,i64)")
 RT_FUNC(ZiaDocClose,        rt_zia_doc_close,              "Viper.Zia.Document.Close",        "void(str)")
 RT_FUNC(ZiaDocText,         rt_zia_doc_text,               "Viper.Zia.Document.Text",         "str(str)")
+RT_FUNC(ZiaDocHas,          rt_zia_doc_has,                "Viper.Zia.Document.Has",          "i1(str)")
+RT_FUNC(ZiaServiceAvailable, rt_zia_service_available,     "Viper.Zia.Completion.IsAvailable", "i1()")
 RT_FUNC(ZiaDocCheckForFile, rt_zia_check_for_file_mirror,  "Viper.Zia.Document.CheckForFile", "str(str)")
 RT_FUNC(ZiaDocBeginCheckForFile, rt_zia_doc_begin_check_for_file, "Viper.Zia.Document.BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)")
 

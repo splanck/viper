@@ -99,7 +99,6 @@ typedef struct {
     re_compiled_pattern *pattern;
 } compiled_pattern_obj;
 
-#define MAX_CAPTURE_GROUPS 32
 
 //=============================================================================
 // Creation and Lifecycle
@@ -126,6 +125,12 @@ void *rt_compiled_pattern_new(rt_string pattern) {
         return NULL;
     }
     const char *pat_str = pattern ? rt_string_cstr(pattern) : "";
+    if (!pat_str)
+        pat_str = "";
+    if (strlen(pat_str) != (size_t)rt_str_len(pattern)) {
+        rt_trap("CompiledPattern: pattern contains NUL byte");
+        return NULL;
+    }
 
     compiled_pattern_obj *obj =
         (compiled_pattern_obj *)rt_obj_new_i64(0, (int64_t)sizeof(compiled_pattern_obj));
@@ -372,8 +377,19 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
     if (start > text_len)
         return seq;
 
-    int group_starts[MAX_CAPTURE_GROUPS];
-    int group_ends[MAX_CAPTURE_GROUPS];
+    // Size capture arrays from the compiled pattern so any group count is
+    // supported without a fixed cap (VDOC-058).
+    int total_groups = re_group_count(cpo->pattern);
+    if (total_groups < 1)
+        total_groups = 1;
+    int *group_starts = (int *)malloc(sizeof(int) * (size_t)total_groups);
+    int *group_ends = (int *)malloc(sizeof(int) * (size_t)total_groups);
+    if (!group_starts || !group_ends) {
+        free(group_starts);
+        free(group_ends);
+        rt_trap("CompiledPattern: memory allocation failed");
+        return seq;
+    }
     int match_start, match_end, num_groups;
 
     if (re_find_match_with_groups(cpo->pattern,
@@ -384,22 +400,27 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
                                   &match_end,
                                   group_starts,
                                   group_ends,
-                                  MAX_CAPTURE_GROUPS,
+                                  total_groups,
                                   &num_groups)) {
         // Group 0 is the full match
         rt_string full_match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
         rt_seq_push(seq, (void *)full_match);
         rt_string_unref(full_match);
 
-        // Add captured groups
+        // Add captured groups in lexical order; a group that did not
+        // participate in the match (start == -1) reports an empty string.
         for (int i = 0; i < num_groups; i++) {
-            rt_string group =
-                rt_string_from_bytes(txt_str + group_starts[i], group_ends[i] - group_starts[i]);
+            rt_string group = group_starts[i] >= 0
+                ? rt_string_from_bytes(txt_str + group_starts[i],
+                                       group_ends[i] - group_starts[i])
+                : rt_string_from_bytes("", 0);
             rt_seq_push(seq, (void *)group);
             rt_string_unref(group);
         }
     }
 
+    free(group_starts);
+    free(group_ends);
     return seq;
 }
 
@@ -463,8 +484,20 @@ rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string repla
         memcpy(result + result_len, rep_str, rep_len);
         result_len += rep_len;
 
-        // Move past match
-        pos = match_end > match_start ? match_end : match_start + 1;
+        // Move past match. A zero-width match must not swallow the byte we
+        // step over to guarantee progress (VDOC-054).
+        if (match_end > match_start) {
+            pos = match_end;
+        } else {
+            if (match_start < text_len) {
+                if (!compiled_ensure_result_capacity(&result, &result_cap, result_len, 1)) {
+                    free(result);
+                    return rt_string_from_bytes("", 0);
+                }
+                result[result_len++] = txt_str[match_start];
+            }
+            pos = match_start + 1;
+        }
     }
 
     rt_string out = rt_string_from_bytes(result, result_len);
@@ -546,48 +579,47 @@ void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit) {
     int pos = 0;
     int64_t split_count = 0;
 
+    int seg_start = 0;
     while (pos <= text_len) {
         // Check limit (0 means unlimited)
-        if (limit > 0 && split_count >= limit - 1) {
-            // Add remaining text as final element
-            rt_string part = rt_string_from_bytes(txt_str + pos, text_len - pos);
-            rt_seq_push(seq, (void *)part);
-            rt_string_unref(part);
-            return seq;
-        }
+        if (limit > 0 && split_count >= limit - 1)
+            break;
 
         int match_start, match_end;
-        if (!re_find_match(cpo->pattern, txt_str, text_len, pos, &match_start, &match_end)) {
-            // No more matches; add remaining text
-            rt_string part = rt_string_from_bytes(txt_str + pos, text_len - pos);
-            rt_seq_push(seq, (void *)part);
-            rt_string_unref(part);
+        if (!re_find_match(cpo->pattern, txt_str, text_len, pos, &match_start, &match_end))
             break;
+
+        if (match_end == match_start) {
+            // Zero-width match: never split at the current segment start or
+            // at end-of-text; the stepped-over byte stays in the next
+            // segment so no source bytes are lost (VDOC-054).
+            if (match_start >= text_len)
+                break;
+            if (match_start > seg_start) {
+                rt_string part =
+                    rt_string_from_bytes(txt_str + seg_start, match_start - seg_start);
+                rt_seq_push(seq, (void *)part);
+                rt_string_unref(part);
+                seg_start = match_start;
+                split_count++;
+            }
+            pos = match_start + 1;
+            continue;
         }
 
         // Add text before match
-        rt_string part = rt_string_from_bytes(txt_str + pos, match_start - pos);
+        rt_string part = rt_string_from_bytes(txt_str + seg_start, match_start - seg_start);
         rt_seq_push(seq, (void *)part);
         rt_string_unref(part);
         split_count++;
-
-        // Move past match
-        pos = match_end > match_start ? match_end : match_start + 1;
-
-        // If at end after match, add empty string
-        if (pos > text_len) {
-            rt_string empty = rt_const_cstr("");
-            rt_seq_push(seq, (void *)empty);
-            rt_string_unref(empty);
-        }
+        seg_start = match_end;
+        pos = match_end;
     }
 
-    // Handle empty result
-    if (rt_seq_len(seq) == 0) {
-        rt_string part = rt_string_from_bytes(txt_str, text_len);
-        rt_seq_push(seq, (void *)part);
-        rt_string_unref(part);
-    }
+    // Remaining text (empty when the text ends with a separator).
+    rt_string tail = rt_string_from_bytes(txt_str + seg_start, text_len - seg_start);
+    rt_seq_push(seq, (void *)tail);
+    rt_string_unref(tail);
 
     return seq;
 }

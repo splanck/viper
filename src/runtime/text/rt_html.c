@@ -906,11 +906,23 @@ void *rt_html_extract_text(rt_string str, rt_string tag) {
 
                 const char *content_start = tag_end + 1;
 
-                // Find closing tag
+                // Find the MATCHING closing tag, tracking nesting depth so
+                // nested same-name elements do not truncate the outer text
+                // (VDOC-048). Self-closing nested tags do not open a level.
                 const char *close = content_start;
+                int depth = 0;
                 while (close < end) {
-                    if (*close == '<' && tag_name_matches_at(close, end, tag_name, tag_len, 1))
-                        break;
+                    if (*close == '<') {
+                        if (tag_name_matches_at(close, end, tag_name, tag_len, 1)) {
+                            if (depth == 0)
+                                break;
+                            depth--;
+                        } else if (tag_name_matches_at(close, end, tag_name, tag_len, 0)) {
+                            const char *nested_end = find_byte_bounded(close, end, '>');
+                            if (nested_end && nested_end[-1] != '/')
+                                depth++;
+                        }
+                    }
                     close++;
                 }
 

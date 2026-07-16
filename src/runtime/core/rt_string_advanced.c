@@ -30,6 +30,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_ascii.h"
 #include "rt_string_internal.h"
 
 #include <ctype.h>
@@ -765,8 +766,8 @@ int64_t rt_str_cmp_nocase(rt_string a, rt_string b) {
     size_t minlen = alen < blen ? alen : blen;
 
     for (size_t i = 0; i < minlen; i++) {
-        unsigned char ca = (unsigned char)tolower((unsigned char)a->data[i]);
-        unsigned char cb = (unsigned char)tolower((unsigned char)b->data[i]);
+        unsigned char ca = (unsigned char)rt_ascii_tolower((unsigned char)a->data[i]);
+        unsigned char cb = (unsigned char)rt_ascii_tolower((unsigned char)b->data[i]);
         if (ca < cb)
             return -1;
         if (ca > cb)

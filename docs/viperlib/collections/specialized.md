@@ -107,11 +107,9 @@ intersection, difference), and enumeration.
 - The implementation uses FNV-1a hashing and separate chaining for average
   O(1) membership, insertion, and removal. It grows after the next insertion
   would exceed a 75% load factor.
-- **Known defect:** `ToSet()` currently inserts unboxed runtime strings into
-  the generic `Set`. A separately boxed string with identical text therefore
-  does not compare equal: `bag.ToSet().Has(Box.Str("apple"))` can be false even
-  when the bag contains `"apple"`. Continue using `StringSet` for string membership,
-  or rebuild a `Set` by adding `Box.Str(...)` values, until VDOC-102 is fixed.
+- `ToSet()` boxes each string on conversion, so the resulting `Set` uses normal boxed-string
+  value equality: `bag.ToSet().Has(Box.Str("apple"))` is true whenever the bag contains
+  `"apple"`.
 - Bags are not thread-safe. Concurrent reads are safe only while no thread can
   mutate the bag.
 
@@ -696,11 +694,9 @@ set operations on integer-indexed elements.
   leading zeroes, and always returns at least `"0"`. It is not a fixed-width
   rendering of `Length`.
 - Indices are zero-based; index 0 is the least significant bit.
-- **Known defect:** staged auto-growth can leave spare backing words. `SetAll`
-  then sets bits outside the logical `Length`, so `Count` can exceed `Length`;
-  `And`, `Or`, and `Xor` on two such overallocated operands can also write past
-  the result's backing storage. Preallocate the maximum required length and
-  avoid these operations on auto-grown instances until VDOC-104 is fixed.
+- Auto-growth may allocate spare backing capacity, but it is never observable: `SetAll`,
+  `Count`, and the binary operations work strictly within the logical `Length`, so
+  `Count <= Length` always holds regardless of growth history.
 - BitSets are not thread-safe.
 
 ### Zia Example

@@ -149,7 +149,8 @@ static void rt_set_finalize(void *obj) {
     set->count = 0;
 }
 
-/// @brief Construct an empty mutable set. Internal storage is open-addressed hashed buckets;
+/// @brief Construct an empty mutable set. Internal storage is hashed buckets
+/// with separate chaining;
 /// resizes when load factor exceeds 0.75. Elements are reference-counted via Box hash/equality.
 void *rt_set_new(void) {
     rt_set_impl *set = (rt_set_impl *)rt_obj_new_i64(RT_SET_CLASS_ID, (int64_t)sizeof(rt_set_impl));

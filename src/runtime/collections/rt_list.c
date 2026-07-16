@@ -15,12 +15,14 @@
 //   - The List header contains only a vptr and an rt_arr_obj pointer; all
 //     element storage is delegated to rt_arr_obj which handles capacity growth.
 //   - rt_arr_obj growth strategy: doubles capacity when full, starting from 16.
-//   - Elements are stored as raw void* pointers; the list does not explicitly
-//     retain them (retention is the caller's responsibility or managed by GC).
+//   - Elements are retained on insertion (rt_obj_retain_maybe) and released
+//     on removal/clear/finalize; Get returns a retained reference the caller
+//     must release.
 //   - Pop removes and returns the last element (LIFO semantics for stack use).
 //   - RemoveAt shifts elements left; Insert shifts elements right — both O(n).
-//   - Sort uses the standard C qsort with a string-comparison callback when
-//     elements are rt_string; otherwise falls back to pointer comparison.
+//   - Sort is a stable merge sort. The default comparator orders raw/boxed
+//     strings lexicographically and boxed integers numerically; a caller
+//     comparator can override it.
 //   - Not thread-safe; external synchronization required for concurrent access.
 //
 // Ownership/Lifetime:
@@ -131,11 +133,11 @@ static void rt_list_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 /// **Usage example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("first")
-/// list.Add("second")
-/// list.Add("third")
+/// list.Push("first")
+/// list.Push("second")
+/// list.Push("third")
 /// Print list.Count   ' Outputs: 3
-/// Print list.Item(0) ' Outputs: first
+/// PRINT list.Get(0) ' Outputs: first
 /// ```
 ///
 /// @return A pointer to the newly created List object, or NULL if memory
@@ -211,8 +213,8 @@ int64_t rt_list_len(void *list) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// Print list.Count  ' Outputs: 2
 /// list.Clear()
 /// Print list.Count  ' Outputs: 0
@@ -248,9 +250,9 @@ void rt_list_clear(void *list) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("first")
-/// list.Add("second")
-/// list.Add("third")
+/// list.Push("first")
+/// list.Push("second")
+/// list.Push("third")
 /// Print list.Count  ' Outputs: 3
 /// ```
 ///
@@ -290,8 +292,8 @@ void rt_list_push(void *list, void *elem) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// list.Add("c")
 /// Print list.Item(0)  ' Outputs: a
 /// Print list.Item(1)  ' Outputs: b
@@ -346,8 +348,8 @@ void *rt_list_get(void *list, int64_t index) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// list.SetItem(0, "x")
 /// Print list.Item(0)  ' Outputs: x
 /// Print list.Item(1)  ' Outputs: b
@@ -401,8 +403,8 @@ void rt_list_set(void *list, int64_t index, void *elem) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// list.Add("c")
 /// list.RemoveAt(1)
 /// ' list is now: [a, c]
@@ -669,8 +671,8 @@ int8_t rt_list_remove(void *list, void *elem) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// list.Add("c")
 /// list.Add("d")
 /// Dim slice = list.Slice(1, 3)
@@ -726,8 +728,8 @@ void *rt_list_slice(void *list, int64_t start, int64_t end) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// list.Add("c")
 /// list.Reverse()
 /// ' list now contains ["c", "b", "a"]
@@ -762,8 +764,8 @@ void rt_list_reverse(void *list) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// Print list.First()  ' Outputs: a
 /// ```
 ///
@@ -790,8 +792,8 @@ void *rt_list_first(void *list) {
 /// **Example:**
 /// ```
 /// Dim list = List.New()
-/// list.Add("a")
-/// list.Add("b")
+/// list.Push("a")
+/// list.Push("b")
 /// Print list.Last()  ' Outputs: b
 /// ```
 ///
@@ -851,83 +853,12 @@ void *rt_list_pop(void *list) {
 // Sorting
 //=============================================================================
 
-/// @brief Extract a comparable string from a list element.
-/// @details List elements may be raw rt_string handles or boxed strings
-///          (RT_BOX_STR). This helper returns the underlying rt_string
-///          for either representation, or NULL if the element is not a string.
-static rt_string list_extract_str(void *p, int *owned) {
-    if (owned)
-        *owned = 0;
-    if (rt_string_is_handle(p))
-        return (rt_string)p;
-    if (rt_box_type(p) == RT_BOX_STR) {
-        if (owned)
-            *owned = 1;
-        return rt_unbox_str(p);
-    }
-    return NULL;
-}
-
-/// @brief Extract a comparable integer from a list element.
-/// @details Returns the unboxed i64 value if the element is a boxed integer,
-///          otherwise returns 0 and sets *ok to 0.
-static int64_t list_extract_i64(void *p, int *ok) {
-    if (rt_box_type(p) == RT_BOX_I64) {
-        *ok = 1;
-        return rt_unbox_i64(p);
-    }
-    *ok = 0;
-    return 0;
-}
-
 /// @brief Default comparison for list elements.
-/// @details Handles boxed strings (RT_BOX_STR), raw string handles, and
-///          boxed integers (RT_BOX_I64). Falls back to pointer comparison
-///          for other element types.
+/// @details Delegates to the shared collection order (VDOC-089): type-class
+///          rank first (NULL < numeric < string < other), then value order
+///          within class, so the relation is total and transitive.
 static int64_t list_default_compare(void *a, void *b) {
-    if (!a && !b)
-        return 0;
-    if (!a)
-        return -1;
-    if (!b)
-        return 1;
-
-    // Try string comparison (handles both raw and boxed strings)
-    int own_sa = 0;
-    int own_sb = 0;
-    rt_string sa = list_extract_str(a, &own_sa);
-    rt_string sb = list_extract_str(b, &own_sb);
-    if (sa && sb) {
-        int64_t cmp = rt_str_cmp(sa, sb);
-        if (own_sa)
-            rt_str_release_maybe(sa);
-        if (own_sb)
-            rt_str_release_maybe(sb);
-        return cmp;
-    }
-    if (own_sa)
-        rt_str_release_maybe(sa);
-    if (own_sb)
-        rt_str_release_maybe(sb);
-
-    // Try integer comparison (boxed i64)
-    int ok_a = 0, ok_b = 0;
-    int64_t ia = list_extract_i64(a, &ok_a);
-    int64_t ib = list_extract_i64(b, &ok_b);
-    if (ok_a && ok_b) {
-        if (ia < ib)
-            return -1;
-        if (ia > ib)
-            return 1;
-        return 0;
-    }
-
-    // Fallback: pointer comparison (deterministic but arbitrary order for untyped elements)
-    if (a < b)
-        return -1;
-    if (a > b)
-        return 1;
-    return 0;
+    return rt_box_default_sort_compare(a, b);
 }
 
 /// @brief Merge two sorted halves of a temp array.

@@ -19,6 +19,7 @@ Its public surface exposes operations including `Complete`, `CompleteForFile`, `
 
 | Method | Signature | Runtime target |
 |---|---|---|
+| <a id="viper-zia-completion-isavailable"></a>`IsAvailable` | `i1()` | `Viper.Zia.Completion.IsAvailable` |
 | <a id="viper-zia-completion-complete"></a>`Complete` | `str(str,i64,i64)` | `Viper.Zia.Completion.Complete` |
 | <a id="viper-zia-completion-completeforfile"></a>`CompleteForFile` | `str(str,str,i64,i64)` | `Viper.Zia.Completion.CompleteForFile` |
 | <a id="viper-zia-completion-items"></a>`Items` | `obj<Viper.Collections.Seq>(str,i64,i64)` | `Viper.Zia.Completion.Items` |
@@ -77,6 +78,7 @@ Its public surface exposes operations including `SyncFull`, `SyncDelta`, `Close`
 | <a id="viper-zia-document-syncdelta"></a>`SyncDelta` | `i1(str,str,i64)` | `Viper.Zia.Document.SyncDelta` |
 | <a id="viper-zia-document-close"></a>`Close` | `void(str)` | `Viper.Zia.Document.Close` |
 | <a id="viper-zia-document-text"></a>`Text` | `str(str)` | `Viper.Zia.Document.Text` |
+| <a id="viper-zia-document-has"></a>`Has` | `i1(str)` | `Viper.Zia.Document.Has` |
 | <a id="viper-zia-document-checkforfile"></a>`CheckForFile` | `str(str)` | `Viper.Zia.Document.CheckForFile` |
 | <a id="viper-zia-document-begincheckforfile"></a>`BeginCheckForFile` | `obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)` | `Viper.Zia.Document.BeginCheckForFile` |
 
@@ -199,6 +201,8 @@ to compilers, language services, and generated reference documentation.
 | `Viper.Zia.Document.SyncDelta` | `i1(str,str,i64)` | `rt_zia_doc_sync_delta` |
 | `Viper.Zia.Document.Close` | `void(str)` | `rt_zia_doc_close` |
 | `Viper.Zia.Document.Text` | `str(str)` | `rt_zia_doc_text` |
+| `Viper.Zia.Document.Has` | `i1(str)` | `rt_zia_doc_has` |
+| `Viper.Zia.Completion.IsAvailable` | `i1()` | `rt_zia_service_available` |
 | `Viper.Zia.Document.CheckForFile` | `str(str)` | `rt_zia_check_for_file_mirror` |
 | `Viper.Zia.Document.BeginCheckForFile` | `obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)` | `rt_zia_doc_begin_check_for_file` |
 

@@ -45,12 +45,9 @@ Simple string templating with placeholder substitution.
 - Placeholder indices that overflow integer range are ignored (placeholder left as-is)
 - Template rendering and escaping use runtime string byte length, so embedded `NUL` bytes in values are preserved
 - `Escape()` always returns a new string result, even when the input contains no template delimiters
-- `Keys()` returns an owned `Viper.Collections.StringSet`, so key order is unspecified and duplicate
-  placeholders produce one key. Its registry signature incorrectly declares `Seq<String>`; natural
-  Zia member access therefore uses the wrong static type. Until
-  [VDOC-044](../../documentation-review-findings.md#vdoc-044--templatekeys-is-registered-as-a-sequence-but-returns-a-bag)
-  is fixed, use an explicit `Viper.Collections.StringSet` receiver or a typed BASIC local, as in the
-  example below.
+- `Keys()` returns an owned `Viper.Collections.StringSet` (and is registered as such), so key
+  order is unspecified, duplicate placeholders produce one key, and natural member access such as
+  `.Count`/`.Has(...)` resolves against StringSet.
 - Thread safe: all functions are stateless
 
 ### Traps
@@ -636,9 +633,9 @@ leading `v` or `V` accepted for compatibility.
 
 - Follows SemVer 2.0.0: `MAJOR.MINOR.PATCH[-prerelease][+buildmetadata]`
 - `Parse` requires all three numeric components and returns NULL for invalid SemVer strings
-- Numeric components are limited to the signed 64-bit range `0` through `9223372036854775807`.
-  SemVer itself sets no component-size limit, so larger otherwise-valid versions are rejected; see
-  [VDOC-047](../../documentation-review-findings.md#vdoc-047--version-rejects-semver-components-above-int64_max).
+- Numeric components are limited to the signed 64-bit range `0` through `9223372036854775807`
+  (the class exposes them as integer properties). SemVer itself sets no component-size limit, so
+  larger otherwise-valid version strings are rejected by design.
 - Pre-release and build identifiers must be non-empty dot-separated ASCII alphanumeric/hyphen identifiers; numeric pre-release identifiers cannot have leading zeroes
 - `Cmp` ignores build metadata per the SemVer specification; pre-release versions have lower precedence than the associated normal version
 - `Parse` and `IsValid` also accept one optional leading `v` or `V`; this is a Viper extension to
@@ -791,9 +788,8 @@ in `text`; it is not accumulated into the containing element's `text` field.
   as string sequences, so chained member access resolves against the returned collections.
 - `ExtractLinks` returns raw attribute text without entity decoding. `ExtractLinks` and
   `ExtractText` return owned sequences of owned strings.
-- `ExtractText` does not correctly delimit nested elements with the same tag name and can omit
-  trailing outer text; see
-  [VDOC-048](../../documentation-review-findings.md#vdoc-048--html-extracttext-mishandles-nested-matching-tags).
+- `ExtractText` tracks nesting depth for same-name elements: each top-level match yields one
+  string containing the element's complete stripped text (nested matches fold into their parent).
 - String-returning helpers return an empty string for `NULL`; extraction helpers return an empty `Seq`; `Parse(NULL)` returns an empty root Map node.
 
 ### Zia Example

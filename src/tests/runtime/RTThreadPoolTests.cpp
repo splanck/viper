@@ -5,6 +5,9 @@
 // RTThreadPoolTests.cpp - Tests for rt_threadpool (async task executor)
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
+#include "rt_heap.h"
+
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -443,7 +446,37 @@ static void test_concurrent_submitters() {
 }
 
 /// @brief Main.
+static void owned_noop_task(void *arg) {
+    (void)arg;
+}
+
+static void test_submit_owned_releases_on_run_and_discard() {
+    // VDOC-128: SubmitOwned retains the runtime-managed argument on
+    // acceptance and releases it after the callback runs OR when ShutdownNow
+    // discards the queued task, so the argument's refcount is balanced in
+    // both paths.
+    void *arg = rt_box_i64(42);
+    size_t base = rt_heap_hdr(arg)->refcnt;
+
+    // Path 1: task runs to completion.
+    void *pool = rt_threadpool_new(1);
+    assert(rt_threadpool_submit_owned(pool, (void *)owned_noop_task, arg) == 1);
+    rt_threadpool_wait(pool);
+    assert(rt_heap_hdr(arg)->refcnt == base);
+    rt_threadpool_shutdown(pool);
+
+    // Path 2: queued task is discarded by ShutdownNow.
+    void *pool2 = rt_threadpool_new(1);
+    // Occupy the single worker so the owned task stays queued.
+    rt_threadpool_submit(pool2, (void *)slow_task, NULL);
+    rt_threadpool_submit(pool2, (void *)slow_task, NULL);
+    assert(rt_threadpool_submit_owned(pool2, (void *)owned_noop_task, arg) == 1);
+    rt_threadpool_shutdown_now(pool2);
+    assert(rt_heap_hdr(arg)->refcnt == base);
+}
+
 int main() {
+    test_submit_owned_releases_on_run_and_discard();
     test_new();
     test_new_clamp_min();
     test_new_clamp_negative();

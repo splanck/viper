@@ -108,6 +108,12 @@ static void audio_groups_init_unlocked(void) {
 /// @brief Copy a runtime string group name into a fixed @p cap buffer,
 ///        trimming leading/trailing spaces/tabs and NUL-terminating
 ///        (truncated to fit). Empty buffer on NULL @p name.
+/// @brief Canonicalize a mix-group name into @p dst.
+/// @details Trims space/tab edges and replaces embedded NUL bytes with '_'.
+///          Names whose canonical form exceeds the storage capacity are
+///          REJECTED (dst becomes empty, so registration/lookup return -1)
+///          instead of silently truncated — truncation made distinct names
+///          alias the same group and could split UTF-8 sequences (VDOC-118).
 static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
     if (!dst || cap == 0)
         return;
@@ -127,7 +133,7 @@ static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
     while (len > 0 && (s[len - 1] == ' ' || s[len - 1] == '\t'))
         len--;
     if ((size_t)len >= cap)
-        len = (int64_t)cap - 1;
+        return; // too long: reject rather than alias (VDOC-118)
     for (int64_t i = 0; i < len; i++)
         dst[i] = s[i] == '\0' ? '_' : s[i];
     dst[len] = '\0';
@@ -204,6 +210,52 @@ static int64_t seconds_to_ms_i64(float seconds) {
 }
 #endif /* VIPER_ENABLE_AUDIO */
 
+// The audio-state spinlock is available in BOTH configurations (VDOC-117):
+// audio-disabled builds still mutate the shared mix-group tables and must
+// serialise their lazy initialization and registration.
+/// @brief Spinlock for thread-safe initialization (RACE-009 fix).
+/// CONC-008: kept as spinlock (pthread_once doesn't support retry-on-failure);
+/// yield hint added to reduce CPU waste under contention.
+static volatile int g_audio_init_lock = 0;
+
+#if !RT_PLATFORM_WINDOWS
+#include <sched.h>
+#endif
+
+/// @brief Acquire the audio state's spinlock with acquire ordering.
+/// @details Wraps `__atomic_test_and_set` (or MSVC's `_InterlockedExchange8`)
+///          so concurrent callers serialise around the global audio state
+///          (registries, crossfade table, voice tracker). Yields on
+///          contention via `SwitchToThread`/`sched_yield` so a contended
+///          lock doesn't burn an entire CPU core. The lock is retained as
+///          a spinlock rather than promoted to a `pthread_mutex` because
+///          `pthread_once` (CONC-008) can't retry on failure.
+static void audio_state_lock(void) {
+#if RT_COMPILER_MSVC
+    while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
+#else
+    while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
+#endif
+    {
+#if RT_PLATFORM_WINDOWS
+        SwitchToThread();
+#else
+        sched_yield();
+#endif
+    }
+}
+
+/// @brief Release the audio state's spinlock with release ordering.
+/// @details Pairs with @ref audio_state_lock. No-op on an unlocked lock
+///          (the atomic clear simply writes zero again).
+static void audio_state_unlock(void) {
+#if RT_COMPILER_MSVC
+    _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
+#else
+    __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
+#endif
+}
+
 #ifdef VIPER_ENABLE_AUDIO
 #include "vaud.h"
 
@@ -250,48 +302,6 @@ static vaud_context_t g_audio_ctx = NULL;
 static volatile int g_audio_initialized = 0;
 static int8_t g_audio_paused = 0;
 
-/// @brief Spinlock for thread-safe initialization (RACE-009 fix).
-/// CONC-008: kept as spinlock (pthread_once doesn't support retry-on-failure);
-/// yield hint added to reduce CPU waste under contention.
-static volatile int g_audio_init_lock = 0;
-
-#if !RT_PLATFORM_WINDOWS
-#include <sched.h>
-#endif
-
-/// @brief Acquire the audio state's spinlock with acquire ordering.
-/// @details Wraps `__atomic_test_and_set` (or MSVC's `_InterlockedExchange8`)
-///          so concurrent callers serialise around the global audio state
-///          (registries, crossfade table, voice tracker). Yields on
-///          contention via `SwitchToThread`/`sched_yield` so a contended
-///          lock doesn't burn an entire CPU core. The lock is retained as
-///          a spinlock rather than promoted to a `pthread_mutex` because
-///          `pthread_once` (CONC-008) can't retry on failure.
-static void audio_state_lock(void) {
-#if RT_COMPILER_MSVC
-    while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
-#else
-    while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
-#endif
-    {
-#if RT_PLATFORM_WINDOWS
-        SwitchToThread();
-#else
-        sched_yield();
-#endif
-    }
-}
-
-/// @brief Release the audio state's spinlock with release ordering.
-/// @details Pairs with @ref audio_state_lock. No-op on an unlocked lock
-///          (the atomic clear simply writes zero again).
-static void audio_state_unlock(void) {
-#if RT_COMPILER_MSVC
-    _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
-#else
-    __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
-#endif
-}
 
 typedef struct {
     int64_t voice_id;
@@ -1345,7 +1355,8 @@ void *rt_sound_load_asset(rt_string name) {
     uint8_t *data = rt_asset_load_raw(name, &data_size);
     if (!data || data_size == 0) {
         free(data);
-        rt_trap("Sound.LoadAsset: asset not found");
+        // A missing asset is a recoverable load failure, exactly like a
+        // missing file in Sound.Load — return null, don't trap (VDOC-123).
         return NULL;
     }
     if (data_size > (size_t)INT64_MAX) {
@@ -1471,6 +1482,22 @@ int64_t rt_sound_is_handle(void *sound) {
         return 0;
     audio_state_lock();
     int64_t ok = rt_sound_from_handle_locked(sound) ? 1 : 0;
+    audio_state_unlock();
+    return ok;
+}
+
+/// @brief True when @p sound is a valid wrapper whose backend Sound is still
+///        attached to the live audio context, i.e. it can actually play now.
+/// @details Stricter than @ref rt_sound_is_handle: wrappers survive
+///          `Audio.Shutdown()` in the registry with their ViperAUD handles
+///          detached, and such zombies must not register as playable
+///          (VDOC-121).
+int64_t rt_sound_is_playable(void *sound) {
+    if (!sound)
+        return 0;
+    audio_state_lock();
+    rt_sound *snd = rt_sound_from_handle_locked(sound);
+    int64_t ok = (snd && snd->sound && g_audio_ctx && vaud_sound_is_attached(snd->sound)) ? 1 : 0;
     audio_state_unlock();
     return ok;
 }
@@ -2680,6 +2707,12 @@ int64_t rt_sound_is_handle(void *sound) {
     return 0;
 }
 
+/// @brief Audio-disabled stub: no sound can ever play.
+int64_t rt_sound_is_playable(void *sound) {
+    (void)sound;
+    return 0;
+}
+
 /// @brief Audio-disabled stub for `Sound.Play`. Returns `-1` for a null
 ///        sound; otherwise traps so the absence of audio surfaces clearly.
 /// @param sound Ignored.
@@ -3010,9 +3043,12 @@ void rt_music_set_crossfade_pair_volume(void *music, int64_t volume) {
 /// @param group  Mix group index in `0..RT_MIXGROUP_COUNT-1`.
 /// @param volume Volume `0..100`.
 void rt_audio_set_group_volume(int64_t group, int64_t volume) {
+    audio_state_lock();
     audio_groups_init_unlocked();
-    if (!audio_group_id_valid_unlocked(group))
+    if (!audio_group_id_valid_unlocked(group)) {
+        audio_state_unlock();
         return;
+    }
     if (volume < 0)
         volume = 0;
     if (volume > 100)
@@ -3022,6 +3058,7 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 #else
     __atomic_store_n(&g_group_volume[group], volume, __ATOMIC_RELEASE);
 #endif
+    audio_state_unlock();
 }
 
 /// @brief Read the per-mix-group volume in audio-disabled builds.
@@ -3033,26 +3070,37 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 /// @param group Mix group index.
 /// @return Stored volume `0..100`, or `100` for out-of-range / unset.
 int64_t rt_audio_get_group_volume(int64_t group) {
+    audio_state_lock();
     audio_groups_init_unlocked();
-    if (!audio_group_id_valid_unlocked(group))
+    if (!audio_group_id_valid_unlocked(group)) {
+        audio_state_unlock();
         return 100;
+    }
 #if RT_COMPILER_MSVC
-    return rt_atomic_load_i64(&g_group_volume[group], __ATOMIC_ACQUIRE);
+    int64_t volume = rt_atomic_load_i64(&g_group_volume[group], __ATOMIC_ACQUIRE);
 #else
-    return __atomic_load_n(&g_group_volume[group], __ATOMIC_ACQUIRE);
+    int64_t volume = __atomic_load_n(&g_group_volume[group], __ATOMIC_ACQUIRE);
 #endif
+    audio_state_unlock();
+    return volume;
 }
 
 int64_t rt_audio_register_group(rt_string group_name) {
     char name[32];
     audio_group_copy_name(name, sizeof(name), group_name);
-    return audio_register_group_unlocked(name);
+    audio_state_lock();
+    int64_t id = audio_register_group_unlocked(name);
+    audio_state_unlock();
+    return id;
 }
 
 int64_t rt_audio_find_group(rt_string group_name) {
     char name[32];
     audio_group_copy_name(name, sizeof(name), group_name);
-    return audio_find_group_unlocked(name);
+    audio_state_lock();
+    int64_t id = audio_find_group_unlocked(name);
+    audio_state_unlock();
+    return id;
 }
 
 /// @brief Find a registered named mix group as an Option id.
@@ -3078,9 +3126,13 @@ int64_t rt_audio_get_group_volume_named(rt_string group_name) {
 }
 
 rt_string rt_audio_group_name(int64_t group_id) {
+    audio_state_lock();
     audio_groups_init_unlocked();
-    return audio_group_id_valid_unlocked(group_id) ? rt_const_cstr(g_group_names[group_id])
-                                                   : rt_str_empty();
+    rt_string name = audio_group_id_valid_unlocked(group_id)
+                         ? rt_const_cstr(g_group_names[group_id])
+                         : rt_str_empty();
+    audio_state_unlock();
+    return name;
 }
 
 /// @brief Audio-disabled stub for `Music.CrossfadeTo`. No-ops when both

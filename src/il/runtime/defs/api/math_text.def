@@ -781,7 +781,7 @@ RT_FUNC(TemplateRender,      rt_template_render,        "Viper.Text.Template.Ren
 RT_FUNC(TemplateRenderSeq,   rt_template_render_seq,    "Viper.Text.Template.RenderSeq",   "str(str,obj)")
 RT_FUNC(TemplateRenderWith,  rt_template_render_with,   "Viper.Text.Template.RenderWith",  "str(str,obj,str,str)")
 RT_FUNC(TemplateHas,         rt_template_has,           "Viper.Text.Template.Has",         "i1(str,str)")
-RT_FUNC(TemplateKeys,        rt_template_keys,          "Viper.Text.Template.Keys",        "seq<str>(str)")
+RT_FUNC(TemplateKeys,        rt_template_keys,          "Viper.Text.Template.Keys",        "obj<Viper.Collections.StringSet>(str)")
 RT_FUNC(TemplateEscape,      rt_template_escape,        "Viper.Text.Template.Escape",      "str(str)")
 
 //=============================================================================

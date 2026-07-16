@@ -132,6 +132,20 @@ static void test_first_strong() {
     test_result("FirstStrong(all neutral) = neutral",
                 eq(rt_text_direction_first_strong(neutrals), "neutral"));
     rt_string_unref(neutrals);
+
+    // VDOC-074: weak/neutral characters are not strong. Arabic-Indic digits
+    // have bidi class AN and combining marks are NSM.
+    rt_string an = S("\xD9\xA1");            // U+0661 ARABIC-INDIC ONE
+    test_result("FirstStrong(arabic-indic digit) = neutral",
+                eq(rt_text_direction_first_strong(an), "neutral"));
+    rt_string_unref(an);
+
+    char buf2[64];
+    snprintf(buf2, sizeof(buf2), "%s\xCC\x81", HEBREW_SHALOM); // + combining acute
+    rt_string marked = S(buf2);
+    test_result("Detect(rtl text + combining accent) = rtl",
+                eq(rt_text_direction_detect(marked), "rtl"));
+    rt_string_unref(marked);
 }
 
 //=============================================================================

@@ -1900,8 +1900,9 @@ func start() {
     EXPECT_GE(countCallsTo(*mainFn, kSeqLen), static_cast<size_t>(1));
 }
 
-/// @brief Template.Keys should surface a typed Seq[String] in Zia.
-TEST(ZiaBugFixes, SeqReturnType_TemplateKeys_UsesSeqCount) {
+/// @brief Template.Keys is typed as StringSet (VDOC-044); its Count must
+///        route to the StringSet surface rather than the Seq surface.
+TEST(ZiaBugFixes, SeqReturnType_TemplateKeys_UsesStringSetCount) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1920,7 +1921,8 @@ func start() {
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, kSeqLen), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.StringSet.get_Count"),
+              static_cast<size_t>(1));
 }
 
 /// @brief LazySeq.ToSeqN should surface a typed Seq[Object] in Zia.

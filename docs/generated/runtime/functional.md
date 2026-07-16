@@ -62,7 +62,9 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-functional-lazyseq-range"></a>`Range` | `obj<Viper.Functional.LazySeq>(i64,i64,i64)` | `Viper.Functional.LazySeq.Range` |
 | <a id="viper-functional-lazyseq-repeat"></a>`Repeat` | `obj<Viper.Functional.LazySeq>(obj,i64)` | `Viper.Functional.LazySeq.Repeat` |
 | <a id="viper-functional-lazyseq-next"></a>`Next` | `obj()` | `Viper.Functional.LazySeq.Next` |
+| <a id="viper-functional-lazyseq-nextoption"></a>`NextOption` | `obj<Viper.Option>()` | `Viper.Functional.LazySeq.NextOption` |
 | <a id="viper-functional-lazyseq-peek"></a>`Peek` | `obj()` | `Viper.Functional.LazySeq.Peek` |
+| <a id="viper-functional-lazyseq-peekoption"></a>`PeekOption` | `obj<Viper.Option>()` | `Viper.Functional.LazySeq.PeekOption` |
 | <a id="viper-functional-lazyseq-reset"></a>`Reset` | `void()` | `Viper.Functional.LazySeq.Reset` |
 | <a id="viper-functional-lazyseq-map"></a>`Map` | `obj<Viper.Functional.LazySeq>(obj)` | `Viper.Functional.LazySeq.Map` |
 | <a id="viper-functional-lazyseq-filter"></a>`Filter` | `obj<Viper.Functional.LazySeq>(obj)` | `Viper.Functional.LazySeq.Filter` |
@@ -97,6 +99,8 @@ to construct the class directly. Its public surface exposes properties such as `
 | `Viper.Functional.LazySeq.Repeat` | `obj<Viper.Functional.LazySeq>(obj,i64)` | `rt_lazyseq_w_repeat` |
 | `Viper.Functional.LazySeq.Next` | `obj(obj)` | `rt_lazyseq_w_next` |
 | `Viper.Functional.LazySeq.Peek` | `obj(obj)` | `rt_lazyseq_w_peek` |
+| `Viper.Functional.LazySeq.NextOption` | `obj<Viper.Option>(obj)` | `rt_lazyseq_w_next_option` |
+| `Viper.Functional.LazySeq.PeekOption` | `obj<Viper.Option>(obj)` | `rt_lazyseq_w_peek_option` |
 | `Viper.Functional.LazySeq.Reset` | `void(obj)` | `rt_lazyseq_w_reset` |
 | <a id="viper-functional-lazyseq-get-index"></a>`Viper.Functional.LazySeq.get_Index` | `i64(obj)` | `rt_lazyseq_w_index` |
 | <a id="viper-functional-lazyseq-get-isexhausted"></a>`Viper.Functional.LazySeq.get_IsExhausted` | `i1(obj)` | `rt_lazyseq_w_is_exhausted` |

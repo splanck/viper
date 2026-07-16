@@ -536,6 +536,108 @@ static void test_strict_mode_rejects_ambiguous() {
     test_result("Lenient TryParseDecimal(\"1,00\") = Some", rt_option_is_some(r2) == 1);
 }
 
+static void test_scientific_locale_tokens() {
+    printf("Testing Scientific locale tokens (VDOC-072):\n");
+    void *fmt = en_fmt();
+
+    // Special values agree with Decimal's locale tokens.
+    rt_string inf_out = rt_numformat_scientific(fmt, std::numeric_limits<double>::infinity(), 2);
+    test_result("Scientific(+inf) uses locale infinity token",
+                strcmp(rt_string_cstr(inf_out), "\xE2\x88\x9E") == 0);
+    rt_string_unref(inf_out);
+
+    rt_string ninf_out =
+        rt_numformat_scientific(fmt, -std::numeric_limits<double>::infinity(), 2);
+    test_result("Scientific(-inf) uses minus + infinity",
+                strcmp(rt_string_cstr(ninf_out), "-\xE2\x88\x9E") == 0);
+    rt_string_unref(ninf_out);
+
+    rt_string nan_out =
+        rt_numformat_scientific(fmt, std::numeric_limits<double>::quiet_NaN(), 2);
+    test_result("Scientific(NaN) uses locale NaN token",
+                strcmp(rt_string_cstr(nan_out), "NaN") == 0);
+    rt_string_unref(nan_out);
+
+    // Mantissa/exponent signs come from the locale sign tokens (en-US ASCII).
+    rt_string sci = rt_numformat_scientific(fmt, -1234.5, 2);
+    test_result("Scientific(-1234.5, 2)", strcmp(rt_string_cstr(sci), "-1.23E+03") == 0);
+    rt_string_unref(sci);
+}
+
+static void test_nonfinite_round_trip() {
+    printf("Testing non-finite round-trip (VDOC-085):\n");
+    void *fmt = en_fmt();
+
+    rt_string inf_str = rt_numformat_decimal(fmt, std::numeric_limits<double>::infinity());
+    void *inf_parsed = rt_numformat_try_parse_decimal(fmt, inf_str);
+    test_result("TryParseDecimal(Decimal(+inf)) = Some",
+                rt_option_is_some(inf_parsed) == 1 &&
+                    std::isinf(rt_option_unwrap_f64(inf_parsed)) &&
+                    rt_option_unwrap_f64(inf_parsed) > 0);
+    rt_string_unref(inf_str);
+
+    rt_string ninf_str = rt_numformat_decimal(fmt, -std::numeric_limits<double>::infinity());
+    void *ninf_parsed = rt_numformat_try_parse_decimal(fmt, ninf_str);
+    test_result("TryParseDecimal(Decimal(-inf)) = Some(-inf)",
+                rt_option_is_some(ninf_parsed) == 1 &&
+                    rt_option_unwrap_f64(ninf_parsed) < 0 &&
+                    std::isinf(rt_option_unwrap_f64(ninf_parsed)));
+    rt_string_unref(ninf_str);
+
+    rt_string nan_str = rt_numformat_decimal(fmt, std::numeric_limits<double>::quiet_NaN());
+    void *nan_parsed = rt_numformat_try_parse_decimal(fmt, nan_str);
+    test_result("TryParseDecimal(Decimal(NaN)) = Some(NaN)",
+                rt_option_is_some(nan_parsed) == 1 &&
+                    std::isnan(rt_option_unwrap_f64(nan_parsed)));
+    rt_string_unref(nan_str);
+
+    // Integers stay strict: the tokens are not integer input.
+    rt_string inf_tok = S("\xE2\x88\x9E");
+    void *int_parsed = rt_numformat_try_parse_integer(fmt, inf_tok);
+    test_result("TryParseInteger(infinity token) = None",
+                rt_option_is_none(int_parsed) == 1);
+    rt_string_unref(inf_tok);
+}
+
+static void test_currency_of_round_trip() {
+    printf("Testing CurrencyOf/ParseCurrency round-trip (VDOC-084):\n");
+    void *fmt = en_fmt();
+
+    rt_string eur = S("EUR");
+    rt_string out = rt_numformat_currency_of(fmt, 100.0, eur);
+    void *parsed = rt_numformat_try_parse_currency(fmt, out);
+    test_result("TryParseCurrency accepts CurrencyOf(100, EUR) output",
+                rt_option_is_some(parsed) == 1);
+    rt_string_unref(out);
+
+    rt_string neg_out = rt_numformat_currency_of(fmt, -42.5, eur);
+    void *neg_parsed = rt_numformat_try_parse_currency(fmt, neg_out);
+    test_result("negative non-default code round-trips",
+                rt_option_is_some(neg_parsed) == 1);
+    rt_string_unref(neg_out);
+    rt_string_unref(eur);
+}
+
+static void test_lenient_rejects_empty_group_runs() {
+    printf("Testing lenient parse separator rules (VDOC-071):\n");
+    void *fmt = en_fmt();
+    rt_numformat_set_strict(fmt, 0);
+
+    const char *bad[] = {"1,,2", "1,,,", "1,", "1,.5", ",1"};
+    for (int i = 0; i < 5; i++) {
+        rt_string in = S(bad[i]);
+        void *r = rt_numformat_try_parse_decimal(fmt, in);
+        rt_string_unref(in);
+        test_result(bad[i], rt_option_is_none(r) == 1);
+    }
+
+    // Noncanonical-but-nonempty grouping stays lenient.
+    rt_string ok = S("1,00");
+    void *r = rt_numformat_try_parse_decimal(fmt, ok);
+    rt_string_unref(ok);
+    test_result("Lenient still accepts \"1,00\"", rt_option_is_some(r) == 1);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -562,6 +664,10 @@ int main() {
     test_secondary_grouping();
     test_huge_decimal_buffer();
     test_strict_mode_rejects_ambiguous();
+    test_lenient_rejects_empty_group_runs();
+    test_scientific_locale_tokens();
+    test_currency_of_round_trip();
+    test_nonfinite_round_trip();
     printf("\nAll LocaleNumberFormat tests passed!\n");
     return 0;
 }

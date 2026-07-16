@@ -62,12 +62,13 @@ Dynamic array that grows automatically. Stores object references.
 - `Slice()` and `Clone()` return independent lists that retain their elements without leaking temporary `Get()` references.
 - `Has()`, `Find()`, and `Remove()` compare boxed integers, booleans, floats, and strings by value
   (including treating boxed NaNs as equal); other objects use identity. Queue, Stack, Deque, and
-  Ring membership use identity for every object, so membership semantics are not uniform across
-  the sequential collection classes (VDOC-086).
-- The default stable sort compares raw or boxed strings lexicographically and boxed integers
-  numerically. Null sorts first; other and mixed-type pairs fall back to raw pointer order. That
-  fallback is not a portable semantic order, and mixed-type default sorting should not be relied
-  on (VDOC-089).
+  Ring `Has` use the same relation, so membership semantics are uniform across the sequential
+  collection classes.
+- The default stable sort ranks by type class first (null < numeric < string < other), then
+  compares raw or boxed strings lexicographically and boxed integers/booleans/floats
+  numerically (NaN sorts last among numerics). Objects outside those kinds order by a
+  well-defined but arbitrary pointer order within their class; the relation is total and
+  transitive, so merge sort's assumptions always hold.
 - Prefer `FindOption()` for new code. `Find()` remains available for compatibility with existing `-1` checks.
 
 ### Zia Example
@@ -185,10 +186,10 @@ It uses a circular buffer for amortized O(1) pushes and O(1) pops.
 
 ### Notes
 
-- The registered `Queue.New` constructor creates a borrowed-element queue, and the class surface
-  does not expose the C-only ownership switch. Keep every stored object alive independently, or
-  create an owning queue through `List.ToQueue()` / `Seq.ToQueue()` (VDOC-087). `ToList()` and
-  `ToSeq()` always return owning snapshots.
+- The registered `Queue.New` constructor creates a borrowed-element queue. Call
+  `SetOwnsElements(true)` (registered on the class surface, like `Ring`) to switch a queue to
+  owning mode, or create an owning queue through `List.ToQueue()` / `Seq.ToQueue()`.
+  `ToList()` and `ToSeq()` always return owning snapshots.
 - `Pop()` and `TryPop()` return owned object references. In owning mode, the queue's retained reference is transferred to the caller.
 - `Peek()` returns a borrowed reference whose lifetime is bounded by the stored element's owner
   (and, for an owning queue produced by a conversion, by the queue entry).
@@ -285,10 +286,10 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 ### Notes
 
 - Stack-to-list, stack-to-seq, and iterator snapshots preserve bottom-to-top order without mutating the source stack.
-- The registered `Stack.New` constructor creates a borrowed-element stack, and the class surface
-  does not expose the C-only ownership switch. Keep every stored object alive independently, or
-  create an owning stack through `List.ToStack()` / `Seq.ToStack()` (VDOC-087). `ToList()` and
-  `ToSeq()` always return owning snapshots.
+- The registered `Stack.New` constructor creates a borrowed-element stack. Call
+  `SetOwnsElements(true)` (registered on the class surface, like `Ring`) to switch a stack to
+  owning mode, or create an owning stack through `List.ToStack()` / `Seq.ToStack()`.
+  `ToList()` and `ToSeq()` always return owning snapshots.
 - `Pop()` and `TryPop()` return owned object references. In owning mode, the stack's retained reference is transferred to the caller.
 - `Peek()` returns a borrowed reference whose lifetime is bounded by the stored element's owner
   (and, for an owning stack produced by a conversion, by the stack entry).

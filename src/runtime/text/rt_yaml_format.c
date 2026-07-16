@@ -348,7 +348,7 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
         return;
     }
 
-    // Unknown type - format as string
+    // Unrecognized runtime object: emit YAML null rather than guessing a scalar.
     buf_append(buf, cap, len, "null");
 }
 

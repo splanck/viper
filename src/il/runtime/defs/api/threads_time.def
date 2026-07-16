@@ -155,6 +155,7 @@ RT_FUNC(RwLockGetIsWriteLocked,rt_rwlock_get_is_write_locked,"Viper.Threads.RwLo
 
 RT_FUNC(PoolNew,           rt_threadpool_new,            "Viper.Threads.Pool.New",            "obj(i64)")
 RT_FUNC(PoolSubmit,        rt_threadpool_submit,         "Viper.Threads.Pool.Submit",         "i1(obj,obj,obj)")
+RT_FUNC(PoolSubmitOwned,   rt_threadpool_submit_owned,   "Viper.Threads.Pool.SubmitOwned",    "i1(obj,obj,obj)")
 RT_FUNC(PoolWait,          rt_threadpool_wait,           "Viper.Threads.Pool.Wait",           "void(obj)")
 RT_FUNC(PoolWaitFor,       rt_threadpool_wait_for,       "Viper.Threads.Pool.WaitFor",        "i1(obj,i64)")
 RT_FUNC(PoolShutdown,      rt_threadpool_shutdown,       "Viper.Threads.Pool.Shutdown",       "void(obj)")
@@ -183,6 +184,7 @@ RT_FUNC(PoolGetIsShutdown, rt_threadpool_get_is_shutdown,"Viper.Threads.Pool.get
 /// `Pending`, `Active` and operations including `Submit`, `Wait`, `WaitFor`, `Shutdown`.
 RT_CLASS_BEGIN("Viper.Threads.Pool", ThreadsPool, "obj", PoolNew)
     RT_METHOD("Submit",      "i1(obj,obj)", PoolSubmit)
+    RT_METHOD("SubmitOwned", "i1(obj,obj)", PoolSubmitOwned)
     RT_METHOD("Wait",        "void()",      PoolWait)
     RT_METHOD("WaitFor",     "i1(i64)",     PoolWaitFor)
     RT_METHOD("Shutdown",    "void()",      PoolShutdown)

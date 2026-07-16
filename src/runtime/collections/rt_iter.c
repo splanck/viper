@@ -39,6 +39,7 @@
 
 #include "rt_collection_ids.h"
 #include "rt_deque.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_map.h"
@@ -94,6 +95,16 @@ static void iter_finalizer(void *obj) {
     }
 }
 
+/// @brief GC traversal: expose the retained source edge so iterator/source
+///        reference cycles are visible to the cycle collector (VDOC-094).
+static void iter_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_iter_impl *it = (rt_iter_impl *)obj;
+    if (it->source)
+        visitor(it->source, ctx);
+}
+
 /// Create an iterator that retains source. Source MUST be a heap object.
 static rt_iter_impl *make_iter(void *source, iter_kind kind, int64_t len) {
     rt_iter_impl *it;
@@ -111,6 +122,7 @@ static rt_iter_impl *make_iter(void *source, iter_kind kind, int64_t len) {
     it->pos = 0;
     it->len = len;
     rt_obj_set_finalizer(it, iter_finalizer);
+    rt_gc_track(it, iter_traverse);
     return it;
 }
 
@@ -134,6 +146,7 @@ static rt_iter_impl *make_iter_snapshot(void *snapshot, int64_t len) {
     it->pos = 0;
     it->len = len;
     rt_obj_set_finalizer(it, iter_finalizer);
+    rt_gc_track(it, iter_traverse);
     return it;
 }
 

@@ -31,6 +31,7 @@ Constructor: `Viper.Threads.Pool.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-threads-pool-submit"></a>`Submit` | `i1(obj,obj)` | `Viper.Threads.Pool.Submit` |
+| <a id="viper-threads-pool-submitowned"></a>`SubmitOwned` | `i1(obj,obj)` | `Viper.Threads.Pool.SubmitOwned` |
 | <a id="viper-threads-pool-wait"></a>`Wait` | `void()` | `Viper.Threads.Pool.Wait` |
 | <a id="viper-threads-pool-waitfor"></a>`WaitFor` | `i1(i64)` | `Viper.Threads.Pool.WaitFor` |
 | <a id="viper-threads-pool-shutdown"></a>`Shutdown` | `void()` | `Viper.Threads.Pool.Shutdown` |
@@ -623,6 +624,7 @@ Constructor: `Viper.Threads.Scheduler.New`
 | <a id="viper-threads-rwlock-get-iswritelocked"></a>`Viper.Threads.RwLock.get_IsWriteLocked` | `i1(obj)` | `rt_rwlock_get_is_write_locked` |
 | `Viper.Threads.Pool.New` | `obj(i64)` | `rt_threadpool_new` |
 | `Viper.Threads.Pool.Submit` | `i1(obj,obj,obj)` | `rt_threadpool_submit` |
+| `Viper.Threads.Pool.SubmitOwned` | `i1(obj,obj,obj)` | `rt_threadpool_submit_owned` |
 | `Viper.Threads.Pool.Wait` | `void(obj)` | `rt_threadpool_wait` |
 | `Viper.Threads.Pool.WaitFor` | `i1(obj,i64)` | `rt_threadpool_wait_for` |
 | `Viper.Threads.Pool.Shutdown` | `void(obj)` | `rt_threadpool_shutdown` |

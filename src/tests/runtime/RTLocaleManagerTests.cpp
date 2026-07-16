@@ -310,6 +310,182 @@ static void test_load_from_json_schema_rejects_invalid() {
     test_result("LoadFromJson invalid schema traps", true);
 }
 
+static void test_load_from_json_rejects_embedded_nul() {
+    printf("Testing LocaleManager.LoadFromJson NUL-escape rejection:\n");
+    rt_locale_manager_reset();
+    std::string dir = temp_dir("nul_escape");
+
+    // VDOC-068: an escaped U+0000 must not truncate validation; the hidden
+    // suffix would otherwise evade the tag and digit checks entirely.
+    std::string file = dir + "/nul_tag.json";
+    write_text_file(file, R"json({
+      "tag": "zz\u0000-garbage",
+      "numbers": {
+        "decimal_sep": ".",
+        "group_sep": ",",
+        "group_size": 3,
+        "digits": "0123456789"
+      }
+    })json");
+    rt_string path = S(file.c_str());
+    test_result("TryLoadFromJson rejects NUL in tag",
+                rt_locale_manager_try_load_from_json(path) == 0);
+    rt_string_unref(path);
+
+    std::string file2 = dir + "/nul_digits.json";
+    write_text_file(file2, R"json({
+      "tag": "zz",
+      "numbers": {
+        "decimal_sep": ".",
+        "group_sep": ",",
+        "group_size": 3,
+        "digits": "0123456789\u0000junk"
+      }
+    })json");
+    rt_string path2 = S(file2.c_str());
+    test_result("TryLoadFromJson rejects NUL in digits",
+                rt_locale_manager_try_load_from_json(path2) == 0);
+    rt_string_unref(path2);
+}
+
+static void test_load_from_json_rejects_malformed_digit_utf8() {
+    printf("Testing LocaleManager digit UTF-8 strictness:\n");
+    rt_locale_manager_reset();
+    std::string dir = temp_dir("bad_digit_utf8");
+
+    // VDOC-069: an overlong encoding (C0 80) must not count as a digit glyph.
+    std::string file = dir + "/overlong.json";
+    {
+        std::string json = R"json({
+      "tag": "zy",
+      "numbers": {
+        "decimal_sep": ".",
+        "group_sep": ",",
+        "group_size": 3,
+        "digits": "012345678)json";
+        json += '\xC0';
+        json += '\x80';
+        json += R"json("
+      }
+    })json";
+        FILE *f = fopen(file.c_str(), "wb");
+        assert(f);
+        assert(fwrite(json.data(), 1, json.size(), f) == json.size());
+        fclose(f);
+    }
+    rt_string path = S(file.c_str());
+    test_result("TryLoadFromJson rejects overlong digit encoding",
+                rt_locale_manager_try_load_from_json(path) == 0);
+    rt_string_unref(path);
+
+    // A valid multibyte digit set still loads (Arabic-Indic digits).
+    std::string file2 = dir + "/arabic.json";
+    write_text_file(file2,
+                    "{\n  \"tag\": \"zx\",\n  \"numbers\": {\n"
+                    "    \"decimal_sep\": \".\",\n    \"group_sep\": \",\",\n"
+                    "    \"group_size\": 3,\n"
+                    "    \"digits\": \"\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669\"\n"
+                    "  }\n}\n");
+    rt_string path2 = S(file2.c_str());
+    test_result("TryLoadFromJson accepts valid multibyte digits",
+                rt_locale_manager_try_load_from_json(path2) == 1);
+    rt_string_unref(path2);
+}
+
+static void test_load_time_schema_validation() {
+    printf("Testing load-time formatter validation (VDOC-070):\n");
+    rt_locale_manager_reset();
+    std::string dir = temp_dir("schema_strict");
+
+    // Unsupported date pattern letter 'Q' must fail at load, not at format.
+    std::string f1 = dir + "/bad_date.json";
+    write_text_file(f1, R"json({
+      "tag": "za",
+      "dates": { "patterns": { "short": "Q" } }
+    })json");
+    rt_string p1 = S(f1.c_str());
+    test_result("rejects unsupported date pattern letter",
+                rt_locale_manager_try_load_from_json(p1) == 0);
+    rt_string_unref(p1);
+
+    // Duplicate currency placeholders cannot round-trip.
+    std::string f2 = dir + "/bad_currency.json";
+    write_text_file(f2, R"json({
+      "tag": "zb",
+      "currency": {
+        "default_code": "USD",
+        "pattern_positive": "{s}{n}{n}",
+        "pattern_negative": "-{s}{n}"
+      }
+    })json");
+    rt_string p2 = S(f2.c_str());
+    test_result("rejects duplicate currency placeholder",
+                rt_locale_manager_try_load_from_json(p2) == 0);
+    rt_string_unref(p2);
+
+    // Equal decimal/group separators are ambiguous.
+    std::string f3 = dir + "/bad_seps.json";
+    write_text_file(f3, R"json({
+      "tag": "zc",
+      "numbers": {
+        "decimal_sep": ",",
+        "group_sep": ",",
+        "group_size": 3,
+        "digits": "0123456789"
+      }
+    })json");
+    rt_string p3 = S(f3.c_str());
+    test_result("rejects equal decimal/group separators",
+                rt_locale_manager_try_load_from_json(p3) == 0);
+    rt_string_unref(p3);
+
+    // Relative-time templates must carry {n}.
+    std::string f4 = dir + "/bad_reltime.json";
+    write_text_file(f4, R"json({
+      "tag": "zd",
+      "relative_time": { "past": "ago" }
+    })json");
+    rt_string p4 = S(f4.c_str());
+    test_result("rejects relative-time template without {n}",
+                rt_locale_manager_try_load_from_json(p4) == 0);
+    rt_string_unref(p4);
+
+    // List templates must carry {0} and {1}.
+    std::string f5 = dir + "/bad_list.json";
+    write_text_file(f5, R"json({
+      "tag": "ze",
+      "list_format": { "and": { "pair": "{0} and" } }
+    })json");
+    rt_string p5 = S(f5.c_str());
+    test_result("rejects list template without {1}",
+                rt_locale_manager_try_load_from_json(p5) == 0);
+    rt_string_unref(p5);
+}
+
+static void test_collation_strength_range() {
+    printf("Testing collation.strength load range (VDOC-082):\n");
+    rt_locale_manager_reset();
+    std::string dir = temp_dir("collation_strength");
+    std::string file = dir + "/s4.json";
+    write_text_file(file, R"json({
+      "tag": "zv",
+      "collation": { "strength": 4 }
+    })json");
+    rt_string path = S(file.c_str());
+    test_result("strength 4 rejected (collator supports 1..3)",
+                rt_locale_manager_try_load_from_json(path) == 0);
+    rt_string_unref(path);
+
+    std::string file2 = dir + "/s3.json";
+    write_text_file(file2, R"json({
+      "tag": "zu",
+      "collation": { "strength": 3 }
+    })json");
+    rt_string path2 = S(file2.c_str());
+    test_result("strength 3 accepted", rt_locale_manager_try_load_from_json(path2) == 1);
+    rt_string_unref(path2);
+}
+
 static void test_load_from_json_missing_traps() {
     printf("Testing LocaleManager.LoadFromJson missing path:\n");
 
@@ -482,6 +658,10 @@ int main() {
     test_load_from_json_registers_locale();
     test_load_from_json_schema_rejects_invalid();
     test_load_from_json_missing_traps();
+    test_load_from_json_rejects_embedded_nul();
+    test_load_from_json_rejects_malformed_digit_utf8();
+    test_load_time_schema_validation();
+    test_collation_strength_range();
     test_load_from_asset_missing();
     test_search_path_roundtrip();
     test_load_high_level();

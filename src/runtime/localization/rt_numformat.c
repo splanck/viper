@@ -60,6 +60,12 @@
 
 #include <locale.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
 //===----------------------------------------------------------------------===//
 // Rounding modes
 //===----------------------------------------------------------------------===//
@@ -116,23 +122,34 @@ static rounding_mode_t rounding_mode_parse(const char *s) {
 
 /// @brief Return a cached process-wide C numeric locale object.
 /// @details The locale object is immutable after creation and intentionally
-///          retained for process lifetime. A benign first-use race can allocate
-///          more than once on heavily concurrent startup, but all callers receive
-///          equivalent C-locale semantics and steady-state calls avoid allocation.
+///          retained for process lifetime. Initialization goes through a
+///          once primitive (InitOnceExecuteOnce / pthread_once) so concurrent
+///          first use is a defined single initialization, not a data race
+///          (VDOC-080).
 /// @return Platform C-locale object, or NULL / zero when allocation failed.
 #if defined(_WIN32)
+static _locale_t loc_c_locale_cached_;
+static BOOL CALLBACK loc_c_locale_init_(PINIT_ONCE once, PVOID param, PVOID *ctx) {
+    (void)once;
+    (void)param;
+    (void)ctx;
+    loc_c_locale_cached_ = _create_locale(LC_NUMERIC, "C");
+    return TRUE;
+}
 static _locale_t loc_cached_c_locale(void) {
-    static _locale_t c_locale = NULL;
-    if (!c_locale)
-        c_locale = _create_locale(LC_NUMERIC, "C");
-    return c_locale;
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&once, loc_c_locale_init_, NULL, NULL);
+    return loc_c_locale_cached_;
 }
 #else
+static locale_t loc_c_locale_cached_;
+static void loc_c_locale_init_(void) {
+    loc_c_locale_cached_ = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+}
 static locale_t loc_cached_c_locale(void) {
-    static locale_t c_locale = (locale_t)0;
-    if (!c_locale)
-        c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
-    return c_locale;
+    static pthread_once_t once = PTHREAD_ONCE_INIT;
+    pthread_once(&once, loc_c_locale_init_);
+    return loc_c_locale_cached_;
 }
 #endif
 
@@ -957,8 +974,20 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
     if (!self)
         return rt_string_from_bytes("", 0);
     rt_numformat_t *fmt = as_fmt(self);
-    (void)fmt; // scientific notation is mostly locale-invariant for ASCII;
-               // apply only decimal separator substitution.
+    const rt_locdata_numbers_t *nums = &fmt->data->numbers;
+
+    // Special values use the same locale tokens as Decimal (VDOC-072).
+    if (!isfinite(value)) {
+        rt_string_builder ssb;
+        rt_sb_init(&ssb);
+        if (!fmt_render_number(&ssb, fmt, value, 0)) {
+            rt_sb_free(&ssb);
+            return rt_string_from_bytes("", 0);
+        }
+        rt_string sr = rt_string_from_bytes(ssb.data, ssb.len);
+        rt_sb_free(&ssb);
+        return sr;
+    }
 
     int d = (int)digits;
     if (d < 0)
@@ -971,9 +1000,12 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
     if (len < 0)
         len = 0;
 
-    // Substitute decimal separator if the locale differs from ".".
-    const char *dec_sep = fmt->data->numbers.decimal_sep;
-    const char *exp_char = fmt->data->numbers.exponent;
+    // Substitute the locale's decimal separator, exponent marker, digit
+    // glyphs, and mantissa/exponent sign tokens (VDOC-072).
+    const char *dec_sep = nums->decimal_sep;
+    const char *exp_char = nums->exponent;
+    const char *minus = nums->minus ? nums->minus : "-";
+    const char *plus = nums->plus ? nums->plus : "+";
     rt_string_builder sb;
     rt_sb_init(&sb);
     for (int i = 0; i < len; ++i) {
@@ -983,8 +1015,14 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
         } else if ((buf[i] == 'e' || buf[i] == 'E') && exp_char) {
             if (!nf_append_cstr_checked(&sb, exp_char))
                 goto scientific_error;
+        } else if (buf[i] == '-') {
+            if (!nf_append_cstr_checked(&sb, minus))
+                goto scientific_error;
+        } else if (buf[i] == '+') {
+            if (!nf_append_cstr_checked(&sb, plus))
+                goto scientific_error;
         } else {
-            if (!append_localized_bytes(&sb, &fmt->data->numbers, buf + i, 1))
+            if (!append_localized_bytes(&sb, nums, buf + i, 1))
                 goto scientific_error;
         }
     }
@@ -1140,6 +1178,8 @@ static void scan_number_parts(scan_number_t *sn,
                    memcmp(input + i, grp_sep, grp_len) == 0) {
             if (digit_count == 0)
                 return; // leading group sep
+            if (group_run == 0)
+                return; // empty group run, e.g. "1,,2" (VDOC-071)
             if (!had_group_sep) {
                 first_group_len = group_run;
                 had_group_sep = 1;
@@ -1152,6 +1192,11 @@ static void scan_number_parts(scan_number_t *sn,
             break;
         }
     }
+
+    // A separator must always be followed by at least one digit, even in
+    // lenient mode ("1," and "1,.5" are malformed, not noncanonical).
+    if (had_group_sep && group_run == 0)
+        return;
 
     if (fmt->strict && had_group_sep) {
         if (group_run != primary_group)
@@ -1194,12 +1239,72 @@ static void scan_number_parts(scan_number_t *sn,
     sn->success = 1;
 }
 
+/// @brief Recognize the locale's non-finite tokens: [sign] (nan | infinity).
+/// @details Formatting deliberately emits `numbers.nan` / `numbers.infinity`,
+///          so the paired parsers accept those exact tokens back (VDOC-085).
+/// @return 1 with @p pr filled when the whole input is a special token.
+static int parse_special_value(const char *input,
+                               size_t input_len,
+                               const rt_numformat_t *fmt,
+                               parse_result_t *pr) {
+    const rt_locdata_numbers_t *nums = &fmt->data->numbers;
+    const char *p = input;
+    size_t len = input_len;
+    while (len > 0 && isspace((unsigned char)p[0])) {
+        ++p;
+        --len;
+    }
+    while (len > 0 && isspace((unsigned char)p[len - 1]))
+        --len;
+
+    int negative = 0;
+    int had_sign = 0;
+    const char *minus = nums->minus ? nums->minus : "-";
+    const char *plus = nums->plus ? nums->plus : "+";
+    size_t adv = match_prefix(p, len, minus);
+    if (adv) {
+        negative = 1;
+        had_sign = 1;
+        p += adv;
+        len -= adv;
+    } else {
+        adv = match_prefix(p, len, plus);
+        if (adv) {
+            had_sign = 1;
+            p += adv;
+            len -= adv;
+        }
+    }
+
+    const char *nan_tok = nums->nan ? nums->nan : "NaN";
+    const char *inf_tok = nums->infinity ? nums->infinity : "\xE2\x88\x9E";
+    size_t nan_len = strlen(nan_tok);
+    size_t inf_len = strlen(inf_tok);
+    if (nan_len && len == nan_len && memcmp(p, nan_tok, nan_len) == 0) {
+        pr->value = (double)NAN;
+        pr->had_sign = had_sign;
+        pr->negative = negative;
+        pr->success = 1;
+        return 1;
+    }
+    if (inf_len && len == inf_len && memcmp(p, inf_tok, inf_len) == 0) {
+        pr->value = negative ? -(double)INFINITY : (double)INFINITY;
+        pr->had_sign = had_sign;
+        pr->negative = negative;
+        pr->success = 1;
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Parse a locale-formatted decimal number from @p input.
 static parse_result_t parse_decimal(const char *input,
                                     size_t input_len,
                                     const rt_numformat_t *fmt,
                                     int allow_fraction) {
     parse_result_t pr = {0};
+    if (parse_special_value(input, input_len, fmt, &pr))
+        return pr;
     scan_number_t sn;
     scan_number_parts(&sn, input, input_len, fmt, allow_fraction);
     if (!sn.success) {
@@ -1371,7 +1476,9 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
         --len;
     }
 
-    // Leading symbol / code.
+    // Leading symbol / code. Any 3-uppercase-letter ISO code is accepted so
+    // CurrencyOf's non-default-code output round-trips (VDOC-084); the code
+    // must not be immediately followed by another letter.
     for (int attempt = 0; attempt < 2; ++attempt) {
         size_t adv = match_prefix(p, len, symbol);
         if (adv) {
@@ -1383,6 +1490,13 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
         if (adv) {
             p += adv;
             len -= adv;
+            continue;
+        }
+        if (len >= 3 && p[0] >= 'A' && p[0] <= 'Z' && p[1] >= 'A' && p[1] <= 'Z' &&
+            p[2] >= 'A' && p[2] <= 'Z' &&
+            !(len > 3 && ((p[3] >= 'A' && p[3] <= 'Z') || (p[3] >= 'a' && p[3] <= 'z')))) {
+            p += 3;
+            len -= 3;
             continue;
         }
         break;
@@ -1399,7 +1513,8 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
         --len;
     }
 
-    // Trailing symbol / code.
+    // Trailing symbol / code (any 3-uppercase-letter ISO code accepted,
+    // provided it is not preceded by another letter — see VDOC-084).
     for (int attempt = 0; attempt < 2; ++attempt) {
         if (symbol) {
             size_t slen = strlen(symbol);
@@ -1414,6 +1529,13 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
                 len -= clen;
                 continue;
             }
+        }
+        if (len >= 3 && p[len - 1] >= 'A' && p[len - 1] <= 'Z' && p[len - 2] >= 'A' &&
+            p[len - 2] <= 'Z' && p[len - 3] >= 'A' && p[len - 3] <= 'Z' &&
+            !(len > 3 && ((p[len - 4] >= 'A' && p[len - 4] <= 'Z') ||
+                          (p[len - 4] >= 'a' && p[len - 4] <= 'z')))) {
+            len -= 3;
+            continue;
         }
         break;
     }
@@ -1550,6 +1672,37 @@ static int extract_currency_number(const rt_numformat_t *fmt,
         *out_len = inner_len;
         *out_negative = accounting;
         return 1;
+    }
+
+    // Non-default ISO code (VDOC-084): CurrencyOf substitutes any 3-letter
+    // code as the symbol, so detect a standalone 3-uppercase run in the
+    // input and retry the patterns with it.
+    char cand[4] = {0};
+    for (size_t k = 0; k + 3 <= len; ++k) {
+        int upper3 = p[k] >= 'A' && p[k] <= 'Z' && p[k + 1] >= 'A' && p[k + 1] <= 'Z' &&
+                     p[k + 2] >= 'A' && p[k + 2] <= 'Z';
+        int lone = (k == 0 || !isalpha((unsigned char)p[k - 1])) &&
+                   (k + 3 == len || !isalpha((unsigned char)p[k + 3]));
+        if (upper3 && lone) {
+            memcpy(cand, p + k, 3);
+            break;
+        }
+    }
+    if (cand[0]) {
+        if (match_currency_pattern(
+                fmt->data->currency.pattern_negative, cand, p, len, &inner, &inner_len)) {
+            *out_start = inner;
+            *out_len = inner_len;
+            *out_negative = 1;
+            return 1;
+        }
+        if (match_currency_pattern(
+                fmt->data->currency.pattern_positive, cand, p, len, &inner, &inner_len)) {
+            *out_start = inner;
+            *out_len = inner_len;
+            *out_negative = accounting;
+            return 1;
+        }
     }
     strip_currency_affixes(fmt, p, len, out_start, out_len);
     *out_negative = accounting;

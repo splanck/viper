@@ -185,7 +185,55 @@ static void test_null_safety() {
 }
 
 /// @brief Main.
+static void test_hr_and_list_transitions() {
+    // VDOC-049: spaced rules render as <hr>, not list items, and an open list
+    // closes before a heading.
+    rt_string hr1 = rt_markdown_to_html(make_str("* * *"));
+    assert(strstr(rt_string_cstr(hr1), "<hr>") != NULL);
+    assert(strstr(rt_string_cstr(hr1), "<li>") == NULL);
+    rt_string hr2 = rt_markdown_to_html(make_str("- - -"));
+    assert(strstr(rt_string_cstr(hr2), "<hr>") != NULL);
+
+    rt_string mixed = rt_markdown_to_html(make_str("- item\n# Heading"));
+    const char *out = rt_string_cstr(mixed);
+    const char *ul_close = strstr(out, "</ul>");
+    const char *h1 = strstr(out, "<h1>");
+    assert(ul_close != NULL && h1 != NULL && ul_close < h1);
+}
+
+static void test_crlf_matches_lf() {
+    // VDOC-050: CRLF input renders identically to LF input; no CR bytes leak
+    // into content.
+    rt_string crlf = rt_markdown_to_html(make_str("# Heading\r\ntext\r\n"));
+    rt_string lf = rt_markdown_to_html(make_str("# Heading\ntext\n"));
+    assert(strcmp(rt_string_cstr(crlf), rt_string_cstr(lf)) == 0);
+    assert(strchr(rt_string_cstr(crlf), '\r') == NULL);
+
+    void *heads = rt_markdown_extract_headings(make_str("# One\r\n## Two\r\n"));
+    rt_string first = (rt_string)rt_seq_get(heads, 0);
+    assert(strcmp(rt_string_cstr(first), "One") == 0);
+}
+
+static void test_to_text_preserves_intraword_and_unmatched_markers() {
+    // VDOC-051: literal underscores in identifiers survive ToText; only
+    // matched emphasis pairs are stripped, and unmatched markers stay.
+    rt_string text = rt_markdown_to_text(make_str("use snake_case and file_name_here"));
+    assert(strcmp(rt_string_cstr(text), "use snake_case and file_name_here") == 0);
+
+    text = rt_markdown_to_text(make_str("**bold** and `code` and *em*"));
+    assert(strcmp(rt_string_cstr(text), "bold and code and em") == 0);
+
+    text = rt_markdown_to_text(make_str("2 * 3 equals 6"));
+    assert(strstr(rt_string_cstr(text), "2 * 3") != NULL);
+
+    text = rt_markdown_to_text(make_str("lone ` backtick and trailing _"));
+    assert(strcmp(rt_string_cstr(text), "lone ` backtick and trailing _") == 0);
+}
+
 int main() {
+    test_hr_and_list_transitions();
+    test_crlf_matches_lf();
+    test_to_text_preserves_intraword_and_unmatched_markers();
     test_heading();
     test_heading_levels();
     test_invalid_heading_markers_are_paragraphs();

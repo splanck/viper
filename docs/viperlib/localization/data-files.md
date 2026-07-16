@@ -129,21 +129,21 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
 - **Missing optional fields** — inherit the baked en-US default for that field.
 - **Top-level values** — `text_direction` is `"ltr"` or `"rtl"`; `first_day_of_week` is `0..6` (`0` = Sunday); `measurement` is `"metric"`, `"us"`, or `"uk"`.
 - **Months/Days arrays** — exact lengths required: 12 months, 7 days (index 0 = Sunday).
-- **Numbers** — `group_size` is the rightmost group size; `secondary_group_size` is the repeated group size to the left (`0` or missing means same as `group_size`). Both must be in `1..9` when present, except `secondary_group_size=0`. Separator and sign strings must have the right JSON type, but the loader does not require them to be distinct or otherwise unambiguous.
-- **Digits** — `numbers.digits` is intended to contain exactly 10 UTF-8 codepoints. The current
-  validator counts leading-byte spans rather than fully validating UTF-8 (VDOC-069), so locale
-  authors should validate this field independently.
-- **Currency** — `default_code` must be a 3-letter uppercase ISO-style code; `fraction_digits` must be `0..9`; currency patterns may contain only literal text plus `{n}` and `{s}` and must include both placeholders. The loader currently permits either placeholder more than once, even though duplicate `{n}` forms need not parse back (VDOC-070).
-- **Relative time** — `past` and `future` must contain `{n}` and `{unit}`. `now`, `short_past`, `short_future`, and `short_units` are optional and inherit en-US defaults when absent. Short templates are not checked for placeholders.
+- **Numbers** — `group_size` is the rightmost group size; `secondary_group_size` is the repeated group size to the left (`0` or missing means same as `group_size`). Both must be in `1..9` when present, except `secondary_group_size=0`. A non-empty `group_sep` must differ from `decimal_sep`; equal separators are rejected as ambiguous.
+- **Digits** — `numbers.digits` must contain exactly 10 strictly validated UTF-8 code points
+  (continuation bytes required; overlong encodings, surrogates, and values above U+10FFFF are
+  rejected).
+- **Currency** — `default_code` must be a 3-letter uppercase ISO-style code; `fraction_digits` must be `0..9`; currency patterns may contain only literal text plus `{n}` and `{s}` and must include exactly one of each placeholder (duplicates are rejected because they cannot round-trip through `TryParseCurrency`).
+- **Relative time** — `past`, `future`, `short_past`, and `short_future` must contain `{n}`. `now` and `short_units` are optional and inherit en-US defaults when absent.
 - **Plural rules** — each cardinal/ordinal chain must contain `1..32` entries. A single predicate range list is capped at 64 ranges.
-- **Collation** — the loader accepts internal `strength` values `1..4`, but the internal collator
-  currently clamps 4 to 3 because quaternary strength is not implemented (VDOC-082). Other
-  collation keys, including `reorder` and `overrides`, are ignored because `Collator` is not on
-  the public frontend surface.
-- **Formatter-template validation** — date patterns and list templates are not parsed during
-  loading. An unsupported date pattern can therefore load successfully and trap only when used;
-  list templates missing `{0}` or `{1}` can silently discard items (VDOC-070).
-- **String length** — recognized individual string fields and array elements are capped at 256 bytes. Escaped U+0000 is not rejected; downstream C-string use truncates at that byte and can bypass validation (VDOC-068).
+- **Collation** — `strength` accepts `1..3` (quaternary strength is not implemented, so `4`
+  is rejected at load time). Other collation keys, including `reorder` and `overrides`, are
+  ignored because `Collator` is not on the public frontend surface.
+- **Formatter-template validation** — date patterns are validated at load time against the
+  supported pattern letters (`y M d E H h m s a`, with `'...'` quoting), and every list
+  template must contain both `{0}` and `{1}`, so `TryLoadFromJson == true` means the loaded
+  record formats without trapping or dropping items.
+- **String length** — recognized individual string fields and array elements are capped at 256 bytes. Escaped U+0000 in any string value is rejected at load time.
 - **File size** — total capped at 256 KB.
 - **Encoding envelope** — after ASCII space, tab, CR, or LF, the first byte must be `{`; a UTF-8
   BOM is not skipped by the loader's object pre-check.

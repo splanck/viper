@@ -47,12 +47,14 @@ extern "C" {
 
 /// @brief In-struct capacity constants for BCP-47 subtag storage.
 /// @details Capacities include the NUL terminator. Sized per RFC 5646 limits
-///          with small margin: primary language up to 8 chars, script exactly
-///          4 chars, region 2 letters or 3 digits, full tag max 35 chars.
+///          with margin: primary language up to 8 chars, script exactly
+///          4 chars, region 2 letters or 3 digits. Full tags have no fixed
+///          RFC limit (extensions/private-use can extend them), so the tag
+///          buffer is generous rather than minimal (VDOC-065).
 #define RT_LOCALE_LANG_CAP 10
 #define RT_LOCALE_SCRIPT_CAP 6
 #define RT_LOCALE_REGION_CAP 6
-#define RT_LOCALE_TAG_CAP 40
+#define RT_LOCALE_TAG_CAP 128
 
 /// @brief Locale handle payload. One handle per parsed/loaded tag.
 /// @details The runtime distributes instances via rt_obj_new_i64, so this is
@@ -63,7 +65,7 @@ typedef struct rt_locale {
     char script[RT_LOCALE_SCRIPT_CAP]; ///< Title-case script or ""
     char region[RT_LOCALE_REGION_CAP]; ///< UPPERCASE region or ""
     char tag[RT_LOCALE_TAG_CAP];       ///< canonical BCP-47 tag
-    const rt_locale_data_t *data;      ///< non-owning; may be NULL
+    const rt_locale_data_t *data;      ///< retained registry record; may be NULL
 } rt_locale_t;
 
 //===----------------------------------------------------------------------===//

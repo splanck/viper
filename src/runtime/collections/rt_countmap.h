@@ -12,11 +12,13 @@
 //   - Keys are copied by byte length; embedded NUL bytes are part of key identity.
 //   - Count and total overflow trap instead of wrapping.
 //   - rt_countmap_get returns 0 for keys not present.
-//   - All operations are O(1) average-case.
-//   - rt_countmap_top_n returns up to N keys with highest counts.
+//   - Keyed operations are O(1) average-case; rt_countmap_most_common sorts
+//     and is O(n log n).
+//   - rt_countmap_most_common returns up to N keys with highest counts.
 //
 // Ownership/Lifetime:
-//   - CountMap objects are heap-allocated; caller is responsible for lifetime management.
+//   - CountMap objects are GC-managed (rt_obj_new_i64) with a runtime
+//     finalizer; callers must not free them directly.
 //   - String keys are copied internally; caller retains ownership of input strings.
 //
 // Links: src/runtime/collections/rt_countmap.c (implementation), src/runtime/core/rt_string.h

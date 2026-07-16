@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_list_format.h"
 #include "rt_locale.h"
@@ -133,8 +135,47 @@ static void test_short() {
 // Main
 //=============================================================================
 
+static void test_no_reference_leaks() {
+    printf("Testing ListFormat reference balance (VDOC-075):\n");
+    void *fmt = en_fmt();
+
+    // Long unique strings force real heap allocations (short literals may be
+    // interned or SSO-backed and have no heap header).
+    const char *e3[] = {"alpha-element-with-a-long-heap-backed-payload-0001",
+                        "alpha-element-with-a-long-heap-backed-payload-0002",
+                        "alpha-element-with-a-long-heap-backed-payload-0003", nullptr};
+    void *list = mk_list(e3);
+    rt_string first = (rt_string)rt_list_get(list, 0);
+    size_t before = rt_heap_hdr(first->data)->refcnt;
+    rt_string_unref(first);
+
+    for (int i = 0; i < 8; i++) {
+        rt_string out = rt_list_format_and(fmt, list);
+        rt_string_unref(out);
+    }
+
+    rt_string again = (rt_string)rt_list_get(list, 0);
+    size_t after = rt_heap_hdr(again->data)->refcnt;
+    rt_string_unref(again);
+    test_result("element refcount unchanged after 8 formats", before == after);
+
+    // One-item join returns an owned reference without over-retaining.
+    const char *e1[] = {"solo-element-with-a-long-heap-backed-payload-0001", nullptr};
+    void *one = mk_list(e1);
+    rt_string solo_before = (rt_string)rt_list_get(one, 0);
+    size_t base = rt_heap_hdr(solo_before->data)->refcnt;
+    rt_string_unref(solo_before);
+    rt_string joined = rt_list_format_and(fmt, one);
+    rt_string_unref(joined);
+    rt_string solo_after = (rt_string)rt_list_get(one, 0);
+    test_result("one-item join is reference balanced",
+                rt_heap_hdr(solo_after->data)->refcnt == base);
+    rt_string_unref(solo_after);
+}
+
 int main() {
     printf("=== RT ListFormat Tests ===\n\n");
+    test_no_reference_leaks();
     test_and_sizes();
     test_or_sizes();
     test_unit_sizes();

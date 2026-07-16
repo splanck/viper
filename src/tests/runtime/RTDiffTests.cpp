@@ -10,7 +10,10 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include "rt_trap.h"
+
 #include <cassert>
+#include <csetjmp>
 #include <cstring>
 
 extern "C" void vm_trap(const char *msg) {
@@ -169,7 +172,32 @@ static void test_embedded_nul_lines_are_length_aware() {
 }
 
 /// @brief Main.
+static void test_patch_validates_original() {
+    // VDOC-061: Patch verifies the diff applies to the supplied original.
+    rt_string a = make_str("hello\nworld");
+    rt_string b = make_str("hello\nbeautiful\nworld");
+    void *diff = rt_diff_lines(a, b);
+
+    jmp_buf env;
+    rt_trap_set_recovery(&env);
+    bool trapped = true;
+    if (setjmp(env) == 0) {
+        (void)rt_diff_patch(make_str("not the source"), diff);
+        trapped = false;
+    }
+    rt_trap_clear_recovery();
+    assert(trapped && "Patch must reject a mismatched original");
+
+    // The matching original still round-trips.
+    rt_string patched = rt_diff_patch(a, diff);
+    assert(str_eq(patched, "hello\nbeautiful\nworld"));
+    rt_string_unref(patched);
+    rt_string_unref(a);
+    rt_string_unref(b);
+}
+
 int main() {
+    test_patch_validates_original();
     test_identical();
     test_addition();
     test_removal();

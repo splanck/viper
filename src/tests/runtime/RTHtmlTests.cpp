@@ -183,7 +183,21 @@ static void test_roundtrip_escape_unescape() {
 }
 
 /// @brief Main.
+static void test_extract_text_nested_same_tag() {
+    // VDOC-048: the closing-tag search tracks nesting depth, so nested
+    // same-name elements yield the complete outer text.
+    rt_string html = rt_string_from_bytes("<div>a<div>b</div>c</div>", 25);
+    rt_string tag = rt_string_from_bytes("div", 3);
+    void *texts = rt_html_extract_text(html, tag);
+    assert(rt_seq_len(texts) == 1);
+    rt_string first = (rt_string)rt_seq_get(texts, 0);
+    assert(strcmp(rt_string_cstr(first), "a b c") == 0);
+    rt_string_unref(html);
+    rt_string_unref(tag);
+}
+
 int main() {
+    test_extract_text_nested_same_tag();
     test_escape();
     test_escape_single_quotes();
     test_escape_preserves_embedded_nul();

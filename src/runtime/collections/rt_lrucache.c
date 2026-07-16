@@ -436,6 +436,14 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
         evict_lru(cache);
 
     // Insert into hash table and linked list
+    if (cache->count >= (size_t)INT64_MAX) {
+        if (node->value && rt_obj_release_check0(node->value))
+            rt_obj_free(node->value);
+        free(node->key);
+        free(node);
+        rt_trap("LRUCache.Put: maximum size reached");
+        return;
+    }
     bucket_insert(cache, node);
     list_push_front(cache, node);
     cache->count++;
@@ -586,8 +594,8 @@ void *rt_lrucache_keys(void *obj) {
     return result;
 }
 
-/// @brief Return a Seq of borrowed value pointers in MRU→LRU order. Pointers go stale on the
-/// next eviction — copy or retain if you need to outlive the cache.
+/// @brief Return an owning Seq of the values in MRU→LRU order (the snapshot
+/// retains each entry and does not follow later cache mutations or evictions).
 void *rt_lrucache_values(void *obj) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);

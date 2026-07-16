@@ -172,6 +172,21 @@ func testTypedConcreteReturns() {
     var heap = new Viper.Collections.Heap();
     heap.Push(1, "only");
     assertEqInt(heap.ToSeq().Count, 1, "heap_to_seq_count");
+
+    // Queue/Stack expose SetOwnsElements on the class surface (VDOC-087).
+    var q = new Viper.Collections.Queue();
+    q.SetOwnsElements(true);
+    q.Push("kept");
+    assertEqInt(q.Count, 1, "queue_owning_push");
+    var st = new Viper.Collections.Stack();
+    st.SetOwnsElements(true);
+    st.Push("kept");
+    assertEqInt(st.Count, 1, "stack_owning_push");
+
+    // Template.Keys is a StringSet (deduplicated), typed as such (VDOC-044).
+    var keys = Viper.Text.Template.Keys("{{a}} {{b}} {{a}}");
+    assertEqInt(keys.Count, 2, "template_keys_count");
+    assertTrue(keys.Has("a"), "template_keys_has");
 }
 
 func start() {

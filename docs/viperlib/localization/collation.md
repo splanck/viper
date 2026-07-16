@@ -58,10 +58,10 @@ neutral ranges is treated as strong LTR.
 - Malformed UTF-8 is classified as U+FFFD (advancing one byte for a bad lead/continuation, or to
   end for a truncated sequence); U+FFFD falls through to LTR. `Bidi` copies the original malformed
   bytes rather than replacing them in its returned string.
-- The neutral table covers ASCII digits, controls, much ASCII/Latin-1 punctuation, NBSP, and
-  U+2000–U+206F. It does not use Unicode general or bidi categories. Arabic-Indic digit `١` is
-  consequently classified RTL, Devanagari digit `१` LTR, and many combining marks LTR
-  (VDOC-074). `FirstStrong` skips only codepoints that this fixed table labels neutral.
+- The neutral table covers ASCII digits, controls, much ASCII/Latin-1 punctuation, NBSP,
+  U+2000–U+206F, Arabic-Indic digits (bidi class AN), and the common combining-mark blocks
+  (NSM) — so weak characters never decide `FirstStrong`. It remains block-based rather than
+  full UCD bidi tables; Devanagari digits classify LTR, matching their UCD class `L`.
 
 ### Zia Example
 

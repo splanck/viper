@@ -150,20 +150,21 @@ static void test_invalid_inputs_are_ignored() {
     reset_audio_stub_state();
 
     rt_sound3d_set_listener(&listener, &forward);
-    assert(rt_sound3d_play_at(nullptr, &listener, 10.0, 100) == 0);
-    assert(rt_sound3d_play_at(reinterpret_cast<void *>(1), nullptr, 10.0, 100) == 0);
+    assert(rt_sound3d_play_at(nullptr, &listener, 10.0, 100) == -1);
+    assert(rt_sound3d_play_at(reinterpret_cast<void *>(1), nullptr, 10.0, 100) == -1);
     rt_sound3d_update_voice(0, &listener, 5.0);
     assert(g_last_update_voice == -1);
 }
 
-static void test_play_at_normalizes_backend_failure_to_zero() {
+static void test_play_at_reports_backend_failure_with_minus_one() {
+    // VDOC-120: spatial play uses the same -1 failure sentinel as Sound.Play*.
     Vec3 source{0.0, 0.0, 0.0};
     reset_audio_stub_state();
     g_next_play_result = -1;
 
     int64_t voice = rt_sound3d_play_at(reinterpret_cast<void *>(1), &source, 10.0, 100);
 
-    assert(voice == 0);
+    assert(voice == -1);
 }
 
 static void test_set_listener_accepts_partial_null_inputs() {
@@ -220,7 +221,7 @@ int main() {
     test_pan_and_attenuation_are_derived_from_position();
     test_update_voice_reuses_original_base_volume_and_distance();
     test_invalid_inputs_are_ignored();
-    test_play_at_normalizes_backend_failure_to_zero();
+    test_play_at_reports_backend_failure_with_minus_one();
     test_set_listener_accepts_partial_null_inputs();
     test_nonfinite_positions_do_not_escape_clamps();
     test_voice_tracking_overwrites_as_ring();

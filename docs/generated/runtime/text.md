@@ -327,7 +327,7 @@ construct the class directly. Its public surface exposes operations including `R
 | <a id="viper-text-template-renderseq"></a>`RenderSeq` | `str(str,obj)` | `Viper.Text.Template.RenderSeq` |
 | <a id="viper-text-template-renderwith"></a>`RenderWith` | `str(str,obj,str,str)` | `Viper.Text.Template.RenderWith` |
 | <a id="viper-text-template-has"></a>`Has` | `i1(str,str)` | `Viper.Text.Template.Has` |
-| <a id="viper-text-template-keys"></a>`Keys` | `seq<str>(str)` | `Viper.Text.Template.Keys` |
+| <a id="viper-text-template-keys"></a>`Keys` | `obj<Viper.Collections.StringSet>(str)` | `Viper.Text.Template.Keys` |
 | <a id="viper-text-template-escape"></a>`Escape` | `str(str)` | `Viper.Text.Template.Escape` |
 
 <a id="viper-text-scanner"></a>
@@ -562,7 +562,7 @@ construct the class directly. Its public surface exposes operations including `P
 | `Viper.Text.Template.RenderSeq` | `str(str,obj)` | `rt_template_render_seq` |
 | `Viper.Text.Template.RenderWith` | `str(str,obj,str,str)` | `rt_template_render_with` |
 | `Viper.Text.Template.Has` | `i1(str,str)` | `rt_template_has` |
-| `Viper.Text.Template.Keys` | `seq<str>(str)` | `rt_template_keys` |
+| `Viper.Text.Template.Keys` | `obj<Viper.Collections.StringSet>(str)` | `rt_template_keys` |
 | `Viper.Text.Template.Escape` | `str(str)` | `rt_template_escape` |
 | `Viper.Text.Fmt.Int` | `str(i64)` | `rt_fmt_int` |
 | `Viper.Text.Fmt.IntRadix` | `str(i64,i64)` | `rt_fmt_int_radix` |

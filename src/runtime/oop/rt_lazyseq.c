@@ -30,10 +30,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_lazyseq.h"
+#include "rt_collection_ids.h"
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_option.h"
 #include "rt_seq.h"
+#include "rt_trap.h"
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -202,6 +204,10 @@ static void lazyseq_finalizer(void *obj) {
             seq->data.zip.seq1 = NULL;
             seq->data.zip.seq2 = NULL;
             break;
+        case LAZYSEQ_REPEAT:
+            release_source(seq->data.repeat.value);
+            seq->data.repeat.value = NULL;
+            break;
         default:
             break;
     }
@@ -210,8 +216,12 @@ static void lazyseq_finalizer(void *obj) {
 /// @brief Allocate a fresh LazySeq node with the given variant tag, zero-initialized union, and
 /// the GC finalizer wired in. Caller fills the appropriate `seq->data.<variant>` fields.
 static rt_lazyseq alloc_lazyseq(lazyseq_type type) {
-    struct rt_lazyseq_impl *seq =
-        (struct rt_lazyseq_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_lazyseq_impl));
+    struct rt_lazyseq_impl *seq = (struct rt_lazyseq_impl *)rt_obj_new_i64(
+        RT_LAZYSEQ_CLASS_ID, (int64_t)sizeof(struct rt_lazyseq_impl));
+    if (!seq) {
+        rt_trap("LazySeq: memory allocation failed");
+        return NULL;
+    }
     memset(seq, 0, sizeof(struct rt_lazyseq_impl));
     seq->type = type;
     rt_obj_set_finalizer(seq, lazyseq_finalizer);
@@ -243,8 +253,10 @@ rt_lazyseq rt_lazyseq_new(rt_lazyseq_gen_fn gen, void *state) {
 /// holding the current value (so callers must consume before the next call). **Caveat:** can
 /// overflow at INT64 boundaries — caller must keep `start + step` in range.
 rt_lazyseq rt_lazyseq_range(int64_t start, int64_t end, int64_t step) {
-    if (step == 0)
+    if (step == 0) {
+        rt_trap("LazySeq.Range: step must be non-zero");
         return NULL;
+    }
 
     rt_lazyseq seq = alloc_lazyseq(LAZYSEQ_RANGE);
     if (!seq)
@@ -259,10 +271,19 @@ rt_lazyseq rt_lazyseq_range(int64_t start, int64_t end, int64_t step) {
 /// @brief Construct a LazySeq that yields `value` exactly `count` times. Pass `count = -1` for an
 /// infinite repeat (the canonical way to build infinite seeds for combinator pipelines).
 rt_lazyseq rt_lazyseq_repeat(void *value, int64_t count) {
+    // Only -1 is the documented infinite sentinel; other negatives are
+    // mistakes, not requests for infinity (VDOC-092).
+    if (count < -1) {
+        rt_trap("LazySeq.Repeat: count must be >= 0 (or -1 for infinite)");
+        return NULL;
+    }
     rt_lazyseq seq = alloc_lazyseq(LAZYSEQ_REPEAT);
     if (!seq)
         return NULL;
 
+    // Retain the repeated value for the node's lifetime (VDOC-091); the
+    // finalizer releases it.
+    rt_obj_retain_maybe(value);
     seq->data.repeat.value = value;
     seq->data.repeat.remaining = count;
     return seq;
@@ -656,8 +677,12 @@ rt_lazyseq rt_lazyseq_filter(rt_lazyseq seq, int8_t (*pred)(void *)) {
 /// @brief Wrap a source so the resulting LazySeq exhausts after `n` elements (or sooner if the
 /// source ends first). Cheap way to truncate infinite sequences to a known prefix.
 rt_lazyseq rt_lazyseq_take(rt_lazyseq seq, int64_t n) {
-    if (!seq || n < 0)
+    if (!seq)
         return NULL;
+    if (n < 0) {
+        rt_trap("LazySeq.Take: count must be >= 0");
+        return NULL;
+    }
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_TAKE);
     if (!result)
@@ -673,8 +698,12 @@ rt_lazyseq rt_lazyseq_take(rt_lazyseq seq, int64_t n) {
 /// @brief Wrap a source so the first `n` elements are skipped on first traversal. The skip
 /// happens lazily — `n` source `_next` calls are issued the first time a value is requested.
 rt_lazyseq rt_lazyseq_drop(rt_lazyseq seq, int64_t n) {
-    if (!seq || n < 0)
+    if (!seq)
         return NULL;
+    if (n < 0) {
+        rt_trap("LazySeq.Drop: count must be >= 0");
+        return NULL;
+    }
 
     rt_lazyseq result = alloc_lazyseq(LAZYSEQ_DROP);
     if (!result)
@@ -771,10 +800,16 @@ rt_lazyseq rt_lazyseq_zip(rt_lazyseq seq1, rt_lazyseq seq2, void *(*combine)(voi
 /// @brief Materialize the entire LazySeq into a Seq[Box]. Drives `_next` until exhaustion,
 /// pushing each element. Beware of infinite sources — pair with `_take` first.
 void *rt_lazyseq_to_seq(rt_lazyseq seq) {
-    if (!seq)
-        return rt_seq_new();
+    if (!seq) {
+        void *empty = rt_seq_new();
+        rt_seq_set_owns_elements(empty, 1);
+        return empty;
+    }
 
+    // Collected Seqs own their entries, like publicly constructed Seqs
+    // (VDOC-091).
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     int8_t has_more;
 
     while (1) {
@@ -790,10 +825,14 @@ void *rt_lazyseq_to_seq(rt_lazyseq seq) {
 /// @brief Materialize at most `n` elements into a pre-sized Seq[Box]. Safe over infinite sources;
 /// the underlying source state advances by the actual number of items consumed.
 void *rt_lazyseq_to_seq_n(rt_lazyseq seq, int64_t n) {
-    if (!seq || n <= 0)
-        return rt_seq_new();
+    if (!seq || n <= 0) {
+        void *empty = rt_seq_new();
+        rt_seq_set_owns_elements(empty, 1);
+        return empty;
+    }
 
     void *result = rt_seq_with_capacity(n);
+    rt_seq_set_owns_elements(result, 1);
     int8_t has_more;
     int64_t count = 0;
 
@@ -948,87 +987,115 @@ void *rt_lazyseq_w_repeat(void *value, int64_t count) {
     return (void *)rt_lazyseq_repeat(value, count);
 }
 
+/// @brief Checked receiver cast for the IL boundary (VDOC-090).
+/// @details LazySeq nodes carry RT_LAZYSEQ_CLASS_ID; a wrong explicit receiver
+///          (e.g. a Map) traps instead of being reinterpreted as cursor state.
+static rt_lazyseq as_lazyseq(void *obj) {
+    if (!rt_obj_is_instance(obj, RT_LAZYSEQ_CLASS_ID, sizeof(struct rt_lazyseq_impl))) {
+        rt_trap("LazySeq: invalid LazySeq object");
+        return NULL;
+    }
+    return (rt_lazyseq)obj;
+}
+
 /// @brief IL trampoline for `rt_lazyseq_next`. Discards `has_more` (caller uses `_is_exhausted`).
 void *rt_lazyseq_w_next(void *seq) {
     int8_t has_more;
-    return rt_lazyseq_next((rt_lazyseq)seq, &has_more);
+    return rt_lazyseq_next(as_lazyseq(seq), &has_more);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_peek`. Discards `has_more`.
 void *rt_lazyseq_w_peek(void *seq) {
     int8_t has_more;
-    return rt_lazyseq_peek((rt_lazyseq)seq, &has_more);
+    return rt_lazyseq_peek(as_lazyseq(seq), &has_more);
+}
+
+/// @brief IL trampoline: `Next` that preserves null elements as Option.Some.
+/// @details The plain wrapper discards `has_more` and cannot distinguish a
+///          yielded null element from exhaustion (VDOC-095); this variant
+///          returns Some(value) while the stream is live and None at the end.
+void *rt_lazyseq_w_next_option(void *seq) {
+    int8_t has_more = 0;
+    void *value = rt_lazyseq_next(as_lazyseq(seq), &has_more);
+    return has_more ? rt_option_some(value) : rt_option_none();
+}
+
+/// @brief IL trampoline: `Peek` returning Option (see rt_lazyseq_w_next_option).
+void *rt_lazyseq_w_peek_option(void *seq) {
+    int8_t has_more = 0;
+    void *value = rt_lazyseq_peek(as_lazyseq(seq), &has_more);
+    return has_more ? rt_option_some(value) : rt_option_none();
 }
 
 /// @brief IL trampoline for `rt_lazyseq_reset`.
 void rt_lazyseq_w_reset(void *seq) {
-    rt_lazyseq_reset((rt_lazyseq)seq);
+    rt_lazyseq_reset(as_lazyseq(seq));
 }
 
 /// @brief IL trampoline for `rt_lazyseq_index`.
 int64_t rt_lazyseq_w_index(void *seq) {
-    return rt_lazyseq_index((rt_lazyseq)seq);
+    return rt_lazyseq_index(as_lazyseq(seq));
 }
 
 /// @brief IL trampoline for `rt_lazyseq_is_exhausted`.
 int8_t rt_lazyseq_w_is_exhausted(void *seq) {
-    return rt_lazyseq_is_exhausted((rt_lazyseq)seq);
+    return rt_lazyseq_is_exhausted(as_lazyseq(seq));
 }
 
 /// @brief IL trampoline for `rt_lazyseq_take`.
 void *rt_lazyseq_w_take(void *seq, int64_t n) {
-    return (void *)rt_lazyseq_take((rt_lazyseq)seq, n);
+    return (void *)rt_lazyseq_take(as_lazyseq(seq), n);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_drop`.
 void *rt_lazyseq_w_drop(void *seq, int64_t n) {
-    return (void *)rt_lazyseq_drop((rt_lazyseq)seq, n);
+    return (void *)rt_lazyseq_drop(as_lazyseq(seq), n);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_concat`.
 void *rt_lazyseq_w_concat(void *first, void *second) {
-    return (void *)rt_lazyseq_concat((rt_lazyseq)first, (rt_lazyseq)second);
+    return (void *)rt_lazyseq_concat(as_lazyseq(first), as_lazyseq(second));
 }
 
 /// @brief IL trampoline for `rt_lazyseq_to_seq`.
 void *rt_lazyseq_w_to_seq(void *seq) {
-    return rt_lazyseq_to_seq((rt_lazyseq)seq);
+    return rt_lazyseq_to_seq(as_lazyseq(seq));
 }
 
 /// @brief IL trampoline for `rt_lazyseq_to_seq_n`.
 void *rt_lazyseq_w_to_seq_n(void *seq, int64_t n) {
-    return rt_lazyseq_to_seq_n((rt_lazyseq)seq, n);
+    return rt_lazyseq_to_seq_n(as_lazyseq(seq), n);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_count`.
 int64_t rt_lazyseq_w_count(void *seq) {
-    return rt_lazyseq_count((rt_lazyseq)seq);
+    return rt_lazyseq_count(as_lazyseq(seq));
 }
 
 /// @brief IL trampoline for `rt_lazyseq_map`. Re-types the user fn pointer for the typed call.
 void *rt_lazyseq_w_map(void *seq, void *fn) {
-    return (void *)rt_lazyseq_map((rt_lazyseq)seq, (void *(*)(void *))fn);
+    return (void *)rt_lazyseq_map(as_lazyseq(seq), (void *(*)(void *))fn);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_filter`.
 void *rt_lazyseq_w_filter(void *seq, void *pred) {
-    return (void *)rt_lazyseq_filter((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+    return (void *)rt_lazyseq_filter(as_lazyseq(seq), (int8_t (*)(void *))pred);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_take_while`.
 void *rt_lazyseq_w_take_while(void *seq, void *pred) {
-    return (void *)rt_lazyseq_take_while((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+    return (void *)rt_lazyseq_take_while(as_lazyseq(seq), (int8_t (*)(void *))pred);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_drop_while`.
 void *rt_lazyseq_w_drop_while(void *seq, void *pred) {
-    return (void *)rt_lazyseq_drop_while((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+    return (void *)rt_lazyseq_drop_while(as_lazyseq(seq), (int8_t (*)(void *))pred);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_find`. Discards the `found` flag (caller checks NULL).
 void *rt_lazyseq_w_find(void *seq, void *pred) {
     int8_t found;
-    return rt_lazyseq_find((rt_lazyseq)seq, (int8_t (*)(void *))pred, &found);
+    return rt_lazyseq_find(as_lazyseq(seq), (int8_t (*)(void *))pred, &found);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_find` that preserves absence as Option.None.
@@ -1040,16 +1107,16 @@ void *rt_lazyseq_w_find(void *seq, void *pred) {
 /// @return Opaque Viper.Option containing the first matching element, or None.
 void *rt_lazyseq_w_find_option(void *seq, void *pred) {
     int8_t found = 0;
-    void *value = rt_lazyseq_find((rt_lazyseq)seq, (int8_t (*)(void *))pred, &found);
+    void *value = rt_lazyseq_find(as_lazyseq(seq), (int8_t (*)(void *))pred, &found);
     return found ? rt_option_some(value) : rt_option_none();
 }
 
 /// @brief IL trampoline for `rt_lazyseq_any`.
 int8_t rt_lazyseq_w_any(void *seq, void *pred) {
-    return rt_lazyseq_any((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+    return rt_lazyseq_any(as_lazyseq(seq), (int8_t (*)(void *))pred);
 }
 
 /// @brief IL trampoline for `rt_lazyseq_all`.
 int8_t rt_lazyseq_w_all(void *seq, void *pred) {
-    return rt_lazyseq_all((rt_lazyseq)seq, (int8_t (*)(void *))pred);
+    return rt_lazyseq_all(as_lazyseq(seq), (int8_t (*)(void *))pred);
 }

@@ -960,6 +960,76 @@ size_t rt_box_hash(void *elem) {
 /// @brief Content-based equality for hashtable buckets. Handles pointer-identity fast path,
 /// rejects mixed box vs non-box, then dispatches by tag. Companion to `rt_box_hash` — together
 /// they let `Set[Box]` and `Map[Box, ...]` deduplicate by VALUE, not by pointer identity.
+/// @brief Sort rank for the default collection comparator (VDOC-089).
+/// @details Ranking by type class first makes the order total and transitive:
+///          NULL < numeric (boxed i64/i1/f64) < string (raw or boxed) < other.
+static int box_sort_rank(void *p) {
+    if (!p)
+        return 0;
+    if (rt_string_is_handle(p))
+        return 2;
+    switch (rt_box_type(p)) {
+        case RT_BOX_I64:
+        case RT_BOX_I1:
+        case RT_BOX_F64:
+            return 1;
+        case RT_BOX_STR:
+            return 2;
+        default:
+            return 3;
+    }
+}
+
+int64_t rt_box_default_sort_compare(void *a, void *b) {
+    int ra = box_sort_rank(a);
+    int rb = box_sort_rank(b);
+    if (ra != rb)
+        return ra < rb ? -1 : 1;
+
+    switch (ra) {
+        case 0:
+            return 0; // both NULL
+        case 1: {
+            // Numerics: exact when both are integers, double otherwise.
+            int64_t ta = rt_box_type(a);
+            int64_t tb = rt_box_type(b);
+            if (ta != RT_BOX_F64 && tb != RT_BOX_F64) {
+                int64_t ia = ta == RT_BOX_I1 ? (int64_t)rt_unbox_i1(a) : rt_unbox_i64(a);
+                int64_t ib = tb == RT_BOX_I1 ? (int64_t)rt_unbox_i1(b) : rt_unbox_i64(b);
+                return ia < ib ? -1 : (ia > ib ? 1 : 0);
+            }
+            double da = ta == RT_BOX_F64  ? rt_unbox_f64(a)
+                        : ta == RT_BOX_I1 ? (double)rt_unbox_i1(a)
+                                          : (double)rt_unbox_i64(a);
+            double db = tb == RT_BOX_F64  ? rt_unbox_f64(b)
+                        : tb == RT_BOX_I1 ? (double)rt_unbox_i1(b)
+                                          : (double)rt_unbox_i64(b);
+            // NaN sorts after every number and equal to another NaN.
+            int na = isnan(da), nb = isnan(db);
+            if (na || nb)
+                return na == nb ? 0 : (na ? 1 : -1);
+            return da < db ? -1 : (da > db ? 1 : 0);
+        }
+        case 2: {
+            rt_string sa = rt_string_is_handle(a) ? (rt_string)a : rt_unbox_str(a);
+            rt_string sb = rt_string_is_handle(b) ? (rt_string)b : rt_unbox_str(b);
+            int64_t cmp = rt_str_cmp(sa, sb);
+            if (!rt_string_is_handle(a))
+                rt_str_release_maybe(sa);
+            if (!rt_string_is_handle(b))
+                rt_str_release_maybe(sb);
+            return cmp;
+        }
+        default: {
+            // Arbitrary-but-consistent order for other objects: compare the
+            // pointers after conversion to uintptr_t, which is well defined.
+            uintptr_t ua = (uintptr_t)a;
+            uintptr_t ub = (uintptr_t)b;
+            return ua < ub ? -1 : (ua > ub ? 1 : 0);
+        }
+    }
+}
+
 int8_t rt_box_equal(void *a, void *b) {
     if (a == b)
         return 1;

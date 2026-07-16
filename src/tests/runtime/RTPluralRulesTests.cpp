@@ -15,6 +15,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_internal.h"
+#include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_locale_manager.h"
 #include "rt_plural_rules.h"
@@ -268,9 +270,92 @@ static void test_nonfinite_cardinal() {
 // Main
 //=============================================================================
 
+static void test_exponent_notation_operands() {
+    printf("Testing operands under %%g exponent notation (VDOC-076):\n");
+
+    // A rule on the v operand distinguishes fixed vs exponent spellings.
+    std::string dir = temp_dir("xv_VF");
+    std::string file = dir + "/xv-VF.json";
+    write_text_file(file, R"json({
+      "tag": "xv-VF",
+      "plural_cardinal": [
+        { "category": "one",   "rule": "v = 0" },
+        { "category": "other", "rule": "true" }
+      ]
+    })json");
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
+
+    rt_string tag = S("xv-VF");
+    void *loc = rt_locale_parse(tag);
+    rt_string_unref(tag);
+    void *pr = rt_plural_rules_for_locale(loc);
+
+    // 1e-07 renders with an exponent under %.15g but has 7 visible fraction
+    // digits in fixed notation, so v != 0.
+    test_result("Cardinal(0.0000001) = other (v=7)",
+                eq(rt_plural_rules_cardinal(pr, 0.0000001), "other"));
+    test_result("Cardinal(2.0) = one (v=0)", eq(rt_plural_rules_cardinal(pr, 2.0), "one"));
+    test_result("Cardinal(0.5) = other (v=1)",
+                eq(rt_plural_rules_cardinal(pr, 0.5), "other"));
+    // Large exponent spelling that is integer-valued keeps v = 0.
+    test_result("Cardinal(1e18) = one (v=0)", eq(rt_plural_rules_cardinal(pr, 1e18), "one"));
+}
+
+static void test_categories_reference_balance() {
+    printf("Testing Categories reference balance (VDOC-077):\n");
+    void *pr = en_rules();
+    void *cats = rt_plural_rules_categories(pr);
+    assert(rt_list_len(cats) > 0);
+
+    // The list must hold the only reference to each entry; our fetch adds a
+    // second (rt_list_get retains). Category names are short, so the count
+    // lives in the SSO/literal slot.
+    rt_string first = (rt_string)rt_list_get(cats, 0);
+    test_result("entry refcount = list + fetch",
+                first->literal_refs == 2);
+    rt_string_unref(first);
+}
+
+static void test_exact_int64_operands() {
+    printf("Testing exact 64-bit integer rules (VDOC-083):\n");
+
+    std::string dir = temp_dir("xw_I64");
+    std::string file = dir + "/xw.json";
+    write_text_file(file, R"json({
+      "tag": "xw",
+      "plural_cardinal": [
+        { "category": "few",   "rule": "i = 9223372036854775807" },
+        { "category": "one",   "rule": "i mod 10 = 7" },
+        { "category": "other", "rule": "true" }
+      ]
+    })json");
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
+
+    rt_string tag = S("xw");
+    void *loc = rt_locale_parse(tag);
+    rt_string_unref(tag);
+    void *pr = rt_plural_rules_for_locale(loc);
+
+    // INT64_MAX matches its exact literal, and the neighbor does not.
+    test_result("CardinalInt(INT64_MAX) = few",
+                eq(rt_plural_rules_cardinal_int(pr, INT64_MAX), "few"));
+    test_result("CardinalInt(INT64_MAX - 1) != few (mod 10 = 6)",
+                eq(rt_plural_rules_cardinal_int(pr, INT64_MAX - 1), "other"));
+    test_result("CardinalInt(9223372036854775797) = one (mod 10 = 7)",
+                eq(rt_plural_rules_cardinal_int(pr, INT64_MAX - 10), "one"));
+    test_result("CardinalInt(17) = one", eq(rt_plural_rules_cardinal_int(pr, 17), "one"));
+}
+
 int main() {
     printf("=== RT PluralRules Tests ===\n\n");
     test_cardinal_int_en();
+    test_exponent_notation_operands();
+    test_categories_reference_balance();
+    test_exact_int64_operands();
     test_cardinal_double_en();
     test_ordinal_en();
     test_categories();

@@ -52,15 +52,18 @@ Prefer `TryParseOption` for new code. `TryParse` remains as a compatibility help
   language/script/region chain, then `root`.
 - Parsed-but-unloaded locales are still usable for `Tag` / `Fallbacks()`, but their info queries use the baked en-US invariant data. Loading the tag does not retroactively bind an already-created handle; parse it again, use the handle returned by `LocaleManager.Load`, or pass it to `SetCurrent` after loading.
 - `Parse` traps on empty input, a primary language shorter than two characters, subtags longer than eight characters, malformed extension/private-use structure, or non-ASCII-alphanumeric subtag content.
-- Canonical tags are currently limited to 39 bytes. Pure private-use tags (`x-private`), extlang
-  forms, and some grandfathered tags are rejected even when valid under RFC 5646. Conversely,
-  ordering and extension-validation gaps currently admit malformed forms such as
-  `en-abcde-Latn` and `en-a-b-foo`; see VDOC-065 in the
-  [review findings](../../documentation-review-findings.md#vdoc-065--the-locale-parser-is-not-a-conforming-bcp-47-validator).
-- `FromParts` does not independently enforce one pre-split subtag per argument. For example,
-  `FromParts("en", "Latn-US", "")` currently succeeds as `en-Latn-US` (VDOC-066).
-- Most null-handle accessors fall through to root/invariant behavior, but
-  `Equals(null, Invariant())` currently returns `false` (VDOC-067).
+- The parser follows the RFC 5646 well-formedness grammar: pure private-use tags
+  (`x-private`, empty `Language`), extended language subtags (`zh-cmn-Hans-CN`, up to three
+  3-letter subtags after a 2-3 letter language), and long tags (canonical buffer 127 bytes)
+  are accepted, while empty extensions (`en-a-b-foo`, `en-a-x-foo`), script or region after a
+  variant (`en-abcde-Latn`, `en-abcde-US`), and duplicate variants (`sl-rozaj-rozaj`) are
+  rejected. Subtag validity against the IANA registry (including grandfathered tags) is not
+  checked.
+- `FromParts` requires one pre-split subtag per argument: values containing `-` or `_` trap,
+  and each supplied part must classify as the field it was passed as (`FromParts("en", "US", "")`
+  traps because `US` is a region shape, not a script).
+- Null handles are invariant-shaped across the whole API, including equality:
+  `Equals(null, Invariant())` returns `true`.
 - The runtime registry currently exposes `Fallbacks()` as opaque `Object`, so Zia cannot infer that it is iterable. Traverse it through `Viper.Collections.List` as shown below.
 
 ### Zia Example

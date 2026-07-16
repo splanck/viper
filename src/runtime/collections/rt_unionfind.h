@@ -54,7 +54,8 @@ void *rt_unionfind_find_root_option(void *uf, int64_t x);
 /// @param uf Union-Find object.
 /// @param x First element index.
 /// @param y Second element index.
-/// @return 1 if sets were merged, 0 if already in same set.
+/// @return 1 if sets were merged; 0 when already in the same set OR when
+///         either index is invalid (out of range).
 int64_t rt_unionfind_union(void *uf, int64_t x, int64_t y);
 
 /// @brief Check if x and y are in the same set.

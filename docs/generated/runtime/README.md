@@ -9,13 +9,13 @@ This exhaustive reference is generated from the modular runtime definition regis
 | [Assets](assets.md) | 1 | 1 |
 | [Audio](audio.md) | 9 | 132 |
 | [Basic](basic.md) | 1 | 4 |
-| [Collections](collections.md) | 31 | 482 |
+| [Collections](collections.md) | 31 | 485 |
 | [Core](core.md) | 6 | 60 |
 | [Crypto](crypto.md) | 10 | 81 |
 | [Data](data.md) | 9 | 97 |
 | [Diagnostics](diagnostics.md) | 3 | 20 |
 | [Error](error.md) | 0 | 3 |
-| [Functional](functional.md) | 2 | 31 |
+| [Functional](functional.md) | 2 | 33 |
 | [GUI](gui.md) | 59 | 703 |
 | [Game](game.md) | 52 | 765 |
 | [Game2D](game2d.md) | 1 | 80 |
@@ -37,7 +37,7 @@ This exhaustive reference is generated from the modular runtime definition regis
 | [System](system.md) | 10 | 70 |
 | [Terminal](terminal.md) | 1 | 24 |
 | [Text](text.md) | 17 | 152 |
-| [Threads](threads.md) | 18 | 160 |
+| [Threads](threads.md) | 18 | 161 |
 | [Time](time.md) | 9 | 116 |
 | [Workspace](workspace.md) | 3 | 9 |
-| [Zia](zia.md) | 7 | 53 |
+| [Zia](zia.md) | 7 | 55 |

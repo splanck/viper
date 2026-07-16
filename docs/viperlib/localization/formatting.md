@@ -62,21 +62,20 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
   non-Latin digit sets round-trip. Locale files currently receive only weak UTF-8 span validation;
   see VDOC-069 in the [review findings](../../documentation-review-findings.md#vdoc-069--locale-digit-validation-does-not-validate-utf-8).
 - Decimal parsing and decimal/scientific formatting use C-locale numeric conversion internally, then apply locale separators, so the host process locale does not change results. There is no scientific-notation parse method.
-- Decimal formatting has locale tokens for `NaN` and infinity, but decimal/currency parsing accepts
-  only signed digit strings. Consequently formatted non-finite values do not round-trip through
-  `TryParseDecimal` or `TryParseCurrency` (VDOC-085).
+- Decimal and currency parsing accept the locale's exact `NaN` and infinity tokens (with an
+  optional sign), so formatted non-finite values round-trip through `TryParseDecimal` and
+  `TryParseCurrency`. Integer parsing rejects the tokens.
 - `CurrencyOf` requires a 3-letter uppercase ISO-style code. Non-default valid codes are rendered literally as the symbol placeholder unless the locale has a dedicated symbol table in a future release.
-- Currency parsing recognizes only the configured symbol and default code. A non-default
-  `CurrencyOf` result does not currently round-trip: en-US `CurrencyOf(100, "EUR")` emits
-  `"EUR100.00"`, which `TryParseCurrency` rejects (VDOC-084).
+- Currency parsing recognizes the configured symbol, the default code, and any standalone
+  3-uppercase-letter ISO code, so non-default `CurrencyOf` output (e.g. en-US
+  `CurrencyOf(100, "EUR")` → `"EUR100.00"`) round-trips through `TryParseCurrency`.
 - Currency parsing accepts the locale's positive and negative patterns, including accounting parentheses such as `"($1,234.56)"`.
-- **Strict mode parses**: strict rejects inputs where a group separator appears at a non-group-size position (e.g. `"1,00"` under en-US where `group_size=3`). Lenient discards group separators regardless of width and currently also accepts empty runs: `"1,,2"` parses as `12` and `"1,,,"` as `1` (VDOC-071).
+- **Strict mode parses**: strict rejects inputs where a group separator appears at a non-group-size position (e.g. `"1,00"` under en-US where `group_size=3`). Lenient ignores group widths but every separator must still sit between digits: `"1,,2"`, `"1,"`, and `",1"` are rejected in both modes.
 - Unknown `RoundingMode` strings silently select `"halfEven"`. The property affects decimal, percent, and currency formatting; integer/ordinal output is exact and `Scientific` uses the C formatter's rounding.
 - `halfEven` (banker's rounding) is the default. Under the normal round-to-nearest floating-point environment, halfway values round to the nearest even result.
-- `Scientific` localizes ordinary digits, the decimal separator, and the exponent marker, but keeps
-  C formatter signs and platform C non-finite spellings. For example, en-US
-  `Decimal(+infinity)` is `"∞"`, while the installed macOS evaluator emits `"inf"` from
-  `Scientific(+infinity, 2)` (VDOC-072).
+- `Scientific` localizes digits, the decimal separator, the exponent marker, mantissa and
+  exponent sign tokens, and non-finite values (the same locale NaN/infinity tokens as
+  `Decimal`).
 - The process-wide C numeric locale used by decimal/scientific conversion has a known
   unsynchronized first-use initialization race (VDOC-080). Avoid deliberately racing the first
   NumberFormat calls across threads until that runtime issue is fixed.
@@ -216,8 +215,8 @@ Human-readable "N units ago" / "in N units" strings.
 - `Style` accepts only `"long"` and `"short"`; unknown values trap. `Short` and `Long` force their named style without changing the property, while `Format`, `FormatFrom`, and `Numeric` use the current property. Short style uses `short_past` / `short_future` and `short_units` when available.
 - Relative-time numbers are localized with the locale digit set.
 - `FormatFrom` traps if subtracting the timestamps or converting their seconds delta to
-  milliseconds would overflow. `Format` and `Numeric` accept the full signed range, but
-  `INT64_MIN` is currently rendered with magnitude `INT64_MAX`—one too small (VDOC-073).
+  milliseconds would overflow. `Format` and `Numeric` accept the full signed range;
+  magnitudes are tracked unsigned, so `INT64_MIN` renders its exact absolute value.
 
 ---
 
@@ -240,9 +239,8 @@ Locale-correct list joining ("A, B, and C").
 
 - 0 items → `""`; 1 item → the item verbatim; 2 → pair template; 3+ → start/middle/end recursive combine per CLDR.
 - The runtime expects a `Viper.Collections.List` whose elements are raw runtime strings. A typed Zia `List[String]` currently stores boxed elements and is not compatible with this API. A string `Split()` result contains raw strings and can be converted with `ToList()`, as below.
-- The current implementation fails to release the retained references returned by `List.Get` and
-  therefore leaks item references on every join (VDOC-075). This does not change the rendered
-  text, but it matters for repeated formatting in a long-running process.
+- Joins are reference-balanced: every element reference retained during formatting is released
+  before the call returns.
 
 ### Zia Example
 

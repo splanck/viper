@@ -73,9 +73,38 @@ static std::string runtimeClassDocumentation(const il::runtime::RuntimeClass &ru
 }
 
 /// @brief Convert a CompletionItem to its tab-delimited serialized form.
+/// @brief Escape a field for the tab/newline-delimited wire rows (VDOC-111).
+/// @details Multiline snippet insertion text would otherwise split one item
+///          across several apparent rows. Backslash, tab, newline, and CR are
+///          escaped as \\, \t, \n, \r; consumers unescape in reverse.
+static std::string escapeField(const std::string &field) {
+    std::string out;
+    out.reserve(field.size());
+    for (char c : field) {
+        switch (c) {
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            default:
+                out += c;
+                break;
+        }
+    }
+    return out;
+}
+
 static std::string serializeItem(const CompletionItem &item) {
-    return item.label + '\t' + item.insertText + '\t' +
-           std::to_string(static_cast<int>(item.kind)) + '\t' + item.detail + '\n';
+    return escapeField(item.label) + '\t' + escapeField(item.insertText) + '\t' +
+           std::to_string(static_cast<int>(item.kind)) + '\t' + escapeField(item.detail) + '\n';
 }
 
 static bool equalsIgnoreCase(std::string_view a, std::string_view b) {

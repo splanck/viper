@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_context.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -719,6 +720,43 @@ static void test_sort_single() {
     assert(rt_seq_get(seq, 0) == &a);
 }
 
+static void test_sort_boxed_values() {
+    // VDOC-089: the default sort recognizes boxed strings and integers (the
+    // representations produced by the public Push surface), matching List.
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+    rt_seq_push(seq, rt_box_str(rt_string_from_bytes("Charlie", 7)));
+    rt_seq_push(seq, rt_box_str(rt_string_from_bytes("Alice", 5)));
+    rt_seq_push(seq, rt_box_str(rt_string_from_bytes("Bob", 3)));
+    rt_seq_sort(seq);
+
+    rt_string first = rt_unbox_str(rt_seq_get(seq, 0));
+    rt_string second = rt_unbox_str(rt_seq_get(seq, 1));
+    rt_string third = rt_unbox_str(rt_seq_get(seq, 2));
+    assert(strcmp(rt_string_cstr(first), "Alice") == 0);
+    assert(strcmp(rt_string_cstr(second), "Bob") == 0);
+    assert(strcmp(rt_string_cstr(third), "Charlie") == 0);
+
+    void *nums = rt_seq_new();
+    rt_seq_set_owns_elements(nums, 1);
+    rt_seq_push(nums, rt_box_i64(30));
+    rt_seq_push(nums, rt_box_i64(10));
+    rt_seq_push(nums, rt_box_i64(20));
+    rt_seq_sort(nums);
+    assert(rt_unbox_i64(rt_seq_get(nums, 0)) == 10);
+    assert(rt_unbox_i64(rt_seq_get(nums, 1)) == 20);
+    assert(rt_unbox_i64(rt_seq_get(nums, 2)) == 30);
+
+    // Mixed types rank by class: numeric < string, deterministically.
+    void *mixed = rt_seq_new();
+    rt_seq_set_owns_elements(mixed, 1);
+    rt_seq_push(mixed, rt_box_str(rt_string_from_bytes("zzz", 3)));
+    rt_seq_push(mixed, rt_box_i64(5));
+    rt_seq_sort(mixed);
+    assert(rt_box_type(rt_seq_get(mixed, 0)) == RT_BOX_I64);
+    assert(rt_box_type(rt_seq_get(mixed, 1)) == RT_BOX_STR);
+}
+
 static void test_sort_null() {
     rt_seq_sort(nullptr);      // Should not crash
     rt_seq_sort_desc(nullptr); // Should not crash
@@ -1076,6 +1114,7 @@ int main() {
     test_sort_strings();
     test_sort_empty();
     test_sort_single();
+    test_sort_boxed_values();
     test_sort_null();
     test_sort_desc();
 

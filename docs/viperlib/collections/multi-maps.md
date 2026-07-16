@@ -305,8 +305,8 @@ ranking operations for counting occurrences.
 
 - `Dec` automatically removes a key when its count reaches zero and returns 0 for a missing key.
 - `Get` returns 0 for keys that have never been added (does not insert)
-- `IncrementBy` accepts only a positive increment. For zero or a negative value it makes no change and
-  returns 0, even when the key already has a nonzero count.
+- `IncrementBy` returns the post-operation count. Zero is a lookup no-op (returns the current
+  count, or 0 for a missing key); a negative amount traps — use `Decrement` to count down.
 - `MostCommon(n)` returns copied key strings ordered from highest count to lowest, all keys when
   `n` exceeds `Count`, and an empty Seq when `n <= 0`. Ties have unspecified order.
 - `Keys()` returns copied strings in unspecified hash-table order.

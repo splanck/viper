@@ -218,6 +218,9 @@ static re_node *parse_atom(parser_state *p) {
         return parse_class(p);
     } else if (c == '(') {
         advance(p);
+        // Claim the capture index before parsing the body so nested groups
+        // number by opening parenthesis (PCRE convention).
+        int group_index = p->group_counter++;
         re_node *inner = parse_alternation(p);
         if (peek(p) != ')') {
             node_free(inner);
@@ -225,6 +228,7 @@ static re_node *parse_atom(parser_state *p) {
         }
         advance(p);
         re_node *group = node_new(RE_GROUP);
+        group->group_index = group_index;
         children_add(group, inner);
         return group;
     } else if (c == ')' || c == '|' || c == '*' || c == '+' || c == '?' || c == '\0') {

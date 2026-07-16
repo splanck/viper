@@ -509,10 +509,9 @@ returns 0. The last two results are tracked as
 `Split` with an empty delimiter returns a one-element sequence containing the original string.
 
 The five identifier-style case conversions split only on space, tab, `_`, `-`, lower-to-upper
-transitions, and acronym boundaries. Digits remain in the surrounding byte word. Their C-library
-case classification is process-locale dependent (see
-[VDOC-063](../documentation-review-findings.md#vdoc-063--case-insensitive-pattern-helpers-depend-on-the-process-c-locale)),
-and embedded NUL bytes currently truncate their output (see
+transitions, and acronym boundaries. Digits remain in the surrounding byte word. Case
+classification is ASCII-only and locale-independent (bytes above 0x7F never fold or classify
+as letters), and embedded NUL bytes currently truncate their output (see
 [VDOC-165](../documentation-review-findings.md#vdoc-165--string-case-shape-methods-truncate-at-embedded-nul)).
 Passing a multibyte padding character can also create malformed UTF-8 because padding repeats only
 its first byte; see

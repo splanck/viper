@@ -7,8 +7,8 @@
 //
 // File: src/runtime/localization/rt_locale_platform_posix.c
 // Purpose: POSIX (Linux, BSD) implementation of rt_locale_platform_detect_system.
-//          Walks the standard POSIX env var cascade ($LC_ALL -> $LANG ->
-//          $LC_MESSAGES) and cleans the result into a near-BCP-47 shape by
+//          Walks the standard POSIX env var cascade ($LC_ALL -> $LC_MESSAGES ->
+//          $LANG) and cleans the result into a near-BCP-47 shape by
 //          stripping encoding suffixes (.UTF-8) and modifier suffixes
 //          (@latin), then normalizing underscores to dashes.
 //

@@ -259,11 +259,11 @@ static void maybe_resize_for_count(rt_bag_impl *bag, size_t next_count) {
 /// **Usage example:**
 /// ```
 /// Dim bag = Bag.New()
-/// bag.Put("apple")
-/// bag.Put("banana")
-/// bag.Put("apple")      ' No effect - already present
+/// bag.Add("apple")
+/// bag.Add("banana")
+/// bag.Add("apple")      ' No effect - already present
 /// Print bag.Has("apple") ' Outputs: True
-/// Print bag.Len()        ' Outputs: 2
+/// Print bag.Count        ' Outputs: 2
 /// ```
 ///
 /// **Implementation notes:**
@@ -354,10 +354,10 @@ int8_t rt_bag_is_empty(void *obj) {
 /// **Example:**
 /// ```
 /// Dim bag = Bag.New()
-/// Print bag.Put("apple")   ' Outputs: 1 (added)
-/// Print bag.Put("banana")  ' Outputs: 1 (added)
-/// Print bag.Put("apple")   ' Outputs: 0 (already present)
-/// Print bag.Len()          ' Outputs: 2
+/// Print bag.Add("apple")   ' Outputs: 1 (added)
+/// Print bag.Add("banana")  ' Outputs: 1 (added)
+/// Print bag.Add("apple")   ' Outputs: 0 (already present)
+/// Print bag.Count          ' Outputs: 2
 /// ```
 ///
 /// **Hash collision handling:**
@@ -421,6 +421,12 @@ int8_t rt_bag_add(void *obj, rt_string str) {
     entry->key_len = key_len;
 
     // Insert at head of bucket chain
+    if (bag->count >= (size_t)INT64_MAX) {
+        free(entry->key);
+        free(entry);
+        rt_trap("StringSet.Add: maximum size reached");
+        return 0;
+    }
     entry->next = bag->buckets[idx];
     bag->buckets[idx] = entry;
     bag->count++;
@@ -436,12 +442,12 @@ int8_t rt_bag_add(void *obj, rt_string str) {
 /// **Example:**
 /// ```
 /// Dim bag = Bag.New()
-/// bag.Put("apple")
-/// bag.Put("banana")
-/// Print bag.Drop("apple")   ' Outputs: 1 (removed)
-/// Print bag.Drop("cherry")  ' Outputs: 0 (not found)
-/// Print bag.Drop("apple")   ' Outputs: 0 (already removed)
-/// Print bag.Len()           ' Outputs: 1
+/// bag.Add("apple")
+/// bag.Add("banana")
+/// Print bag.Remove("apple")   ' Outputs: 1 (removed)
+/// Print bag.Remove("cherry")  ' Outputs: 0 (not found)
+/// Print bag.Remove("apple")   ' Outputs: 0 (already removed)
+/// Print bag.Count           ' Outputs: 1
 /// ```
 ///
 /// **Chain removal:**
@@ -501,8 +507,8 @@ int8_t rt_bag_remove(void *obj, rt_string str) {
 /// **Example:**
 /// ```
 /// Dim bag = Bag.New()
-/// bag.Put("apple")
-/// bag.Put("banana")
+/// bag.Add("apple")
+/// bag.Add("banana")
 /// Print bag.Has("apple")   ' Outputs: True
 /// Print bag.Has("cherry")  ' Outputs: False
 /// ```
@@ -556,11 +562,11 @@ int8_t rt_bag_has(void *obj, rt_string str) {
 /// **Example:**
 /// ```
 /// Dim bag = Bag.New()
-/// bag.Put("apple")
-/// bag.Put("banana")
-/// Print bag.Len()    ' Outputs: 2
+/// bag.Add("apple")
+/// bag.Add("banana")
+/// Print bag.Count    ' Outputs: 2
 /// bag.Clear()
-/// Print bag.Len()    ' Outputs: 0
+/// Print bag.Count    ' Outputs: 0
 /// Print bag.IsEmpty  ' Outputs: True
 /// ```
 ///
@@ -603,9 +609,9 @@ void rt_bag_clear(void *obj) {
 /// **Example:**
 /// ```
 /// Dim bag = Bag.New()
-/// bag.Put("apple")
-/// bag.Put("banana")
-/// bag.Put("cherry")
+/// bag.Add("apple")
+/// bag.Add("banana")
+/// bag.Add("cherry")
 /// Dim items = bag.Items()
 /// For i = 0 To items.Len() - 1
 ///     Print items.Get(i)  ' Outputs each fruit (order varies)
@@ -659,7 +665,7 @@ void *rt_bag_items(void *obj) {
 /// ```
 /// A = {apple, banana}
 /// B = {banana, cherry}
-/// A.Merge(B) = {apple, banana, cherry}
+/// A.Union(B) = {apple, banana, cherry}
 /// ```
 ///
 /// **Example:**
@@ -672,7 +678,7 @@ void *rt_bag_items(void *obj) {
 /// more.Put("banana")
 /// more.Put("cherry")
 ///
-/// Dim all = fruits.Merge(more)
+/// Dim all = fruits.Union(more)
 /// Print all.Len()  ' Outputs: 3 (apple, banana, cherry)
 /// ```
 ///
@@ -738,7 +744,7 @@ void *rt_bag_union(void *obj, void *other) {
 /// ```
 /// A = {apple, banana, cherry}
 /// B = {banana, cherry, date}
-/// A.Common(B) = {banana, cherry}
+/// A.Intersect(B) = {banana, cherry}
 /// ```
 ///
 /// **Example:**
@@ -753,7 +759,7 @@ void *rt_bag_union(void *obj, void *other) {
 /// tropical.Put("cherry")
 /// tropical.Put("mango")
 ///
-/// Dim both = fruits.Common(tropical)
+/// Dim both = fruits.Intersect(tropical)
 /// Print both.Len()  ' Outputs: 2 (banana, cherry)
 /// ```
 ///

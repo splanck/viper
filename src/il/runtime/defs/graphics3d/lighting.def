@@ -730,9 +730,9 @@ RT_FUNC(Canvas3DClearClipRect2D, rt_canvas3d_clear_clip_rect2d, "Viper.Graphics3
 RT_FUNC(Canvas3DMeasureText2D,  rt_canvas3d_measure_text2d,  "Viper.Graphics3D.Canvas3D.MeasureText2D",  "i64(obj,str,f64)")
 
 // SpatialAudio3D — low-level spatial audio helpers
-RT_FUNC(Sound3DSetListener,  rt_sound3d_set_listener,  "Viper.Audio.SpatialAudio3D.SetListener",  "void(obj,obj)")
-RT_FUNC(Sound3DPlayAt,       rt_sound3d_play_at,       "Viper.Audio.SpatialAudio3D.PlayAt",       "i64(obj,obj,f64,i64)")
-RT_FUNC(Sound3DUpdateVoice,  rt_sound3d_update_voice,  "Viper.Audio.SpatialAudio3D.UpdateVoice",  "void(i64,obj,f64)")
+RT_FUNC(Sound3DSetListener,  rt_sound3d_set_listener,  "Viper.Audio.SpatialAudio3D.SetListener",  "void(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>)")
+RT_FUNC(Sound3DPlayAt,       rt_sound3d_play_at,       "Viper.Audio.SpatialAudio3D.PlayAt",       "i64(obj<Viper.Audio.Sound>,obj<Viper.Math.Vec3>,f64,i64)")
+RT_FUNC(Sound3DUpdateVoice,  rt_sound3d_update_voice,  "Viper.Audio.SpatialAudio3D.UpdateVoice",  "void(i64,obj<Viper.Math.Vec3>,f64)")
 RT_FUNC(Sound3DSyncBindings, rt_sound3d_sync_bindings, "Viper.Audio.SpatialAudio3D.SyncBindings", "void(f64)")
 
 /// @summary Provides Spatial Audio 3D constants and static operations for audio playback and synthesis.
@@ -741,9 +741,9 @@ RT_FUNC(Sound3DSyncBindings, rt_sound3d_sync_bindings, "Viper.Audio.SpatialAudio
 /// Its public surface exposes operations including `SetListener`, `PlayAt`, `UpdateVoice`,
 /// `SyncBindings`.
 RT_CLASS_BEGIN("Viper.Audio.SpatialAudio3D", SpatialAudio3D, "none", none)
-    RT_METHOD("SetListener", "void(obj,obj)", Sound3DSetListener)
-    RT_METHOD("PlayAt", "i64(obj,obj,f64,i64)", Sound3DPlayAt)
-    RT_METHOD("UpdateVoice", "void(i64,obj,f64)", Sound3DUpdateVoice)
+    RT_METHOD("SetListener", "void(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>)", Sound3DSetListener)
+    RT_METHOD("PlayAt", "i64(obj<Viper.Audio.Sound>,obj<Viper.Math.Vec3>,f64,i64)", Sound3DPlayAt)
+    RT_METHOD("UpdateVoice", "void(i64,obj<Viper.Math.Vec3>,f64)", Sound3DUpdateVoice)
     RT_METHOD("SyncBindings", "void(f64)", Sound3DSyncBindings)
 RT_CLASS_END()
 

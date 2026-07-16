@@ -8,7 +8,9 @@
 // map/filter/take/drop/zip functional operations on potentially infinite sequences.
 //
 // Key invariants:
-//   - Sequences are single-pass; calling reset restarts generation from the beginning.
+//   - Sequences are single-pass. Reset restarts composite stages (Map/Filter/
+//     Take/...), but RANGE and REPEAT sources cannot rewind their running
+//     state; see rt_lazyseq_reset in the implementation.
 //   - Collector operations (ToList, Count) may not terminate on infinite sequences.
 //   - Functional operations (Map/Filter) return new lazy sequences; they do not materialize.
 //   - rt_lazyseq_next returns NULL to signal exhaustion.
@@ -50,7 +52,8 @@ rt_lazyseq rt_lazyseq_new(rt_lazyseq_gen_fn gen, void *state);
 
 /// @brief Create a lazy sequence that generates a range of integers.
 /// @param start Starting value (inclusive).
-/// @param end Ending value (exclusive), or INT64_MAX for infinite.
+/// @param end Ending value (exclusive). There is no special infinite
+///            sentinel; use Repeat/Iterate for unbounded sequences.
 /// @param step Step between values (must be non-zero).
 /// @return A new LazySeq generating integer pointers.
 rt_lazyseq rt_lazyseq_range(int64_t start, int64_t end, int64_t step);
@@ -217,6 +220,12 @@ int8_t rt_lazyseq_all(rt_lazyseq seq, int8_t (*pred)(void *));
 void *rt_lazyseq_w_range(int64_t start, int64_t end, int64_t step);
 void *rt_lazyseq_w_repeat(void *value, int64_t count);
 void *rt_lazyseq_w_next(void *seq);
+
+/// @brief Next preserving null elements: Some(value) while live, None at end.
+void *rt_lazyseq_w_next_option(void *seq);
+
+/// @brief Peek preserving null elements: Some(value) while live, None at end.
+void *rt_lazyseq_w_peek_option(void *seq);
 void *rt_lazyseq_w_peek(void *seq);
 void rt_lazyseq_w_reset(void *seq);
 int64_t rt_lazyseq_w_index(void *seq);

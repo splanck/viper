@@ -11,7 +11,10 @@
 // Links: docs/viperlib.md
 
 #include "rt_bag.h"
+#include "rt_box.h"
+#include "rt_convert_coll.h"
 #include "rt_seq.h"
+#include "rt_set.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -305,7 +308,29 @@ static void test_bag_resize() {
 // Entry Point
 //=============================================================================
 
+static void test_to_set_boxed_membership() {
+    printf("Testing Bag.ToSet boxed membership (VDOC-102):\n");
+
+    void *bag = rt_bag_new();
+    rt_string apple = rt_string_from_bytes("apple", 5);
+    rt_bag_add(bag, apple);
+    rt_string_unref(apple);
+
+    void *set = rt_bag_to_set(bag);
+    test_result("converted set has one entry", rt_set_len(set) == 1);
+
+    // A freshly boxed copy must match by value, like any other Set entry.
+    rt_string probe_str = rt_string_from_bytes("apple", 5);
+    void *probe = rt_box_str(probe_str);
+    test_result("Has(Box.Str(\"apple\")) is true", rt_set_has(set, probe) == 1);
+
+    rt_string other_str = rt_string_from_bytes("pear", 4);
+    void *other = rt_box_str(other_str);
+    test_result("Has(Box.Str(\"pear\")) is false", rt_set_has(set, other) == 0);
+}
+
 int main() {
+    test_to_set_boxed_membership();
     printf("=== RT Bag Tests ===\n\n");
 
     test_bag_new_empty();

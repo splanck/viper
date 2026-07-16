@@ -812,6 +812,7 @@ Constructor: `Viper.Collections.Queue.New`
 | <a id="viper-collections-queue-peek"></a>`Peek` | `obj()` | `Viper.Collections.Queue.Peek` |
 | <a id="viper-collections-queue-push"></a>`Push` | `void(obj)` | `Viper.Collections.Queue.Push` |
 | <a id="viper-collections-queue-pop"></a>`Pop` | `obj()` | `Viper.Collections.Queue.Pop` |
+| <a id="viper-collections-queue-setownselements"></a>`SetOwnsElements` | `void(i1)` | `Viper.Collections.Queue.SetOwnsElements` |
 | <a id="viper-collections-queue-tolist"></a>`ToList` | `obj<Viper.Collections.List>()` | `Viper.Collections.Queue.ToList` |
 | <a id="viper-collections-queue-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Queue.ToSeq` |
 | <a id="viper-collections-queue-trypop"></a>`TryPop` | `obj<Viper.Option>()` | `Viper.Collections.Queue.TryPop` |
@@ -985,6 +986,7 @@ Constructor: `Viper.Collections.Stack.New`
 | <a id="viper-collections-stack-peek"></a>`Peek` | `obj()` | `Viper.Collections.Stack.Peek` |
 | <a id="viper-collections-stack-pop"></a>`Pop` | `obj()` | `Viper.Collections.Stack.Pop` |
 | <a id="viper-collections-stack-push"></a>`Push` | `void(obj)` | `Viper.Collections.Stack.Push` |
+| <a id="viper-collections-stack-setownselements"></a>`SetOwnsElements` | `void(i1)` | `Viper.Collections.Stack.SetOwnsElements` |
 | <a id="viper-collections-stack-tolist"></a>`ToList` | `obj<Viper.Collections.List>()` | `Viper.Collections.Stack.ToList` |
 | <a id="viper-collections-stack-toseq"></a>`ToSeq` | `obj<Viper.Collections.Seq>()` | `Viper.Collections.Stack.ToSeq` |
 | <a id="viper-collections-stack-trypop"></a>`TryPop` | `obj<Viper.Option>()` | `Viper.Collections.Stack.TryPop` |
@@ -1089,6 +1091,7 @@ Constructor: `Viper.Collections.Trie.New`
 | <a id="viper-collections-trie-hasprefix"></a>`HasPrefix` | `i1(str)` | `Viper.Collections.Trie.HasPrefix` |
 | <a id="viper-collections-trie-keys"></a>`Keys` | `seq<str>()` | `Viper.Collections.Trie.Keys` |
 | <a id="viper-collections-trie-longestprefix"></a>`LongestPrefix` | `str(str)` | `Viper.Collections.Trie.LongestPrefix` |
+| <a id="viper-collections-trie-longestprefixoption"></a>`LongestPrefixOption` | `obj<Viper.Option>(str)` | `Viper.Collections.Trie.LongestPrefixOption` |
 | <a id="viper-collections-trie-set"></a>`Set` | `void(str,obj)` | `Viper.Collections.Trie.Set` |
 | <a id="viper-collections-trie-remove"></a>`Remove` | `i1(str)` | `Viper.Collections.Trie.Remove` |
 | <a id="viper-collections-trie-withprefix"></a>`WithPrefix` | `seq<str>(str)` | `Viper.Collections.Trie.WithPrefix` |
@@ -1438,6 +1441,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Queue.Clone` | `obj<Viper.Collections.Queue>(obj)` | `rt_queue_clone` |
 | `Viper.Collections.Queue.TryPop` | `obj<Viper.Option>(obj)` | `rt_queue_try_pop_option` |
 | `Viper.Collections.Queue.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_queue_to_seq` |
+| `Viper.Collections.Queue.SetOwnsElements` | `void(obj,i1)` | `rt_queue_set_owns_elements` |
 | `Viper.Collections.Heap.Clear` | `void(obj)` | `rt_pqueue_clear` |
 | <a id="viper-collections-heap-get-isempty"></a>`Viper.Collections.Heap.get_IsEmpty` | `i1(obj)` | `rt_pqueue_is_empty` |
 | <a id="viper-collections-heap-get-ismax"></a>`Viper.Collections.Heap.get_IsMax` | `i1(obj)` | `rt_pqueue_is_max` |
@@ -1526,6 +1530,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Stack.Clone` | `obj<Viper.Collections.Stack>(obj)` | `rt_stack_clone` |
 | `Viper.Collections.Stack.TryPop` | `obj<Viper.Option>(obj)` | `rt_stack_try_pop_option` |
 | `Viper.Collections.Stack.ToSeq` | `obj<Viper.Collections.Seq>(obj)` | `rt_stack_to_seq` |
+| `Viper.Collections.Stack.SetOwnsElements` | `void(obj,i1)` | `rt_stack_set_owns_elements` |
 | `Viper.Collections.Iterator.FromSeq` | `obj(obj)` | `rt_iter_from_seq` |
 | `Viper.Collections.Iterator.FromList` | `obj(obj)` | `rt_iter_from_list` |
 | `Viper.Collections.Iterator.FromDeque` | `obj(obj)` | `rt_iter_from_deque` |
@@ -1565,6 +1570,7 @@ Constructor: `Viper.Collections.Deque.New`
 | `Viper.Collections.Trie.Keys` | `seq<str>(obj)` | `rt_trie_keys` |
 | <a id="viper-collections-trie-get-count"></a>`Viper.Collections.Trie.get_Count` | `i64(obj)` | `rt_trie_len` |
 | `Viper.Collections.Trie.LongestPrefix` | `str(obj,str)` | `rt_trie_longest_prefix` |
+| `Viper.Collections.Trie.LongestPrefixOption` | `obj<Viper.Option>(obj,str)` | `rt_trie_longest_prefix_option` |
 | `Viper.Collections.Trie.New` | `obj()` | `rt_trie_new` |
 | `Viper.Collections.Trie.Set` | `void(obj,str,obj)` | `rt_trie_set` |
 | `Viper.Collections.Trie.Remove` | `i1(obj,str)` | `rt_trie_remove` |

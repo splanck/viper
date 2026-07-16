@@ -562,6 +562,7 @@ RT_FUNC(QueueToList,  rt_queue_to_list,  "Viper.Collections.Queue.ToList",      
 RT_FUNC(QueueClone,   rt_queue_clone,    "Viper.Collections.Queue.Clone",       "obj<Viper.Collections.Queue>(obj)")
 RT_FUNC(QueueTryPopOption, rt_queue_try_pop_option, "Viper.Collections.Queue.TryPop", "obj<Viper.Option>(obj)")
 RT_FUNC(QueueToSeq,   rt_queue_to_seq,   "Viper.Collections.Queue.ToSeq",       "obj<Viper.Collections.Seq>(obj)")
+RT_FUNC(QueueSetOwnsElements, rt_queue_set_owns_elements, "Viper.Collections.Queue.SetOwnsElements", "void(obj,i1)")
 
 // Queue aliases
 
@@ -687,6 +688,7 @@ RT_FUNC(StackToList,  rt_stack_to_list,  "Viper.Collections.Stack.ToList",      
 RT_FUNC(StackClone,   rt_stack_clone,    "Viper.Collections.Stack.Clone",       "obj<Viper.Collections.Stack>(obj)")
 RT_FUNC(StackTryPopOption, rt_stack_try_pop_option, "Viper.Collections.Stack.TryPop", "obj<Viper.Option>(obj)")
 RT_FUNC(StackToSeq,   rt_stack_to_seq,   "Viper.Collections.Stack.ToSeq",       "obj<Viper.Collections.Seq>(obj)")
+RT_FUNC(StackSetOwnsElements, rt_stack_set_owns_elements, "Viper.Collections.Stack.SetOwnsElements", "void(obj,i1)")
 
 // Stack aliases
 
@@ -743,6 +745,7 @@ RT_FUNC(TrieClone,          rt_trie_clone,          "Viper.Collections.Trie.Clon
 RT_FUNC(TrieKeys,           rt_trie_keys,           "Viper.Collections.Trie.Keys",           "seq<str>(obj)")
 RT_FUNC(TrieLen,            rt_trie_len,            "Viper.Collections.Trie.get_Count",        "i64(obj)")
 RT_FUNC(TrieLongestPrefix,  rt_trie_longest_prefix, "Viper.Collections.Trie.LongestPrefix",  "str(obj,str)")
+RT_FUNC(TrieLongestPrefixOption, rt_trie_longest_prefix_option, "Viper.Collections.Trie.LongestPrefixOption", "obj<Viper.Option>(obj,str)")
 RT_FUNC(TrieNew,            rt_trie_new,            "Viper.Collections.Trie.New",            "obj()")
 RT_FUNC(TrieSet,            rt_trie_set,            "Viper.Collections.Trie.Set",            "void(obj,str,obj)")
 RT_FUNC(TrieRemove,         rt_trie_remove,         "Viper.Collections.Trie.Remove",         "i1(obj,str)")

@@ -294,6 +294,23 @@ static void test_playlist_navigation() {
     ASSERT(rt_playlist_get_current(pl) == 0, "jumped to track 0");
 }
 
+static void test_playlist_skip_on_error_terminates() {
+    // VDOC-119: Play() and auto-advance skip unloadable entries with a
+    // bounded scan; a playlist whose every entry fails stops cleanly instead
+    // of stalling on the first bad track or looping forever under repeat-all.
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str("missing_a.wav"));
+    rt_playlist_add(pl, make_str("missing_b.wav"));
+    rt_playlist_add(pl, make_str("missing_c.wav"));
+    rt_playlist_set_repeat(pl, RT_REPEAT_ALL);
+
+    rt_playlist_play(pl); // must terminate despite repeat-all
+    ASSERT(rt_playlist_is_playing(pl) == 0, "all-unloadable playlist is not playing");
+
+    rt_playlist_update(pl); // no-op; must not stall or crash
+    ASSERT(rt_playlist_is_playing(pl) == 0, "update stays stopped");
+}
+
 static void test_playlist_shuffle_preserves_current_track() {
     void *pl = rt_playlist_new();
     rt_playlist_add(pl, make_str("one.wav"));
@@ -1377,6 +1394,7 @@ int main() {
     test_playlist_volume();
     test_playlist_shuffle_repeat();
     test_playlist_navigation();
+    test_playlist_skip_on_error_terminates();
     test_playlist_shuffle_preserves_current_track();
     test_playlist_jump_uses_actual_index_in_shuffle_mode();
     test_playlist_shuffle_uses_runtime_seed();

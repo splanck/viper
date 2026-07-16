@@ -10,8 +10,9 @@
 // Key invariants:
 //   - Keys are byte-length-aware strings; embedded NUL bytes are part of key identity.
 //   - The least-recently-used entry is evicted when capacity is exceeded.
-//   - All access operations (get, put, has) count as use and update recency.
-//   - Capacity must be > 0; creating with capacity 0 is undefined.
+//   - Get and Put count as use and update recency; Has is a read-only hash
+//     lookup and does not promote the entry.
+//   - A capacity of 0 disables eviction (the cache grows unbounded).
 //
 // Ownership/Lifetime:
 //   - Cache objects are heap-allocated; caller is responsible for lifetime management.

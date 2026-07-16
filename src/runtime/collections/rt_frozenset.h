@@ -16,7 +16,8 @@
 //
 // Ownership/Lifetime:
 //   - FrozenSet retains its string elements.
-//   - FrozenSet objects are heap-allocated; caller is responsible for lifetime management.
+//   - FrozenSet objects are GC-managed (rt_obj_new_i64) with a runtime finalizer;
+//     callers must not free them directly.
 //
 // Links: src/runtime/collections/rt_frozenset.c (implementation), src/runtime/core/rt_string.h
 //

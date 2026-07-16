@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -135,7 +136,40 @@ void test_bypass_remove_clear_are_identity() {
 
 } // namespace
 
+void test_peaking_sanitizes_gain() {
+    // VDOC-122: non-finite or extreme gain must not poison the biquad —
+    // output stays finite and non-silent for ordinary signal.
+    rt_audio_fx_clear_all();
+    const double kNan = std::numeric_limits<double>::quiet_NaN();
+    int64_t fx = rt_audio_fx_add_peaking(RT_MIXGROUP_SFX, 1000.0, 0.707, kNan);
+    (void)fx;
+
+    std::vector<float> samples(1024 * kChannels);
+    fill_sine_pair(samples, 440.0, 2000.0);
+    rt_audio_fx_process_group(
+        RT_MIXGROUP_SFX, samples.data(), 1024, kChannels, static_cast<int32_t>(kRate));
+
+    bool all_finite = true;
+    for (float v : samples)
+        all_finite = all_finite && std::isfinite(v);
+    assert(all_finite);
+    assert(rms(samples) > 0.01); // not silenced
+
+    rt_audio_fx_clear_all();
+
+    // Extreme finite gain clamps instead of exploding.
+    rt_audio_fx_add_peaking(RT_MIXGROUP_SFX, 1000.0, 0.707, 1.0e9);
+    std::vector<float> loud(1024 * kChannels);
+    fill_sine_pair(loud, 440.0, 2000.0);
+    rt_audio_fx_process_group(
+        RT_MIXGROUP_SFX, loud.data(), 1024, kChannels, static_cast<int32_t>(kRate));
+    for (float v : loud)
+        assert(std::isfinite(v));
+    rt_audio_fx_clear_all();
+}
+
 int main() {
+    test_peaking_sanitizes_gain();
     test_lowpass_attenuates_high_frequency_mix();
     test_delay_impulse_lands_at_configured_offset();
     test_reverb_generates_decaying_tail();

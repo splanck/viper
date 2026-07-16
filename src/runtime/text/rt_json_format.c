@@ -575,7 +575,7 @@ static void format_value(
 /// - Seq -> JSON array
 /// - String -> JSON string
 /// - Boxed f64 -> JSON number
-/// - Boxed i64 -> JSON number or boolean
+/// - Boxed i64 -> JSON number (only boxed i1 formats as a JSON boolean)
 /// - NULL -> JSON null
 ///
 /// **Example:**
@@ -664,8 +664,8 @@ rt_string rt_json_format_pretty(void *obj, int64_t indent) {
 ///
 /// **Possible return values:**
 /// - "null" - for NULL values
-/// - "boolean" - for boxed i64 values 0 or 1
-/// - "number" - for boxed f64 values
+/// - "boolean" - for boxed i1 (boolean) values
+/// - "number" - for boxed i64 and f64 values
 /// - "string" - for String values
 /// - "array" - for Seq values
 /// - "object" - for Map values

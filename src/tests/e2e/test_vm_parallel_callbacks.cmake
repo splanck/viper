@@ -54,6 +54,21 @@ foreach (_mode IN LISTS _modes)
     if (NOT out MATCHES "task")
         message(FATAL_ERROR "[${_label}] expected Pool.Submit task to run ('task' missing)\nstdout:\n${out}")
     endif ()
+    # ForEach runs per element on every backend (VDOC-126): two "fe" lines.
+    string(REGEX MATCHALL "fe\n" _e_matches "${out}")
+    list(LENGTH _e_matches _e_count)
+    if (NOT _e_count EQUAL 2)
+        message(FATAL_ERROR "[${_label}] expected 2 ForEach iterations but got ${_e_count}\nstdout:\n${out}")
+    endif ()
+    # Map returns a 2-element seq and Reduce computes 1 + 2 = 3.
+    if (NOT out MATCHES "2\n3\n")
+        message(FATAL_ERROR "[${_label}] expected Map count 2 and Reduce total 3\nstdout:\n${out}")
+    endif ()
+
+    # Submitting to a shut-down pool must be rejected on every backend (VDOC-125).
+    if (NOT out MATCHES "rejected")
+        message(FATAL_ERROR "[${_label}] expected shut-down pool submission to be rejected\nstdout:\n${out}")
+    endif ()
     if (NOT out MATCHES "done")
         message(FATAL_ERROR "[${_label}] expected clean completion ('done' missing)\nstdout:\n${out}")
     endif ()

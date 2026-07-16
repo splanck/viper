@@ -50,6 +50,11 @@ void *rt_threadpool_new(int64_t size);
 ///         backpressure, or task-node allocation failure.
 int8_t rt_threadpool_submit(void *pool, void *callback, void *arg);
 
+/// @brief Owned-argument submit: the pool retains @p arg on acceptance and
+///        releases it after the callback runs or when the task is discarded
+///        by ShutdownNow/finalization (VDOC-128).
+int8_t rt_threadpool_submit_owned(void *pool, void *callback, void *arg);
+
 /// @brief Wait for all pending tasks to complete.
 /// @details Blocks until the task queue is empty and all workers are idle.
 ///          Does not prevent new tasks from being submitted.

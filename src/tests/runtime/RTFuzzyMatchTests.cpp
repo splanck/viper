@@ -16,6 +16,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <cstring>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -23,7 +24,18 @@ extern "C" void vm_trap(const char *msg) {
 
 int main() {
     assert(rt_fuzzy_match_score(rt_const_cstr("vf"), rt_const_cstr("viperide_file.zia")) > 0);
-    assert(rt_fuzzy_match_score(rt_const_cstr("zz"), rt_const_cstr("viperide_file.zia")) < 0);
+    assert(rt_fuzzy_match_score(rt_const_cstr("zz"), rt_const_cstr("viperide_file.zia")) == -1);
+
+    // VDOC-059: a successful match never scores below 0, so -1 reliably
+    // signals a miss even for heavily penalized matches.
+    {
+        char noisy[102];
+        memset(noisy, 'a', 100);
+        noisy[100] = 'z';
+        noisy[101] = '\0';
+        int64_t clamped = rt_fuzzy_match_score(rt_const_cstr("z"), rt_string_from_bytes(noisy, 101));
+        assert(clamped >= 0);
+    }
     assert(rt_fuzzy_match_score(rt_const_cstr("VS"), rt_const_cstr("ViperSceneEditor.zia")) >
            rt_fuzzy_match_score(rt_const_cstr("VS"), rt_const_cstr("very/slow/file.zia")));
 

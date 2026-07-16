@@ -77,9 +77,9 @@ when the Sound is null, detached, or otherwise cannot start. A successful voice 
 0 and -1 are never issued as live IDs. At most 256 distinct Sound buffers can be loaded in one
 audio context, including synthesized and `MusicGen.Build()` results.
 
-`LoadAsset` searches embedded assets, mounted packs, then the filesystem. A missing or zero-byte
-asset raises `Sound.LoadAsset: asset not found`; decode/backend failure after successful asset
-resolution returns `null`. `Free()` consumes one retained reference: do not use that reference
+`LoadAsset` searches embedded assets, mounted packs, then the filesystem. Every failure —
+missing or zero-byte asset, decode error, or backend failure — returns `null`, matching
+`Sound.Load`'s uniform nullable contract. `Free()` consumes one retained reference: do not use that reference
 again unless another owner (for example, a `SoundBank`) retained the Sound.
 
 ### Voice Control
@@ -521,9 +521,10 @@ crossfade it temporarily retains both streams.
 
 `Add(null)` and `Insert(index, null)` store an empty path. `Get` therefore cannot distinguish an
 out-of-range index from a deliberately empty entry. Paths are not validated until selected;
-`Play()` has no result value, so inspect `IsPlaying`. An empty, missing, malformed, or otherwise
-unloadable current path leaves the playlist stopped at that entry. `Update()` does not skip it;
-call `Next()`, `Jump()`, `Remove()`, or repair the queue explicitly.
+`Play()` has no result value, so inspect `IsPlaying`. `Play()` and auto-advance skip
+unloadable entries: when the selected path fails to load, subsequent entries are tried with the
+usual repeat/shuffle wrap semantics, bounded by the track count, so one bad track cannot stall
+the queue. If every entry fails, the playlist stops cleanly and `IsPlaying` stays false.
 
 Changing `Next`, `Prev`, or `Jump` preserves the stopped/paused/playing state. Crossfade applies
 only when changing tracks while playback is active and both old and new Music handles exist;
@@ -605,8 +606,8 @@ returns 0 and preserves the old entry. It also returns 0 (rather than trapping) 
 audio-disabled build.
 
 `RegisterSound` accepts only a recognized Sound wrapper returned by `Sound.Load`, `Synth`, or
-`MusicGen.Build`; generic objects are rejected and return 0. Wrapper validation does not establish
-that the buffer is still attached after `Audio.Shutdown()`, so reload before registering in a new
+`MusicGen.Build` whose backend buffer is attached to the live audio context; generic objects and
+wrappers detached by `Audio.Shutdown()` are rejected and return 0. Reload sounds in a new
 audio context. The bank retains registered Sounds. `Get` returns another retained reference;
 removing or clearing the bank does not invalidate references already returned to the caller.
 
@@ -986,11 +987,11 @@ the current process and can be passed to `PlayGroup`, `PlayGroupWithVolumePan`, 
 are used.
 
 Names are case-sensitive but are canonicalized before both registration and lookup: leading and
-trailing spaces/tabs are removed, embedded `NUL` bytes become `_`, and only the first 31 bytes are
-stored. Consequently, distinct long names with the same 31-byte prefix alias the same group, and
-`GroupName` returns the trimmed/truncated form. The real-audio implementation serializes group
-state with playback. The audio-disabled implementation currently does not synchronize first-use
-initialization or named-group registration; do not call those settings APIs concurrently there.
+trailing spaces/tabs are removed and embedded `NUL` bytes become `_`. A canonical name longer
+than 31 bytes is rejected (registration and lookup return -1) rather than truncated, so
+distinct names can never alias the same group. `GroupName` returns the trimmed form. Both the
+real-audio and audio-disabled implementations serialize group initialization, registration,
+and volume state with the shared audio-state lock.
 
 ## Mix Group Effects
 
@@ -1067,7 +1068,7 @@ arguments generically, but callers must pass a `Viper.Audio.Sound` and
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SpatialAudio3D.SetListener(position, forward)` | `Void(Vec3, Vec3)` | Set the fallback listener position and forward direction |
-| `SpatialAudio3D.PlayAt(sound, position, maxDist, volume)` | `Integer(Sound, Vec3, Float, Integer)` | Play at a world position; returns a positive voice ID, or 0 on failure |
+| `SpatialAudio3D.PlayAt(sound, position, maxDist, volume)` | `Integer(Sound, Vec3, Float, Integer)` | Play at a world position; returns a positive voice ID, or -1 on failure (the same sentinel as `Sound.Play*`) |
 | `SpatialAudio3D.UpdateVoice(voice, position, maxDist)` | `Void(Integer, Vec3, Float)` | Recompute attenuation and pan for a moving voice |
 | `SpatialAudio3D.SyncBindings(dt)` | `Void(Float)` | Sync object-backed listeners/sources bound to scene nodes or cameras |
 

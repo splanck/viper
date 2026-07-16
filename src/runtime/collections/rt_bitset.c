@@ -17,7 +17,8 @@
 //     added words are zero-filled.
 //   - Bit index `i` lives in words[i/64] at bit position i%64.
 //   - Set operations (AND, OR, XOR) require both operands to have the same
-//     bit_count; NOT operates in-place on all current words.
+//     bit_count. And/Or/Xor accept unequal lengths (missing bits read as 0)
+//     and, like Not, return a NEW bitset — no operand is modified.
 //   - Popcount uses __builtin_popcountll on GCC/Clang; falls back to a portable
 //     Hamming-weight algorithm on other compilers.
 //   - Not thread-safe; external synchronization required for concurrent access.
@@ -123,6 +124,14 @@ static int bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
     return 1;
 }
 
+/// @brief Number of words the logical bit_count occupies (VDOC-104).
+/// @details word_count tracks the ALLOCATED capacity (growth doubles), which
+///          can exceed the logical size; every whole-set walk must use this
+///          bound so spare capacity words stay invisible.
+static size_t bitset_logical_words(const rt_bitset_impl *bs) {
+    return WORDS_FOR_BITS(bs->bit_count);
+}
+
 // ---------------------------------------------------------------------------
 // Finalizer
 // ---------------------------------------------------------------------------
@@ -192,7 +201,8 @@ static int64_t bitset_popcount(void *obj, const char *what) {
         return 0;
     rt_bitset_impl *bs = as_bitset(obj, what);
     int64_t total = 0;
-    for (size_t i = 0; i < bs->word_count; ++i)
+    size_t words = bitset_logical_words(bs);
+    for (size_t i = 0; i < words; ++i)
         total += popcount64(bs->words[i]);
     return total;
 }
@@ -263,13 +273,15 @@ void rt_bitset_set_all(void *obj) {
     if (!obj)
         return;
     rt_bitset_impl *bs = as_bitset(obj, "BitSet.SetAll: invalid BitSet object");
-    if (bs->word_count == 0)
+    size_t words = bitset_logical_words(bs);
+    if (words == 0)
         return;
-    memset(bs->words, 0xFF, bs->word_count * sizeof(uint64_t));
-    // Mask off excess bits in the last word
+    memset(bs->words, 0xFF, words * sizeof(uint64_t));
+    // Mask off excess bits in the last LOGICAL word; spare capacity words
+    // beyond it stay zero (VDOC-104).
     size_t extra = bs->bit_count % BITS_PER_WORD;
     if (extra > 0)
-        bs->words[bs->word_count - 1] &= (1ULL << extra) - 1;
+        bs->words[words - 1] &= (1ULL << extra) - 1;
 }
 
 /// @brief Clear every bit to 0. O(n/64) memset; capacity is preserved.
@@ -297,7 +309,11 @@ void *rt_bitset_and(void *a, void *b) {
         return NULL;
 
     rt_bitset_impl *br = (rt_bitset_impl *)result;
-    size_t min_words = ba->word_count < bb->word_count ? ba->word_count : bb->word_count;
+    size_t wa = bitset_logical_words(ba);
+    size_t wb = bitset_logical_words(bb);
+    size_t min_words = wa < wb ? wa : wb;
+    if (min_words > br->word_count)
+        min_words = br->word_count;
     for (size_t i = 0; i < min_words; ++i)
         br->words[i] = ba->words[i] & bb->words[i];
     // Remaining words stay 0 (AND with 0 = 0)
@@ -319,13 +335,18 @@ void *rt_bitset_or(void *a, void *b) {
         return NULL;
 
     rt_bitset_impl *br = (rt_bitset_impl *)result;
-    size_t min_words = ba->word_count < bb->word_count ? ba->word_count : bb->word_count;
+    size_t wa = bitset_logical_words(ba);
+    size_t wb = bitset_logical_words(bb);
+    size_t min_words = wa < wb ? wa : wb;
+    if (min_words > br->word_count)
+        min_words = br->word_count;
     size_t i = 0;
     for (; i < min_words; ++i)
         br->words[i] = ba->words[i] | bb->words[i];
-    // Copy remaining from the longer one
-    rt_bitset_impl *longer = ba->word_count > bb->word_count ? ba : bb;
-    for (; i < longer->word_count && i < br->word_count; ++i)
+    // Copy remaining from the logically longer one
+    rt_bitset_impl *longer = wa > wb ? ba : bb;
+    size_t longer_words = wa > wb ? wa : wb;
+    for (; i < longer_words && i < br->word_count; ++i)
         br->words[i] = longer->words[i];
 
     return result;
@@ -345,13 +366,18 @@ void *rt_bitset_xor(void *a, void *b) {
         return NULL;
 
     rt_bitset_impl *br = (rt_bitset_impl *)result;
-    size_t min_words = ba->word_count < bb->word_count ? ba->word_count : bb->word_count;
+    size_t wa = bitset_logical_words(ba);
+    size_t wb = bitset_logical_words(bb);
+    size_t min_words = wa < wb ? wa : wb;
+    if (min_words > br->word_count)
+        min_words = br->word_count;
     size_t i = 0;
     for (; i < min_words; ++i)
         br->words[i] = ba->words[i] ^ bb->words[i];
     // XOR with 0 = copy
-    rt_bitset_impl *longer = ba->word_count > bb->word_count ? ba : bb;
-    for (; i < longer->word_count && i < br->word_count; ++i)
+    rt_bitset_impl *longer = wa > wb ? ba : bb;
+    size_t longer_words = wa > wb ? wa : wb;
+    for (; i < longer_words && i < br->word_count; ++i)
         br->words[i] = longer->words[i];
 
     return result;
@@ -369,13 +395,15 @@ void *rt_bitset_not(void *obj) {
         return NULL;
 
     rt_bitset_impl *br = (rt_bitset_impl *)result;
-    for (size_t i = 0; i < bs->word_count && i < br->word_count; ++i)
+    size_t src_words = bitset_logical_words(bs);
+    for (size_t i = 0; i < src_words && i < br->word_count; ++i)
         br->words[i] = ~bs->words[i];
 
-    // Mask off excess bits in the last word
-    size_t extra = bs->bit_count % BITS_PER_WORD;
-    if (extra > 0 && br->word_count > 0)
-        br->words[br->word_count - 1] &= (1ULL << extra) - 1;
+    // Mask off excess bits in the last logical word
+    size_t words = bitset_logical_words(br);
+    size_t extra = br->bit_count % BITS_PER_WORD;
+    if (extra > 0 && words > 0)
+        br->words[words - 1] &= (1ULL << extra) - 1;
 
     return result;
 }

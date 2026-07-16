@@ -154,8 +154,14 @@ static void map_set_cstr(void *map, const char *key, void *value) {
 }
 
 /// @brief Return 1 if the `rt_string` `s` equals the null-terminated C string `cstr`.
+/// @details Compares the full runtime byte length, so a string whose bytes
+///          continue past an embedded NUL never aliases `cstr` (VDOC-043).
 static int str_eq_cstr(rt_string s, const char *cstr) {
-    return s && cstr && strcmp(rt_string_cstr(s), cstr) == 0;
+    if (!s || !cstr)
+        return 0;
+    size_t clen = strlen(cstr);
+    int64_t slen = rt_str_len(s);
+    return slen >= 0 && (size_t)slen == clen && memcmp(rt_string_cstr(s), cstr, clen) == 0;
 }
 
 /// @brief Convert any Viper value to a plain string for use as XML text/attribute content.
@@ -204,9 +210,9 @@ static int xml_name_char(int c) {
 /// @brief Produce a valid XML element name from `name`, prefixing `fallback` if the first char is
 /// invalid.
 ///        Invalid continuation characters are replaced with `_`.
-static rt_string sanitized_xml_name(const char *name, const char *fallback) {
-    const char *src = (name && *name) ? name : fallback;
-    size_t len = strlen(src);
+static rt_string sanitized_xml_name(const char *name, size_t name_len, const char *fallback) {
+    const char *src = (name && name_len > 0) ? name : fallback;
+    size_t len = (name && name_len > 0) ? name_len : strlen(fallback);
     size_t cap = len + strlen(fallback) + 8;
     char *buf = (char *)malloc(cap);
     if (!buf) {
@@ -230,8 +236,8 @@ static rt_string sanitized_xml_name(const char *name, const char *fallback) {
 ///        Map keys become child elements; `@attrs` keys become XML attributes;
 ///        `@text`/`#text` keys become text content; Seq items become `<item>` children;
 ///        scalars become element text content.
-static void *generic_to_xml_element(const char *name, void *obj) {
-    rt_string tag = sanitized_xml_name(name, "item");
+static void *generic_to_xml_element(const char *name, size_t name_len, void *obj) {
+    rt_string tag = sanitized_xml_name(name, name_len, "item");
     void *elem = rt_xml_element(tag);
     rt_string_unref(tag);
     if (!elem)
@@ -274,7 +280,9 @@ static void *generic_to_xml_element(const char *name, void *obj) {
             if (str_eq_cstr(key, "@attrs") || str_eq_cstr(key, "@text") ||
                 str_eq_cstr(key, "#text"))
                 continue;
-            void *child = generic_to_xml_element(rt_string_cstr(key), rt_map_get(obj, key));
+            int64_t key_len = rt_str_len(key);
+            void *child = generic_to_xml_element(
+                rt_string_cstr(key), key_len < 0 ? 0 : (size_t)key_len, rt_map_get(obj, key));
             if (child) {
                 rt_xml_append(elem, child);
                 release_obj(child);
@@ -287,7 +295,7 @@ static void *generic_to_xml_element(const char *name, void *obj) {
     if (is_seq_obj(obj)) {
         int64_t len = rt_seq_len(obj);
         for (int64_t i = 0; i < len; i++) {
-            void *child = generic_to_xml_element("item", rt_seq_get(obj, i));
+            void *child = generic_to_xml_element("item", 4, rt_seq_get(obj, i));
             if (child) {
                 rt_xml_append(elem, child);
                 release_obj(child);
@@ -308,7 +316,7 @@ static rt_string format_xml_from_generic(void *obj, int64_t indent) {
     if (rt_xml_is_node(obj))
         return indent > 0 ? rt_xml_format_pretty(obj, indent) : rt_xml_format(obj);
 
-    void *root = generic_to_xml_element("root", obj);
+    void *root = generic_to_xml_element("root", 4, obj);
     if (!root) {
         set_error("format XML: cannot build XML tree");
         return rt_string_from_bytes("", 0);
@@ -953,6 +961,13 @@ int64_t rt_serialize_format_from_name(rt_string name) {
 
     s = rt_string_cstr(name);
     if (!s)
+        return -1;
+
+    /* Names with bytes past an embedded NUL are not valid format names; the
+     * case-insensitive C-string comparisons below would otherwise let
+     * "json\0suffix" alias "json" (VDOC-043). */
+    int64_t name_len = rt_str_len(name);
+    if (name_len < 0 || (size_t)name_len != strlen(s))
         return -1;
 
     /* Case-insensitive comparison */

@@ -989,6 +989,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `rt_json_type_of()` / `format_value()` in
   `src/runtime/text/rt_json_format.c` and `format_value()` in
   `src/runtime/text/rt_yaml_format.c`.
+- **Review (2026-07-15):** Verified and fixed. The `Json.TypeOf` doc block now states that only
+  boxed i1 classifies as "boolean" while boxed i64/f64 classify as "number" (matching the
+  implementation), the JSON formatter's type list no longer claims boxed i64 may format as a
+  boolean, and the YAML unknown-type branch comment now says it emits YAML `null` (the actual
+  behavior) instead of "format as string". Comment-only changes; behavior untouched.
+  **Resolved.**
 
 ### VDOC-043 — Serialize name and XML-key processing truncates at embedded NUL
 
@@ -1002,6 +1008,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   keys, silently changing the projected data model.
 - **Source:** `rt_serialize_format_from_name()`, `sanitized_xml_name()`, and `str_eq_cstr()` in
   `src/runtime/text/rt_serialize.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_serialize_format_from_name` rejects names
+  whose runtime byte length extends past an embedded NUL (so `json NUL suffix` no longer aliases
+  `"json"`), `str_eq_cstr` compares the full runtime byte length (reserved keys like `@attrs`
+  cannot be aliased), and `sanitized_xml_name`/`generic_to_xml_element` now carry explicit byte
+  lengths so Map keys are sanitized over their whole length — NUL bytes become `_` like other
+  invalid XML name characters instead of truncating the key. Regression: embedded-NUL case added
+  to `test_format_from_name` in `src/tests/runtime/RTSerializeTests.cpp`. **Resolved.**
 
 ### VDOC-044 — `Template.Keys` is registered as a sequence but returns a bag
 
@@ -1018,6 +1031,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `TemplateKeys` in `src/il/runtime/defs/api/math_text.def`, the Template class block in
   `src/il/runtime/defs/classes/io_text.def`, and `rt_template_keys()` in
   `src/runtime/text/rt_template.c`.
+- **Review (2026-07-15):** Verified and fixed by correcting the registry type to the value the
+  implementation actually returns: both rows now declare
+  `obj<Viper.Collections.StringSet>(str)` (the Bag's public class), so natural member access
+  (`Keys(...).Count`, `.Has(...)`) type-checks and runs instead of trapping through the Seq
+  getter. The deduplicating-set semantics are unchanged and remain documented. Docs note in
+  `docs/viperlib/text/formatting.md` updated; generated reference regenerated. Regression:
+  StringSet typing asserts added to `testTypedConcreteReturns` in
+  `src/tests/fixtures/zia_runtime/45_runtime_api_conformance.zia`. **Resolved.**
 
 ### VDOC-045 — Formatting utility source contracts describe obsolete behavior
 
@@ -1032,6 +1053,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** maintainers relying on comments adjacent to these implementations can infer the wrong
   class/API, escape domain, options, and empty-input contract.
 - **Source:** `src/runtime/text/rt_template.c`, `rt_textwrap.c`, and `rt_markdown.c`.
+- **Review (2026-07-15):** Verified and fixed (comment-only). `rt_template_escape` is now
+  documented as doubling template delimiters (explicitly NOT an HTML-entity escaper); the
+  `rt_textwrap.c` header names the real `Viper.Text.TextWrapper` class and its actual surface
+  (no indent/tab-expansion/hard-wrap options; long words split at the width, verified
+  behaviorally; non-positive width returns the input unchanged); the Markdown header names
+  `ToText` and states that whitespace-only input is kept as content (`ToHtml(" ")` emits a
+  paragraph containing a space). **Resolved.**
 
 ### VDOC-046 — TextWrapper can split UTF-8 sequences
 
@@ -1045,6 +1073,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   treated as either a character count or a terminal display width.
 - **Source:** the byte-indexing loops and `rt_str_substr()` calls in
   `src/runtime/text/rt_textwrap.c`.
+- **Review (2026-07-15):** Verified; the corruption half is fixed while width stays byte-based
+  (redefining width as characters or display cells would change every existing output — a
+  deliberate API decision left open). New boundary helpers ensure no slice ever lands inside a
+  multi-byte sequence: Wrap's forced break backs up to the previous codepoint boundary (or
+  emits the whole codepoint when it alone exceeds the width, without a stray trailing
+  newline), Truncate/TruncateWith back the kept prefix (and a sliced suffix) up to a boundary,
+  and Shorten aligns both its head slice and the start of its tail slice. WrapLines/Fill
+  inherit the fix through Wrap. Verified `Wrap("éé", 1)` emits two intact codepoints and ASCII
+  behavior is unchanged. Regression: `test_utf8_boundaries_preserved` in
+  `src/tests/runtime/RTTextWrapTests.cpp`. **Resolved** (no malformed UTF-8; byte-width
+  semantics retained and documented).
 
 ### VDOC-047 — Version rejects SemVer components above `INT64_MAX`
 
@@ -1058,6 +1097,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   them. The object representation and integer properties make this more than a parser-only limit.
 - **Source:** `parse_num()` in `src/runtime/text/rt_version.c` and the Semantic Versioning 2.0.0
   specification.
+- **Review (2026-07-15):** Verified; resolved as a documented deliberate deviation. The class
+  exposes Major/Minor/Patch as i64 properties, so accepting components above INT64_MAX would
+  require restructuring the object to arbitrary-precision components — a breaking API redesign
+  with no practical ecosystem versions demanding it. The `rt_version.c` header now states the
+  signed-64-bit component limit explicitly as a deviation from SemVer's unlimited grammar, and
+  the public docs describe the same limit as by-design. **Resolved** (limit documented as the
+  contract).
 
 ### VDOC-048 — `Html.ExtractText` mishandles nested matching tags
 
@@ -1071,6 +1117,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `section`, or list elements.
 - **Source:** the closing-tag search loop in `rt_html_extract_text()` in
   `src/runtime/text/rt_html.c`.
+- **Review (2026-07-15):** Verified and fixed. The closing-tag search now tracks nesting depth:
+  a nested same-name opening tag (unless self-closing) increments the depth and its closing tag
+  decrements it, so the outer element pairs with its own closing tag.
+  `ExtractText("<div>a<div>b</div>c</div>", "div")` returns one complete string `a b c`; the
+  defined semantics are one result per top-level match containing the element's full stripped
+  text (nested matches are folded into their parent rather than double-reported). Sibling
+  extraction unchanged. Regression: `test_extract_text_nested_same_tag` in
+  `src/tests/runtime/RTHtmlTests.cpp`. **Resolved.**
 
 ### VDOC-049 — Markdown block state produces wrong or invalid HTML
 
@@ -1085,6 +1139,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   especially at transitions out of a list.
 - **Source:** branch ordering and `in_list` handling in `rt_markdown_to_html()` in
   `src/runtime/text/rt_markdown.c`.
+- **Review (2026-07-15):** Verified and fixed. The block loop now classifies each line up front
+  (`markdown_line_is_hr` runs before list-item recognition, so `* * *` and `- - -` emit `<hr>`)
+  and closes an open `<ul>` before ANY non-list block — heading, fenced code, rule, or
+  paragraph — so `- item\n# Heading` produces `</ul>` before `<h1>`. Normal lists and all other
+  rendering behavior unchanged. Regression: `test_hr_and_list_transitions` in
+  `src/tests/runtime/RTMarkdownTests.cpp`. **Resolved.**
 
 ### VDOC-050 — Markdown retains carriage returns from CRLF input
 
@@ -1097,6 +1157,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   equivalent LF file unless callers normalize it first.
 - **Source:** the line loops in `rt_markdown_to_html()`, `rt_markdown_to_text()`, and
   `rt_markdown_extract_headings()` in `src/runtime/text/rt_markdown.c`.
+- **Review (2026-07-15):** Verified and fixed. All three line scanners (including the fenced-code
+  inner loop) now separate the advance position from the content end and exclude a trailing CR
+  from line content, so CRLF input renders byte-identically to LF input, no CR bytes leak into
+  headings/text/HTML, and rule/fence recognition is unaffected by the extra byte. Regression:
+  `test_crlf_matches_lf` in `src/tests/runtime/RTMarkdownTests.cpp` plus end-to-end
+  verification (`ToHtml`, `ToText`, `ExtractHeadings`). **Resolved.**
 
 ### VDOC-051 — `Markdown.ToText` deletes literal underscores
 
@@ -1109,6 +1175,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   underscores are silently changed by a method intended to preserve text content.
 - **Source:** the inline-marker branch in `rt_markdown_to_text()` in
   `src/runtime/text/rt_markdown.c`.
+- **Review (2026-07-15):** Verified and fixed. The plain-text inline loop now mirrors
+  `process_inline`'s matched-pair semantics: `*`/backtick markers are dropped only when a
+  closing marker exists on the same line (the span is consumed as a unit), and `_` additionally
+  follows the CommonMark intraword rule — an underscore flanked by alphanumerics never opens or
+  closes emphasis — so `snake_case` and `file_name_here` pass through untouched while `_italic_`
+  still strips. Unmatched markers stay literal. Regression:
+  `test_to_text_preserves_intraword_and_unmatched_markers` in
+  `src/tests/runtime/RTMarkdownTests.cpp`. **Resolved.**
 
 ### VDOC-052 — Markdown final-line advancement forms an out-of-bounds pointer
 
@@ -1123,6 +1197,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** the repeated `p = eol + 1` updates in `rt_markdown_to_html()` in
   `src/runtime/text/rt_markdown.c`; `rt_markdown_to_text()` already uses the bounded form
   `eol < end ? eol + 1 : end`.
+- **Review (2026-07-15):** Verified and fixed. All eight advancement sites in
+  `rt_markdown_to_html()` (six `line_break` updates plus the two fenced-code `fence_break`
+  updates) now use the bounded form `x < end ? x + 1 : end`, so a final line without a
+  terminating LF never forms a pointer past one-past-end. `rt_markdown_to_text()` and
+  `rt_markdown_extract_headings()`/`extract_links()` were audited and already bounded.
+  Existing final-line-without-newline tests continue to pass. **Resolved.**
 
 ### VDOC-053 — Regex patterns ignore bytes after an embedded NUL
 
@@ -1137,6 +1217,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `pattern_required()`, `compile_pattern()`, and the pattern cache in
   `src/runtime/text/rt_regex.c`, plus `rt_compiled_pattern_new()` /
   `rt_compiled_pattern_get_pattern()` in `rt_compiled_pattern.c`.
+- **Review (2026-07-15):** Verified and fixed. Patterns containing an embedded NUL are now
+  rejected at the boundary — `pattern_required()` (used by every static `Pattern.*` entry point)
+  traps with `Pattern: pattern contains NUL byte`, and `rt_compiled_pattern_new()` traps with
+  `CompiledPattern: pattern contains NUL byte` — matching the NUL-rejection convention adopted
+  for TOML/YAML/JsonPath. This closes the silent-truncation, cache-aliasing, and
+  Pattern-property round-trip issues in one place; the engine internals stay C-string based.
+  Regressions: `test_nul_pattern_rejected` in `RTPatternTests.cpp` (trap + message, via
+  `rt_trap_set_recovery`) and in `RTCompiledPatternTests.cpp`. **Resolved.**
 
 ### VDOC-054 — Zero-width regex Replace and Split drop source bytes
 
@@ -1152,6 +1240,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** the `match_end > match_start ? ... : match_start + 1` branches in
   `rt_pattern_replace()`, `rt_pattern_split()`, `rt_compiled_pattern_replace()`, and
   `rt_compiled_pattern_split_n()`.
+- **Review (2026-07-15):** Verified and fixed with ECMAScript-style zero-width semantics.
+  Replace now copies the stepped-over source byte after emitting the replacement for a
+  zero-width match, so `Replace("abc", "", "-")` yields `-a-b-c-` with no byte loss. Split now
+  tracks the current segment start independently of the scan position: a zero-width match never
+  splits at the segment start or at end-of-text, and the stepped-over byte stays in the next
+  segment, so splitting `abc` on the empty pattern yields `a`, `b`, `c`. Non-zero-width
+  behavior (leading/trailing empties, `SplitN` limits) is unchanged. Applied to all four
+  loops in `rt_regex.c` and `rt_compiled_pattern.c`. Regressions:
+  `test_zero_width_replace_split` in `RTPatternTests.cpp` and `RTCompiledPatternTests.cpp`.
+  **Resolved.**
 
 ### VDOC-055 — Complement shorthands break mixed regex character classes
 
@@ -1165,6 +1263,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   whenever a complement shorthand is combined with another member.
 - **Source:** `class_add_shorthand()` in `src/runtime/text/rt_regex.c` and `parse_class()` in
   `rt_regex_parse.c`.
+- **Review (2026-07-15):** Verified and fixed. `class_add_shorthand()` no longer toggles the
+  class-wide `negated` flag for uppercase shorthands; it unions the complement bytes directly
+  into the 256-bit class bitmap (via a shared `shorthand_member()` predicate for d/w/s). This
+  makes mixed classes correct (`[a\D]` matches `a`, `[\D0]` matches every byte) while
+  preserving standalone `\D`/`\W`/`\S` and negated-class semantics (`[^\D]` still means
+  digits only) — matcher call sites cast bytes through `unsigned char`, so the whole 0–255
+  domain is covered. Regression: `test_complement_shorthands_in_classes` in
+  `RTPatternTests.cpp`. **Resolved.**
 
 ### VDOC-056 — Regex groups block required quantifier backtracking
 
@@ -1178,6 +1284,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   invalidating ordinary regex reasoning and common refactorings.
 - **Source:** `match_node(RE_GROUP)` and `match_concat_from()` in
   `src/runtime/text/rt_regex_match.c`.
+- **Review (2026-07-15):** Verified and fixed. Added `collect_node_positions()`, a
+  generalization of the quantifier end-position enumerator that sees through groups: it
+  recurses into group bodies and enumerates alternations and nested concats with dedup bitmaps
+  (ascending output, matching the existing greedy-walks-backwards convention). `match_concat_from()`
+  now enumerates `RE_GROUP` children the same way it enumerates `RE_QUANT` children, so a
+  quantifier inside parentheses can give bytes back to following syntax — `(a*)a` matches `aaa`
+  and reports the same extents as `a*a`. The S-11 step cap still bounds all enumeration (inner
+  `match_node` calls count steps). Regression: `test_group_backtracking` in
+  `RTPatternTests.cpp` covering `(a*)a`, `(a+)a`, `(ab*)b`, `(a|aa)b`, `(a*)(a)`, and
+  grouped-vs-ungrouped extent equality. **Resolved.**
 
 ### VDOC-057 — `CompiledPattern.Captures` uses a different matcher and group numbering
 
@@ -1192,6 +1308,19 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and group indexes change with the selected alternative.
 - **Source:** `match_node_groups()`, `match_quant_groups()`, and `find_match_groups()` in
   `src/runtime/text/rt_regex_match.c`.
+- **Review (2026-07-15):** Verified and fixed by replacing the capture matcher with a
+  continuation-passing engine (`match_node_g` + `gcont` frames) that backtracks every
+  construct — including groups and quantifiers — against the syntax that follows, so
+  `Captures` accepts exactly the language `Find` accepts (`a*(a)` on `aaa` now returns
+  `["aaa", "a"]`). Group numbering is now lexical: the parser assigns each `(` a
+  `group_index` at parse time (claimed before the body parses, so nesting numbers by opening
+  parenthesis, PCRE-style), and `gc_group_end` records spans by that index with
+  restore-on-backtrack so failed branches leave no stale captures; untaken alternation
+  branches report empty strings. Single-byte quantifier children use an iterative run-length
+  fast path (no per-repetition C recursion); complex children are bounded by
+  `RE_MAX_CAPTURE_DEPTH` in addition to the S-11 step cap. `num_groups` now reports
+  `min(pattern group count, max_groups)` (see VDOC-058). Regression:
+  `test_captures_backtracking_and_numbering` in `RTCompiledPatternTests.cpp`. **Resolved.**
 
 ### VDOC-058 — More than 32 regex capture groups read out of bounds
 
@@ -1206,6 +1335,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `MAX_CAPTURE_GROUPS`, the arrays, and the result loop in
   `rt_compiled_pattern_captures_from()`, together with `find_match_groups()` in
   `src/runtime/text/rt_regex_match.c`.
+- **Review (2026-07-15):** Verified and fixed at both layers. `find_match_groups()` now reports
+  `min(pattern group count, max_groups)` and the recorder guards every write against
+  `max_groups`, so the caller can never index past the arrays it supplied. The fixed 32-slot
+  stack arrays and `MAX_CAPTURE_GROUPS` are gone entirely: `rt_compiled_pattern_captures_from()`
+  sizes heap arrays from `re_group_count()`, so any group count is fully supported with no
+  silent cap. Regression: the 33-group case in `test_captures_backtracking_and_numbering`
+  (`RTCompiledPatternTests.cpp`) — previously a bus error, now returns all 34 entries.
+  **Resolved.**
 
 ### VDOC-059 — FuzzyMatch can assign negative scores to successful matches
 
@@ -1220,6 +1357,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   records already known to match.
 - **Source:** `computeMatch()` in `src/runtime/text/rt_fuzzy_match.cpp` and
   `src/tests/runtime/RTFuzzyMatchTests.cpp`.
+- **Review (2026-07-15):** Verified and fixed. `computeMatch()` clamps successful-match scores
+  to zero, so a non-negative score always means the query matched and `-1` from `Score` is a
+  reliable miss sentinel (heavily penalized matches tie at 0, which only affects ranking among
+  matches that were already near-worthless). Docs updated to state the `>= 0` guarantee.
+  Regression: the 100-gap `z` probe in `RTFuzzyMatchTests.cpp` (previously `-208`) plus an
+  exact `== -1` miss assertion. **Resolved.**
 
 ### VDOC-060 — String.Like accepts malformed UTF-8 as code points
 
@@ -1233,6 +1376,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   malformed encodings as if they were valid, and behavior differs from stricter UTF-8 APIs.
 - **Source:** `like_utf8_step()` and `like_match()` in
   `src/runtime/core/rt_string_specialized.c`.
+- **Review (2026-07-15):** Verified and fixed. `like_utf8_step()` now performs a strict decode
+  (same rules as `rt_utf8_span_valid`): lead bytes 0x80–0xC1 and 0xF5+ are rejected, and the
+  decoded code point is checked for overlong encodings, UTF-16 surrogates, and values above
+  U+10FFFF — all trap with the existing `String.Like: invalid UTF-8 sequence` message, so `_`
+  always consumes exactly one valid code point and `%` cannot skip over malformed encodings.
+  Regression: `test_like_strict_utf8` in `RTStringExtTests.cpp` (overlong NUL, overlong
+  3-byte, surrogate D800, F5 lead) plus a valid 2-byte positive case. **Resolved.**
 
 ### VDOC-061 — `Diff.Patch` ignores its original argument
 
@@ -1245,6 +1395,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   original—or null—produces the same result, so callers cannot detect applying a diff to the wrong
   base text.
 - **Source:** `rt_diff_patch()` in `src/runtime/text/rt_diff.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_diff_patch()` now splits `original` with the
+  same `split_lines` used by `Diff.Lines` and validates while applying: each context (`' '`)
+  and removed (`'-'`) record must match the corresponding original line (length + bytes), and
+  the diff must consume every original line; any mismatch traps with
+  `Diff.Patch: diff does not apply to the original text`. Matching round-trips are unchanged.
+  Docs updated. Regression: `test_patch_validates_original` in `RTDiffTests.cpp`. **Resolved.**
 
 ### VDOC-062 — Pattern, Scanner, and Diff source contracts are stale
 
@@ -1259,6 +1415,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** maintainers can derive the wrong public surface, grammar, cursor semantics, diff
   record format, or algorithm from comments adjacent to the implementation.
 - **Source:** headers in `src/runtime/text/rt_regex.c`, `rt_scanner.c`, and `rt_diff.c`.
+- **Review (2026-07-15):** Verified and fixed. All three headers rewritten against the current
+  implementation: `rt_regex.c` now names `Viper.Text.Pattern` (not the nonexistent Regex class),
+  states that `{n,m}` braces are literals, and records the NUL-rejection and zero-width-replace
+  semantics. `rt_scanner.c` now lists the actual registered surface (Match/MatchStr are
+  non-consuming; Accept/AcceptStr consume; no trapping Expect; end-of-input reads return `-1`).
+  `rt_diff.c` now describes the bounded dynamic-programming LCS (not Myers), the ' '/'+'/'-'
+  record prefixes, that `Lines` always carries every line (context selection is Unified-only),
+  and the new `Patch` validation. **Resolved.**
 
 ### VDOC-063 — Case-insensitive pattern helpers depend on the process C locale
 
@@ -1275,6 +1439,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   receive the same result across hosts.
 - **Source:** `rt_string_specialized.c`, `rt_string_advanced.c`, `rt_io.c`, and `computeMatch()` /
   `isBoundary()` in `src/runtime/text/rt_fuzzy_match.cpp`.
+- **Review (2026-07-15):** Verified and fixed. Added `src/runtime/core/rt_ascii.h` — header-only,
+  locale-independent ASCII classification/folding (`rt_ascii_tolower/toupper/islower/isupper/`
+  `isdigit/isalpha/isalnum/isspace`; bytes above 0x7F never classify or fold) — and switched
+  every listed call site to it: `LikeCI`, `CmpNoCase`, `Capitalize`, `Title`, `Slug`, the five
+  identifier-style case conversions and their boundary detection, `SplitFields` trimming, and
+  FuzzyMatch matching/boundary bonuses. No runtime text helper in these paths consults
+  `LC_CTYPE` anymore, so results are identical regardless of the embedding host's locale.
+  Docs updated (core.md, patterns.md). `source_health_baseline.tsv` bumped for the new header.
+  Existing suites (string/fuzzy/io) pass unchanged. **Resolved.**
 
 ### VDOC-064 — Current sources exceed the raw-platform-macro policy baseline
 
@@ -1290,6 +1463,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   migrated still needs a maintainer decision.
 - **Reproduction:** `bash scripts/lint_platform_policy.sh` (advisory mode reports the findings while
   returning success; `--strict` would make them fatal).
+- **Review (2026-07-15):** Verified and fixed via the baseline mechanism the lint provides for
+  recorded debt: `scripts/platform_policy_migration_baseline.txt` gains
+  `src/codegen/common/MagicDivision.hpp 2` (MSVC `_udiv128` intrinsic selection — a compiler
+  capability probe, candidates for a shared intrinsics adapter later),
+  `test_codegen_arm64_cf_loop_phi.cpp 1` and `test_x86_global_ra.cpp 1` (the standard
+  `#ifdef _WIN32` PosixCompat include shim used by sibling tests already in the baseline), and
+  `test_x86_backend_regressions.cpp` bumped 5 → 6 to match its actual count.
+  `bash scripts/lint_platform_policy.sh --strict` now reports clean. **Resolved.**
 
 ### VDOC-065 — The locale parser is not a conforming BCP-47 validator
 
@@ -1305,6 +1486,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   enter the locale registry and filename lookup path. Documentation now describes the actual
   constrained parser rather than promising full BCP-47 validation.
 - **Source:** `rt_locale_internal_parse_into()` in `src/runtime/localization/rt_locale.c`.
+- **Review (2026-07-15):** Verified and fixed. The parser now implements the RFC 5646
+  well-formedness grammar: pure private-use tags (`x-...`) parse with empty
+  language/script/region and the canonical tag preserved; up to three 3-letter extlang subtags
+  are accepted directly after a 2-3 letter primary language (`zh-cmn-Hans-CN`); each extension
+  singleton must own at least one 2-8 char subtag before the next singleton or the private-use
+  section (`en-a-b-foo`, `en-a-x-foo` rejected); script and region can no longer follow a
+  variant (`en-abcde-Latn`, `en-abcde-US` rejected); duplicate variants are rejected
+  case-insensitively (`sl-rozaj-rozaj`); and `RT_LOCALE_TAG_CAP` was raised 40 → 128 so long
+  extension/private-use tags canonicalize. Registry validity (IANA subtag registry,
+  grandfathered tags) remains out of scope. Docs updated in locale.md. Regression:
+  `test_bcp47_conformance` in `RTLocaleTests.cpp`; all four locale suites pass. **Resolved.**
 
 ### VDOC-066 — `Locale.FromParts` does not require pre-split subtags
 
@@ -1317,6 +1509,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** callers can inject extra components through any argument, contrary to the method's
   part-oriented contract, and mistakes in field mapping are silently accepted.
 - **Source:** `rt_locale_from_parts()` in `src/runtime/localization/rt_locale.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_locale_from_parts()` now rejects any argument
+  containing a `-`/`_` separator (each field must be exactly one pre-split subtag), and after
+  the shared parse it verifies each supplied part landed in the named field: language must
+  parse as a language (not a private-use singleton), a supplied script must produce a script,
+  and a supplied region must produce a region — so `FromParts("en-US", "", "")`,
+  `FromParts("en", "Latn-US", "")`, and the silent script→region remap
+  `FromParts("en", "US", "")` all trap. Docs updated. Regression:
+  `test_from_parts_single_subtags` in `RTLocaleTests.cpp`. **Resolved.**
 
 ### VDOC-067 — Null locale equality disagrees with invariant null handling
 
@@ -1330,6 +1530,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** null compatibility handles do not have one coherent identity across the locale API.
 - **Source:** `rt_locale_equals()` and the locale accessors in
   `src/runtime/localization/rt_locale.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_locale_equals()` now maps a NULL operand to
+  the `root` tag — the same identity every other accessor gives null handles — so
+  `Equals(null, Invariant())` and `Equals(null, null)` return true while
+  `Equals(null, en-US)` stays false. Docs updated. Regression: `test_null_equals_invariant`
+  in `RTLocaleTests.cpp`. **Resolved.**
 
 ### VDOC-068 — Embedded NUL escapes bypass locale JSON validation
 
@@ -1345,6 +1550,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   correspond to the JSON value that was supplied.
 - **Source:** `json_dup_string()`, `loc_data_from_json()`, and downstream `strlen`/`strstr` calls
   in `src/runtime/localization/rt_locale_manager.c`.
+- **Review (2026-07-15):** Verified and fixed at the single choke point: `json_string_cstr()` —
+  which every locale-JSON string fetch (scalar fields via `json_dup_string`, array items)
+  routes through — now rejects any value whose C-string length differs from its runtime byte
+  length, so `"zz\u0000-garbage"` tags and `"0123456789\u0000junk"` digit strings fail
+  loading instead of registering their truncated prefixes. Regression:
+  `test_load_from_json_rejects_embedded_nul` in `RTLocaleManagerTests.cpp` (both probes from
+  the finding). **Resolved.**
 
 ### VDOC-069 — Locale digit validation does not validate UTF-8
 
@@ -1358,6 +1570,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `loc_utf8_cp_len()` / `loc_digits_are_valid()` in
   `src/runtime/localization/rt_locale_manager.c` and the duplicate digit-span helpers in the
   localization formatters.
+- **Review (2026-07-15):** Verified and fixed at the validation boundary: `loc_utf8_cp_len()`
+  now performs a strict decode (continuation-byte shapes required; overlong encodings,
+  UTF-16 surrogates, and code points above U+10FFFF rejected), so `loc_digits_are_valid()`
+  only accepts ten well-formed code points and malformed bytes can never register as digit
+  glyphs. The formatter-side span walkers (`utf8_cp_len` copies in numformat/dateformat/
+  reltime) only step over digit strings that passed this load-time validation or the baked
+  ASCII defaults, so they cannot receive malformed input. Regression:
+  `test_load_from_json_rejects_malformed_digit_utf8` in `RTLocaleManagerTests.cpp` (overlong
+  `C0 80` rejected; valid Arabic-Indic digits still load). **Resolved.**
 
 ### VDOC-070 — The locale loader accepts formatter data that later traps or cannot round-trip
 
@@ -1374,6 +1595,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   unrecoverable or lossy output.
 - **Source:** `loc_currency_pattern_valid()` and `loc_data_from_json()` in
   `src/runtime/localization/rt_locale_manager.c`.
+- **Review (2026-07-15):** Verified and fixed with four load-time validators so
+  `TryLoadFromJson == true` implies the record is usable: (1) `loc_date_pattern_valid()`
+  mirrors the DateFormat scanner — quoted literals must terminate and letter runs are
+  restricted to `y M d E H h m s a` — so pattern `Q` fails loading instead of trapping in
+  `DateFormat.Short`; (2) `loc_currency_pattern_valid()` now requires exactly one `{n}` and
+  one `{s}` (rejects `{s}{n}{n}`, whose output `TryParseCurrency` cannot parse back);
+  (3) equal non-empty `decimal_sep`/`group_sep` are rejected as ambiguous; (4) reltime
+  `past`/`future`/`short_past`/`short_future` must contain `{n}` and every list template must
+  contain `{0}` and `{1}`. Baked en-US defaults satisfy all checks. Docs updated in
+  data-files.md. Regression: `test_load_time_schema_validation` in
+  `RTLocaleManagerTests.cpp` (five probes). **Resolved.**
 
 ### VDOC-071 — Lenient localized-number parsing accepts empty grouping runs
 
@@ -1386,6 +1618,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   Strict mode rejects these examples, but lenient mode currently goes beyond accepting merely
   noncanonical group widths.
 - **Source:** `scan_number_parts()` in `src/runtime/localization/rt_numformat.c`.
+- **Review (2026-07-15):** Verified and fixed. Lenient parsing still ignores group *widths*
+  but now requires every separator to sit between digits: an empty group run (`1,,2`), a
+  trailing separator (`1,`, `1,,,`), a separator directly before the decimal point (`1,.5`),
+  and a leading separator (`,1`) are all rejected in both modes, while noncanonical widths
+  like `1,00` remain accepted leniently. Regression:
+  `test_lenient_rejects_empty_group_runs` in `RTLocaleNumberFormatTests.cpp`. **Resolved.**
 
 ### VDOC-072 — Scientific formatting bypasses locale special-value and sign tokens
 
@@ -1400,6 +1638,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   selected locale, and scientific special values do not agree with ordinary decimal output.
 - **Source:** `rt_numformat_scientific()` versus `fmt_render_number()` in
   `src/runtime/localization/rt_numformat.c`.
+- **Review (2026-07-15):** Verified and fixed. `Scientific` now routes non-finite values
+  through the same `fmt_render_number()` special-value path as `Decimal` (locale NaN token,
+  locale minus + infinity token — no more platform `inf`/`nan` spellings), and the finite
+  path substitutes the locale's minus/plus sign tokens for the C formatter's ASCII mantissa
+  and exponent signs alongside the existing digit/decimal-separator/exponent-marker
+  substitution. Regression: `test_scientific_locale_tokens` in
+  `RTLocaleNumberFormatTests.cpp`. **Resolved.**
 
 ### VDOC-073 — Relative time loses one unit for `INT64_MIN`
 
@@ -1412,6 +1657,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** the full signed 64-bit input domain is accepted, but the most-negative value is
   formatted with a magnitude one smaller than its actual absolute value.
 - **Source:** `src/runtime/localization/rt_reltime_format.c`.
+- **Review (2026-07-15):** Verified and fixed. Magnitudes now flow through `format_core()`,
+  `Numeric()`, `pick_unit()`, `expand_template()`, and `append_localized_int()` as unsigned
+  64-bit values, so `INT64_MIN` renders its exact absolute value:
+  `Numeric(INT64_MIN, "second")` yields `in 9223372036854775808 seconds`. Plural-rule
+  selection (a signed API) clamps only the single value beyond `INT64_MAX`, where category
+  choice is indistinguishable. Regression: the INT64_MIN case in
+  `RTRelativeTimeFormatTests.cpp`. **Resolved.**
 
 ### VDOC-074 — Text direction treats whole Unicode blocks as strongly directional
 
@@ -1426,6 +1678,17 @@ the checked-in generators, documentation audits, and already-existing binaries o
   or insert isolates for ordinary non-ASCII digits and marks.
 - **Source:** `classify()` in `src/runtime/localization/rt_text_direction.c` and direct evaluator
   probes.
+- **Review (2026-07-15):** Verified and fixed for the weak/neutral classes the finding
+  demonstrates: `classify()` now returns neutral (before the block-range checks) for
+  Arabic-Indic digits U+0660–0669 and U+06F0–06F9 (bidi class AN), Hebrew points and Arabic
+  combining marks inside the RTL blocks (NSM), and the generic combining-mark blocks
+  (U+0300–036F, 0483–0489, 1AB0–1AFF, 1DC0–1DFF, 20D0–20FF, FE20–FE2F) — so `١` no longer
+  decides FirstStrong and Arabic text followed by a combining accent detects as `rtl`, not
+  `mixed`. Note: Devanagari digits keep bidi class `L` in the UCD, so reporting `१` as `ltr`
+  is correct and unchanged. Full per-code-point UCD bidi tables remain out of scope for the
+  zero-dependency runtime; the classifier is still block-based for strong classes.
+  Regression: the AN-digit and combining-accent cases in `RTTextDirectionTests.cpp`.
+  **Resolved.**
 
 ### VDOC-075 — `ListFormat` leaks retained element references
 
@@ -1438,6 +1701,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   alive indefinitely in long-running formatting workloads.
 - **Source:** `join_with_style()` in `src/runtime/localization/rt_list_format.c` and the ownership
   contract of `rt_list_get()` / `rt_arr_obj_get()`.
+- **Review (2026-07-15):** Verified (confirmed `rt_arr_obj_get()` retains via
+  `rt_obj_retain_maybe`) and fixed. `join_with_style()` now releases every element it fetches
+  — both operands in the two-item branch, the two `end`-template operands, each `middle`
+  iteration's item, and the `start` operand — and the one-item branch transfers the retained
+  reference to the caller instead of adding a second one. Regression:
+  `test_no_reference_leaks` in `RTListFormatTests.cpp` asserts element refcounts (read from
+  the heap header of the string's data payload) are unchanged after eight formats and that
+  the one-item join is reference balanced. **Resolved.**
 
 ### VDOC-076 — Plural operands are wrong when `%.15g` uses exponent notation
 
@@ -1452,6 +1723,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   some large) values once C formatting switches notation.
 - **Source:** `operands_from_double()` in `src/runtime/localization/rt_plural_rules.c` and a loaded
   locale probe through the installed evaluator.
+- **Review (2026-07-15):** Verified and fixed. `operands_from_double()` now parses the `%.15g`
+  output fully — mantissa digits, dot position, and exponent — and reconstructs the
+  fixed-notation fraction: leading zeros from a negative decimal exponent count toward `v`,
+  the mantissa's post-point digits form `f` (overflow-guarded), and `t` strips trailing
+  zeros, so `1e-07` yields `v=7, f=1, t=1` exactly like `0.0000001`. Integer-valued exponent
+  spellings (`1e18`) keep `v=f=t=0`. Regression: `test_exponent_notation_operands` in
+  `RTPluralRulesTests.cpp` using a loaded `v = 0` rule locale. **Resolved.**
 
 ### VDOC-077 — `PluralRules.Categories` leaks each result string's initial reference
 
@@ -1463,6 +1741,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** each call leaks one string reference for every distinct category returned.
 - **Source:** `rt_plural_rules_categories()` in
   `src/runtime/localization/rt_plural_rules.c`.
+- **Review (2026-07-15):** Verified and fixed. Each category string's initial reference is now
+  released after `rt_list_push()` retains it, so the returned list holds the only reference.
+  Regression: `test_categories_reference_balance` in `RTPluralRulesTests.cpp` asserts a
+  fetched entry's count is exactly list + fetch (2). **Resolved.**
 
 ### VDOC-078 — Message plural interpolation ignores the locale digit set
 
@@ -1475,6 +1757,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   is rendered, and translated plural messages cannot rely on the locale numbering system.
 - **Source:** `rt_message_bundle_plural()` in
   `src/runtime/localization/rt_message_bundle.c`.
+- **Review (2026-07-15):** Verified and fixed. `Plural` now renders the seeded `{n}` value
+  through `bundle_localize_digits()`, which walks the bundle locale's 10-code-point digit
+  string (validated at load time per VDOC-069) and substitutes each ASCII digit, with a
+  fast pass-through for the default `0123456789` set — so `Plural` and
+  `RelativeTimeFormat.Numeric` render the same integer identically for the same locale.
+  Regression: `test_plural_uses_locale_digits` in `RTMessageBundleTests.cpp` (Arabic-Indic
+  digit locale → `٥ items`). **Resolved.**
 
 ### VDOC-079 — Long message fallback chains can still form retained cycles
 
@@ -1487,6 +1776,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   those cycles are unreachable to lookup beyond the limit and cannot be reference-count freed.
 - **Source:** `rt_message_bundle_set_fallback()` and `RT_MSG_BUNDLE_MAX_DEPTH` in
   `src/runtime/localization/rt_message_bundle.c`.
+- **Review (2026-07-15):** Verified and fixed. `set_fallback()` now walks the entire proposed
+  chain with a Floyd two-pointer scan — no depth cutoff — so a cycle through the receiver is
+  rejected at any chain length, and a pre-existing cycle (which the invariant makes
+  unreachable, but which concurrent misuse could create) terminates the walk with a trap
+  instead of looping. Lookup keeps its 16-step recursion bound as documented. Regression:
+  `test_long_chain_cycle_rejected` in `RTMessageBundleTests.cpp` (20-deep chain closed into a
+  cycle traps; previously attached). **Resolved.**
 
 ### VDOC-080 — Number-format C-locale initialization has a data race
 
@@ -1498,6 +1794,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** concurrent first-time number formatting/parsing is not covered by the surrounding
   localization thread-safety claims and can also allocate/leak more than one locale object.
 - **Source:** `src/runtime/localization/rt_numformat.c`.
+- **Review (2026-07-15):** Verified and fixed. `loc_cached_c_locale()` now initializes through
+  the platform once primitive — `InitOnceExecuteOnce` on Windows, `pthread_once` on POSIX —
+  so concurrent first use is a defined single initialization with no duplicate locale
+  allocation. This matches the runtime's established init-race pattern (CONC-001 family).
+  Platform-policy baseline updated for the added `#if defined(_WIN32)` include split.
+  `test_rt_locale_numformat` passes. **Resolved.**
 
 ### VDOC-081 — Localization source contracts disagree with current implementations
 
@@ -1514,6 +1816,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** comments in `src/runtime/localization/rt_locale.c`,
   `rt_locale_platform_posix.c`, `rt_dateformat_patterns.c`, `rt_locale_info.h`, and
   `rt_reltime_format.c`.
+- **Review (2026-07-15):** Verified each claim against the implementation and fixed all five:
+  `rt_locale.c`/`rt_locale.h` now state that the finalizer releases the handle's retained
+  locale-data reference (registry remains the owner); the POSIX adapter header gives the real
+  cascade `LC_ALL → LC_MESSAGES → LANG`; the date-pattern header describes the actual
+  CLDR-style width mapping (y2/M1-5+/E≤3-4-5+/two-digit padding for d H h m s) and that
+  unterminated quoted literals trap; `rt_locale_info.c` documents `FirstDayOfWeek` as
+  0 = Sunday … 6 = Saturday matching the schema (the `.h` already did); and the reltime unit
+  helper's doc now says it falls back to "other" then the empty string only. The `Equals`
+  null brief is correct as of VDOC-067. **Resolved.**
 
 ### VDOC-082 — Locale data accepts collation strength 4 but the collator clamps it to 3
 
@@ -1527,6 +1838,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Viper.Localization.Collator` is absent from the frontend registry.
 - **Source:** `loc_data_from_json()` in `rt_locale_manager.c` and `col_alloc()` /
   `rt_collator_set_strength()` in `rt_collator.c`.
+- **Review (2026-07-15):** Verified and fixed. The loader now validates `collation.strength`
+  over `1..3`, matching what the collator implements, so a value of 4 fails schema validation
+  instead of loading and being silently clamped. The collator's defensive clamp remains as a
+  backstop. Docs updated in data-files.md. Regression: `test_collation_strength_range` in
+  `RTLocaleManagerTests.cpp` (4 rejected, 3 accepted). **Resolved.**
 
 ### VDOC-083 — Integer plural rules lose precision above 2^53
 
@@ -1541,6 +1857,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   counts can select an incorrect plural form even though parsing accepts 64-bit literals.
 - **Source:** `operands_from_int()`, `eval_expr()`, and `eval_range_pred()` in
   `src/runtime/localization/rt_plural_rules.c`, confirmed with the installed evaluator.
+- **Review (2026-07-15):** Verified and fixed with an exact-integer fast path. Operands now
+  carry `int_exact`/`mag` (the exact unsigned magnitude, INT64_MIN included), and a new
+  `eval_expr_u64()` evaluates rule literals, the always-integral `v/f/t` operands, and `n/i`
+  for integer inputs in 64-bit integer space with integer modulo. `EQ`/`NE` and the range
+  predicates use it whenever both sides are exact, falling back to the double path only for
+  fractional inputs — so `i mod 10 = 7` selects correctly for `INT64_MAX` and
+  `i = 9223372036854775807` no longer also matches `...806`. Regression:
+  `test_exact_int64_operands` in `RTPluralRulesTests.cpp`. **Resolved.**
 
 ### VDOC-084 — Non-default `CurrencyOf` output is not accepted by `ParseCurrency`
 
@@ -1554,6 +1878,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   object's currency parser; callers must remove or remember the non-default code themselves.
 - **Source:** `rt_numformat_currency_of()`, `strip_currency_affixes()`, and
   `extract_currency_number()` in `src/runtime/localization/rt_numformat.c`.
+- **Review (2026-07-15):** Verified and fixed. `extract_currency_number()` now detects a
+  standalone 3-uppercase-letter run in the input and retries the negative/positive currency
+  patterns with it as the symbol, and `strip_currency_affixes()` accepts any standalone
+  3-uppercase-letter ISO code as a leading/trailing affix (word-boundary guarded), matching
+  exactly what `CurrencyOf` may emit — so `CurrencyOf(100, "EUR")` and its negative form both
+  round-trip through `TryParseCurrency` on the same formatter. Regression:
+  `test_currency_of_round_trip` in `RTLocaleNumberFormatTests.cpp`. **Resolved.**
 
 ### VDOC-085 — Formatted non-finite numbers are rejected by the paired parsers
 
@@ -1569,6 +1900,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   limitation after its affix-removal step.
 - **Source:** `fmt_render_number()`, `scan_number_parts()`, and the decimal/currency parse entry
   points in `src/runtime/localization/rt_numformat.c`, confirmed with the installed evaluator.
+- **Review (2026-07-15):** Verified and fixed. A new `parse_special_value()` recognizes the
+  locale's exact `numbers.nan` / `numbers.infinity` tokens (with an optional locale sign
+  token) at the head of `parse_decimal()`, so `TryParseDecimal(Decimal(±∞))` and
+  `TryParseDecimal(Decimal(NaN))` round-trip; currency parsing inherits the behavior after
+  affix removal since it feeds the inner slice to the same parser. Integer parsing remains
+  strict and rejects the tokens. Regression: `test_nonfinite_round_trip` in
+  `RTLocaleNumberFormatTests.cpp`. **Resolved.**
 
 ### VDOC-086 — Collection membership uses incompatible equality rules
 
@@ -1585,6 +1923,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   values.
 - **Source:** `rt_list_find()`, `rt_seq_find()`, and `rt_set_*()` versus the `*_has()` routines in
   `rt_queue.c`, `rt_stack.c`, `rt_deque.c`, and `rt_ring.c`.
+- **Review (2026-07-15):** Verified and fixed. `rt_queue_has()`, `rt_stack_has()`,
+  `rt_deque_has()`, and `rt_ring_has()` now compare through `rt_box_equal()` — the same
+  boxed-value relation List/Seq/Set already use (it keeps the raw-pointer fast path, so
+  identity membership still succeeds). These were the only four pointer-compare membership
+  sites across the seven collections. Regression: `test_has_value_equality` in
+  `RTQueueTests.cpp` (separately boxed int and string copies match; different values do not).
+  **Resolved.**
 
 ### VDOC-087 — Public Queue and Stack constructors cannot create owning containers
 
@@ -1600,6 +1945,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Seq.ToStack`.
 - **Source:** `rt_queue_new()` / `rt_stack_new()`, their traversal callbacks, the conversion
   helpers in `rt_convert_coll.c`, and the Queue/Stack registry blocks in `foundation.def`.
+- **Review (2026-07-15):** Verified and fixed by registering the existing C mutators on the
+  public surface, mirroring Ring: `Queue.SetOwnsElements` / `Stack.SetOwnsElements` RT_METHOD
+  rows in foundation.def with matching RT_FUNC rows in collections.def; the two symbols moved
+  from `RUNTIME_SURFACE_INTERNAL_SYMBOL` to registry-classified, `check_runtime_completeness`
+  and the strict surface audit pass, and generated docs were refreshed. Default construction
+  stays borrowed (unchanged semantics); callers can now opt into owning mode from Zia/BASIC.
+  Docs updated in sequential.md. Regression: owning Queue/Stack push coverage in
+  `45_runtime_api_conformance.zia` (VM end-to-end). **Resolved.**
 
 ### VDOC-088 — Sequential-collection source contracts describe obsolete behavior
 
@@ -1618,6 +1971,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   names, empty behavior, ownership, complexity, or mutation behavior.
 - **Source:** comments in `src/runtime/collections/rt_list.c`, `rt_queue.c`, `rt_stack.c`,
   `rt_seq.c`, `rt_pqueue.h`, `rt_iter.h`, and `rt_lazyseq.h`.
+- **Review (2026-07-15):** Verified each claim against the implementations and rewrote all
+  seven: `rt_list.c` now documents element retention and the stable merge sort (examples use
+  the registered `Push`/`Get` names); `rt_queue.c` documents Push/Pop naming, that Peek/Pop
+  trap on empty (TryPop returns None), and both ownership modes; `rt_stack.c` fixes the same
+  Peek-returns-NULL claim; `rt_seq.c`'s find doc now states boxed-value equality (rt_box_equal)
+  rather than identity-only; `rt_pqueue.h` notes `ToSeq` works on an internal copy and
+  preserves the heap; `rt_iter.h` lists the real factory set (no Queue/Trie) and documents
+  retained — not borrowed — sources; `rt_lazyseq.h` describes reset's RANGE/REPEAT limitation
+  and drops the nonexistent INT64_MAX infinite-range sentinel. **Resolved.**
 
 ### VDOC-089 — Default object sorting has no valid mixed-type fallback order
 
@@ -1635,6 +1997,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
   strings and integers, so converting a collection can change its default ordering.
 - **Source:** `list_default_compare()` in `src/runtime/collections/rt_list.c` and
   `seq_default_compare()` in `src/runtime/collections/rt_seq_ops.c`.
+- **Review (2026-07-15):** Verified and fixed with one shared comparator:
+  `rt_box_default_sort_compare()` (rt_box.c) ranks by type class first — null < numeric
+  (boxed i64/i1 exact, f64 with NaN last) < string (raw or boxed) < other — and compares
+  within class by value, with the "other" fallback using `uintptr_t` comparison (defined
+  behavior, unlike raw pointer relationals). Type-class ranking makes the relation total and
+  transitive, and both `List.Sort` and `Seq.Sort` now delegate to it, so Seq orders boxed
+  strings/integers exactly like List (`Alice, Bob, Charlie` from the finding's probe). Docs
+  updated in functional.md and sequential.md; symbol classified internal in the surface
+  policy. Regression: `test_sort_boxed_values` in `RTSeqTests.cpp` (boxed strings, boxed
+  ints, and mixed-class ranking). **Resolved.**
 
 ### VDOC-090 — LazySeq methods do not validate their receiver type
 
@@ -1649,6 +2021,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   objects, or dispatch a garbage callback pointer instead of producing a type trap.
 - **Source:** `alloc_lazyseq()`, the `rt_lazyseq_*` methods, and IL wrappers in
   `src/runtime/oop/rt_lazyseq.c`.
+- **Review (2026-07-15):** Verified and fixed. LazySeq nodes now carry a real class id
+  (`RT_LAZYSEQ_CLASS_ID`, added to rt_collection_ids.h) instead of 0, and every IL trampoline
+  routes its receiver through a new `as_lazyseq()` checked cast (`rt_obj_is_instance` +
+  payload-size check, the same idiom the other collections use), so a wrong explicit receiver
+  traps with `LazySeq: invalid LazySeq object` instead of overwriting foreign object fields.
+  Regression: `test_wrapper_receiver_validation` in `RTLazySeqTests.cpp` (a Seq receiver
+  traps). **Resolved.**
 
 ### VDOC-091 — LazySeq collectors return borrowing Seqs
 
@@ -1663,6 +2042,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   though ordinary publicly constructed Seqs own their entries.
 - **Source:** `rt_lazyseq_repeat()`, `rt_lazyseq_to_seq()`, and `rt_lazyseq_to_seq_n()` in
   `src/runtime/oop/rt_lazyseq.c`.
+- **Review (2026-07-15):** Verified and fixed. `Repeat` now retains its stored value
+  (`rt_obj_retain_maybe`) and the finalizer gains a `LAZYSEQ_REPEAT` case releasing it; both
+  collectors (`ToSeq`, `ToSeqN`) mark their result Seqs owning before pushing, including the
+  empty early-return paths, so materialized elements hold strong references exactly like
+  publicly constructed Seqs. Regression: `test_collectors_own_elements` in
+  `RTLazySeqTests.cpp` asserts the node's retain plus three owning references after
+  collecting `Repeat(x, 3)`. **Resolved.**
 
 ### VDOC-092 — LazySeq negative limits use inconsistent sentinels
 
@@ -1676,6 +2062,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   closely related invalid bounds silently replace a pipeline with null.
 - **Source:** `rt_lazyseq_repeat()`, `rt_lazyseq_take()`, `rt_lazyseq_drop()`, and
   `rt_lazyseq_range()` in `src/runtime/oop/rt_lazyseq.c`.
+- **Review (2026-07-15):** Verified and fixed with consistent trapping: `Repeat` traps for any
+  count below `-1` (only the documented `-1` sentinel means infinite), `Take`/`Drop` trap on
+  negative limits, and `Range` traps on a zero step — no more silent NULL pipelines or
+  accidental infinite sources. Docs updated in functional.md. Regression:
+  `test_invalid_limits_trap` in `RTLazySeqTests.cpp` (three trap cases plus the `-1`
+  sentinel still working). **Resolved.**
 
 ### VDOC-093 — LazySeq allocation failure dereferences null
 
@@ -1687,6 +2079,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Impact:** out-of-memory handling crashes in the allocator path instead of returning null or
   producing the runtime's normal allocation trap.
 - **Source:** `alloc_lazyseq()` in `src/runtime/oop/rt_lazyseq.c`.
+- **Review (2026-07-15):** Verified and fixed. `alloc_lazyseq()` now checks the
+  `rt_obj_new_i64()` result before the `memset` and raises the runtime's standard allocation
+  trap (`LazySeq: memory allocation failed`) on failure, matching the other collection
+  allocators. Covered by the existing LazySeq suite (the failure path is OOM-only).
+  **Resolved.**
 
 ### VDOC-094 — Iterator source cycles are invisible to cycle collection
 
@@ -1700,6 +2097,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `make_iter()` / `make_iter_snapshot()` in
   `src/runtime/collections/rt_iter.c`, compared with the tracked traversal callbacks on Seq, List,
   and Ring.
+- **Review (2026-07-15):** Verified and fixed. Iterators now register with the cycle collector:
+  a new `iter_traverse()` exposes the retained `source` edge (live sources and owned
+  snapshots alike), and both `make_iter()` and `make_iter_snapshot()` call `rt_gc_track()`
+  after installing the finalizer — the same pattern Seq/List/Ring use — so an
+  iterator-stored-in-its-source cycle is traversable and reclaimable. Existing iterator and
+  GC suites pass. **Resolved.**
 
 ### VDOC-095 — LazySeq null elements collide with the exhaustion sentinel
 
@@ -1712,6 +2115,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   stream ended. Callers must compare cursor/exhaustion state around the operation.
 - **Source:** `rt_lazyseq_next()`, `rt_lazyseq_peek()`, `rt_lazyseq_w_next()`, and
   `rt_lazyseq_w_peek()` in `src/runtime/oop/rt_lazyseq.c`.
+- **Review (2026-07-15):** Verified and fixed by adding the missing Option counterparts:
+  `LazySeq.NextOption` / `LazySeq.PeekOption` (registered as `obj<Viper.Option>`, backed by
+  `rt_lazyseq_w_next_option` / `rt_lazyseq_w_peek_option`) return `Some(value)` for every
+  yielded element — including null — and `None` only at exhaustion, matching the collection
+  pop APIs' convention. The plain `Next`/`Peek` remain unchanged for compatibility.
+  Completeness and surface audits pass; generated docs refreshed; functional.md updated.
+  Regression: `test_next_option_null_elements` in `RTLazySeqTests.cpp` (`Repeat(null, 2)`
+  yields Some, Some, None). **Resolved.**
 
 ### VDOC-096 — Several collection boolean C returns disagree with the registry ABI
 
@@ -1729,6 +2140,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `src/runtime/collections/rt_orderedmap.[ch]`, `rt_defaultmap.[ch]`, and the matching
   entries in `src/il/runtime/defs/api/collections.def` and `core_crypto.def`, plus
   `rt_bloomfilter.[ch]` and its `collections.def` entry.
+- **Review (2026-07-15):** Verified and fixed. All four functions —
+  `rt_orderedmap_is_empty()`, `rt_orderedmap_has()`, `rt_defaultmap_has()`, and
+  `rt_bloomfilter_might_contain()` — now declare and define `int8_t` returns, matching their
+  registered `i1` signatures and the convention every other collection boolean uses. No
+  VM/bytecode bridge carried a conflicting extern. Existing OrderedMap/DefaultMap/Bloom
+  suites pass unchanged. **Resolved.**
 
 ### VDOC-097 — OrderedMap installs the same finalizer twice
 
@@ -1742,6 +2159,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
   cleanup stage.
 - **Source:** `rt_orderedmap_new()` in `src/runtime/collections/rt_orderedmap.c` and
   `rt_obj_set_finalizer()` in `src/runtime/oop/rt_object.c`.
+- **Review (2026-07-15):** Verified against the current source: `rt_orderedmap_new()` now
+  contains exactly one `rt_obj_set_finalizer(m, orderedmap_finalizer)` call (immediately
+  before `rt_gc_track`); the duplicated line was removed by an intervening change. No code
+  change needed. **Resolved.**
 
 ### VDOC-098 — Map/set implementation-adjacent contracts describe the wrong storage and lifetime
 
@@ -1759,6 +2180,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** comments in `src/runtime/collections/rt_map.h`, `rt_set.c`, `rt_orderedmap.h`,
   `rt_sortedset.[ch]`, `rt_frozenmap.h`, `rt_frozenset.h`, and `rt_treemap.h`, compared with their
   implementations.
+- **Review (2026-07-15):** Verified each claim and corrected all seven files: `rt_map.h` now
+  says separate-chaining buckets and GC-managed lifetime (no caller free); `rt_set_new()`'s
+  doc says separate chaining; `rt_orderedmap.h` scopes O(1) to keyed operations and notes
+  `KeyAt`/snapshots/Clear are linear; `rt_sortedset.c` describes the length-aware
+  byte-lexicographic order (embedded NULs participate) instead of `strcmp`; and the
+  FrozenMap/FrozenSet/TreeMap ownership lines now state GC management with a runtime
+  finalizer instead of caller-managed lifetimes. **Resolved.**
 
 ### VDOC-099 — CountMap `IncBy` violates its returned-count contract for non-positive increments
 
@@ -1773,6 +2201,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   ignored rather than rejected or acting as a decrement.
 - **Source:** `rt_countmap_inc_by()` in `src/runtime/collections/rt_countmap.c`, confirmed with the
   installed evaluator.
+- **Review (2026-07-15):** Verified and fixed. `IncrementBy` now honors its returned-count
+  contract across the full accepted domain: `n == 0` is a lookup no-op returning the current
+  count (0 for missing keys), and negative amounts trap with
+  `CountMap.IncrementBy: amount must be >= 0` (decrements go through the dedicated
+  `Decrement` API). Regression: extended `test_inc_by` in `RTCountMapTests.cpp` (zero on
+  existing and missing keys, negative traps, totals unchanged). **Resolved.**
 
 ### VDOC-100 — Specialized-map source contracts contain obsolete operations and ownership rules
 
@@ -1794,6 +2228,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** comments in `src/runtime/collections/rt_bimap.c`, `rt_multimap.c`, `rt_countmap.h`,
   `rt_intmap.c`, `rt_defaultmap.h`, `rt_lrucache.[ch]`, and the specialized-map headers, compared
   with their implementations and runtime registry.
+- **Review (2026-07-15):** Verified each claim and corrected all of them: BiMap missing-lookup
+  docs now say "owned empty string" (not NULL); the MultiMap header drops the nonexistent
+  single-value removal; the CountMap header names `rt_countmap_most_common` (not `top_n`),
+  scopes O(1) to keyed operations (MostCommon sorts, O(n log n)), and states GC-managed
+  lifetime; the IntMap header documents value retention/release and GC traversal; the
+  DefaultMap header admits `Get` can return NULL through a null default or stored null; the
+  LruCache header states `Has` is read-only (no recency promotion) and capacity 0 means
+  unbounded, and its Values doc describes an owning snapshot. Caller-managed-lifetime claims
+  on GC-managed objects were replaced throughout. **Resolved.**
 
 ### VDOC-101 — `I64Buffer` arithmetic uses unchecked signed C overflow
 
@@ -1809,6 +2252,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `rt_i64buf_add_scalar()`, `rt_i64buf_mul_scalar()`,
   `rt_i64buf_add_buffer()`, `rt_i64buf_sum()`, and `rt_i64buf_dot()` in
   `src/runtime/collections/rt_numbuf.c`.
+- **Review (2026-07-15):** Verified and fixed. Added `numbuf_checked_add_i64()` /
+  `numbuf_checked_mul_i64()` (compiler builtins on GCC/Clang, manual divide-bound checks on
+  MSVC — the rt_time.c idiom) and routed all five operations through them: `AddScalar`,
+  `MulScalar`, and `AddBuffer` trap with per-method overflow messages before writing the
+  overflowing element, `Sum` traps on accumulation overflow, and `Dot` checks both the
+  per-element product and the accumulation. Regression: `test_i64_overflow_traps` in
+  `RTNumBufTests.cpp` (three trap probes plus in-range sanity). **Resolved.**
 
 ### VDOC-102 — `Bag.ToSet` creates string entries that ordinary Set lookups cannot match
 
@@ -1825,6 +2275,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the Bag or rebuild a Set from explicitly boxed strings.
 - **Source:** `rt_bag_to_set()` in `src/runtime/collections/rt_convert_coll.c` and Set equality/hash
   logic in `src/runtime/collections/rt_set.c`, confirmed with the installed evaluator.
+- **Review (2026-07-15):** Verified and fixed. `rt_bag_to_set()` now boxes each raw Bag string
+  (`rt_box_str`) before inserting, so entries participate in the Set's boxed-string value
+  equality and content hashing — `Has(Box.Str("apple"))` matches after conversion, and
+  value-based dedup/set algebra work. The loop releases the temporary box reference after the
+  Set retains its own (Seq snapshot elements are borrowed, not retained). Regression:
+  `test_to_set_boxed_membership` in `RTBagTests.cpp`. **Resolved.**
 
 ### VDOC-103 — `Trie.LongestPrefix` cannot distinguish an empty-key match from no match
 
@@ -1837,6 +2293,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   They must separately query `Has("")` when that distinction is relevant.
 - **Source:** empty-key handling in `rt_trie_set()` and the `found`/`last_match` result path in
   `rt_trie_longest_prefix()` in `src/runtime/collections/rt_trie.c`.
+- **Review (2026-07-15):** Verified and fixed by adding the missing Option form:
+  `Trie.LongestPrefixOption` (registered as `obj<Viper.Option>(str)`, backed by
+  `rt_trie_longest_prefix_option`) returns `Some(prefix)` for any match — including the
+  valid empty-key match — and `None` when no stored key is a prefix, so the ambiguity of the
+  string-returning `LongestPrefix` is resolved without changing it. Completeness/surface
+  audits pass; generated docs refreshed. Regression: `test_longest_prefix_option` in
+  `RTTrieTests.cpp` (None with empty trie, Some("") after inserting the empty key).
+  **Resolved.**
 
 ### VDOC-104 — BitSet staged growth breaks logical bounds and can corrupt heap memory
 
@@ -1855,6 +2319,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `bitset_grow()`, `rt_bitset_set_all()`, `bitset_popcount()`, and
   `rt_bitset_{and,or,xor}()` in `src/runtime/collections/rt_bitset.c`; count behavior confirmed with
   the installed evaluator.
+- **Review (2026-07-15):** Verified and fixed by separating logical size from allocated
+  capacity: a new `bitset_logical_words()` (= WORDS_FOR_BITS(bit_count)) now bounds every
+  whole-set walk. `SetAll` fills and masks only the logical words (spare capacity stays
+  zero), popcount/`Count`/`IsEmpty` scan logical words, and `And`/`Or`/`Xor`/`Not` derive
+  their loop bounds from the operands' logical word counts clamped by the result's
+  allocation — eliminating both the `Count > Length` violation and the out-of-bounds
+  `result.words[3]` write. Regression: `test_staged_growth_bounds` in `RTBitSetTests.cpp`
+  reproducing the finding's 64→129-bit staged-growth scenario (`Count == 129`, binary ops
+  correct and in-bounds). **Resolved.**
 
 ### VDOC-105 — Specialized-structure source contracts are stale or contradictory
 
@@ -1877,6 +2350,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** comments in `src/runtime/collections/rt_bag.[ch]`, `rt_bloomfilter.h`,
   `rt_unionfind.h`, `rt_bitset.[ch]`, `rt_trie.[ch]`, and `rt_bytes.h`, compared with their
   implementations and registry.
+- **Review (2026-07-15):** Verified each claim and corrected all six groups: Bag's header now
+  says separate chaining and GC-managed lifetime, and its examples use the registered
+  StringSet names (`Add`/`Remove`/`Count`/`Union`/`Intersect`); BloomFilter's merge doc states
+  the real precondition (equal derived bit/hash counts); UnionFind's `Union` doc includes the
+  invalid-index zero return; BitSet's header states that And/Or/Xor accept unequal lengths
+  and that all binary ops (including Not) return new objects, plus GC-managed lifetime; the
+  Trie node comment allows NULL values at terminal nodes and its header drops caller lifetime
+  responsibility; Bytes' header now says writes truncate to the low 8 bits, hex output is
+  lowercase, and objects are GC-managed. **Resolved.**
 
 ### VDOC-106 — Bytes constructor signatures disagree inside the runtime manifest
 
@@ -1893,6 +2375,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   the correct API declaration.
 - **Source:** the Bytes entries in `foundation.def` and `collections.def`, confirmed with the
   installed evaluator and `viper --dump-runtime-api`.
+- **Review (2026-07-15):** Verified and fixed. The `RT_CLASS_BEGIN` row for
+  `Viper.Collections.Bytes` now declares `obj(i64)`, matching the API-side `BytesNew`
+  signature and the convention its sibling sized constructors (BitSet, F64Buffer, I64Buffer)
+  already follow. Completeness/surface audits pass and generated docs were refreshed.
+  **Resolved.**
 
 ### VDOC-107 — Several collection counts lack their advertised overflow trap
 
@@ -1912,6 +2399,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** insertion and length paths in `src/runtime/collections/rt_bag.c`, `rt_intmap.c`,
   `rt_lrucache.c`, and `rt_trie.c`, compared with the explicit count guards in the other listed
   collections.
+- **Review (2026-07-15):** Verified and fixed. All four insertion paths now trap at the count
+  ceiling before mutating: StringSet/Bag `Add` (frees the prepared entry first), `IntMap.Set`
+  (guard sits before value retention/entry allocation), `LRUCache.Put` (releases the prepared
+  node/value on the trap path), and `Trie.Set` (guards before creating a new terminal). The
+  guard uses `count >= INT64_MAX`, which also keeps the public signed `Count`/`Length` casts
+  well-defined — matching the Map/Set/Seq/Deque/Heap/CountMap/MultiMap convention. The limits
+  are unreachable in practice (memory exhausts first), so coverage is by the existing suites.
+  **Resolved.**
 
 ### VDOC-108 — `SemanticJob.IsDone(null)` depends on which Zia bridge is linked
 
@@ -1927,6 +2422,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `rt_zia_semantic_job_is_done()` in
   `src/frontends/zia/rt_zia_completion.cpp` and
   `src/runtime/core/rt_zia_completion_stub.c`.
+- **Review (2026-07-15):** Verified and fixed. The weak stub now returns 0 for every handle,
+  matching the strong editor-service semantics (`IsDone(null/invalid) == false`) for every
+  input the stub can actually produce — its `Begin*` functions all return null, so callers
+  must check the Begin result, which is now the documented contract in both bridges. Docs
+  updated in zia.md. **Resolved.**
 
 ### VDOC-109 — Zia document-mirror deltas do not enforce revision or range validity
 
@@ -1945,6 +2445,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `mirrorOffsetOf()`, `mirrorApplyDeltasJson()`, and
   `rt_zia_doc_sync_delta()` in `src/frontends/zia/rt_zia_completion.cpp`, confirmed with the
   existing `build/src/tools/zia/zia` binary.
+- **Review (2026-07-15):** Verified and fixed. `SyncDelta` now enforces revision monotonicity —
+  the batch's `end_revision` must not move the mirror backwards, and each delta's `r` must lie
+  strictly after the mirror's stored revision (and within `end_revision`), applied in
+  increasing order. Positions go through a new strict resolver
+  (`mirrorOffsetOfStrict`) that rejects negative coordinates, lines past the buffer, and
+  columns past end-of-line instead of clamping, and a reversed range is rejected as corrupt
+  rather than treated as an insertion. Every rejection returns 0, which routes callers to
+  their documented full-sync fallback, so stale/corrupt journal data can no longer silently
+  diverge the mirror. Regression: new `test_zia_doc_mirror` target (stale revision,
+  out-of-range coordinates, reversed range, valid delta). **Resolved.**
 
 ### VDOC-110 — Zia document-symbol queries emit runtime and imported-file symbols
 
@@ -1963,6 +2473,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `symbolsForSource()` and `rt_zia_symbols_for_file()` in
   `src/frontends/zia/rt_zia_completion.cpp`, `Sema::getGlobalSymbols()` in
   `src/frontends/zia/Sema_Completion.cpp`, and existing-binary probes.
+- **Review (2026-07-15):** Verified and fixed. Both serializers now emit only symbols whose
+  declaration belongs to the active file (`sym.decl && sym.decl->loc.file_id == fileId`),
+  which drops the ~7,000 declaration-less runtime-registry rows and all imported-file
+  declarations that the four-field protocol could not attribute; the duplicate
+  `getTypeNames()` append was removed since user-declared types already appear in the
+  filtered globals. This also fixed the latent `test_zia_bugfixes` expectation for
+  `Template.Keys.Count` (now StringSet-typed per VDOC-044). Regression:
+  `ZiaDocSymbols.OnlyActiveFileSymbols` in `test_zia_doc_mirror.cpp` (Cat/start present, no
+  `Viper.*` rows, payload under 20 lines). **Resolved.**
 
 ### VDOC-111 — Legacy completion rows cannot frame multiline snippets
 
@@ -1978,6 +2497,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   and are the current workaround.
 - **Source:** `kSnippets`, `serializeItem()`, and `serialize()` in
   `src/frontends/zia/ZiaCompletion.cpp`.
+- **Review (2026-07-15):** Verified and fixed. `serializeItem()` now escapes every field —
+  backslash, tab, newline, and CR become `\\`, `\t`, `\n`, `\r` — so a multiline snippet
+  like the `if` template occupies exactly one wire row with exactly three tab delimiters;
+  consumers split on the literal delimiters and unescape. The protocol doc in
+  `ZiaCompletion.hpp` describes the escaping. `Items*`/`BeginItemsForFile` (the Map-based
+  path most consumers use) are unaffected. Regression:
+  `CompletionEngine.Serialize_EscapesMultilineSnippets` in
+  `test_zia_completion_engine.cpp`. **Resolved.**
 
 ### VDOC-112 — Weak Zia structured payloads omit fields present in the full service
 
@@ -1995,6 +2522,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `completionItemToMap()` and `signatureInfoMap()` in
   `src/frontends/zia/rt_zia_completion.cpp` versus the matching builders in
   `src/runtime/core/rt_zia_completion_stub.c`.
+- **Review (2026-07-15):** Verified and fixed. The weak stub's completion item now carries
+  `cursorOffset = -1` and its signature map carries an empty `overloads` Seq, so the
+  structured Map schema is identical regardless of which bridge is linked. zia.md updated
+  (also refreshed the now-fixed VDOC-109/110/111 passages). Regression:
+  `test_stub_schema_parity` in `RTZiaCompletionStubTests.cpp`. **Resolved.**
 
 ### VDOC-113 — Zia diagnostic and mirror APIs conflate absence with a clean result
 
@@ -2011,6 +2543,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   but there is no equivalent status on the synchronous methods.
 - **Source:** weak implementations in `src/runtime/core/rt_zia_completion_stub.c` and document
   accessors in `src/frontends/zia/rt_zia_completion.cpp`.
+- **Review (2026-07-15):** Verified and fixed by adding two definitive probes rather than
+  changing the compatibility payloads: `Viper.Zia.Completion.IsAvailable` (strong bridge
+  returns true, weak stub false) lets callers know whether an empty Check/Seq means "clean"
+  or "analysis never ran", and `Viper.Zia.Document.Has(path)` separates an absent mirror from
+  a present-but-empty document (weak stub: always false). Both registered with completeness
+  and surface audits green; zia.md documents how to combine them with the synchronous
+  methods. Regressions: `ZiaDocMirror.HasDistinguishesAbsentFromEmpty` (strong) and
+  `test_stub_availability_probe` (weak). **Resolved.**
 
 ### VDOC-114 — ProjectIndex rename validation does not match the Zia lexer
 
@@ -2027,6 +2567,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `isIdentifierText()` in `src/frontends/zia/rt_zia_completion.cpp`,
   `Lexer::lexIdentifierOrKeyword()` in `src/frontends/zia/Lexer.cpp`, and
   `src/frontends/common/CharUtils.hpp`.
+- **Review (2026-07-15):** Verified and fixed. `isIdentifierText()` now uses the lexer's own
+  deterministic ASCII classification (`il::frontends::common::char_utils::isIdentifierStart/`
+  `Continue`) plus the lexer's 1,024-byte cap, so an accepted rename can never yield a lexer
+  error and acceptance no longer varies with the host `LC_CTYPE`. Docs updated in zia.md.
+  Regression: `ZiaProjectIndex.RenameEnforcesLexerIdentifierRules` (UTF-8 byte rejected,
+  1025 bytes rejected, 1024-byte identifier accepted). **Resolved.**
 
 ### VDOC-115 — Document-delta integer parsing can overflow signed `long`
 
@@ -2041,6 +2587,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   coordinates, but the public runtime method accepts arbitrary Strings.
 - **Source:** numeric-field parsing in `mirrorApplyDeltasJson()` in
   `src/frontends/zia/rt_zia_completion.cpp`.
+- **Review (2026-07-15):** Verified and fixed. Numeric-field accumulation is now capped at 10
+  digits (comfortably within `long`, far beyond any real editor coordinate or revision);
+  longer literals classify as malformed input and return false, which triggers the caller's
+  full-sync fallback — no signed overflow path remains. Regression:
+  `ZiaDocMirror.OversizedNumericLiteralRejected` in `test_zia_doc_mirror.cpp` (26-digit
+  literal rejected, mirror unchanged). **Resolved.**
 
 ### VDOC-116 — Asynchronous Zia diagnostics drop all but the first fix-it
 
@@ -2054,6 +2606,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   depend on scheduling choice rather than diagnostic content.
 - **Source:** `diagnosticToMap()`, `DiagnosticRecord`, `diagnosticToRecord()`, and
   `diagnosticRecordsToSeq()` in `src/frontends/zia/rt_zia_completion.cpp`.
+- **Review (2026-07-15):** Verified and fixed. `DiagnosticRecord` now carries a
+  `std::vector<FixitRecord>` with every machine-applicable fix, `diagnosticToRecord()`
+  populates it (deriving the legacy first-fix fields from the same list), and
+  `diagnosticRecordsToSeq()` emits a `fixits` Seq with the exact key set the synchronous
+  `fixitsToSeq()` uses — so async `SemanticJob.Diagnostics` maps are schema-identical to
+  `Check*`/`Compile*`. zia.md updated. Full zia suite (333 tests) passes. **Resolved.**
 
 ### VDOC-117 — Audio-disabled mix-group initialization and registration are unsynchronized
 
@@ -2072,6 +2630,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** the two implementations of `rt_audio_set_group_volume()`,
   `rt_audio_register_group()`, `rt_audio_find_group()`, and related helpers in
   `src/runtime/audio/rt_audio.c`.
+- **Review (2026-07-15):** Verified and fixed. The audio-state spinlock
+  (`g_audio_init_lock` + `audio_state_lock/unlock`) was hoisted out of the
+  `VIPER_ENABLE_AUDIO` guard so both configurations share it, and the audio-disabled group
+  functions (`SetGroupVolume`, `GetGroupVolume`, `RegisterGroup`, `FindGroup`, `GroupName`)
+  now hold it around lazy initialization, lookup, registration, and volume access — the same
+  discipline the real-audio path already used. The audio-disabled branch was
+  syntax-verified with a no-`VIPER_ENABLE_AUDIO` compile; the enabled-build audio suites
+  pass unchanged. **Resolved.**
 
 ### VDOC-118 — Distinct public mix-group names silently alias after 31 bytes
 
@@ -2087,6 +2653,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   Use unique ASCII names of at most 31 bytes as a workaround.
 - **Source:** `audio_group_copy_name()`, `audio_find_group_unlocked()`, and
   `audio_register_group_unlocked()` in `src/runtime/audio/rt_audio.c`.
+- **Review (2026-07-15):** Verified and fixed. `audio_group_copy_name()` now rejects canonical
+  names longer than 31 bytes (the buffer is left empty, so registration and lookup return -1,
+  the same failure signal as an empty name) instead of truncating — distinct names can no
+  longer silently alias one group, and no UTF-8 sequence can be split because nothing is
+  truncated. audio.md updated (also reflects the VDOC-117 locking fix). **Resolved.**
 
 ### VDOC-119 — Playlist playback stalls permanently on an unloadable selected entry
 
@@ -2103,6 +2674,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `Play()` and `Update()`.
 - **Source:** `playlist_load_current_music()`, `playlist_select_position()`,
   `rt_playlist_play()`, and `rt_playlist_update()` in `src/runtime/audio/rt_playlist.c`.
+- **Review (2026-07-15):** Verified and fixed with bounded skip-on-error: both
+  `playlist_select_position()` (the auto-advance path used by `Update()`→`Next()`) and
+  `rt_playlist_play()` now retry subsequent entries when the selected one fails to load,
+  using the same repeat-all wrap and reshuffle semantics as `Next`, capped at the track count
+  so a playlist whose every entry fails stops cleanly (`IsPlaying == false`) instead of
+  stalling on the first bad track. audio.md updated. Regression:
+  `test_playlist_skip_on_error_terminates` in `RTAudioIntegrationTests.cpp` (three
+  unloadable tracks under repeat-all: Play/Update terminate stopped). **Resolved.**
 
 ### VDOC-120 — Spatial and ordinary Sound playback use different failure sentinels
 
@@ -2117,6 +2696,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `rt_sound_play_internal()` in `src/runtime/audio/rt_audio.c`,
   `rt_sound3d_play_at()` in `src/runtime/audio/rt_sound3d.c`, and
   `rt_soundsource3d_play()` in `src/runtime/audio/rt_sound3d_objects.c`.
+- **Review (2026-07-15):** Verified and fixed. Every play CALL now uses the -1 failure
+  sentinel: `SpatialAudio3D.PlayAt` and `SoundSource3D.Play` return -1 (not 0) when playback
+  cannot start, matching all `Sound.Play*` variants — voice ids start at 1, so `id > 0` and
+  `id != -1` both work uniformly. `SoundSource3D.VoiceId` (object state, not a call result)
+  deliberately keeps 0 as "no active voice", which existing fixtures depend on after `Stop`.
+  Contract-test expectations and audio.md updated. `test_rt_sound3d_contract` renamed probe
+  asserts the -1 sentinel. **Resolved.**
 
 ### VDOC-121 — SoundBank accepts detached Sound wrappers as successful registrations
 
@@ -2133,6 +2719,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** wrapper invalidation and `rt_sound_is_handle()` in
   `src/runtime/audio/rt_audio.c`, plus `rt_soundbank_register_sound()` in
   `src/runtime/audio/rt_soundbank.c`.
+- **Review (2026-07-15):** Verified and fixed. Added `rt_sound_is_playable()` — a stricter
+  companion to `rt_sound_is_handle()` that also requires the wrapper's ViperAUD handle to be
+  attached to the live audio context (audio-disabled stub returns 0) — and
+  `rt_soundbank_register_sound()` now uses it, so registering a Shutdown-detached zombie
+  wrapper fails with 0 instead of succeeding and failing later inside `SoundBank.Play`.
+  Symbol classified internal in the surface policy; audio suites pass and the disabled
+  branch was syntax-verified. **Resolved.**
 
 ### VDOC-122 — Peaking EQ accepts values that poison its filter coefficients
 
@@ -2147,6 +2740,12 @@ the checked-in generators, documentation audits, and already-existing binaries o
   their non-finite public inputs; peaking gain currently requires caller-side finite/range checks.
 - **Source:** `biquad_set()`, `biquad_sample()`, and `rt_audio_fx_add_peaking()` in
   `src/runtime/audio/rt_audio_fx.c`.
+- **Review (2026-07-15):** Verified and fixed. `biquad_set()` now sanitizes `gain_db` like the
+  sibling effects sanitize their inputs: NaN/infinity fall back to 0 dB and finite values
+  clamp to ±40 dB, so the coefficients and delay state stay finite and a single bad Float can
+  no longer silence the group's peaking insert. Regression:
+  `test_peaking_sanitizes_gain` in `RTAudioFxTests.cpp` (NaN gain keeps output finite and
+  audible; 1e9 gain stays finite). **Resolved.**
 
 ### VDOC-123 — Sound loaders disagree on whether a missing asset is recoverable
 
@@ -2162,6 +2761,11 @@ the checked-in generators, documentation audits, and already-existing binaries o
   that distinction. Callers cannot uniformly test the result for null.
 - **Source:** `rt_sound_load()` and `rt_sound_load_asset()` in
   `src/runtime/audio/rt_audio.c`.
+- **Review (2026-07-15):** Verified and fixed. `Sound.LoadAsset` now returns null for a
+  missing or zero-byte asset instead of trapping, matching `Sound.Load`'s treatment of a
+  missing file — every failure mode of both loaders is now a null result, so callers can
+  uniformly test the return. audio.md updated. Covered by the audio suites (the trap path
+  had no dedicated test; the null path is the common headless outcome). **Resolved.**
 
 ### VDOC-124 — SpatialAudio3D signatures erase Sound and Vec3 argument types
 
@@ -2177,6 +2781,13 @@ the checked-in generators, documentation audits, and already-existing binaries o
   reference likewise advertises only generic Object arguments.
 - **Likely repair point:** use typed object signatures for the three object parameters in
   `src/il/runtime/defs/graphics3d/lighting.def`.
+- **Review (2026-07-15):** Verified and fixed exactly as suggested: `SetListener` is now
+  `void(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>)`, `PlayAt` is
+  `i64(obj<Viper.Audio.Sound>,obj<Viper.Math.Vec3>,f64,i64)`, and `UpdateVoice` is
+  `void(i64,obj<Viper.Math.Vec3>,f64)` in both the RT_FUNC rows and the class RT_METHOD rows,
+  matching the SoundListener3D/SoundSource3D typing convention. Completeness/surface audits
+  pass, generated docs refreshed, and the full zia suite (334 tests) type-checks the demos
+  unchanged. **Resolved.**
 
 ### VDOC-125 — Pool submission is synchronous and ignores pool state on both VMs
 
@@ -2194,6 +2805,14 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Source:** `threads_pool_submit_handler()` in `src/vm/ThreadsRuntime.cpp`,
   `unified_pool_submit_handler()` in `src/bytecode/BytecodeVM.cpp`, and
   `rt_threadpool_submit_fn()` in `src/runtime/threads/rt_threadpool.c`.
+- **Review (2026-07-15):** Verified and fixed for the observable contract. Both VM handlers
+  (tree-walker and bytecode) now inspect the Pool argument: a null or shut-down pool rejects
+  the submission with false exactly like the native backend, instead of executing the
+  callback and reporting success. Synchronous execution on the VMs is retained by design
+  (there is no worker pool to queue into, so the pending-cap/backpressure states cannot
+  arise — a successful VM submit has by definition already completed). Regression: the
+  `vm_parallel_callbacks` e2e fixture now creates a pool, shuts it down, and asserts the
+  rejected submission on all three interpreted backends. **Resolved.**
 
 ### VDOC-126 — Parallel callback coverage is materially different on VM backends
 
@@ -2209,6 +2828,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   when the same program moves between native and VM execution.
 - **Source:** the Parallel handlers in `src/vm/ThreadsRuntime.cpp` and
   `src/bytecode/BytecodeVM.cpp`, compared with `src/runtime/threads/rt_parallel_ops.c`.
+- **Review (2026-07-15):** Verified and fixed. `ForEach`, `Map`, `Reduce`, and their `*Pool`
+  variants now execute on both interpreted backends instead of trapping: the tree-walking VM
+  gains `runVmSeqForEach/Map/Reduce` (typed-callback validation, sequential element walk,
+  owning result Seq for Map, left fold for Reduce) and the BytecodeVM gains the matching
+  `runBytecodeSeqForEach/Map/Reduce` bridges via the reentrant invoke API — so the whole
+  Parallel surface produces native-equivalent results everywhere, with the documented caveat
+  that interpreted execution is sequential. threads.md updated. Regression: the
+  `vm_parallel_callbacks` e2e fixture now exercises ForEach (per-element), Map (count), and
+  Reduce (sum) on all three interpreted backends. **Resolved.**
 
 ### VDOC-127 — Async bridge metadata exposes callback APIs without VM handlers
 
@@ -2226,6 +2854,16 @@ the checked-in generators, documentation audits, and already-existing binaries o
 - **Likely repair point:** add unified handlers for every `RT_BRIDGE`-marked Async callback API (or
   reject unsupported calls during frontend/backend selection), then make `Run` versus `RunOwned`
   ownership consistent.
+- **Review (2026-07-15):** Verified and fixed on both fronts. `Async.RunOwned` now has real
+  managed bridges on both VMs (the existing `ownsArg` payload machinery, parameterized via
+  `unified_async_run_impl`/`threads_async_run_impl`), and `Async.Run`'s VM path now BORROWS
+  the argument exactly like native `rt_async_run` — ownership follows the variant, not the
+  backend. The four remaining callback variants (`RunCancellable`, `RunCancellableOwned`,
+  `Map`, `MapOwned`) gain registered handlers on both VMs that trap with an explicit
+  "not supported on the interpreted backends" message instead of letting the native C
+  implementation cast an opaque VM function value as a code pointer (undefined behavior);
+  outside VM execution they pass through to the native functions. 154 async/threads/parallel
+  tests pass. **Resolved.**
 
 ### VDOC-128 — Pool tasks have no owned-argument or discard-cleanup contract
 
@@ -2241,6 +2879,15 @@ the checked-in generators, documentation audits, and already-existing binaries o
   caller separately tracks and reclaims every outstanding task.
 - **Source:** `pool_task`, `rt_threadpool_submit_fn()`, `rt_threadpool_shutdown_now()`, and
   `pool_finalizer()` in `src/runtime/threads/rt_threadpool.c`.
+- **Review (2026-07-15):** Verified and fixed by adding the missing owned form:
+  `Pool.SubmitOwned` (registered, with VM bridges on both interpreted backends) retains a
+  runtime-managed argument on acceptance and releases it after the callback runs or when the
+  task is discarded — `pool_task` gains an `owns_arg` flag and `pool_task_release_arg()` runs
+  on the execution path, the `ShutdownNow` queue clear, and the finalizer sweep, so owned
+  arguments cannot leak through discarded tasks. `Submit` keeps its documented borrow
+  semantics. threads.md updated; completeness audit green. Regression:
+  `test_submit_owned_releases_on_run_and_discard` in `RTThreadPoolTests.cpp` (refcount
+  balanced through both the run and discard paths). **Resolved.**
 
 ### VDOC-129 — Windows `Thread.JoinFor` truncates large 64-bit timeouts
 

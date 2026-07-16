@@ -243,6 +243,41 @@ TEST(ZiaProjectIndex, RenameReportsVisibleCollision) {
     releaseObj(rename);
 }
 
+TEST(ZiaProjectIndex, RenameEnforcesLexerIdentifierRules) {
+    // VDOC-114: the rename validator mirrors the Zia lexer — ASCII-only
+    // classification and the 1024-byte identifier cap.
+    IndexFixture fx("rename_lexer_rules");
+    const fs::path mainPath = fx.path("main.zia");
+    const std::string source = "module Main;\n"
+                               "func start() {\n"
+                               "    var target = 1;\n"
+                               "    var useTarget = target;\n"
+                               "}\n";
+    fx.update(mainPath, source);
+
+    // Non-ASCII bytes are rejected regardless of the host locale.
+    void *r1 = fx.rename(mainPath, source, 4, columnOf(source, 4, "target"), "caf\xC3\xA9");
+    ASSERT_TRUE(r1 != nullptr);
+    EXPECT_FALSE(mapBool(r1, "success"));
+    EXPECT_EQ(mapStr(r1, "reason"), "invalid_name");
+    releaseObj(r1);
+
+    // A 1025-byte identifier exceeds the lexer's cap.
+    std::string longName(1025, 'a');
+    void *r2 = fx.rename(mainPath, source, 4, columnOf(source, 4, "target"), longName);
+    ASSERT_TRUE(r2 != nullptr);
+    EXPECT_FALSE(mapBool(r2, "success"));
+    EXPECT_EQ(mapStr(r2, "reason"), "invalid_name");
+    releaseObj(r2);
+
+    // A maximal valid identifier is accepted.
+    std::string okName(1024, 'a');
+    void *r3 = fx.rename(mainPath, source, 4, columnOf(source, 4, "target"), okName);
+    ASSERT_TRUE(r3 != nullptr);
+    EXPECT_TRUE(mapBool(r3, "success"));
+    releaseObj(r3);
+}
+
 TEST(ZiaProjectIndex, DirtyBufferUpdateReplacesIndexedSource) {
     IndexFixture fx("dirty_update");
     const fs::path mainPath = fx.path("main.zia");

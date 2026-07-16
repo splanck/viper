@@ -282,11 +282,58 @@ void rt_f64buf_add_scalar(void *obj, double value) {
         rt_arr_f64_set_fast(buf->arr, i, rt_arr_f64_get_fast(buf->arr, i) + value);
 }
 
+/// @brief Overflow-checked signed 64-bit addition (VDOC-101). Returns 1 on overflow.
+static int numbuf_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_add_overflow(a, b, out);
+#else
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 1;
+    *out = a + b;
+    return 0;
+#endif
+}
+
+/// @brief Overflow-checked signed 64-bit multiplication (VDOC-101). Returns 1 on overflow.
+static int numbuf_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 1;
+        } else if (b < INT64_MIN / a) {
+            return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 1;
+        } else if (a < INT64_MAX / b) {
+            return 1;
+        }
+    }
+    *out = a * b;
+    return 0;
+#endif
+}
+
 void rt_i64buf_add_scalar(void *obj, int64_t value) {
     rt_i64buf_impl *buf = as_i64buf(obj, "I64Buffer.AddScalar: invalid buffer object");
     size_t len = rt_arr_i64_len(buf->arr);
-    for (size_t i = 0; i < len; i++)
-        rt_arr_i64_set_fast(buf->arr, i, rt_arr_i64_get_fast(buf->arr, i) + value);
+    for (size_t i = 0; i < len; i++) {
+        int64_t out;
+        if (numbuf_checked_add_i64(rt_arr_i64_get_fast(buf->arr, i), value, &out)) {
+            rt_trap("I64Buffer.AddScalar: integer overflow");
+            return;
+        }
+        rt_arr_i64_set_fast(buf->arr, i, out);
+    }
 }
 
 void rt_f64buf_mul_scalar(void *obj, double value) {
@@ -299,8 +346,14 @@ void rt_f64buf_mul_scalar(void *obj, double value) {
 void rt_i64buf_mul_scalar(void *obj, int64_t value) {
     rt_i64buf_impl *buf = as_i64buf(obj, "I64Buffer.MulScalar: invalid buffer object");
     size_t len = rt_arr_i64_len(buf->arr);
-    for (size_t i = 0; i < len; i++)
-        rt_arr_i64_set_fast(buf->arr, i, rt_arr_i64_get_fast(buf->arr, i) * value);
+    for (size_t i = 0; i < len; i++) {
+        int64_t out;
+        if (numbuf_checked_mul_i64(rt_arr_i64_get_fast(buf->arr, i), value, &out)) {
+            rt_trap("I64Buffer.MulScalar: integer overflow");
+            return;
+        }
+        rt_arr_i64_set_fast(buf->arr, i, out);
+    }
 }
 
 void rt_f64buf_add_buffer(void *obj, void *other_obj) {
@@ -326,8 +379,13 @@ void rt_i64buf_add_buffer(void *obj, void *other_obj) {
         return;
     }
     for (size_t i = 0; i < len; i++) {
-        rt_arr_i64_set_fast(
-            buf->arr, i, rt_arr_i64_get_fast(buf->arr, i) + rt_arr_i64_get_fast(other->arr, i));
+        int64_t out;
+        if (numbuf_checked_add_i64(
+                rt_arr_i64_get_fast(buf->arr, i), rt_arr_i64_get_fast(other->arr, i), &out)) {
+            rt_trap("I64Buffer.AddBuffer: integer overflow");
+            return;
+        }
+        rt_arr_i64_set_fast(buf->arr, i, out);
     }
 }
 
@@ -344,8 +402,12 @@ int64_t rt_i64buf_sum(void *obj) {
     rt_i64buf_impl *buf = as_i64buf(obj, "I64Buffer.Sum: invalid buffer object");
     int64_t sum = 0;
     size_t len = rt_arr_i64_len(buf->arr);
-    for (size_t i = 0; i < len; i++)
-        sum += rt_arr_i64_get_fast(buf->arr, i);
+    for (size_t i = 0; i < len; i++) {
+        if (numbuf_checked_add_i64(sum, rt_arr_i64_get_fast(buf->arr, i), &sum)) {
+            rt_trap("I64Buffer.Sum: integer overflow");
+            return 0;
+        }
+    }
     return sum;
 }
 
@@ -372,8 +434,15 @@ int64_t rt_i64buf_dot(void *obj, void *other_obj) {
         return 0;
     }
     int64_t sum = 0;
-    for (size_t i = 0; i < len; i++)
-        sum += rt_arr_i64_get_fast(buf->arr, i) * rt_arr_i64_get_fast(other->arr, i);
+    for (size_t i = 0; i < len; i++) {
+        int64_t prod;
+        if (numbuf_checked_mul_i64(
+                rt_arr_i64_get_fast(buf->arr, i), rt_arr_i64_get_fast(other->arr, i), &prod) ||
+            numbuf_checked_add_i64(sum, prod, &sum)) {
+            rt_trap("I64Buffer.Dot: integer overflow");
+            return 0;
+        }
+    }
     return sum;
 }
 

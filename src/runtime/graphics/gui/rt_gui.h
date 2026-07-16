@@ -3429,6 +3429,8 @@ void rt_zia_doc_close(rt_string path);
 
 /// @brief Return the current mirror text for @p path, or "" when absent.
 rt_string rt_zia_doc_text(rt_string path);
+int8_t rt_zia_doc_has(rt_string path);
+int8_t rt_zia_service_available(void);
 
 /// @brief Run diagnostics for @p file_path straight off its mirror text.
 rt_string rt_zia_check_for_file_mirror(rt_string file_path);

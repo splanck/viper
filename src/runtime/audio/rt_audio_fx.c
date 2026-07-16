@@ -186,6 +186,15 @@ static void free_fx(rt_audio_fx *fx) {
 }
 
 static void biquad_set(rt_biquad_state *bq, int mode, double freq_hz, double q, double gain_db) {
+    // Sanitize gain like the sibling effects sanitize their inputs
+    // (VDOC-122): non-finite gain would poison the coefficients and delay
+    // state, silencing the whole group. Clamp to a generous +/-40 dB.
+    if (!isfinite(gain_db))
+        gain_db = 0.0;
+    else if (gain_db > 40.0)
+        gain_db = 40.0;
+    else if (gain_db < -40.0)
+        gain_db = -40.0;
     if (!bq)
         return;
     if (!isfinite(freq_hz) || freq_hz < 10.0)

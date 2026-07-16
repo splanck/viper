@@ -313,6 +313,25 @@ static void playlist_select_position(playlist_impl *pl,
     }
 
     void *new_music = playlist_load_current_music(pl);
+    if (!new_music && resume_playing) {
+        // Skip-on-error auto-advance (VDOC-119): one unloadable entry must
+        // not stall the queue. Try subsequent positions with the same wrap
+        // semantics as Next, bounded by the track count so a playlist whose
+        // every entry fails stops cleanly instead of looping.
+        int64_t count = rt_seq_len(pl->tracks);
+        for (int64_t attempts = 1; attempts < count && !new_music; ++attempts) {
+            int64_t candidate = pl->current + 1;
+            if (candidate >= count) {
+                if (pl->repeat != RT_REPEAT_ALL)
+                    break;
+                candidate = 0;
+                if (pl->shuffle)
+                    generate_shuffle_order(pl);
+            }
+            pl->current = candidate;
+            new_music = playlist_load_current_music(pl);
+        }
+    }
     playlist_replace_music(pl, new_music, resume_playing);
 
     if (resume_playing && pl->music) {
@@ -605,8 +624,24 @@ void rt_playlist_play(void *obj) {
         pl->current = 0;
     }
 
-    if (!pl->music)
+    if (!pl->music) {
         pl->music = playlist_load_current_music(pl);
+        // Skip-on-error (VDOC-119): Play() also advances past unloadable
+        // entries so a single bad track cannot defeat playback.
+        int64_t count = rt_seq_len(pl->tracks);
+        for (int64_t attempts = 1; attempts < count && !pl->music; ++attempts) {
+            int64_t candidate = pl->current + 1;
+            if (candidate >= count) {
+                if (pl->repeat != RT_REPEAT_ALL)
+                    break;
+                candidate = 0;
+                if (pl->shuffle)
+                    generate_shuffle_order(pl);
+            }
+            pl->current = candidate;
+            pl->music = playlist_load_current_music(pl);
+        }
+    }
 
     if (pl->music) {
         int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;

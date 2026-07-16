@@ -49,7 +49,7 @@ void rt_bloomfilter_add(void *filter, rt_string item);
 /// @param filter Bloom filter object.
 /// @param item String to check.
 /// @return 1 if possibly present, 0 if definitely not present.
-int64_t rt_bloomfilter_might_contain(void *filter, rt_string item);
+int8_t rt_bloomfilter_might_contain(void *filter, rt_string item);
 
 /// @brief Get the number of items added.
 /// @param filter Bloom filter object.
@@ -67,7 +67,9 @@ void rt_bloomfilter_clear(void *filter);
 
 /// @brief Merge two filters (union).
 /// @param filter First filter (modified in place).
-/// @param other Second filter (must have same parameters).
+/// @param other Second filter (must have the same derived bit and hash
+///              counts; constructor arguments that derive to the same shape
+///              are compatible).
 /// @return 1 on success, 0 if filters are incompatible.
 int64_t rt_bloomfilter_merge(void *filter, void *other);
 

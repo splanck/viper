@@ -286,9 +286,9 @@ Its public surface exposes operations including `SetListener`, `PlayAt`, `Update
 
 | Method | Signature | Runtime target |
 |---|---|---|
-| <a id="viper-audio-spatialaudio3d-setlistener"></a>`SetListener` | `void(obj,obj)` | `Viper.Audio.SpatialAudio3D.SetListener` |
-| <a id="viper-audio-spatialaudio3d-playat"></a>`PlayAt` | `i64(obj,obj,f64,i64)` | `Viper.Audio.SpatialAudio3D.PlayAt` |
-| <a id="viper-audio-spatialaudio3d-updatevoice"></a>`UpdateVoice` | `void(i64,obj,f64)` | `Viper.Audio.SpatialAudio3D.UpdateVoice` |
+| <a id="viper-audio-spatialaudio3d-setlistener"></a>`SetListener` | `void(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>)` | `Viper.Audio.SpatialAudio3D.SetListener` |
+| <a id="viper-audio-spatialaudio3d-playat"></a>`PlayAt` | `i64(obj<Viper.Audio.Sound>,obj<Viper.Math.Vec3>,f64,i64)` | `Viper.Audio.SpatialAudio3D.PlayAt` |
+| <a id="viper-audio-spatialaudio3d-updatevoice"></a>`UpdateVoice` | `void(i64,obj<Viper.Math.Vec3>,f64)` | `Viper.Audio.SpatialAudio3D.UpdateVoice` |
 | <a id="viper-audio-spatialaudio3d-syncbindings"></a>`SyncBindings` | `void(f64)` | `Viper.Audio.SpatialAudio3D.SyncBindings` |
 
 ## Functions
@@ -423,8 +423,8 @@ Its public surface exposes operations including `SetListener`, `PlayAt`, `Update
 | <a id="viper-audio-musicgen-get-bpm"></a>`Viper.Audio.MusicGen.get_Bpm` | `i64(obj)` | `rt_musicgen_get_bpm` |
 | <a id="viper-audio-musicgen-get-length"></a>`Viper.Audio.MusicGen.get_Length` | `i64(obj)` | `rt_musicgen_get_length` |
 | <a id="viper-audio-musicgen-get-channelcount"></a>`Viper.Audio.MusicGen.get_ChannelCount` | `i64(obj)` | `rt_musicgen_get_channel_count` |
-| `Viper.Audio.SpatialAudio3D.SetListener` | `void(obj,obj)` | `rt_sound3d_set_listener` |
-| `Viper.Audio.SpatialAudio3D.PlayAt` | `i64(obj,obj,f64,i64)` | `rt_sound3d_play_at` |
-| `Viper.Audio.SpatialAudio3D.UpdateVoice` | `void(i64,obj,f64)` | `rt_sound3d_update_voice` |
+| `Viper.Audio.SpatialAudio3D.SetListener` | `void(obj<Viper.Math.Vec3>,obj<Viper.Math.Vec3>)` | `rt_sound3d_set_listener` |
+| `Viper.Audio.SpatialAudio3D.PlayAt` | `i64(obj<Viper.Audio.Sound>,obj<Viper.Math.Vec3>,f64,i64)` | `rt_sound3d_play_at` |
+| `Viper.Audio.SpatialAudio3D.UpdateVoice` | `void(i64,obj<Viper.Math.Vec3>,f64)` | `rt_sound3d_update_voice` |
 | `Viper.Audio.SpatialAudio3D.SyncBindings` | `void(f64)` | `rt_sound3d_sync_bindings` |
 

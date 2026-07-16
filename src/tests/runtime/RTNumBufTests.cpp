@@ -18,7 +18,11 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 
+#include "rt_trap.h"
+
 #include <cassert>
+#include <csetjmp>
+#include <cstdint>
 #include <cmath>
 #include <csetjmp>
 #include <cstdint>
@@ -254,7 +258,59 @@ void test_deterministic_native_reference_loop() {
 
 } // namespace
 
+static void test_i64_overflow_traps() {
+    // VDOC-101: I64Buffer arithmetic traps on signed overflow instead of
+    // invoking undefined behavior.
+    void *buf = rt_i64buf_new(1);
+    rt_i64buf_set(buf, 0, INT64_MAX);
+
+    {
+        jmp_buf env;
+        rt_trap_set_recovery(&env);
+        bool trapped = true;
+        if (setjmp(env) == 0) {
+            rt_i64buf_add_scalar(buf, 1);
+            trapped = false;
+        }
+        rt_trap_clear_recovery();
+        assert(trapped && "AddScalar overflow must trap");
+    }
+    {
+        jmp_buf env;
+        rt_trap_set_recovery(&env);
+        bool trapped = true;
+        if (setjmp(env) == 0) {
+            rt_i64buf_mul_scalar(buf, 2);
+            trapped = false;
+        }
+        rt_trap_clear_recovery();
+        assert(trapped && "MulScalar overflow must trap");
+    }
+    {
+        void *pair = rt_i64buf_new(2);
+        rt_i64buf_set(pair, 0, INT64_MAX);
+        rt_i64buf_set(pair, 1, INT64_MAX);
+        jmp_buf env;
+        rt_trap_set_recovery(&env);
+        bool trapped = true;
+        if (setjmp(env) == 0) {
+            (void)rt_i64buf_sum(pair);
+            trapped = false;
+        }
+        rt_trap_clear_recovery();
+        assert(trapped && "Sum overflow must trap");
+    }
+    // In-range arithmetic still works.
+    void *ok = rt_i64buf_new(2);
+    rt_i64buf_set(ok, 0, 3);
+    rt_i64buf_set(ok, 1, 4);
+    rt_i64buf_add_scalar(ok, 1);
+    assert(rt_i64buf_sum(ok) == 9);
+    assert(rt_i64buf_dot(ok, ok) == 16 + 25);
+}
+
 int main() {
+    test_i64_overflow_traps();
     test_f64_buffer_core_ops();
     test_i64_buffer_core_ops();
     test_slice_is_independent_copy();

@@ -15,6 +15,7 @@
 
 #include "rt_list.h"
 #include "rt_locale.h"
+#include "rt_locale_manager.h"
 #include "rt_map.h"
 #include "rt_message_bundle.h"
 #include "rt_option.h"
@@ -440,6 +441,54 @@ static void test_keys_and_count() {
 // Main
 //=============================================================================
 
+static void test_plural_uses_locale_digits() {
+    printf("Testing Plural digit localization (VDOC-078):\n");
+
+    // Load a locale whose digit set is Arabic-Indic.
+    std::string dir = temp_dir("arabic_digits");
+    std::string file = dir + "/zw.json";
+    write_text_file(file,
+                    "{\n  \"tag\": \"zw\",\n  \"numbers\": {\n"
+                    "    \"decimal_sep\": \".\",\n    \"group_sep\": \",\",\n"
+                    "    \"group_size\": 3,\n"
+                    "    \"digits\": \"\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669\"\n"
+                    "  }\n}\n");
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
+
+    rt_string tag = S("zw");
+    void *loc = rt_locale_parse(tag);
+    rt_string_unref(tag);
+
+    const char *pairs[] = {"items.other", "{n} items", nullptr};
+    void *b = rt_message_bundle_from_map(loc, build_map(pairs));
+
+    rt_string key = S("items");
+    rt_string out = rt_message_bundle_plural(b, key, 5, NULL);
+    rt_string_unref(key);
+    test_result("Plural(5) uses Arabic-Indic digit",
+                strcmp(rt_string_cstr(out), "\xD9\xA5 items") == 0);
+    rt_string_unref(out);
+}
+
+static void test_long_chain_cycle_rejected() {
+    printf("Testing long-chain cycle rejection (VDOC-079):\n");
+
+    // Build a 20-bundle chain (longer than the old 16-step detection cap),
+    // then try to close it into a cycle through the head.
+    const char *pairs[] = {"k", "v", nullptr};
+    void *head = rt_message_bundle_from_map(en_locale(), build_map(pairs));
+    void *tail = head;
+    for (int i = 0; i < 20; i++) {
+        void *next = rt_message_bundle_from_map(en_locale(), build_map(pairs));
+        rt_message_bundle_set_fallback(tail, next);
+        tail = next;
+    }
+    EXPECT_TRAP(rt_message_bundle_set_fallback(tail, head));
+    test_result("closing a 20-deep chain into a cycle traps", true);
+}
+
 int main() {
     printf("=== RT MessageBundle Tests ===\n\n");
     test_from_map_basic();
@@ -460,6 +509,8 @@ int main() {
     test_get_missing_traps();
     test_format_rejects_bad_vars();
     test_keys_and_count();
+    test_plural_uses_locale_digits();
+    test_long_chain_cycle_rejected();
     printf("\nAll MessageBundle tests passed!\n");
     return 0;
 }

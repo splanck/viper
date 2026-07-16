@@ -254,7 +254,7 @@ int64_t rt_orderedmap_len(void *map) {
 }
 
 /// @brief Check whether the ordered map has no entries.
-int64_t rt_orderedmap_is_empty(void *map) {
+int8_t rt_orderedmap_is_empty(void *map) {
     if (!map)
         return 1;
     return as_orderedmap(map, "OrderedMap.IsEmpty: invalid OrderedMap object")->count == 0 ? 1 : 0;
@@ -359,7 +359,7 @@ void *rt_orderedmap_get(void *map, rt_string key) {
 }
 
 /// @brief Check whether a key exists in the ordered map.
-int64_t rt_orderedmap_has(void *map, rt_string key) {
+int8_t rt_orderedmap_has(void *map, rt_string key) {
     if (!map)
         return 0;
     rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Has: invalid OrderedMap object");

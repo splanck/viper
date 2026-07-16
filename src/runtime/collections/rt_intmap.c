@@ -18,8 +18,9 @@
 //   - Resizes (doubles) when count/capacity exceeds 75% (MAP_LOAD_FACTOR 3/4).
 //   - Integer keys are hashed by multiplying with a Knuth multiplicative
 //     constant (or similar mix) rather than direct modulo to avoid clustering.
-//   - Values are stored as raw void* pointers; the map does not retain them
-//     (no rt_obj_retain call on insert). Caller manages value lifetime.
+//   - Values are retained on insert (rt_obj_retain_maybe), released on
+//     remove/overwrite/finalize, and exposed to the cycle collector through
+//     the map's GC traversal callback.
 //   - All operations are O(1) average case; O(n) worst case.
 //   - Not thread-safe; external synchronization required.
 //
@@ -246,8 +247,11 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
         return;
     }
 
-    if (map->count < SIZE_MAX)
-        maybe_resize_for_count(map, map->count + 1);
+    if (map->count >= (size_t)INT64_MAX) {
+        rt_trap("IntMap.Set: maximum size reached");
+        return;
+    }
+    maybe_resize_for_count(map, map->count + 1);
     idx = hash % map->capacity;
 
     if (value)

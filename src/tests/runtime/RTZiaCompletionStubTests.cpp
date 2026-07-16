@@ -43,6 +43,13 @@ rt_string rt_zia_symbols(rt_string source);
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 void *rt_zia_semantic_job_error_option(void *handle);
 void rt_zia_completion_clear_cache(void);
+void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col);
+void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col);
+int64_t rt_map_get_int_or(void *map, rt_string key, int64_t fallback);
+void *rt_map_get(void *map, rt_string key);
+int8_t rt_map_has(void *map, rt_string key);
+int8_t rt_zia_service_available(void);
+int8_t rt_zia_doc_has(rt_string path);
 }
 
 static void expect_contains(rt_string value, const char *needle) {
@@ -103,7 +110,38 @@ static void expect_compile_unavailable_result(void *value) {
     release_object(value);
 }
 
+static void test_stub_schema_parity() {
+    // VDOC-112: stub payloads carry every full-service schema field.
+    rt_string src = rt_string_from_bytes("module X;", 9);
+
+    void *items = rt_zia_completion_items(src, 1, 0);
+    assert(rt_seq_len(items) == 1);
+    void *item = rt_seq_get(items, 0);
+    rt_string cursor_key = rt_string_from_bytes("cursorOffset", 12);
+    assert(rt_map_has(item, cursor_key) == 1);
+    assert(rt_map_get_int_or(item, cursor_key, 0) == -1);
+    rt_string_unref(cursor_key);
+
+    void *sig = rt_zia_signature_info(src, 1, 0);
+    rt_string ov_key = rt_string_from_bytes("overloads", 9);
+    assert(rt_map_has(sig, ov_key) == 1);
+    void *overloads = rt_map_get(sig, ov_key);
+    assert(overloads != nullptr && rt_seq_len(overloads) == 0);
+    rt_string_unref(ov_key);
+    rt_string_unref(src);
+}
+
+static void test_stub_availability_probe() {
+    // VDOC-113: the weak bridge is distinguishable from a clean analysis.
+    assert(rt_zia_service_available() == 0);
+    rt_string p = rt_string_from_bytes("any.zia", 7);
+    assert(rt_zia_doc_has(p) == 0);
+    rt_string_unref(p);
+}
+
 int main() {
+    test_stub_schema_parity();
+    test_stub_availability_probe();
     rt_string source = rt_string_from_bytes("module app;\n", 12);
     rt_string path = rt_string_from_bytes("app.zia", 7);
 

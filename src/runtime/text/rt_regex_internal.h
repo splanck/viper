@@ -126,6 +126,7 @@ typedef struct re_node re_node;
 
 struct re_node {
     re_node_type type;
+    int group_index; // RE_GROUP: lexical capture index (order of '('), else -1
 
     union {
         char literal;        // RE_LITERAL
@@ -164,6 +165,7 @@ typedef struct {
     const char *src;
     int pos;
     int len;
+    int group_counter; // next lexical capture-group index
 } parser_state;
 
 // AST node/class primitives (defined in rt_regex.c).

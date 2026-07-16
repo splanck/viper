@@ -627,6 +627,7 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 | Method           | Signature             | Description                                                     |
 |------------------|-----------------------|-----------------------------------------------------------------|
 | `Submit(cb, arg)`| `Boolean(Function, Object)` | Submit a callback task; false on invalid input, shutdown, queue backpressure, or allocation failure |
+| `SubmitOwned(cb, arg)`| `Boolean(Function, Object)` | Like `Submit`, but the pool retains `arg` until the task runs or is discarded |
 | `Wait()`         | `Void()`              | Block until all pending tasks complete                          |
 | `WaitFor(ms)`    | `Boolean(Integer)`    | Wait with timeout; returns true if all tasks completed          |
 | `Shutdown()`     | `Void()`              | Graceful shutdown: finish pending tasks, then stop workers      |
@@ -654,10 +655,11 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
 - Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, the next `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, or `ShutdownNow()` rethrows the last task trap and clears it; later calls report the current pool state normally unless another task traps.
 - `WaitFor(ms <= 0)` is an immediate drain-state check.
-- On the native backend, `Submit` borrows `arg`: the pool neither retains nor
-  releases it, and there is no `SubmitOwned` variant. Keep runtime-managed
-  arguments alive until their callback finishes. A rejected submission or a
-  task discarded by `ShutdownNow` does not invoke an argument cleanup hook.
+- On the native backend, `Submit` borrows `arg`: keep runtime-managed
+  arguments alive until their callback finishes. `SubmitOwned` retains the
+  runtime-managed argument on acceptance and releases it after the callback
+  runs — or when the task is discarded by `ShutdownNow`/finalization — so
+  owned arguments cannot leak through discarded tasks.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
 - `Pool.Submit(pool, callback, arg)` accepts a managed Zia function reference such as `&worker`.
   The runtime owns the native callback adaptation internally. The current BASIC frontend supports
@@ -1058,16 +1060,18 @@ pool.Shutdown()
 
 ### VM and BytecodeVM Behavior
 
-The callback bridge is not feature-equivalent to native execution:
+The callback bridge preserves results but not parallelism on the interpreted
+backends:
 
-- `For`/`ForPool` and `Invoke`/`InvokePool` execute callbacks sequentially on
-  the calling VM thread; an explicit pool is only a native concurrency hint.
-- `ForEach`, `Map`, `Reduce`, and their `*Pool` variants currently trap with
-  `sequence-callback execution is not yet supported ... compile to native`.
-- Only native execution uses worker chunks and the shared/custom thread pool.
+- Every `Parallel` method — `For`, `Invoke`, `ForEach`, `Map`, `Reduce`, and
+  their `*Pool` variants — executes callbacks sequentially on the calling VM
+  thread; an explicit pool is only a native concurrency hint.
+- Only native execution uses worker chunks and the shared/custom thread pool,
+  so ordering, callback thread identity, and trap timing can still differ
+  between native and VM runs.
 
-These differences are backend limitations, not a promise that callbacks are
-safe to run concurrently on every backend.
+These differences are backend execution strategies, not a promise that
+callbacks are safe to run concurrently on every backend.
 
 ### Use Cases
 
@@ -1441,16 +1445,16 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 
 ### VM and BytecodeVM Behavior
 
-`Async.Run` has a dedicated managed callback bridge on both VMs. It creates a
-worker VM and, unlike the native non-owned path, retains a non-null
-runtime-managed argument for the worker lifetime. `Delay`, `All`, and `Any` do
-not invoke user callbacks and use the shared C runtime implementation.
+`Async.Run` and `Async.RunOwned` have dedicated managed callback bridges on
+both VMs, with the same ownership contract as native: `Run` borrows its `arg`
+(keep it alive until the worker finishes) and `RunOwned` retains it for the
+worker lifetime. `Delay`, `All`, and `Any` do not invoke user callbacks and
+use the shared C runtime implementation.
 
-`RunOwned`, `RunCancellable`, `RunCancellableOwned`, `Map`, and `MapOwned`
-currently have no corresponding VM/BytecodeVM callback handler even though the
-frontends accept function references for them. Do not invoke those callback
-variants under either VM; compile to native. This bridge-coverage defect is
-tracked in the review findings.
+`RunCancellable`, `RunCancellableOwned`, `Map`, and `MapOwned` have no managed
+callback bridge yet; invoking them under either VM traps with an explicit
+`callback execution is not supported on the interpreted backends` message
+(they run normally on native).
 
 ---
 
