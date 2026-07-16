@@ -47,6 +47,7 @@
 #include "PlistGenerator.hpp"
 #include "TarWriter.hpp"
 #include "ToolchainInstallManifest.hpp"
+#include "WindowsInstallerMetadata.hpp"
 #include "WindowsPackageBuilder.hpp"
 #include "XarWriter.hpp"
 #include "ZipReader.hpp"
@@ -89,6 +90,56 @@ static void writeLE32(uint8_t *p, uint32_t value) {
     p[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
     p[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
     p[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+}
+
+static WindowsInstallerMetadata sampleWindowsInstallerMetadata() {
+    WindowsInstallerMetadata metadata;
+    metadata.packageMode = "setup";
+    metadata.productKind = "toolchain";
+    metadata.identifier = "org.viper.toolchain";
+    metadata.displayName = "Viper Tools \xE2\x80\x93 Developer Edition";
+    metadata.version = "1.2.3-rc.1";
+    metadata.publisher = "Viper Project";
+    metadata.description = "Compiler, VM, IDE, and SDK";
+    metadata.contact = "support@example.invalid";
+    metadata.homepage = "https://example.invalid/viper";
+    metadata.documentationUrl = "https://example.invalid/viper/docs";
+    metadata.architecture = "x64";
+    metadata.defaultScope = "user";
+    metadata.defaultInstallDir = "Viper";
+    metadata.executableName = "bin/viper.exe";
+    metadata.associationExecutable = "bin/viperide.exe";
+    metadata.pathRelativePath = "bin";
+    metadata.displayIconRelativePath = "share/viper/viper.ico";
+    metadata.cleanupSha256 = std::string(64, 'c');
+    metadata.addToPath = true;
+    metadata.registerFileAssociations = true;
+    metadata.createShortcuts = true;
+    metadata.components.push_back(
+        {"core", "Core developer tools", "Required compiler and runtime", true, true, 70});
+    metadata.components.push_back(
+        {"ide", "ViperIDE", "Editor, debugger, and language services", false, true, 70});
+    metadata.payloadFiles.push_back({"bin/viper.exe", std::string(64, 'a'), 30, std::string{}});
+    metadata.payloadFiles.push_back({"bin/viperide.exe", std::string(64, 'b'), 70, "ide"});
+    metadata.outerFiles.push_back(
+        {"meta/uninstall.exe", "uninstall.exe", std::string(64, 'e'), 40, std::string{}});
+    metadata.shortcuts.push_back({"start-menu",
+                                  "ViperIDE.lnk",
+                                  "install",
+                                  "bin/viperide.exe",
+                                  "profile",
+                                  {},
+                                  {},
+                                  {},
+                                  "ViperIDE",
+                                  "install",
+                                  "bin/viperide.ico",
+                                  0,
+                                  "ide"});
+    metadata.associations.push_back(
+        {".zia", "Zia source", "text/x-zia", "org.viper.toolchain.Zia.1", ""});
+    metadata.installedSizeBytes = 140;
+    return metadata;
 }
 
 static void writeBE32(uint8_t *p, uint32_t value) {
@@ -725,7 +776,10 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     }
     {
         std::ofstream out(stage / "include" / "viper" / "version.hpp");
-        out << "#define VIPER_VERSION_STR \"9.8.7\"\n";
+        out << "#define VIPER_VERSION_STR \"9.8.7\"\n"
+               "#define VIPER_SNAPSHOT_STR \"9.8.7-0-g0123456789ab\"\n"
+               "#define VIPER_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
+               "#define VIPER_SOURCE_STATE_STR \"clean\"\n";
     }
     {
         std::ofstream out(stage / "share" / "man" / "man1" / "viper.1");
@@ -843,6 +897,131 @@ static void addMockMacOSFileHandler(const std::filesystem::path &stage) {
 // ============================================================================
 // DEFLATE Tests
 // ============================================================================
+
+TEST(WindowsInstallerMetadata, RoundTripsCanonicalSchemaWithUnicode) {
+    const WindowsInstallerMetadata source = sampleWindowsInstallerMetadata();
+    const std::string encoded = serializeWindowsInstallerMetadata(source);
+    const WindowsInstallerMetadata parsed = parseWindowsInstallerMetadata(encoded);
+
+    EXPECT_EQ(parsed.schemaVersion, 3U);
+    EXPECT_EQ(parsed.productKind, "toolchain");
+    EXPECT_EQ(parsed.identifier, source.identifier);
+    EXPECT_EQ(parsed.displayName, source.displayName);
+    EXPECT_EQ(parsed.version, source.version);
+    EXPECT_EQ(parsed.installedSizeBytes, 140U);
+    ASSERT_EQ(parsed.components.size(), 2U);
+    EXPECT_EQ(parsed.components[0].id, "core");
+    EXPECT_EQ(parsed.components[1].id, "ide");
+    ASSERT_EQ(parsed.payloadFiles.size(), 2U);
+    EXPECT_EQ(parsed.payloadFiles[1].componentId, "ide");
+    ASSERT_EQ(parsed.shortcuts.size(), 1U);
+    EXPECT_EQ(parsed.shortcuts[0].root, "start-menu");
+    ASSERT_EQ(parsed.associations.size(), 1U);
+    EXPECT_EQ(parsed.associations[0].progId, "org.viper.toolchain.Zia.1");
+    EXPECT_EQ(serializeWindowsInstallerMetadata(parsed), encoded);
+}
+
+TEST(WindowsInstallerMetadata, EscapesDelimitersAndRejectsNonCanonicalEscapes) {
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.description = "tabs\tnewlines\npercent%";
+    const std::string encoded = serializeWindowsInstallerMetadata(metadata);
+    EXPECT_TRUE(encoded.find("tabs%09newlines%0Apercent%25") != std::string::npos);
+    EXPECT_EQ(parseWindowsInstallerMetadata(encoded).description, metadata.description);
+
+    std::string malformed = encoded;
+    const size_t escape = malformed.find("%09");
+    ASSERT_TRUE(escape != std::string::npos);
+    malformed.replace(escape, 3, "%0g");
+    EXPECT_THROWS(parseWindowsInstallerMetadata(malformed), std::runtime_error);
+}
+
+TEST(WindowsInstallerMetadata, RejectsTraversalDuplicatesAndSizeMismatch) {
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.payloadFiles[0].path = "../outside.exe";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.payloadFiles.push_back(metadata.payloadFiles.front());
+    metadata.installedSizeBytes += metadata.payloadFiles.back().sizeBytes;
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+
+    metadata = sampleWindowsInstallerMetadata();
+    ++metadata.installedSizeBytes;
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+}
+
+TEST(WindowsInstallerMetadata, RejectsUnknownFieldsAndComponentReferences) {
+    const std::string encoded = serializeWindowsInstallerMetadata(sampleWindowsInstallerMetadata());
+    std::string unknown = encoded;
+    unknown += "surprise\tvalue\n";
+    EXPECT_THROWS(parseWindowsInstallerMetadata(unknown), std::runtime_error);
+
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.payloadFiles[1].componentId = "missing";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+}
+
+TEST(WindowsInstallerMetadata, RequiresEveryScalarAndSafeExecutablePaths) {
+    const std::string encoded = serializeWindowsInstallerMetadata(sampleWindowsInstallerMetadata());
+    std::string missing = encoded;
+    const std::string publisher = "publisher\tViper Project\n";
+    const size_t publisherOffset = missing.find(publisher);
+    ASSERT_TRUE(publisherOffset != std::string::npos);
+    missing.erase(publisherOffset, publisher.size());
+    EXPECT_THROWS(parseWindowsInstallerMetadata(missing), std::runtime_error);
+
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.executableName = "C:/outside.exe";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.displayIconRelativePath = "../icon.ico";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.defaultInstallDir = "Viper/child";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.defaultInstallDir = "CON.txt";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.defaultInstallDir = "Viper. ";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.channel = "Preview Channel";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+}
+
+TEST(WindowsInstallerMetadata, RequiresCompletePinnedUpdateIdentity) {
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.updateManifestUrl = "https://updates.example.test/viper.txt";
+    metadata.updateRsaModulus = "a1" + std::string(510, '0');
+    metadata.updateRsaExponent = "010001";
+    EXPECT_NO_THROW(serializeWindowsInstallerMetadata(metadata));
+
+    metadata.updateRsaExponent.clear();
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.updateManifestUrl = "https://updates.example.test/viper.txt";
+    metadata.updateRsaModulus = "a1" + std::string(510, '0');
+    metadata.updateRsaExponent = "010000";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.updateManifestUrl = "http://updates.example.test/viper.txt";
+    metadata.updateRsaModulus = "a1" + std::string(510, '0');
+    metadata.updateRsaExponent = "010001";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+}
+
+TEST(WindowsInstallerMetadata, RejectsUnsafeShortcutContracts) {
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.shortcuts.front().targetRoot = "registry";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.shortcuts.front().argumentPrefix = "/k";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.shortcuts.front().iconPath = "../icon.ico";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+}
 
 TEST(Deflate, RoundTripEmpty) {
     std::vector<uint8_t> input;
@@ -4193,6 +4372,210 @@ TEST(WindowsPackageBuilder, RejectsMissingDebugRuntimeDllDependency) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(WindowsPackageBuilder, BundlesAdjacentReleaseRuntimeDllDependencies) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_release_runtime_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(
+        tmpRoot / "app.exe",
+        "x64",
+        {{"vcruntime140.dll", {"runtime_entry"}}, {"msvcp140.dll", {"standard_library_entry"}}});
+    writeTestWindowsPe(tmpRoot / "vcruntime140.dll");
+    writeTestWindowsPe(tmpRoot / "msvcp140.dll");
+
+    PackageConfig pkg;
+    pkg.displayName = "Release Runtime App";
+
+    WindowsBuildParams params;
+    params.projectName = "releaseruntime";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "release_runtime_setup.exe").string();
+    params.archStr = "x64";
+
+    buildWindowsPackage(params);
+    const auto pe = readFile(params.outputPath);
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(
+        zipContainsEntries(payloadZip, {"releaseruntime.exe", "vcruntime140.dll", "msvcp140.dll"}));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, RejectsMissingReleaseRuntimeDllDependency) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_missing_release_runtime_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(tmpRoot / "app.exe", "x64", {{"vcruntime140.dll", {"runtime_entry"}}});
+
+    PackageConfig pkg;
+    pkg.displayName = "Missing Release Runtime App";
+
+    WindowsBuildParams params;
+    params.projectName = "missingreleaseruntime";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "missing_release_runtime_setup.exe").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, SignsOwnedNestedPesBeforePayloadHashing) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_nested_signing_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(tmpRoot / "app.exe", "x64", {{"vcruntime140.dll", {"runtime_entry"}}});
+    writeTestWindowsPe(tmpRoot / "vcruntime140.dll");
+
+    PackageConfig pkg;
+    pkg.displayName = "Nested Signing App";
+
+    std::vector<std::string> signedNames;
+    WindowsBuildParams params;
+    params.projectName = "nestedsigning";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "nested_signing_setup.exe").string();
+    params.archStr = "x64";
+    params.peSigner = [&](std::string_view logicalName, const std::vector<uint8_t> &input) {
+        signedNames.emplace_back(logicalName);
+        std::vector<uint8_t> output = input;
+        const std::string marker = "VAPS-NESTED-SIGNED";
+        output.insert(output.end(), marker.begin(), marker.end());
+        return output;
+    };
+
+    buildWindowsPackage(params);
+    const auto pe = readFile(params.outputPath);
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    const auto app = extractZipEntry(payloadZip, "nestedsigning.exe");
+    const auto runtime = extractZipEntry(payloadZip, "vcruntime140.dll");
+    const auto uninstaller = extractZipEntry(payloadZip, "uninstall.exe");
+    EXPECT_TRUE(containsAscii(app, "VAPS-NESTED-SIGNED"));
+    EXPECT_FALSE(containsAscii(runtime, "VAPS-NESTED-SIGNED"));
+    EXPECT_TRUE(containsAscii(uninstaller, "VAPS-NESTED-SIGNED"));
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "nestedsigning.exe") !=
+                signedNames.end());
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "uninstall.exe") !=
+                signedNames.end());
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "vcruntime140.dll") ==
+                signedNames.end());
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, BuildsNativeHostSetupAndNonRecursiveMaintenancePayload) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_native_host_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(tmpRoot / "app.exe");
+    writeTestWindowsPe(tmpRoot / "viper-installer-host.exe");
+    writeTestWindowsPe(tmpRoot / "viper-installer-cleanup.exe");
+
+    PackageConfig pkg;
+    pkg.displayName = "Native Host App";
+    pkg.identifier = "org.viper.native-host-test";
+    pkg.windowsPublisher = "Viper Test Publisher";
+
+    WindowsBuildParams params;
+    params.projectName = "nativehostapp";
+    params.version = "2.3.4";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "native_host_setup.exe").string();
+    params.archStr = "x64";
+    params.installerHostPath = (tmpRoot / "viper-installer-host.exe").string();
+    params.installerCleanupPath = (tmpRoot / "viper-installer-cleanup.exe").string();
+    params.peSigner = [](std::string_view logicalName, const std::vector<uint8_t> &input) {
+        std::vector<uint8_t> output = input;
+        if (logicalName == "uninstall.exe") {
+            const std::string marker = "SIGNED-MAINTENANCE-HOST";
+            if (output.size() <= 64U + marker.size())
+                throw std::runtime_error("test PE is unexpectedly small");
+            std::copy(marker.begin(), marker.end(), output.begin() + 64);
+        }
+        return output;
+    };
+
+    buildWindowsPackage(params);
+    const auto setup = readFile(params.outputPath);
+    std::ostringstream nativeVerifyError;
+    EXPECT_TRUE(verifyWindowsNativeInstaller(setup, nativeVerifyError));
+    const auto metadataBytes = extractPeOverlayZipEntry(setup, "meta/installer-v2.txt");
+    ASSERT_FALSE(metadataBytes.empty());
+    const auto metadata = parseWindowsInstallerMetadata(
+        std::string(reinterpret_cast<const char *>(metadataBytes.data()), metadataBytes.size()));
+    EXPECT_EQ(metadata.packageMode, "setup");
+    EXPECT_EQ(metadata.productKind, "application");
+    EXPECT_EQ(metadata.identifier, pkg.identifier);
+    ASSERT_EQ(metadata.outerFiles.size(), 1U);
+    EXPECT_EQ(metadata.outerFiles[0].path, "uninstall.exe");
+
+    const auto uninstaller = extractPeOverlayZipEntry(setup, "meta/uninstall.exe");
+    ASSERT_FALSE(uninstaller.empty());
+    EXPECT_TRUE(containsAscii(uninstaller, "SIGNED-MAINTENANCE-HOST"));
+    const auto maintenanceBytes = extractPeOverlayZipEntry(uninstaller, "meta/installer-v2.txt");
+    ASSERT_FALSE(maintenanceBytes.empty());
+    const auto maintenance = parseWindowsInstallerMetadata(std::string(
+        reinterpret_cast<const char *>(maintenanceBytes.data()), maintenanceBytes.size()));
+    EXPECT_EQ(maintenance.packageMode, "maintenance");
+    EXPECT_TRUE(maintenance.outerFiles.empty());
+    EXPECT_EQ(maintenance.payloadFiles.size(), 2U);
+    EXPECT_EQ(maintenance.payloadFiles[0].path, "nativehostapp.exe");
+
+    const auto payload = extractPeOverlayZipEntry(setup, "meta/payload.zip");
+    EXPECT_FALSE(extractZipEntry(payload, "nativehostapp.exe").empty());
+    EXPECT_TRUE(extractZipEntry(payload, "uninstall.exe").empty());
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, RejectsDynamicRuntimeNativeHostTemplate) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_dynamic_host_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    writeTestWindowsPe(tmpRoot / "app.exe");
+    writeTestWindowsPe(tmpRoot / "host.exe", "x64", {{"vcruntime140.dll", {"runtime_entry"}}});
+    writeTestWindowsPe(tmpRoot / "cleanup.exe");
+
+    PackageConfig pkg;
+    pkg.displayName = "Dynamic Host App";
+    pkg.identifier = "org.viper.dynamic-host-test";
+    WindowsBuildParams params;
+    params.projectName = "dynamichostapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "setup.exe").string();
+    params.archStr = "x64";
+    params.installerHostPath = (tmpRoot / "host.exe").string();
+    params.installerCleanupPath = (tmpRoot / "cleanup.exe").string();
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 TEST(WindowsPackageBuilder, RejectsMissingCustomDllWithMsvcPrefix) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
@@ -4597,6 +4980,9 @@ TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
 
     const auto manifest = gatherToolchainInstallManifest(stage);
     EXPECT_EQ(manifest.version, std::string("9.8.7"));
+    EXPECT_EQ(manifest.snapshot, std::string("9.8.7-0-g0123456789ab"));
+    EXPECT_EQ(manifest.sourceCommit, std::string("0123456789abcdef0123456789abcdef01234567"));
+    EXPECT_EQ(manifest.sourceState, std::string("clean"));
     EXPECT_TRUE(manifest.platform == "windows" || manifest.platform == "macos" ||
                 manifest.platform == "linux");
     EXPECT_TRUE(manifest.totalSizeBytes() > 0);
@@ -5522,7 +5908,7 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     EXPECT_TRUE(containsAscii(pe, "asInvoker"));
     EXPECT_TRUE(containsUtf16LE(pe, "VAPSOriginalPath"));
     EXPECT_TRUE(containsUtf16LE(pe, "VAPSPathEntry"));
-    EXPECT_TRUE(containsUtf16LE(pe, "bin\\viper.exe"));
+    EXPECT_TRUE(containsUtf16LE(pe, "bin\\viperide.exe"));
     EXPECT_TRUE(containsUtf16LE(pe, "share\\viper\\viper.ico"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_SELF"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_MODE"));
@@ -5580,7 +5966,6 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
             file.stagedRelativePath, "windows toolchain test payload path"));
     }
     requiredWindowsPayload.push_back("bin/viper-dev.cmd");
-    requiredWindowsPayload.push_back("bin/viper-install-vscode-extension.cmd");
     requiredWindowsPayload.push_back("share/viper/README.windows-prerequisites.txt");
     requiredWindowsPayload.push_back("share/viper/viper.ico");
     requiredWindowsPayload.push_back("bin/viperide.ico");
@@ -5608,13 +5993,152 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     fs::remove_all(tmpRoot);
 }
 
-TEST(ToolchainWindowsPackageBuilder, BuildsArm64InstallerWithFullLicensePayload) {
+TEST(ToolchainWindowsPackageBuilder, OmitsInstallerBootstrapExecutablesFromDeveloperPayload) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_toolchain_windows_bootstrap_filter_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForWindowsToolchain(stage);
+    writeTestWindowsPe(stage / "bin" / "viper-installer-host.exe");
+    writeTestWindowsPe(stage / "bin" / "viper-installer-cleanup.exe");
+
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "x64";
+    manifest.platform = "windows";
+
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.archStr = "x64";
+    params.installDirName = "Viper development";
+    params.installerHostPath = (stage / "bin" / "viper-installer-host.exe").string();
+    params.installerCleanupPath = (stage / "bin" / "viper-installer-cleanup.exe").string();
+    buildWindowsToolchainInstaller(params);
+
+    const auto setup = readFile(params.outputPath);
+    std::ostringstream verifyError;
+    EXPECT_TRUE(verifyWindowsNativeInstaller(setup, verifyError));
+    const auto payloadZip = extractPeOverlayZipEntry(setup, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-host.exe").empty());
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-cleanup.exe").empty());
+    const auto prerequisites =
+        extractZipEntry(payloadZip, "share/viper/README.windows-prerequisites.txt");
+    const std::string prerequisitesText(prerequisites.begin(), prerequisites.end());
+    EXPECT_CONTAINS(prerequisitesText, "%LOCALAPPDATA%\\Programs\\Viper development");
+    EXPECT_CONTAINS(prerequisitesText, "%ProgramFiles%\\Viper development");
+
+    const auto metadataBytes = extractPeOverlayZipEntry(setup, "meta/installer-v2.txt");
+    ASSERT_FALSE(metadataBytes.empty());
+    const auto metadata = parseWindowsInstallerMetadata(
+        std::string(reinterpret_cast<const char *>(metadataBytes.data()), metadataBytes.size()));
+    for (const WindowsInstallerPayloadMetadata &file : metadata.payloadFiles) {
+        EXPECT_NE(file.path, "bin/viper-installer-host.exe");
+        EXPECT_NE(file.path, "bin/viper-installer-cleanup.exe");
+    }
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, RejectsMissingAppLocalMsvcRuntime) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_toolchain_windows_missing_runtime_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForWindowsToolchain(stage);
+    writeTestWindowsPe(
+        stage / "bin" / "viper.exe",
+        "x64",
+        {{"vcruntime140.dll", {"runtime_entry"}}, {"msvcp140.dll", {"standard_library_entry"}}});
+
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "x64";
+    manifest.platform = "windows";
+
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.archStr = "x64";
+    EXPECT_THROWS(buildWindowsToolchainInstaller(params), std::runtime_error);
+
+    writeTestWindowsPe(stage / "bin" / "vcruntime140.dll");
+    writeTestWindowsPe(stage / "bin" / "msvcp140.dll");
+    params.manifest = gatherToolchainInstallManifest(stage);
+    params.manifest.arch = "x64";
+    params.manifest.platform = "windows";
+    EXPECT_NO_THROW(buildWindowsToolchainInstaller(params));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntime) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_toolchain_windows_nested_signing_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForWindowsToolchain(stage);
+    writeTestWindowsPe(
+        stage / "bin" / "viper.exe", "x64", {{"vcruntime140.dll", {"runtime_entry"}}});
+    writeTestWindowsPe(stage / "bin" / "viperide.exe");
+    writeTestWindowsPe(stage / "bin" / "vcruntime140.dll");
+
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "x64";
+    manifest.platform = "windows";
+
+    std::vector<std::string> signedNames;
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.archStr = "x64";
+    params.peSigner = [&](std::string_view logicalName, const std::vector<uint8_t> &input) {
+        signedNames.emplace_back(logicalName);
+        std::vector<uint8_t> output = input;
+        const std::string marker = "VAPS-TOOLCHAIN-SIGNED";
+        output.insert(output.end(), marker.begin(), marker.end());
+        return output;
+    };
+
+    buildWindowsToolchainInstaller(params);
+    const auto pe = readFile(params.outputPath);
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(
+        containsAscii(extractZipEntry(payloadZip, "bin/viper.exe"), "VAPS-TOOLCHAIN-SIGNED"));
+    EXPECT_TRUE(
+        containsAscii(extractZipEntry(payloadZip, "bin/viperide.exe"), "VAPS-TOOLCHAIN-SIGNED"));
+    EXPECT_TRUE(
+        containsAscii(extractZipEntry(payloadZip, "uninstall.exe"), "VAPS-TOOLCHAIN-SIGNED"));
+    EXPECT_FALSE(containsAscii(extractZipEntry(payloadZip, "bin/vcruntime140.dll"),
+                               "VAPS-TOOLCHAIN-SIGNED"));
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/viper.exe") !=
+                signedNames.end());
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/viperide.exe") !=
+                signedNames.end());
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "uninstall.exe") !=
+                signedNames.end());
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/vcruntime140.dll") ==
+                signedNames.end());
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, BuildsAndRecursivelyVerifiesNativeArm64Installer) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
         fs::temp_directory_path() / "viper_toolchain_windows_arm64_license_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
+    std::vector<fs::path> stagedExecutables;
+    for (const auto &entry : fs::recursive_directory_iterator(stage)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".exe")
+            stagedExecutables.push_back(entry.path());
+    }
+    for (const fs::path &executable : stagedExecutables)
+        writeTestWindowsPe(executable, "arm64");
+    writeTestWindowsPe(stage / "bin" / "viper-installer-host.exe", "arm64");
+    writeTestWindowsPe(stage / "bin" / "viper-installer-cleanup.exe", "arm64");
     {
         std::ofstream license(stage / "LICENSE", std::ios::binary | std::ios::trunc);
         license << std::string(25000, 'L');
@@ -5627,16 +6151,33 @@ TEST(ToolchainWindowsPackageBuilder, BuildsArm64InstallerWithFullLicensePayload)
     params.manifest = manifest;
     params.outputPath = (tmpRoot / "viper-toolchain-arm64-setup.exe").string();
     params.archStr = "arm64";
+    params.installerHostPath = (stage / "bin" / "viper-installer-host.exe").string();
+    params.installerCleanupPath = (stage / "bin" / "viper-installer-cleanup.exe").string();
     buildWindowsToolchainInstaller(params);
 
     const auto pe = readFile(params.outputPath);
     std::ostringstream err;
-    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+    EXPECT_TRUE(verifyWindowsNativeInstaller(pe, err));
     EXPECT_EQ(readLE16(pe.data() + 0x84), static_cast<uint16_t>(0xAA64));
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
     const auto installedLicense = extractZipEntry(payloadZip, "LICENSE");
     EXPECT_EQ(installedLicense.size(), static_cast<size_t>(25000));
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-host.exe").empty());
+    EXPECT_TRUE(extractZipEntry(payloadZip, "bin/viper-installer-cleanup.exe").empty());
+
+    const auto metadataBytes = extractPeOverlayZipEntry(pe, "meta/installer-v2.txt");
+    ASSERT_FALSE(metadataBytes.empty());
+    const auto metadata = parseWindowsInstallerMetadata(
+        std::string(reinterpret_cast<const char *>(metadataBytes.data()), metadataBytes.size()));
+    EXPECT_EQ(metadata.architecture, "arm64");
+
+    const auto maintenance = extractPeOverlayZipEntry(pe, "meta/uninstall.exe");
+    const auto cleanup = extractPeOverlayZipEntry(pe, "meta/cleanup.exe");
+    ASSERT_FALSE(maintenance.empty());
+    ASSERT_FALSE(cleanup.empty());
+    EXPECT_EQ(readLE16(maintenance.data() + 0x84), static_cast<uint16_t>(0xAA64));
+    EXPECT_EQ(readLE16(cleanup.data() + 0x84), static_cast<uint16_t>(0xAA64));
     fs::remove_all(tmpRoot);
 }
 
@@ -5648,9 +6189,20 @@ TEST(ToolchainWindowsPackageBuilder, AddsVSCodeShortcutWhenVSIXIsStaged) {
     normalizeMockStageForWindowsToolchain(stage);
     fs::create_directories(stage / "share" / "viper" / "vscode");
     {
-        std::ofstream vsix(stage / "share" / "viper" / "vscode" / "viper-lang.vsix",
-                           std::ios::binary);
-        vsix << "mock-vsix";
+        ZipWriter vsix;
+        static constexpr std::string_view kContentTypes = "<Types/>";
+        static constexpr std::string_view kManifest = "<PackageManifest/>";
+        static constexpr std::string_view kPackage = "{\"name\":\"viper-lang\"}";
+        vsix.addFile("[Content_Types].xml",
+                     reinterpret_cast<const uint8_t *>(kContentTypes.data()),
+                     kContentTypes.size());
+        vsix.addFile("extension.vsixmanifest",
+                     reinterpret_cast<const uint8_t *>(kManifest.data()),
+                     kManifest.size());
+        vsix.addFile("extension/package.json",
+                     reinterpret_cast<const uint8_t *>(kPackage.data()),
+                     kPackage.size());
+        writeBytes(stage / "share" / "viper" / "vscode" / "viper-lang.vsix", vsix.finishToVector());
     }
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.arch = "x64";
@@ -5698,8 +6250,9 @@ TEST(ToolchainWindowsPackageBuilder, HonorsMachineScopeAndFileAssociations) {
     EXPECT_TRUE(containsAscii(pe, "requireAdministrator"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
     EXPECT_TRUE(containsUtf16LE(pe, "org.viper.toolchain.zia"));
-    EXPECT_TRUE(containsUtf16LE(pe, " run"));
-    EXPECT_TRUE(containsUtf16LE(pe, " -run"));
+    EXPECT_FALSE(containsUtf16LE(pe, " run"));
+    EXPECT_FALSE(containsUtf16LE(pe, " -run"));
+    EXPECT_TRUE(containsUtf16LE(pe, "bin\\viperide.exe"));
     EXPECT_FALSE(containsUtf16LE(pe, "Viper Developer Prompt"));
     fs::remove_all(tmpRoot);
 }

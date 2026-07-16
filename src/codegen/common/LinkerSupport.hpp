@@ -35,6 +35,10 @@ namespace viper::codegen::common {
 // Pure utility functions
 // =========================================================================
 
+/// @brief Encode a filesystem path as UTF-8 without consulting the active code page.
+/// @details Process-launch and linker option strings use UTF-8 on every host.
+std::string pathToUtf8(const std::filesystem::path &path);
+
 /// @brief Check if a regular file exists at the given path, suppressing filesystem exceptions.
 /// @param path The filesystem path to check.
 /// @return True if the path names an accessible regular file, false otherwise.

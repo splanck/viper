@@ -5,6 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// File: src/tools/viper/cmd_install_package.cpp
+// Purpose: Build, verify, sign, and inventory native Viper toolchain
+//          installation artifacts from a validated staged tree.
+//
+// Key invariants:
+//   - Exactly one stage, build, or verification input mode is active.
+//   - Trusted Windows artifacts sign nested Viper-owned PEs before hashing and
+//     sign the recursively verified outer setup executable last.
+//   - Release mode requires reproducible metadata and refuses weakened checks.
+//
+// Ownership/Lifetime:
+//   - Temporary staging and signing workspaces are RAII-owned and retained only
+//     when explicitly requested for diagnostics.
+//
+// Links: ToolchainInstallManifest.hpp, WindowsPackageBuilder.hpp, PkgVerify.hpp
+//
+//===----------------------------------------------------------------------===//
+
 #include "cli.hpp"
 
 #include "common/PlatformCapabilities.hpp"
@@ -29,6 +48,7 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -89,6 +109,14 @@ struct InstallPackageArgs {
     std::string windowsInstallScope{"user"};
     std::string windowsInstallDir{"Viper"};
     std::string windowsIdentifier{"org.viper.toolchain"};
+    bool windowsInstallDirSpecified{false};
+    bool windowsIdentifierSpecified{false};
+    std::string windowsChannel;
+    std::string sourceCommitOverride;
+    std::string windowsDocumentationUrl;
+    std::string windowsUpdateManifestUrl;
+    std::string windowsUpdateRsaModulus;
+    std::string windowsUpdateRsaExponent;
     bool windowsAddToPath{true};
     bool windowsFileAssociations{true};
     bool windowsShortcuts{true};
@@ -103,6 +131,42 @@ struct InstallPackageArgs {
     bool keepStageDir{false};
     bool stageOnly{false};
 };
+
+/// @brief Collision-safe Windows product identity derived from channel and explicit overrides.
+struct WindowsToolchainIdentity {
+    std::string channel;
+    std::string installDir;
+    std::string identifier;
+    std::string displayName{"Viper Toolchain"};
+};
+
+void validateWindowsReleaseChannel(std::string_view channel) {
+    if (channel.empty() || channel.size() > 24U ||
+        !std::isalnum(static_cast<unsigned char>(channel.front())) ||
+        !std::isalnum(static_cast<unsigned char>(channel.back())) ||
+        !std::all_of(channel.begin(), channel.end(), [](unsigned char ch) {
+            return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-';
+        })) {
+        throw std::runtime_error(
+            "Windows release channel must be 1-24 lowercase letters, digits, or internal hyphens");
+    }
+}
+
+WindowsToolchainIdentity windowsToolchainIdentity(const InstallPackageArgs &args) {
+    WindowsToolchainIdentity identity;
+    identity.channel = args.windowsChannel.empty() ? (args.releaseMode ? "stable" : "development")
+                                                   : args.windowsChannel;
+    identity.installDir = args.windowsInstallDir;
+    identity.identifier = args.windowsIdentifier;
+    if (identity.channel != "stable") {
+        if (!args.windowsInstallDirSpecified)
+            identity.installDir = "Viper " + identity.channel;
+        if (!args.windowsIdentifierSpecified)
+            identity.identifier = "org.viper.toolchain." + identity.channel;
+        identity.displayName += " (" + identity.channel + ")";
+    }
+    return identity;
+}
 
 /// @brief Platform/architecture detected from a staged native executable.
 struct NativeExecutableInfo {
@@ -150,11 +214,19 @@ void installPackageUsage() {
         << "  --windows-sign-no-verify Skip signtool verify after signing\n"
         << "  --linux-sign-key <id> GPG key id/name to sign generated .deb/.rpm packages\n"
         << "  --windows-install-scope <scope> user | machine (default: user)\n"
-        << "  --windows-install-dir <name> Directory name under install root (default: Viper)\n"
+        << "  --windows-install-dir <name> Directory name (stable default: Viper; otherwise "
+           "channel-derived)\n"
         << "  --windows-identifier <id> Unique Apps & Features product id "
-           "(default: org.viper.toolchain)\n"
+           "(stable default: org.viper.toolchain)\n"
+        << "  --windows-channel <id> Update channel (auto-derived for local builds)\n"
+        << "  --source-commit <hex> Source revision override for archive/release builds\n"
+        << "  --windows-documentation-url <url> HTTPS documentation link shown by setup\n"
+        << "  --windows-update-manifest-url <url> HTTPS signed update manifest\n"
+        << "  --windows-update-rsa-modulus <hex> Update-signing RSA public modulus\n"
+        << "  --windows-update-rsa-exponent <hex> RSA exponent (for example 010001)\n"
         << "  --windows-no-path    Do not add bin/ to PATH\n"
-        << "  --windows-file-associations on|off Register .zia/.bas/.il (default: on)\n"
+        << "  --windows-file-associations on|off Add safe .zia/.bas/.il Open With entries "
+           "(default: on)\n"
         << "  --windows-shortcuts on|off Create Start Menu developer shortcuts (default: on)\n"
         << "  --allow-debug-toolchain Allow Windows packages that reference MSVC debug CRTs\n"
         << "  --stage-only          Validate/gather the staged install tree and stop\n"
@@ -165,7 +237,7 @@ void installPackageUsage() {
         << "  --output-file <path>  Explicit single-artifact output path\n"
         << "  --output-dir <dir>    Explicit artifact output directory\n"
         << "  --artifact-manifest <path> JSON artifact inventory output override\n"
-        << "  --release             Enforce reproducible, verified, trusted release gates\n"
+        << "  --release             Require clean reproducible source and native trust gates\n"
         << "  --require-checksum    Require <artifact>.sha256 with --verify-only\n"
         << "  --no-verify           Skip post-build verification\n"
         << "  --verbose, -v         Verbose output\n"
@@ -392,6 +464,39 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
         return false;
     }
     return true;
+}
+
+/// @brief Authenticode-sign one in-memory nested PE through the release signing path.
+/// @details The package builder never mutates the caller's staged tree. Instead, this
+///          helper writes one PE into a private temporary directory, signs and verifies
+///          it using the same policy as the outer installer, then returns the signed
+///          bytes. All signing sidecars and partial files are removed on every exit.
+std::vector<uint8_t> signWindowsPeBytes(const InstallPackageArgs &args,
+                                        std::string_view logicalName,
+                                        const std::vector<uint8_t> &unsignedPe) {
+    const fs::path tempDir =
+        viper::pkg::createUniqueTempDirectory(fs::temp_directory_path(), "viper-pe-sign");
+    try {
+        fs::path leaf = fs::path(logicalName).filename();
+        if (leaf.empty())
+            leaf = "payload.exe";
+        const fs::path tempPe = tempDir / leaf;
+        viper::pkg::writeFileAtomic(tempPe, unsignedPe);
+
+        std::ostringstream signingError;
+        if (!signWindowsInstallerArtifact(args, tempPe, signingError)) {
+            throw std::runtime_error("Authenticode signing failed for '" +
+                                     std::string(logicalName) + "': " + signingError.str());
+        }
+        std::vector<uint8_t> signedPe = viper::pkg::readFile(tempPe.string());
+        std::error_code cleanupEc;
+        fs::remove_all(tempDir, cleanupEc);
+        return signedPe;
+    } catch (...) {
+        std::error_code cleanupEc;
+        fs::remove_all(tempDir, cleanupEc);
+        throw;
+    }
 }
 
 /// @brief Sign (and optionally notarize/staple) a macOS .pkg when requested.
@@ -837,12 +942,16 @@ bool installPackageOptionRequiresValue(const std::string &arg) {
            arg == "--windows-sign-pfx" || arg == "--windows-sign-thumbprint" ||
            arg == "--windows-timestamp-url" || arg == "--windows-signtool" ||
            arg == "--windows-install-scope" || arg == "--windows-install-dir" ||
-           arg == "--windows-file-associations" || arg == "--windows-shortcuts" ||
-           arg == "--macos-notary-timeout" || arg == "--license" || arg == "--maintainer" ||
-           arg == "--maintainer-email" || arg == "--homepage" || arg == "--macos-dmg-background" ||
-           arg == "--macos-dmg-icon" || arg == "--macos-pkg-license" ||
-           arg == "--macos-pkg-background" || arg == "--linux-sign-key" || arg == "--output-file" ||
-           arg == "--output-dir" || arg == "--artifact-manifest" || arg == "-o";
+           arg == "--windows-identifier" || arg == "--windows-channel" ||
+           arg == "--source-commit" || arg == "--windows-documentation-url" ||
+           arg == "--windows-update-manifest-url" || arg == "--windows-update-rsa-modulus" ||
+           arg == "--windows-update-rsa-exponent" || arg == "--windows-file-associations" ||
+           arg == "--windows-shortcuts" || arg == "--macos-notary-timeout" || arg == "--license" ||
+           arg == "--maintainer" || arg == "--maintainer-email" || arg == "--homepage" ||
+           arg == "--macos-dmg-background" || arg == "--macos-dmg-icon" ||
+           arg == "--macos-pkg-license" || arg == "--macos-pkg-background" ||
+           arg == "--linux-sign-key" || arg == "--output-file" || arg == "--output-dir" ||
+           arg == "--artifact-manifest" || arg == "-o";
 }
 
 /// @brief Parse the `viper install-package` command line into @p args.
@@ -987,8 +1096,22 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             }
         } else if (arg == "--windows-install-dir" && i + 1 < expandedArgs.size()) {
             args.windowsInstallDir = expandedArgs[++i];
+            args.windowsInstallDirSpecified = true;
         } else if (arg == "--windows-identifier" && i + 1 < expandedArgs.size()) {
             args.windowsIdentifier = expandedArgs[++i];
+            args.windowsIdentifierSpecified = true;
+        } else if (arg == "--windows-channel" && i + 1 < expandedArgs.size()) {
+            args.windowsChannel = lowerAscii(expandedArgs[++i]);
+        } else if (arg == "--source-commit" && i + 1 < expandedArgs.size()) {
+            args.sourceCommitOverride = lowerAscii(expandedArgs[++i]);
+        } else if (arg == "--windows-documentation-url" && i + 1 < expandedArgs.size()) {
+            args.windowsDocumentationUrl = expandedArgs[++i];
+        } else if (arg == "--windows-update-manifest-url" && i + 1 < expandedArgs.size()) {
+            args.windowsUpdateManifestUrl = expandedArgs[++i];
+        } else if (arg == "--windows-update-rsa-modulus" && i + 1 < expandedArgs.size()) {
+            args.windowsUpdateRsaModulus = lowerAscii(expandedArgs[++i]);
+        } else if (arg == "--windows-update-rsa-exponent" && i + 1 < expandedArgs.size()) {
+            args.windowsUpdateRsaExponent = lowerAscii(expandedArgs[++i]);
         } else if (arg == "--windows-no-path") {
             args.windowsAddToPath = false;
         } else if (arg == "--windows-file-associations" && i + 1 < expandedArgs.size()) {
@@ -1072,6 +1195,10 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             return false;
         }
     }
+    if (!args.releaseMode && args.windowsChannel == "stable") {
+        std::cerr << "error: the stable Windows channel is reserved for --release packages\n";
+        return false;
+    }
 #if VIPER_HOST_WINDOWS
     if (!args.buildDir.empty() && args.buildConfig.empty())
         args.buildConfig = "Release";
@@ -1081,6 +1208,21 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         viper::pkg::validateSingleLineField(args.windowsSigntoolPath, "Windows signtool path");
         viper::pkg::validateWindowsFileName(args.windowsInstallDir, "Windows install directory");
         viper::pkg::validateWindowsProgIdBase(args.windowsIdentifier, "Windows package identifier");
+        viper::pkg::validateSingleLineField(args.windowsChannel, "Windows release channel");
+        const WindowsToolchainIdentity identity = windowsToolchainIdentity(args);
+        validateWindowsReleaseChannel(identity.channel);
+        viper::pkg::validateWindowsFileName(identity.installDir, "Windows install directory");
+        viper::pkg::validateWindowsProgIdBase(identity.identifier, "Windows package identifier");
+        viper::pkg::validateWindowsFileName(identity.displayName, "Windows display name");
+        viper::pkg::validateSingleLineField(args.sourceCommitOverride, "source commit override");
+        viper::pkg::validateHttpsPackageUrl(args.windowsDocumentationUrl,
+                                            "Windows documentation URL");
+        viper::pkg::validateHttpsPackageUrl(args.windowsUpdateManifestUrl,
+                                            "Windows update manifest URL");
+        viper::pkg::validateSingleLineField(args.windowsUpdateRsaModulus,
+                                            "Windows update RSA modulus");
+        viper::pkg::validateSingleLineField(args.windowsUpdateRsaExponent,
+                                            "Windows update RSA exponent");
         viper::pkg::validateWindowsCertificateThumbprint(args.windowsSignThumbprint,
                                                          "Windows signing thumbprint");
         viper::pkg::validateSingleLineField(args.macosSignIdentity,
@@ -1359,15 +1501,18 @@ std::vector<std::string> requiredPayloadPaths(
     switch (target) {
         case InstallPackageTarget::Windows:
             for (const auto &file : manifest.files) {
-                paths.push_back(viper::pkg::sanitizePackageRelativePath(file.stagedRelativePath,
-                                                                        "windows toolchain path"));
+                const std::string relative = viper::pkg::sanitizePackageRelativePath(
+                    file.stagedRelativePath, "windows toolchain path");
+                const std::string lowerRelative = lowerAscii(relative);
+                if (lowerRelative == "bin/viper-installer-host.exe" ||
+                    lowerRelative == "bin/viper-installer-cleanup.exe") {
+                    continue;
+                }
+                paths.push_back(relative);
             }
             paths.push_back("bin/viper-dev.cmd");
-            paths.push_back("bin/viper-install-vscode-extension.cmd");
             paths.push_back("share/viper/README.windows-prerequisites.txt");
             paths.push_back("share/viper/viper.ico");
-            paths.push_back("uninstall.exe");
-            paths.push_back(".viper-install-manifest.txt");
             break;
         case InstallPackageTarget::LinuxDeb:
         case InstallPackageTarget::LinuxRpm:
@@ -1771,15 +1916,20 @@ bool verifyArtifact(const fs::path &artifact,
     const auto data = viper::pkg::readFile(artifact.string());
     switch (target) {
         case InstallPackageTarget::Windows:
+            if (!viper::pkg::verifyWindowsNativeInstaller(data, err))
+                return false;
             if (manifest) {
                 return viper::pkg::verifyPEZipOverlayNestedPayload(
                     data,
-                    {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
+                    {"meta/payload.zip",
+                     "meta/installer-v2.txt",
+                     "meta/cleanup.exe",
+                     "meta/uninstall.exe"},
                     "meta/payload.zip",
                     requiredPayloadPaths(target, *manifest),
                     err);
             }
-            return viper::pkg::verifyPEZipOverlay(data, err);
+            return true;
         case InstallPackageTarget::LinuxDeb:
             if (manifest) {
                 return viper::pkg::verifyDebPayload(
@@ -2131,6 +2281,8 @@ int cmdInstallPackage(int argc, char **argv) {
             installManifestPath = args.buildDir / "install_manifest.txt";
         viper::pkg::ToolchainInstallManifest manifest =
             viper::pkg::gatherToolchainInstallManifest(stageDir, installManifestPath);
+        if (!args.sourceCommitOverride.empty())
+            manifest.sourceCommit = args.sourceCommitOverride;
         if (!args.toolchainLicense.empty())
             manifest.license = args.toolchainLicense;
         if (!args.toolchainMaintainer.empty())
@@ -2158,13 +2310,40 @@ int cmdInstallPackage(int argc, char **argv) {
             manifest.arch = detectedInfo->arch;
         }
         viper::pkg::validateToolchainInstallManifest(manifest);
+        if (args.releaseMode) {
+            if (manifest.sourceState != "clean") {
+                std::cerr << "error: --release requires a staged build from a clean source tree; "
+                             "reported state is "
+                          << manifest.sourceState << "\n";
+                return 1;
+            }
+            if (manifest.sourceCommit.empty()) {
+                std::cerr
+                    << "error: --release requires immutable source commit metadata; configure "
+                       "with VIPER_SOURCE_COMMIT or pass --source-commit\n";
+                return 1;
+            }
+        }
 
         if (args.verbose) {
             std::cout << "Stage: " << stageDir.string() << "\n";
             std::cout << "Version: " << manifest.version << "\n";
+            std::cout << "Source: "
+                      << (manifest.sourceCommit.empty() ? "unknown" : manifest.sourceCommit) << " ("
+                      << manifest.sourceState << ")\n";
             std::cout << "Platform: " << manifest.platform << "\n";
             std::cout << "Arch: " << manifest.arch << "\n";
             std::cout << "Files: " << manifest.files.size() << "\n";
+            if (args.target == InstallPackageTarget::Windows ||
+                ((args.target == InstallPackageTarget::All ||
+                  args.target == InstallPackageTarget::AllAvailable) &&
+                 manifest.platform == "windows")) {
+                const WindowsToolchainIdentity identity = windowsToolchainIdentity(args);
+                std::cout << "Windows channel: " << identity.channel << "\n";
+                std::cout << "Windows identifier: " << identity.identifier << "\n";
+                std::cout << "Windows install directory: " << identity.installDir << "\n";
+                std::cout << "Windows display name: " << identity.displayName << "\n";
+            }
         }
 
         if (args.stageOnly) {
@@ -2301,18 +2480,56 @@ int cmdInstallPackage(int argc, char **argv) {
             switch (target) {
                 case InstallPackageTarget::Windows: {
                     viper::pkg::WindowsToolchainBuildParams params;
+                    const WindowsToolchainIdentity identity = windowsToolchainIdentity(args);
                     params.manifest = manifest;
                     params.outputPath = artifactPath.string();
                     params.archStr = manifest.arch;
                     params.installScope = args.windowsInstallScope;
-                    params.installDirName = args.windowsInstallDir;
-                    params.identifier = args.windowsIdentifier;
+                    params.installDirName = identity.installDir;
+                    params.identifier = identity.identifier;
+                    params.displayName = identity.displayName;
                     params.publisher = manifest.maintainer;
                     if (!manifest.homepage.empty())
                         params.homepage = manifest.homepage;
+                    params.documentationUrl = args.windowsDocumentationUrl;
+                    params.updateManifestUrl = args.windowsUpdateManifestUrl;
+                    params.updateRsaModulus = args.windowsUpdateRsaModulus;
+                    params.updateRsaExponent = args.windowsUpdateRsaExponent;
+                    params.releaseChannel = identity.channel;
+                    params.sourceCommit = manifest.sourceCommit;
                     params.addToPath = args.windowsAddToPath;
                     params.registerFileAssociations = args.windowsFileAssociations;
                     params.createStartMenuShortcuts = args.windowsShortcuts;
+                    for (const auto &file : manifest.files) {
+                        std::string relative = file.stagedRelativePath;
+                        std::replace(relative.begin(), relative.end(), '\\', '/');
+                        std::transform(
+                            relative.begin(),
+                            relative.end(),
+                            relative.begin(),
+                            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+                        if (relative == "bin/viper-installer-host.exe") {
+                            params.installerHostPath = file.stagedAbsolutePath.string();
+                        } else if (relative == "bin/viper-installer-cleanup.exe") {
+                            params.installerCleanupPath = file.stagedAbsolutePath.string();
+                        }
+                    }
+                    if (params.installerHostPath.empty()) {
+                        throw std::runtime_error(
+                            "Windows toolchain stage is missing bin/viper-installer-host.exe; "
+                            "reinstall the staged build with the native installer host enabled");
+                    }
+                    if (params.installerCleanupPath.empty()) {
+                        throw std::runtime_error(
+                            "Windows toolchain stage is missing "
+                            "bin/viper-installer-cleanup.exe; reinstall the staged build");
+                    }
+                    if (windowsSigningRequested(args)) {
+                        params.peSigner = [&](std::string_view logicalName,
+                                              const std::vector<uint8_t> &unsignedPe) {
+                            return signWindowsPeBytes(args, logicalName, unsignedPe);
+                        };
+                    }
                     viper::pkg::buildWindowsToolchainInstaller(params);
                     break;
                 }

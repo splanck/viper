@@ -81,19 +81,43 @@ export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
 ```
 
 Release mode rejects `--no-verify`, `--windows-sign-no-verify`, debug Windows
-toolchains, missing trust credentials, and an invalid or absent
-`SOURCE_DATE_EPOCH`. Its trust requirements are platform-specific:
+toolchains, missing trust credentials, dirty or unknown source state, missing
+immutable source commit metadata, and an invalid or absent
+`SOURCE_DATE_EPOCH`. Source archives must configure both
+`VIPER_SOURCE_COMMIT=<lowercase-hex>` and `VIPER_SOURCE_STATE=clean`. Its trust
+requirements are platform-specific:
 
 ### Windows
 
-Windows release output requires Authenticode signing. Prefer a certificate
-already imported into the certificate store:
+Windows release output requires Authenticode signing. Stable identity is
+reserved for `--release`; unsigned/local output defaults to the separate
+`development` channel, identifier, display name, and install directory. Prefer
+an Authenticode certificate already imported into the certificate store.
+
+Provision the update-signing public key before packaging. This key is separate
+from Authenticode and may be exported without creating a placeholder manifest:
 
 ```powershell
-$env:VIPER_WINDOWS_SIGN_THUMBPRINT = "<SHA-1 thumbprint>"
+$env:VIPER_WINDOWS_UPDATE_SIGN_PASSWORD = '<secret>'
+.\scripts\new-windows-update-manifest.ps1 -PublicKeyOnly `
+  -PfxPath .\private\viper-update-signing.pfx `
+  -PublicKeyOutput .\build\viper-update-public-key.json
+$updateKey = Get-Content .\build\viper-update-public-key.json -Raw | ConvertFrom-Json
+```
+
+Build the signed installer with the pinned public key and the canonical stable
+identity:
+
+```powershell
+$env:VIPER_WINDOWS_SIGN_THUMBPRINT = '<SHA-1 thumbprint>'
 $env:VIPER_WINDOWS_TIMESTAMP_URL = "https://timestamp.digicert.com"
 viper install-package --stage-dir build\release-stage --target windows `
   --output-file artifacts\viper-toolchain-windows-x64.exe `
+  --windows-channel stable `
+  --windows-documentation-url https://docs.example.test/viper/windows `
+  --windows-update-manifest-url https://updates.example.test/viper/stable/x64.txt `
+  --windows-update-rsa-modulus $updateKey.modulus `
+  --windows-update-rsa-exponent $updateKey.exponent `
   --windows-sign --release
 ```
 
@@ -102,6 +126,34 @@ A PFX can instead be supplied with `VIPER_WINDOWS_SIGN_PFX` and
 therefore also requires `VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK=1`; importing the
 PFX into the ephemeral user certificate store avoids that exposure. Timestamp
 URLs must use HTTPS. Signing is followed by `signtool verify /pa /all /tw /v`.
+
+Nested signing is deliberate: the packager signs and verifies every
+Viper-owned staged PE, the embedded maintenance host, and detached cleanup
+helper before hashing and compressing them. Microsoft runtime DLLs retain their
+Microsoft signatures. The outer setup is signed last, then recursive
+verification checks both signatures and structure through every overlay layer.
+
+After the final installer is placed at its public HTTPS URL, author its bounded
+canonical update manifest. The download and release-notes URLs must use the
+same scheme, host, and port as the manifest URL:
+
+```powershell
+$artifact = Resolve-Path artifacts\viper-toolchain-windows-x64.exe
+.\scripts\new-windows-update-manifest.ps1 `
+  -OutputPath artifacts\stable-x64.txt `
+  -ManifestUrl https://updates.example.test/viper/stable/x64.txt `
+  -Channel stable -Architecture x64 -Version 1.2.3 `
+  -DownloadUrl https://updates.example.test/viper/viper-1.2.3-x64.exe `
+  -DownloadSha256 (Get-FileHash $artifact -Algorithm SHA256).Hash `
+  -ReleaseNotesUrl https://updates.example.test/viper/1.2.3.html `
+  -PfxPath .\private\viper-update-signing.pfx
+```
+
+The script rejects non-canonical or overflowing versions, HTTP, credentials,
+fragments, cross-origin URLs, malformed hashes, and inaccessible RSA keys. It
+writes deterministic UTF-8 without a BOM using LF records and RSA PKCS#1
+SHA-256. Keep the PFX private; publish only the text manifest and public key
+record used during package generation.
 
 ### macOS
 
@@ -142,24 +194,51 @@ records rather than package-manager signatures.
 
 ### Windows setup
 
-The Windows installer uses a compact native wizard with an explicit license
-acceptance control, the actual current-user or all-users scope, the resolved
-destination, quiet automation, accurate cancellation code 1602, DPI awareness,
-modern common controls, long-path awareness, Viper branding, and honest success
-and error messages. x64 and ARM64 use one transactional PowerShell file backend;
-the script is gzip-packed so the command stays below Windows' real 32,767
-character process limit.
+The Windows installer is a statically linked native executable; neither setup
+nor maintenance invokes PowerShell. The first page makes Typical the obvious
+one-click choice and also offers SDK, Complete, and Customize paths. Customize
+selects current-user or all-users scope, a validated Unicode/long-path
+destination, components with accurate byte estimates, PATH, safe Open With
+associations, and Start Menu shortcuts. Native Task Dialogs and a scrollable
+customization window use system colors, high-contrast behavior, keyboard
+navigation, UI Automation names, per-monitor DPI awareness, Viper branding,
+and a usable small-work-area layout.
 
-The backend reads stored overlay ranges directly from the signed executable,
-streams SHA-256 verification, validates every manifest path, rejects extra or
-missing payload files, rejects reparse-point traversal, and refuses to replace
-unowned files. It stages the new payload beside the destination, snapshots PATH
-and affected registry trees, journals backups, removes stale owned files only
-after preflight, and retains rollback state until native metadata succeeds.
-Either uninstaller recovers an interrupted transaction before removal. Shortcut
-ownership is persisted separately so an upgrade cannot claim an unrelated
-Desktop or Start Menu shortcut. PATH uninstall removes only the token Viper
-actually added.
+Before mutation, the host validates the complete schema-3 overlay inventory,
+PE architecture, component graph, semantic version policy, supported Windows
+floor, canonical destination, free space for payload plus transaction backup,
+and files in use through Restart Manager. It rejects extra/missing payload
+files, reparse traversal, unowned collisions, accidental downgrade, and a
+second concurrent lifecycle operation. `/closeApplications` provides a bounded
+automation path; cancellation returns 1602 and rolls back.
+
+Install, modify, repair, upgrade, downgrade, and uninstall share a journaled
+transaction engine. It stages the selected payload beside the destination,
+snapshots owned PATH/registry/shortcut state, atomically swaps directories,
+recovers at every commit boundary, and preserves arbitrary unowned developer
+files. Repair restores exact owned hashes. A signed cached maintenance image
+allows Settings > Apps to expose Modify, Repair, and Uninstall. Detached native
+cleanup removes the running installed uninstaller, package cache leaf, and
+empty shared cache ancestors without deleting sibling channels or requiring a
+reboot.
+
+The package installs its architecture-matched MSVC runtime closure beside the
+tools and setup never downloads a redistributable. PATH, associations,
+shortcuts, and Add/Remove Programs values carry ownership markers; uninstall
+removes only exact owned values. File associations add Open With entries and do
+not replace an existing default handler or execute source on open. The finish
+page offers ViperIDE, the Developer Prompt, quickstart, samples, and a copyable
+verification command after post-install self-checks.
+
+`/inspect` emits verified package identity as JSON without mutation.
+`/checkForUpdates` is offline and deterministic when unconfigured; configured
+packages verify the pinned signature, exact channel/architecture, same-origin
+URLs, semantic version, and downloaded SHA-256 before presenting an update.
+Both commands accept `/output <path>` for atomic UTF-8 JSON publication; this is
+the required capture path for GUI-process automation because an unavailable or
+failed inherited stream is treated as an error rather than silent success.
+`/?` documents silent switches and the lifecycle exit-code contract. Unique
+redacted UTF-8 logs default under `%TEMP%` and can be redirected with `/log`.
 
 ### macOS Installer and disk image
 
@@ -237,6 +316,29 @@ To exercise the upgrade path, package a baseline stage containing
 the final installer, then add
 `-BaselineInstaller build\viper-toolchain-baseline.exe` to the validation
 script. Add `-RequireSignature` for a signed release candidate.
+
+The repository's opt-in `installer_windows_toolchain_e2e` test is the stronger
+developer acceptance gate. It covers deterministic rebuilds, recursive
+verification, Unicode custom paths, collision rejection, legacy-manifest
+recovery, Typical/Minimal/Complete modification, PATH/association/shortcut
+ownership, exact-hash repair, concurrent setup, Restart Manager, installed Zia
+and BASIC execution, native codegen, an external CMake SDK consumer, direct
+root uninstall, and residue checks. Configure
+`VIPER_ENABLE_WINDOWS_INSTALLER_E2E=ON` and run it serially.
+
+Configure a separate build with `VIPER_INSTALLER_ENABLE_TEST_HOOKS=ON` to run
+the same test's destructive fault matrix. Test hooks are compile-time disabled
+in production hosts. The matrix proves no-mutation Windows-version and disk
+preflight, cancellation, registry rollback, and recovery after forced
+termination at old-directory move, new-directory move, and registry commit for
+both repair and uninstall.
+
+Release qualification requires separate native x64 and ARM64 stages. Build
+each on a host with the matching Visual Studio C++ workload and MSVC libraries;
+do not relabel one architecture. Recursive verification rejects a setup,
+maintenance helper, cleanup helper, or payload PE whose COFF machine differs
+from package metadata. Run the clean-VM lifecycle on each architecture and on
+the minimum Windows 10 floor plus current Windows 11 before publication.
 
 ### Linux disposable host or VM
 

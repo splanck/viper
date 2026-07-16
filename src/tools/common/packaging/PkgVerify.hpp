@@ -207,4 +207,10 @@ bool verifyPEZipOverlayNestedPayload(const std::vector<uint8_t> &data,
                                      const std::vector<std::string> &requiredInnerEntries,
                                      std::ostream &err);
 
+/// @brief Recursively verify a schema-3 native Windows setup package.
+/// @details Checks metadata, every payload/shortcut/outer-file SHA-256, the cleanup
+///          PE, the non-recursive maintenance executable, and setup/maintenance
+///          identity and payload parity.
+bool verifyWindowsNativeInstaller(const std::vector<uint8_t> &data, std::ostream &err);
+
 } // namespace viper::pkg

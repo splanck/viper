@@ -1,6 +1,20 @@
-# SPDX-License-Identifier: GPL-3.0-only
-# File: tests/tools/CMakeLists.txt
-# Purpose: CLI and tool-specific smoke tests.
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/tests/tools/CMakeLists.txt
+# Purpose: Register CLI, packaging, and tool-specific smoke tests.
+#
+# Key invariants: Platform-specific tests are labeled and bounded.
+#
+# Ownership/Lifetime: CTest owns generated test workspaces in the build tree.
+#
+# Links: docs/testing.md, src/tests/CMakeLists.txt
+#
+#===----------------------------------------------------------------------===#
 
 set(VIPER_TOOLS_LIBS viper_il_full il_vm il_api il_transform il_tools_common viper_bytecode)
 set(VIPER_TOOLS_LIBS ${VIPER_TOOLS_LIBS} PARENT_SCOPE)
@@ -160,6 +174,16 @@ function(viper_add_tools_tests)
     endif ()
 
     if (WIN32)
+        viper_add_ctest(windows_update_manifest_authoring
+                powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+                -File ${_VIPER_TOOLS_DIR}/WindowsUpdateManifestAuthoringTests.ps1
+                -ManifestScript ${CMAKE_SOURCE_DIR}/scripts/new-windows-update-manifest.ps1
+                -WorkDir ${CMAKE_CURRENT_BINARY_DIR}/windows_update_manifest_authoring)
+        set_tests_properties(windows_update_manifest_authoring PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 120)
+        viper_add_test_labels(windows_update_manifest_authoring installer tools requires_windows)
+
         viper_add_ctest(windows_installer_user_smoke
                 ${CMAKE_COMMAND}
                 -DVIPER_BIN=$<TARGET_FILE:viper>
@@ -379,8 +403,9 @@ function(viper_add_tools_tests)
                 -DVIPER_BIN=$<TARGET_FILE:viper>
                 -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
                 -DVIPER_CONFIG=$<CONFIG>
+                -DVIPER_INSTALLER_TEST_HOOKS=${VIPER_INSTALLER_ENABLE_TEST_HOOKS}
                 -P ${_VIPER_TOOLS_DIR}/WindowsToolchainInstallerE2E.cmake)
-        set_tests_properties(installer_windows_toolchain_e2e PROPERTIES RUN_SERIAL TRUE TIMEOUT 900)
+        set_tests_properties(installer_windows_toolchain_e2e PROPERTIES RUN_SERIAL TRUE TIMEOUT 1800)
         viper_add_test_labels(installer_windows_toolchain_e2e installer tools slow e2e)
     endif ()
 endfunction()

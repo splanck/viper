@@ -40,6 +40,7 @@
 #include "support/source_manager.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -48,9 +49,14 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#if VIPER_HOST_WINDOWS
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -596,6 +602,51 @@ std::string getenvOrEmpty(const char *name) {
     return value == nullptr ? std::string{} : std::string(value);
 }
 
+/// @brief Locate one statically linked native Windows installer support executable.
+/// @details An explicit environment override supports controlled cross-packaging. On Windows,
+///          normal installed and build-tree layouts place the executable beside viper.exe.
+fs::path findWindowsInstallerSupportExecutable(const ProjectConfig &proj,
+                                               const char *environmentName,
+                                               std::string_view fileName) {
+    const std::string overridePath = getenvOrEmpty(environmentName);
+    if (!overridePath.empty()) {
+        fs::path resolved(overridePath);
+        if (!resolved.is_absolute())
+            resolved = fs::path(proj.rootDir) / resolved;
+        resolved = resolved.lexically_normal();
+        if (!fs::is_regular_file(resolved))
+            throw std::runtime_error(std::string(environmentName) +
+                                     " is not a regular file: " + resolved.string());
+        return resolved;
+    }
+#if VIPER_HOST_WINDOWS
+    std::wstring modulePath(512, L'\0');
+    while (modulePath.size() <= 32768) {
+        const DWORD length =
+            GetModuleFileNameW(nullptr, modulePath.data(), static_cast<DWORD>(modulePath.size()));
+        if (length == 0)
+            break;
+        if (length < modulePath.size() - 1) {
+            modulePath.resize(length);
+            const fs::path executableDir = fs::path(modulePath).parent_path();
+            const std::array<fs::path, 2> candidates = {
+                executableDir / fileName,
+                executableDir.parent_path().parent_path().parent_path() / executableDir.filename() /
+                    fileName};
+            for (const fs::path &candidate : candidates) {
+                if (fs::is_regular_file(candidate))
+                    return candidate;
+            }
+            break;
+        }
+        modulePath.resize(modulePath.size() * 2U);
+    }
+#else
+    (void)proj;
+#endif
+    return {};
+}
+
 /// @brief Resolve @p pathText relative to @p projectRoot (absolute paths kept as-is).
 fs::path resolveOptionalProjectPath(const std::string &projectRoot, const std::string &pathText) {
     fs::path p(pathText);
@@ -715,6 +766,39 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     if (verbose)
         err << "  Windows signing: passed\n";
     return true;
+}
+
+/// @brief Authenticode-sign one in-memory payload PE without changing project outputs.
+/// @details Nested application binaries and the generated uninstaller are copied to a
+///          private temporary directory, signed and verified under the same policy as
+///          the outer setup executable, read back, and removed on every exit path.
+std::vector<uint8_t> signWindowsPeBytes(const ProjectConfig &proj,
+                                        std::string_view logicalName,
+                                        const std::vector<uint8_t> &unsignedPe,
+                                        bool verbose) {
+    const fs::path tempDir =
+        viper::pkg::createUniqueTempDirectory(fs::temp_directory_path(), "viper-pe-sign");
+    try {
+        fs::path leaf = fs::path(logicalName).filename();
+        if (leaf.empty())
+            leaf = "payload.exe";
+        const fs::path tempPe = tempDir / leaf;
+        viper::pkg::writeFileAtomic(tempPe, unsignedPe);
+
+        std::ostringstream signingError;
+        if (!signWindowsInstallerArtifact(proj, tempPe, verbose, signingError)) {
+            throw std::runtime_error("Authenticode signing failed for '" +
+                                     std::string(logicalName) + "': " + signingError.str());
+        }
+        std::vector<uint8_t> signedPe = viper::pkg::readFile(tempPe.string());
+        std::error_code cleanupEc;
+        fs::remove_all(tempDir, cleanupEc);
+        return signedPe;
+    } catch (...) {
+        std::error_code cleanupEc;
+        fs::remove_all(tempDir, cleanupEc);
+        throw;
+    }
 }
 
 /// @brief Consume a package option value from inline or following-argument syntax.
@@ -1801,6 +1885,30 @@ int cmdPackage(int argc, char **argv) {
                 wparams.pkgConfig = proj.packageConfig;
                 wparams.outputPath = args.outputPath;
                 wparams.archStr = archStr;
+                wparams.installerHostPath =
+                    findWindowsInstallerSupportExecutable(
+                        proj, "VIPER_WINDOWS_INSTALLER_HOST", "viper-installer-host.exe")
+                        .string();
+                if (wparams.installerHostPath.empty()) {
+                    throw std::runtime_error(
+                        "native Windows installer host not found; install/build "
+                        "viper-installer-host or set VIPER_WINDOWS_INSTALLER_HOST");
+                }
+                wparams.installerCleanupPath =
+                    findWindowsInstallerSupportExecutable(
+                        proj, "VIPER_WINDOWS_INSTALLER_CLEANUP", "viper-installer-cleanup.exe")
+                        .string();
+                if (wparams.installerCleanupPath.empty()) {
+                    throw std::runtime_error(
+                        "native Windows installer cleanup helper not found; install/build "
+                        "viper-installer-cleanup or set VIPER_WINDOWS_INSTALLER_CLEANUP");
+                }
+                if (windowsSigningRequested(proj.packageConfig)) {
+                    wparams.peSigner = [&](std::string_view logicalName,
+                                           const std::vector<uint8_t> &unsignedPe) {
+                        return signWindowsPeBytes(proj, logicalName, unsignedPe, args.verbose);
+                    };
+                }
                 viper::pkg::buildWindowsPackage(wparams);
                 break;
             }
@@ -1918,16 +2026,18 @@ int cmdPackage(int argc, char **argv) {
                 break;
             }
             case PackageTarget::Windows: {
-                std::vector<std::string> requiredInner = {
-                    execName + ".exe", "uninstall.exe", ".viper-install-manifest.txt"};
+                std::vector<std::string> requiredInner = {execName + ".exe"};
                 auto assetPaths = requiredAssetPayloadPaths(proj, "");
                 requiredInner.insert(requiredInner.end(), assetPaths.begin(), assetPaths.end());
-                valid = viper::pkg::verifyPEZipOverlayNestedPayload(
-                    pkgData,
-                    {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
-                    "meta/payload.zip",
-                    requiredInner,
-                    verifyErr);
+                valid = viper::pkg::verifyWindowsNativeInstaller(pkgData, verifyErr) &&
+                        viper::pkg::verifyPEZipOverlayNestedPayload(pkgData,
+                                                                    {"meta/payload.zip",
+                                                                     "meta/installer-v2.txt",
+                                                                     "meta/cleanup.exe",
+                                                                     "meta/uninstall.exe"},
+                                                                    "meta/payload.zip",
+                                                                    requiredInner,
+                                                                    verifyErr);
                 break;
             }
             case PackageTarget::Tarball: {

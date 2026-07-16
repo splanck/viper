@@ -1,4 +1,25 @@
 @echo off
+REM ===----------------------------------------------------------------------===
+REM
+REM Part of the Viper project, under the GNU GPL v3.
+REM See LICENSE for license information.
+REM
+REM ===----------------------------------------------------------------------===
+REM
+REM File: scripts/build_viper_win.cmd
+REM Purpose: Configure, build, test, audit, and install Viper on Windows.
+REM
+REM Key invariants:
+REM   - User-selected generators and compilers are forwarded without literal
+REM     shell-escaping characters.
+REM   - A failed validation stage causes the script to return a nonzero status.
+REM
+REM Ownership/Lifetime: Build outputs remain in VIPER_BUILD_DIR.
+REM
+REM Links: AGENTS.md, docs/testing.md
+REM
+REM ===----------------------------------------------------------------------===
+
 setlocal enabledelayedexpansion
 set TESTS_FAILED=0
 
@@ -49,7 +70,7 @@ echo Fast Debug: %VIPER_FAST_DEBUG%
 
 set "CONFIG_ARGS=-DVIPER_FAST_DEBUG=%VIPER_FAST_DEBUG%"
 if not "%VIPER_CMAKE_GENERATOR%"=="" (
-    set "CONFIG_ARGS=%CONFIG_ARGS% -G \"%VIPER_CMAKE_GENERATOR%\""
+    set "CONFIG_ARGS=%CONFIG_ARGS% -G "%VIPER_CMAKE_GENERATOR%""
 )
 if not "%VIPER_EXTRA_CMAKE_ARGS%"=="" (
     set "CONFIG_ARGS=%CONFIG_ARGS% %VIPER_EXTRA_CMAKE_ARGS%"

@@ -1,175 +1,62 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-31
+last-verified: 2026-07-15
 ---
 
 # Getting Started on Windows
 
-This guide walks you through installing and running the Viper compiler toolchain on Windows 10/11. All commands use **PowerShell**.
+Viper Tools supports Windows 10 version 1809 or newer and Windows 11 on x64
+and ARM64. The installer is self-contained: it does not run PowerShell,
+download packages, or require a separately installed Microsoft C++
+redistributable.
 
----
+## Install Viper Tools
 
-## Prerequisites
+Run the installer that matches the computer's architecture. A signed release
+should show its expected publisher in Windows. Do not bypass an unexpected or
+invalid signature warning.
 
-| Tool | Minimum Version | Purpose |
-|------|-----------------|---------|
-| Visual Studio 2019+ (or Build Tools) | with "Desktop development with C++" workload | Provides MSVC compiler, linker, and Windows SDK |
-| CMake | 3.20 | Build system generator |
-| Git | any | Clone the repository |
+The first page offers four clear paths:
 
-### Install Visual Studio Build Tools
+- **Install recommended** installs the compiler tools, ViperIDE, SDK files, and
+  available integrations.
+- **Install SDK tools** installs the command-line tools and native development
+  files without the IDE-focused extras.
+- **Install everything** also installs all packaged samples.
+- **Customize** lets you choose user or machine scope, a Unicode-capable custom
+  folder, individual components, PATH, safe file associations, and shortcuts.
 
-You need either the full Visual Studio IDE or the standalone Build Tools. The critical requirement is the **"Desktop development with C++"** workload, which provides the MSVC compiler and the Windows SDK.
+Current-user setup is the default and needs no administrator approval. A
+stable release defaults to `%LocalAppData%\Programs\Viper`; an all-users install
+defaults to `%ProgramFiles%\Viper`. Local builds use a separate development
+identity and `Viper development` directory so they can coexist with a stable
+release.
 
-**Option A — Install via `winget` (Build Tools only, no IDE):**
+The source-file integration adds Viper to **Open with** for `.zia`, `.bas`, and
+`.il`. It does not take over an existing default application. PATH and shortcut
+entries are explicitly owned by the selected Viper package and are removed
+only if that package created them.
 
-```powershell
-winget install Microsoft.VisualStudio.2022.BuildTools
-```
-
-After installation, open **Visual Studio Installer**, click **Modify** on your Build Tools installation, and ensure **"Desktop development with C++"** is checked.
-
-**Option B — Install Visual Studio Community (free, includes IDE):**
-
-```powershell
-winget install Microsoft.VisualStudio.2022.Community
-```
-
-During installation (or via Modify), select the **"Desktop development with C++"** workload.
-
-### Install CMake
-
-CMake is bundled with the Visual Studio C++ workload. To verify it is available, open a **Developer PowerShell for VS** and run:
-
-```powershell
-cmake --version
-```
-
-If CMake is not found or the version is below 3.20, install it separately:
-
-```powershell
-winget install Kitware.CMake
-```
-
-Close and reopen your terminal after installing so the `PATH` update takes effect.
-
-### Install Git
-
-```powershell
-winget install Git.Git
-```
-
-Close and reopen your terminal, then verify:
-
-```powershell
-git --version
-```
-
-### Optional: Install LLVM/Clang
-
-The build script prefers `clang-cl` (the MSVC-compatible Clang driver) when available. This is optional — MSVC alone is sufficient.
-
-```powershell
-winget install LLVM.LLVM
-```
-
-No additional libraries are required. The Windows SDK (included with the C++ workload) provides GDI, WASAPI, and all other system APIs that Viper uses.
-
----
-
-## Clone and Build
-
-Open a **Developer PowerShell for VS** (this ensures the compiler and CMake are in your `PATH`) and run:
-
-```powershell
-git clone https://github.com/splanck/viper.git
-cd viper
-.\scripts\build_viper_win.cmd
-```
-
-The build script will:
-
-1. Detect your compiler (prefers `clang-cl` if installed, otherwise MSVC)
-2. Configure the project with CMake
-3. Build all targets in **Debug** configuration
-4. Run the test suite
-
-A successful build ends with output similar to:
-
-```
-Build succeeded.
-...
-100% tests passed, 0 tests failed
-```
-
-The build script leaves Debug binaries in the build tree for local development.
-On machines with many logical CPUs, the script caps automatic MSVC build
-parallelism to avoid compiler heap exhaustion. Set `VIPER_JOBS`, for example
-`$env:VIPER_JOBS = "12"`, when you want to override that default.
-Use the installer script below when you want a reusable developer toolchain on
-the machine.
-
----
-
-## Build and Run the Developer Installer
-
-The Windows installer must be built from a Release or RelWithDebInfo payload.
-Debug payloads reference the MSVC debug runtime and are intentionally rejected
-unless you pass `--allow-debug-toolchain` for local diagnostics.
-
-From a Developer PowerShell:
-
-```powershell
-.\scripts\build_installer.cmd
-```
-
-By default this configures/builds Release, stages the full CMake install payload,
-and emits a per-user installer under `build\installers`. Run the generated
-`viper-*-windows-*.exe`; it installs to `%LocalAppData%\Viper`, adds `bin` to the
-user `PATH`, and creates Start Menu developer shortcuts. Open a new terminal
-after installation so Windows reloads the updated environment.
-
-Upgrades are journaled: payload and registry/PATH state are backed up until the
-new files and metadata commit, unowned collisions and reparse-point traversal
-are rejected, stale owned files are removed, and an interrupted transaction is
-recovered by the next installer or uninstaller.
-
-Useful installer options:
-
-```powershell
-.\scripts\build_installer.cmd --windows-install-scope machine
-.\scripts\build_installer.cmd --windows-file-associations on
-.\scripts\build_installer.cmd --windows-no-path
-.\scripts\build_installer.cmd --windows-shortcuts off
-```
-
-See the [installer and package release guide](../installer-release.md) for
-Authenticode release mode, checksums, and clean-VM lifecycle validation.
-
----
+Open a new terminal after setup so it receives the updated PATH. You can also
+open **Viper Developer Prompt** from the Start menu. That prompt sets
+`VIPER_HOME`, `Viper_DIR`, and `CMAKE_PREFIX_PATH` for installed SDK use.
 
 ## Verify the Installation
 
-After a local Debug build, run the Viper binary directly from the build directory:
-
-```powershell
-.\build\src\tools\viper\Debug\viper.exe --version
-```
-
-You should see the version string (e.g., `viper v0.2.x-dev`) followed by the IL version.
-
-After running the developer installer, open a new PowerShell and verify:
+In a new PowerShell window, run:
 
 ```powershell
 viper --version
+viper eval '40 + 2' --type
 ```
 
----
+If PATH integration was not selected, launch the Viper Developer Prompt or run
+`bin\viper.exe` from the chosen installation folder.
 
 ## Your First Program
 
-Create a file called `hello.zia` with the following content:
+Create `hello.zia`:
 
 ```zia
 module Hello;
@@ -184,100 +71,166 @@ func start() {
 Run it:
 
 ```powershell
-viper run hello.zia
+viper run .\hello.zia
 ```
 
-**Expected output:**
+The expected output is `Hello, World!`.
 
+## Installed Developer Features
+
+The recommended setup includes the Viper command-line tools, language servers,
+ViperIDE, headers, static libraries, CMake package files, documentation, and
+available editor integration. An external CMake project can use the installed
+SDK from the Viper Developer Prompt:
+
+```cmake
+find_package(Viper CONFIG REQUIRED)
+target_link_libraries(my_program PRIVATE viper::il_core viper::il_io)
 ```
-Hello, World!
+
+Git, CMake, Ninja, Visual Studio C++, the Windows SDK, VS Code, and Windows
+Terminal are optional companion tools; setup detects but never downloads or
+changes them. Running Zia, BASIC, IL, ViperIDE, and the VM needs none of those
+tools. Native code generation and compiling an external C++ consumer require
+an architecture-matched compiler, linker, and Windows SDK.
+
+## Change, Repair, or Remove Viper
+
+Open **Settings > Apps > Installed apps**, find the exact Viper channel, and
+choose its maintenance action:
+
+- **Modify** changes components and integrations.
+- **Repair** verifies installed hashes and restores missing or modified owned
+  files while preserving unrelated developer files.
+- **Uninstall** removes only files, PATH entries, registry values, associations,
+  and shortcuts owned by that package.
+
+Running the installed `uninstall.exe` directly also starts the verified cached
+maintenance package, so the installation directory can be removed completely.
+If a Viper process has files open, setup identifies it with Windows Restart
+Manager and offers a safe close-and-retry path.
+
+Installation and maintenance are transactional. A power loss or terminated
+process leaves a journal that the next setup or maintenance run recovers before
+making another change. A newer installed version is protected from accidental
+downgrade.
+
+## Unattended Setup
+
+Use `/quiet` for no interface or `/passive` for progress without prompts. Quote
+paths containing spaces.
+
+```powershell
+.\viper-toolchain-windows-x64.exe /install /quiet /norestart `
+  /scope user /type typical /log "$env:TEMP\viper-setup.log"
+
+.\viper-toolchain-windows-x64.exe /install /quiet /norestart `
+  /installDir 'D:\Developer Tools\Viper' /type sdk /noAssociations
 ```
 
-**What this program does:**
+Maintenance accepts `/modify`, `/repair`, or `/uninstall`. Other automation
+switches include `/components <comma-separated-ids>`, `/addToPath`, `/noPath`,
+`/associations`, `/noAssociations`, `/shortcuts`, `/noShortcuts`,
+`/closeApplications`, and `/allowDowngrade`. Run `setup.exe /?` for the exact
+contract embedded in that package.
 
-- `module Hello;` declares the module name (required in every Zia file)
-- `bind Viper.Terminal;` imports the Terminal module so you can call its functions directly
-- `func start()` is the program entry point (like `main()` in C)
-- `Say()` prints a line of text to the console with a trailing newline
+Package inspection and update discovery are non-mutating automation operations.
+Use `/output <path>` for reliable capture from services, build systems, and
+other hosts that do not attach standard output to graphical applications. The
+installer replaces that UTF-8 JSON file atomically or returns an error; it never
+reports success after producing a partial or missing document.
 
----
+```powershell
+./viper-toolchain-windows-x64.exe /inspect /quiet /output package.json
+./viper-toolchain-windows-x64.exe /checkForUpdates /quiet /output update.json
+```
 
-## What to Read Next
+Important exit codes are:
 
-- **[Zia Tutorial](../zia-getting-started.md)** — Learn Zia by example: variables, control flow, functions, classes, and generics
-- **[Zia Reference](../zia-reference.md)** — Complete language reference
-- **[BASIC Tutorial](../basic-language.md)** — Viper also ships a BASIC frontend
-- **[Getting Started (general)](../getting-started.md)** — Project creation with `viper init`, the REPL, IL programs, and the full command reference
+| Code | Meaning |
+|---:|---|
+| 0 | Success |
+| 87 | Invalid command line or path |
+| 1602 | User cancellation |
+| 1603 | Fatal setup error; inspect the log |
+| 1618 | Another Viper lifecycle operation is active |
+| 1638 | A newer version is already installed |
+| 3010 | Success; restart is required |
 
----
+Without `/log`, setup writes a redacted UTF-8 log named
+`ViperInstaller-<package-id>-<UTC-time>-<pid>.log` under `%TEMP%`.
+
+## Build Viper and the Installer from Source
+
+Source builds require CMake 3.20 or newer and Visual Studio or Build Tools with
+the **Desktop development with C++** workload and a Windows SDK. For ARM64,
+install the ARM64 C++ build tools and ARM64 MSVC libraries as well. Open a
+Developer PowerShell for Visual Studio in an existing Viper source checkout:
+
+```powershell
+.\scripts\build_viper_win.cmd
+```
+
+The canonical script builds and tests Viper with MSVC by default. Optional
+fast-iteration settings include:
+
+```powershell
+$env:VIPER_SKIP_CLEAN = '1'
+$env:VIPER_CMAKE_GENERATOR = 'Ninja'
+$env:VIPER_BUILD_TYPE = 'Release'
+.\scripts\build_viper_win.cmd
+```
+
+Build a local developer installer with:
+
+```powershell
+.\scripts\build_installer.cmd --target windows
+```
+
+Debug CRT payloads are rejected by default. Use Release or RelWithDebInfo for a
+package intended for another developer. See the
+[installer release guide](../installer-release.md) for signing, reproducible
+release metadata, recursive verification, update manifests, and the complete
+validation matrix.
 
 ## Troubleshooting
 
-### 1. "No CMAKE_CXX_COMPILER could be found"
+### `viper` is not recognized
 
-**Symptom:** CMake exits with:
+Open a new terminal, use the Viper Developer Prompt, or modify the installation
+and enable PATH integration. Existing terminals retain their old environment.
 
-```
-CMake Error at CMakeLists.txt:
-  No CMAKE_CXX_COMPILER could be found.
-```
+### Setup reports another operation is active
 
-**Cause:** The **"Desktop development with C++"** workload is not installed in Visual Studio, or you are not running from a Developer Command Prompt.
+Wait for the other Viper setup, repair, or uninstall process to finish and run
+setup again. Lifecycle operations are serialized to prevent two packages from
+editing the same owned state concurrently.
 
-**Fix:**
+### Setup reports files in use
 
-1. Open **Visual Studio Installer**.
-2. Click **Modify** on your VS or Build Tools installation.
-3. Check **"Desktop development with C++"** and click **Modify** to install.
-4. After installation, open a fresh **Developer PowerShell for VS** and re-run the build.
+Save work and close the listed Viper applications, then retry. In unattended
+deployment, `/closeApplications` asks Restart Manager to close eligible
+applications; `/norestart` prevents automatic restart behavior.
 
-If you have the workload installed but CMake still cannot find the compiler, ensure you are running from a Developer prompt (not a plain PowerShell window). You can launch one from the Start menu by searching for **"Developer PowerShell for VS"**.
+### Setup returns 1638
 
-### 2. `cmake` is not recognized as a command
+The installed package is newer. Obtain a newer installer, uninstall that
+channel first, or use `/allowDowngrade` only when the rollback is intentional.
 
-**Symptom:**
+### Native code generation cannot find a linker or SDK
 
-```
-cmake : The term 'cmake' is not recognized as the name of a cmdlet
-```
+Install the architecture-matched Visual Studio C++ build tools and Windows SDK,
+then use a Developer PowerShell or the Viper Developer Prompt. The Viper runtime
+itself remains installed and usable without those optional native build tools.
 
-**Cause:** CMake is not in your `PATH`. This happens when using a regular PowerShell window instead of the Developer prompt, or when CMake was not installed.
+### Source build cannot find a C++ compiler
 
-**Fix — Option A:** Open **Developer PowerShell for VS** from the Start menu. This environment automatically includes CMake in the `PATH`.
+Modify Visual Studio or Build Tools and select **Desktop development with C++**.
+Then open a fresh Developer PowerShell and rerun the canonical build script.
 
-**Fix — Option B:** Install CMake standalone and restart your terminal:
+## What to Read Next
 
-```powershell
-winget install Kitware.CMake
-```
-
-Close and reopen PowerShell, then verify:
-
-```powershell
-cmake --version
-```
-
-### 3. Build succeeds but `viper` command is not found
-
-**Symptom:** The build completes successfully, but running `viper --version` produces:
-
-```
-viper : The term 'viper' is not recognized as the name of a cmdlet
-```
-
-**Cause:** On Windows the build script does not install binaries to a system directory. The `viper.exe` binary is located inside the build tree.
-
-**Fix:** Add the build output directory to your `PATH` for the current session:
-
-```powershell
-$env:PATH += ";$PWD\build\src\tools\viper\Debug"
-viper --version
-```
-
-Or run the binary directly:
-
-```powershell
-.\build\src\tools\viper\Debug\viper.exe --version
-```
-
-To make this permanent, add the full path to your user `PATH` environment variable (see the [Verify the Installation](#verify-the-installation) section above).
+- [Zia tutorial](../zia-getting-started.md)
+- [Zia reference](../zia-reference.md)
+- [BASIC tutorial](../basic-language.md)
+- [General getting started guide](../getting-started.md)

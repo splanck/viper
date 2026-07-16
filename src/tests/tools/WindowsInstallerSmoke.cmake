@@ -1,3 +1,21 @@
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/tests/tools/WindowsInstallerSmoke.cmake
+# Purpose: Exercise an elevated all-users native Windows application lifecycle.
+#
+# Key invariants: The opt-in test owns one dedicated machine-scope product id.
+#
+# Ownership/Lifetime: Product state is removed through its maintenance cache.
+#
+# Links: WindowsPackageBuilder.cpp, WindowsInstallerLifecycle.cpp
+#
+#===----------------------------------------------------------------------===#
+
 cmake_minimum_required(VERSION 3.20)
 
 foreach (_required VIPER_BIN TEST_WORK_DIR)
@@ -42,6 +60,14 @@ shortcut-menu on
 shortcut-desktop off
 file-assoc .vapsmoke \"VAPS Smoke Source\" text/x-vaps-smoke
 ")
+
+execute_process(
+        COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command
+        "$arpPath='Registry::HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.install'; $arp=Get-ItemProperty -LiteralPath $arpPath -ErrorAction SilentlyContinue; $cache=if($arp -and $arp.ViperMaintenanceCache){[string]$arp.ViperMaintenanceCache}else{''}; $root=Join-Path $env:ProgramFiles 'VAPS Smoke'; $candidate=if($cache -and (Test-Path -LiteralPath $cache -PathType Leaf)){$cache}elseif(Test-Path -LiteralPath (Join-Path $root 'uninstall.exe') -PathType Leaf){Join-Path $root 'uninstall.exe'}else{$null}; if($candidate){$p=Start-Process -FilePath $candidate -ArgumentList @('/uninstall','/quiet','/norestart') -PassThru -Wait; if($p.ExitCode -notin @(0,3010)){throw \"Prior elevated test uninstall returned $($p.ExitCode)\"}}; $deadline=[DateTime]::UtcNow.AddSeconds(45); while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath $arpPath) -or ($cache -and (Test-Path -LiteralPath $cache)))){Start-Sleep -Milliseconds 100}; if($cache -and (Test-Path -LiteralPath $cache)){throw \"Prior elevated test maintenance cache remained: $cache\"}; Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'VAPS Smoke') -Recurse -Force -ErrorAction SilentlyContinue; reg delete 'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.install' /f 2>$null; reg delete 'HKLM\\Software\\Classes\\.vapsmoke' /f 2>$null; reg delete 'HKLM\\Software\\Classes\\org.viper.smoke.install.vapsmoke' /f 2>$null; exit 0"
+        RESULT_VARIABLE _cleanup_rv)
+if (NOT _cleanup_rv EQUAL 0)
+    message(FATAL_ERROR "Elevated Windows smoke pre-cleanup failed")
+endif ()
 
 set(_installer "${TEST_WORK_DIR}/vaps-smoke-setup.exe")
 execute_process(
@@ -94,6 +120,19 @@ foreach (_arp_value QuietUninstallString DisplayIcon EstimatedSize InstallDate U
 endforeach ()
 
 execute_process(
+        COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command
+        "(Get-ItemProperty -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.install').ViperMaintenanceCache"
+        RESULT_VARIABLE _cache_query_rv
+        OUTPUT_VARIABLE _maintenance_cache
+        ERROR_VARIABLE _cache_query_err
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+if (NOT _cache_query_rv EQUAL 0 OR _maintenance_cache STREQUAL "")
+    message(FATAL_ERROR "Cannot locate elevated-app maintenance cache\n${_cache_query_err}")
+endif ()
+file(TO_NATIVE_PATH "${_install_root}" _install_root_native)
+file(TO_NATIVE_PATH "${_maintenance_cache}" _maintenance_cache_native)
+
+execute_process(
         COMMAND reg query "HKLM\\Software\\Classes\\.vapsmoke\\OpenWithProgids"
         RESULT_VARIABLE _assoc_rv
         OUTPUT_VARIABLE _assoc_out
@@ -110,6 +149,17 @@ execute_process(
         TIMEOUT 120)
 if (NOT _uninstall_rv EQUAL 0)
     message(FATAL_ERROR "Windows uninstaller failed\nstdout:\n${_uninstall_out}\nstderr:\n${_uninstall_err}")
+endif ()
+execute_process(
+        COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command
+        "$deadline=[DateTime]::UtcNow.AddSeconds(45); $arp='Registry::HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.install'; while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp))){Start-Sleep -Milliseconds 100}; if((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp)){exit 1}"
+        RESULT_VARIABLE _cleanup_wait_rv)
+if (NOT _cleanup_wait_rv EQUAL 0)
+    message(FATAL_ERROR "Detached elevated-app cleanup did not converge")
+endif ()
+get_filename_component(_maintenance_cache_leaf "${_maintenance_cache}" DIRECTORY)
+if (EXISTS "${_maintenance_cache_leaf}")
+    message(FATAL_ERROR "Elevated-app package cache leaf remained: ${_maintenance_cache_leaf}")
 endif ()
 
 if (EXISTS "${_app_exe}")

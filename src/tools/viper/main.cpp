@@ -55,6 +55,12 @@ void printVersion() {
     std::cout << "viper v" << VIPER_VERSION_STR << "\n";
     if (std::string(VIPER_SNAPSHOT_STR).size())
         std::cout << "snap: " << VIPER_SNAPSHOT_STR << "\n";
+    if (std::string(VIPER_SOURCE_COMMIT_STR).size()) {
+        std::cout << "source: " << VIPER_SOURCE_COMMIT_STR << " (" << VIPER_SOURCE_STATE_STR
+                  << ")\n";
+    } else {
+        std::cout << "source: unknown (" << VIPER_SOURCE_STATE_STR << ")\n";
+    }
     std::cout << "IL current: " << VIPER_IL_VERSION_STR << "\n";
     std::cout << "IL supported: " << VIPER_IL_VERSION_STR << "\n";
     std::cout << "Precise Numerics: enabled\n";

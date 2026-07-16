@@ -1,21 +1,41 @@
-# SPDX-License-Identifier: GPL-3.0-only
-# Validate a generated Viper Windows toolchain installer on a clean Windows VM.
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: scripts/validate-windows-toolchain-installer.ps1
+# Purpose: Validate a native Viper toolchain installer on a disposable Windows host.
+#
+# Key invariants:
+#   - Package identity and paths come from the recursively verified /inspect record.
+#   - Existing installations are never removed without an explicit opt-in.
+#   - Validation finishes through the product uninstaller and checks detached cleanup.
+#
+# Ownership/Lifetime: A GUID-named temporary workspace and this run's product state.
+#
+# Links: docs/installer-release.md, WindowsToolchainInstallerE2E.cmake
+#
+#===----------------------------------------------------------------------===#
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Installer,
 
-    [string]$BaselineInstaller,
+    [string]$BaselineInstaller = "",
     [string]$UpgradeStaleRelativePath = "share\viper\installer-upgrade-stale.txt",
-
-    [string]$InstallRoot = "$env:LOCALAPPDATA\Viper",
+    [string]$InstallRoot = "",
+    [string]$Scope = "",
     [string]$SignToolPath = "signtool.exe",
 
     [switch]$RequireSignature,
+    [switch]$ReplaceExisting,
     [switch]$KeepInstalled
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 function Quote-ProcessArgument {
@@ -32,168 +52,415 @@ function Quote-ProcessArgument {
     return $escaped
 }
 
-function Run-Checked {
+function Invoke-CapturedProcess {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
+        [Parameter(Mandatory = $true)][string]$FilePath,
         [string[]]$Arguments = @(),
         [string]$WorkingDirectory = (Get-Location).Path
     )
 
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi = [Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $FilePath
     if ($psi.PSObject.Properties.Name -contains "ArgumentList") {
-        foreach ($arg in $Arguments) {
-            [void]$psi.ArgumentList.Add($arg)
+        foreach ($argument in $Arguments) {
+            [void]$psi.ArgumentList.Add($argument)
         }
     } else {
         $psi.Arguments = ($Arguments | ForEach-Object { Quote-ProcessArgument $_ }) -join " "
     }
     $psi.WorkingDirectory = $WorkingDirectory
     $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
-    $process = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-    if ($process.ExitCode -ne 0) {
-        throw "$FilePath failed with exit code $($process.ExitCode)`nstdout:`n$stdout`nstderr:`n$stderr"
+    $process = [Diagnostics.Process]::Start($psi)
+    if ($null -eq $process) {
+        throw "Failed to start process: $FilePath"
     }
-    return $stdout
+    try {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Stdout = $stdoutTask.GetAwaiter().GetResult()
+            Stderr = $stderrTask.GetAwaiter().GetResult()
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+function Invoke-CheckedProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string[]]$Arguments = @(),
+        [string]$WorkingDirectory = (Get-Location).Path,
+        [int[]]$SuccessCodes = @(0)
+    )
+
+    $result = Invoke-CapturedProcess -FilePath $FilePath -Arguments $Arguments `
+        -WorkingDirectory $WorkingDirectory
+    if ($result.ExitCode -notin $SuccessCodes) {
+        throw "$FilePath failed with exit code $($result.ExitCode)`n" +
+            "stdout:`n$($result.Stdout)`nstderr:`n$($result.Stderr)"
+    }
+    return $result.Stdout
+}
+
+function Get-InstallerMetadata {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $jsonPath = Join-Path ([IO.Path]::GetTempPath()) `
+        ("viper-installer-inspect-{0}.json" -f [Guid]::NewGuid().ToString("N"))
+    try {
+        $result = Invoke-CapturedProcess -FilePath $Path `
+            -Arguments @("/inspect", "/output", $jsonPath)
+        if ($result.ExitCode -ne 0) {
+            throw "Installer inspection failed for $Path`n$($result.Stdout)`n$($result.Stderr)"
+        }
+        if (-not (Test-Path -LiteralPath $jsonPath -PathType Leaf)) {
+            throw "Installer inspection did not create $jsonPath."
+        }
+        $json = [IO.File]::ReadAllText($jsonPath, [Text.Encoding]::UTF8)
+        $metadata = $json | ConvertFrom-Json
+    } catch {
+        throw "Installer /inspect did not return valid JSON for $Path`: $($_.Exception.Message)"
+    } finally {
+        Remove-Item -LiteralPath $jsonPath -Force -ErrorAction SilentlyContinue
+    }
+    $requiredFields = @(
+        "schema_version", "kind", "identifier", "display_name", "version",
+        "architecture", "channel", "default_scope", "default_install_dir", "components"
+    )
+    foreach ($field in $requiredFields) {
+        if ($metadata.PSObject.Properties.Name -notcontains $field) {
+            throw "Installer /inspect is missing required schema-3 field '$field'."
+        }
+    }
+    if ($metadata.schema_version -lt 3 -or $metadata.kind -ne "toolchain" -or
+        [string]::IsNullOrWhiteSpace($metadata.identifier) -or
+        [string]::IsNullOrWhiteSpace($metadata.default_install_dir)) {
+        throw "Installer does not expose the required native schema-3 toolchain identity."
+    }
+    return $metadata
+}
+
+function Wait-PathAbsent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$Seconds = 30
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+    while ([DateTime]::UtcNow -lt $deadline -and (Test-Path -LiteralPath $Path)) {
+        Start-Sleep -Milliseconds 100
+    }
+    return -not (Test-Path -LiteralPath $Path)
+}
+
+function Test-PathEntry {
+    param([AllowNull()][string]$Value, [Parameter(Mandatory = $true)][string]$Expected)
+
+    foreach ($entry in @($Value -split ";")) {
+        if ($entry -and [string]::Equals(
+                $entry.Trim().TrimEnd('\'),
+                $Expected.TrimEnd('\'),
+                [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Assert-AssociationState {
+    param(
+        [Parameter(Mandatory = $true)][string]$ClassesRoot,
+        [Parameter(Mandatory = $true)][string]$Identifier,
+        [Parameter(Mandatory = $true)][bool]$Expected
+    )
+
+    foreach ($extension in @("zia", "bas", "il")) {
+        $progId = "$Identifier.$extension"
+        $openWith = Join-Path $ClassesRoot ".$extension\OpenWithProgids"
+        $present = $false
+        if (Test-Path -LiteralPath $openWith) {
+            $properties = Get-ItemProperty -LiteralPath $openWith
+            $present = $properties.PSObject.Properties.Name -contains $progId
+        }
+        if ($present -ne $Expected) {
+            throw "Open With state for $progId was $present; expected $Expected."
+        }
+        $progIdPath = Join-Path $ClassesRoot $progId
+        if ((Test-Path -LiteralPath $progIdPath) -ne $Expected) {
+            throw "ProgID state for $progIdPath did not match expected state $Expected."
+        }
+    }
+}
+
+function Assert-AdministratorForMachineScope {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw "Machine-scope validation must run from an elevated PowerShell session."
+    }
 }
 
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
-$baselineInstallerPath = $null
-if ($BaselineInstaller) {
-    $baselineInstallerPath = (Resolve-Path -LiteralPath $BaselineInstaller).Path
+$metadata = Get-InstallerMetadata $installerPath
+$baselinePath = $null
+if (-not [string]::IsNullOrWhiteSpace($BaselineInstaller)) {
+    $baselinePath = (Resolve-Path -LiteralPath $BaselineInstaller).Path
+    $baselineMetadata = Get-InstallerMetadata $baselinePath
+    if ($baselineMetadata.identifier -ne $metadata.identifier -or
+        $baselineMetadata.architecture -ne $metadata.architecture) {
+        throw "Baseline and current installers must have the same identifier and architecture."
+    }
 }
-$work = Join-Path $env:TEMP ("viper-installer-vm-" + [Guid]::NewGuid().ToString("N"))
-$powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
-$originalPath = $env:Path
-$upgradeUnrelated = Join-Path $InstallRoot "share\viper\installer-upgrade-unrelated.txt"
-$upgradeUnrelatedExpected = $false
-$machineScope = $InstallRoot.StartsWith(
-    $env:ProgramFiles, [System.StringComparison]::OrdinalIgnoreCase)
+
+if ([string]::IsNullOrWhiteSpace($Scope)) {
+    $Scope = [string]$metadata.default_scope
+}
+$Scope = $Scope.ToLowerInvariant()
+if ($Scope -notin @("user", "machine")) {
+    throw "Scope must be user or machine."
+}
+if ($Scope -eq "machine") {
+    Assert-AdministratorForMachineScope
+}
+
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+    $base = if ($Scope -eq "machine") {
+        $env:ProgramFiles
+    } else {
+        Join-Path $env:LOCALAPPDATA "Programs"
+    }
+    $InstallRoot = Join-Path $base ([string]$metadata.default_install_dir)
+}
+$InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
+if ($InstallRoot -eq [IO.Path]::GetPathRoot($InstallRoot) -or $InstallRoot.Length -lt 8) {
+    throw "Refusing unsafe validation install root: $InstallRoot"
+}
+
+$identifier = [string]$metadata.identifier
+$machineScope = $Scope -eq "machine"
 $classesRoot = if ($machineScope) { "HKLM:\Software\Classes" } else { "HKCU:\Software\Classes" }
 $uninstallRegistry = if ($machineScope) {
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\org.viper.toolchain"
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$identifier"
 } else {
-    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\org.viper.toolchain"
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$identifier"
 }
 $pathScope = if ($machineScope) { "Machine" } else { "User" }
 $installedPathEntry = Join-Path $InstallRoot "bin"
-New-Item -ItemType Directory -Path $work | Out-Null
+$startMenuBase = if ($machineScope) {
+    Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"
+} else {
+    Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+}
+$startMenu = Join-Path $startMenuBase ([string]$metadata.default_install_dir)
+$work = Join-Path $env:TEMP ("viper-installer-vm-" + [Guid]::NewGuid().ToString("N"))
+$powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+$originalPath = $env:Path
+$unownedSentinel = Join-Path $InstallRoot "validator-unowned-sentinel.txt"
+$stalePath = if ($UpgradeStaleRelativePath) {
+    Join-Path $InstallRoot $UpgradeStaleRelativePath
+} else {
+    $null
+}
+$installedByValidation = $false
+$maintenanceCache = $null
+$components = @($metadata.components)
+New-Item -ItemType Directory -Path $work -Force | Out-Null
 
 try {
+    $hostArchitecture = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+    if ($metadata.architecture -ne $hostArchitecture) {
+        throw "Package architecture $($metadata.architecture) does not match validation host $hostArchitecture."
+    }
+
     if ($RequireSignature) {
-        & $SignToolPath verify /pa /all $installerPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "signtool verify failed for signed installer: $installerPath"
+        Invoke-CheckedProcess -FilePath $SignToolPath `
+            -Arguments @("verify", "/pa", "/all", "/tw", "/v", $installerPath) | Out-Null
+    }
+
+    $existingProduct = Test-Path -LiteralPath $uninstallRegistry
+    if ($existingProduct -and -not $ReplaceExisting) {
+        throw "A product with identifier $identifier is already installed. Use a disposable host " +
+            "or pass -ReplaceExisting to remove it explicitly."
+    }
+    if ($existingProduct) {
+        $existing = Get-ItemProperty -LiteralPath $uninstallRegistry
+        $existingMaintenance = if ($existing.PSObject.Properties.Name -contains
+            "ViperMaintenanceCache") {
+            [string]$existing.ViperMaintenanceCache
+        } else {
+            ""
+        }
+        if ([string]::IsNullOrWhiteSpace($existingMaintenance) -or
+            -not (Test-Path -LiteralPath $existingMaintenance -PathType Leaf)) {
+            throw "Existing product has no verified maintenance cache: $identifier"
+        }
+        Invoke-CheckedProcess -FilePath $existingMaintenance `
+            -Arguments @("/uninstall", "/quiet", "/norestart") -SuccessCodes @(0, 3010) | Out-Null
+        if (-not (Wait-PathAbsent -Path $uninstallRegistry)) {
+            throw "Existing product registration did not disappear after uninstall."
         }
     }
 
-    if (Test-Path -LiteralPath (Join-Path $InstallRoot "uninstall.exe")) {
-        Run-Checked -FilePath (Join-Path $InstallRoot "uninstall.exe") -Arguments @("/quiet", "/norestart") | Out-Null
+    $installArguments = @(
+        "/install", "/quiet", "/norestart", "/scope", $Scope,
+        "/installDir", $InstallRoot, "/type", "complete",
+        "/addToPath", "/associations", "/shortcuts"
+    )
+    if ($baselinePath) {
+        Invoke-CheckedProcess -FilePath $baselinePath -Arguments $installArguments `
+            -SuccessCodes @(0, 3010) | Out-Null
+        $installedByValidation = $true
+        if ($stalePath -and -not (Test-Path -LiteralPath $stalePath -PathType Leaf)) {
+            throw "Baseline installer omitted the expected stale-owned file: $stalePath"
+        }
+        New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+        [IO.File]::WriteAllText($unownedSentinel, "preserve-unowned-upgrade-content")
     }
 
-    if ($baselineInstallerPath) {
-        Run-Checked -FilePath $baselineInstallerPath -Arguments @("/quiet", "/norestart") | Out-Null
-        if ($UpgradeStaleRelativePath) {
-            $stalePath = Join-Path $InstallRoot $UpgradeStaleRelativePath
-            if (-not (Test-Path -LiteralPath $stalePath -PathType Leaf)) {
-                throw "Baseline installer did not install the expected upgrade-stale file: $stalePath"
-            }
-        }
-        New-Item -ItemType Directory -Path (Split-Path -Parent $upgradeUnrelated) -Force | Out-Null
-        Set-Content -LiteralPath $upgradeUnrelated -Value "preserve-unowned-upgrade-content" -Encoding ASCII
-        $upgradeUnrelatedExpected = $true
+    Invoke-CheckedProcess -FilePath $installerPath -Arguments $installArguments `
+        -SuccessCodes @(0, 3010) | Out-Null
+    $installedByValidation = $true
+
+    if ($stalePath -and $baselinePath -and (Test-Path -LiteralPath $stalePath)) {
+        throw "Upgrade left a file owned only by the baseline package: $stalePath"
+    }
+    if ($baselinePath -and
+        [IO.File]::ReadAllText($unownedSentinel) -ne "preserve-unowned-upgrade-content") {
+        throw "Upgrade modified unrelated content in the install tree."
     }
 
-    Run-Checked -FilePath $installerPath -Arguments @("/quiet", "/norestart") | Out-Null
-
-    if ($baselineInstallerPath) {
-        if ($UpgradeStaleRelativePath) {
-            $stalePath = Join-Path $InstallRoot $UpgradeStaleRelativePath
-            if (Test-Path -LiteralPath $stalePath) {
-                throw "Upgrade left a stale file owned only by the baseline package: $stalePath"
-            }
+    if (-not (Test-Path -LiteralPath $uninstallRegistry)) {
+        throw "Expected Apps & Features registration at $uninstallRegistry"
+    }
+    $arp = Get-ItemProperty -LiteralPath $uninstallRegistry
+    foreach ($requiredProperty in @(
+            "DisplayName", "DisplayVersion", "Publisher", "InstallLocation",
+            "UninstallString", "QuietUninstallString", "ModifyPath", "RepairPath",
+            "EstimatedSize", "ViperMaintenanceCache")) {
+        if ($arp.PSObject.Properties.Name -notcontains $requiredProperty -or
+            [string]::IsNullOrWhiteSpace([string]$arp.$requiredProperty)) {
+            throw "Apps & Features metadata is missing $requiredProperty."
         }
-        if ((Get-Content -LiteralPath $upgradeUnrelated -Raw).Trim() -ne
-            "preserve-unowned-upgrade-content") {
-            throw "Upgrade modified unrelated content in the install tree: $upgradeUnrelated"
-        }
+    }
+    if (-not [string]::Equals(
+            [IO.Path]::GetFullPath([string]$arp.InstallLocation).TrimEnd('\'),
+            $InstallRoot.TrimEnd('\'),
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Apps & Features InstallLocation does not match the selected root."
+    }
+    $maintenanceCache = [string]$arp.ViperMaintenanceCache
+    if (-not (Test-Path -LiteralPath $maintenanceCache -PathType Leaf)) {
+        throw "Verified maintenance cache is missing: $maintenanceCache"
     }
 
     $requiredTools = @(
-        "viper",
-        "zia",
-        "vbasic",
-        "ilrun",
-        "il-verify",
-        "il-dis",
-        "zia-server",
-        "vbasic-server",
-        "basic-ast-dump",
-        "basic-lex-dump",
-        "viperide"
+        "viper", "zia", "vbasic", "ilrun", "il-verify", "il-dis",
+        "zia-server", "vbasic-server", "basic-ast-dump", "basic-lex-dump"
     )
+    if ($components -contains "viperide") {
+        $requiredTools += "viperide"
+    }
     foreach ($tool in $requiredTools) {
         $toolPath = Join-Path $InstallRoot "bin\$tool.exe"
         if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
-            throw "Expected installed $tool.exe at $toolPath"
+            throw "Expected installed tool: $toolPath"
         }
     }
 
+    $developerPrompt = Join-Path $InstallRoot "bin\viper-dev.cmd"
+    if (-not (Test-Path -LiteralPath $developerPrompt -PathType Leaf)) {
+        throw "Expected installed developer prompt: $developerPrompt"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $startMenu "Viper Developer Prompt.lnk"))) {
+        throw "Expected developer prompt Start Menu shortcut under $startMenu"
+    }
+    if ($components -contains "viperide" -and
+        -not (Test-Path -LiteralPath (Join-Path $startMenu "ViperIDE.lnk"))) {
+        throw "Expected ViperIDE Start Menu shortcut under $startMenu"
+    }
+
+    if (-not (Test-PathEntry `
+            -Value ([Environment]::GetEnvironmentVariable("Path", $pathScope)) `
+            -Expected $installedPathEntry)) {
+        throw "Installer did not add its selected PATH entry: $installedPathEntry"
+    }
+    Assert-AssociationState -ClassesRoot $classesRoot -Identifier $identifier -Expected $true
+
+    if ($components.Count -gt 1) {
+        Invoke-CheckedProcess -FilePath $maintenanceCache -Arguments @(
+            "/modify", "/quiet", "/norestart", "/type", "minimal",
+            "/noPath", "/noAssociations", "/noShortcuts") -SuccessCodes @(0, 3010) | Out-Null
+        if ($components -contains "viperide" -and
+            (Test-Path -LiteralPath (Join-Path $InstallRoot "bin\viperide.exe"))) {
+            throw "Minimal modify left the ViperIDE component installed."
+        }
+        if (Test-PathEntry `
+                -Value ([Environment]::GetEnvironmentVariable("Path", $pathScope)) `
+                -Expected $installedPathEntry) {
+            throw "Minimal modify left an integration that was disabled: PATH"
+        }
+        Assert-AssociationState -ClassesRoot $classesRoot -Identifier $identifier -Expected $false
+
+        Invoke-CheckedProcess -FilePath $maintenanceCache -Arguments @(
+            "/modify", "/quiet", "/norestart", "/type", "complete",
+            "/addToPath", "/associations", "/shortcuts") -SuccessCodes @(0, 3010) | Out-Null
+        Assert-AssociationState -ClassesRoot $classesRoot -Identifier $identifier -Expected $true
+    }
+
     $viper = Join-Path $InstallRoot "bin\viper.exe"
-    $viperide = Join-Path $InstallRoot "bin\viperide.exe"
-    $viperIcon = Join-Path $InstallRoot "share\viper\viper.ico"
-    if (-not (Test-Path -LiteralPath $viperIcon -PathType Leaf)) {
-        throw "Expected installed Viper icon at $viperIcon"
+    $expectedViperHash = (Get-FileHash -LiteralPath $viper -Algorithm SHA256).Hash
+    if (-not (Test-Path -LiteralPath $unownedSentinel)) {
+        [IO.File]::WriteAllText($unownedSentinel, "preserve-unowned-repair-content")
     }
-    Run-Checked -FilePath $viper -Arguments @("--version") | Out-Host
-    Run-Checked -FilePath $viperide -Arguments @("--version") | Out-Host
-
-    if (-not (Test-Path -LiteralPath $uninstallRegistry)) {
-        throw "Expected Add/Remove Programs registration at $uninstallRegistry"
+    [IO.File]::WriteAllText($viper, "intentionally-corrupt-for-repair")
+    Invoke-CheckedProcess -FilePath $maintenanceCache `
+        -Arguments @("/repair", "/quiet", "/norestart") -SuccessCodes @(0, 3010) | Out-Null
+    if ((Get-FileHash -LiteralPath $viper -Algorithm SHA256).Hash -ne $expectedViperHash) {
+        throw "Repair did not restore the exact owned viper.exe bytes."
     }
-    $ziaAssoc = Join-Path $classesRoot ".zia\OpenWithProgids"
-    if (-not (Test-Path -LiteralPath $ziaAssoc)) {
-        throw "Expected .zia OpenWithProgids registration at $ziaAssoc"
-    }
-    $ziaProps = Get-ItemProperty -LiteralPath $ziaAssoc
-    if ($ziaProps.PSObject.Properties.Name -notcontains "org.viper.toolchain.zia") {
-        throw "Expected .zia to advertise org.viper.toolchain.zia"
+    if (-not (Test-Path -LiteralPath $unownedSentinel -PathType Leaf)) {
+        throw "Repair removed unrelated developer content."
     }
 
+    if ($RequireSignature) {
+        Invoke-CheckedProcess -FilePath $SignToolPath `
+            -Arguments @("verify", "/pa", "/all", "/tw", "/v", $maintenanceCache) | Out-Null
+        foreach ($pe in Get-ChildItem -LiteralPath (Join-Path $InstallRoot "bin") -File |
+                Where-Object { $_.Extension -in @(".exe", ".dll") }) {
+            Invoke-CheckedProcess -FilePath $SignToolPath `
+                -Arguments @("verify", "/pa", "/all", "/tw", "/v", $pe.FullName) | Out-Null
+        }
+    }
+
+    Invoke-CheckedProcess -FilePath $viper -Arguments @("--version") | Out-Host
     $pathFromRegistry = ([Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
                          [Environment]::GetEnvironmentVariable("Path", "User"))
     $env:Path = $pathFromRegistry
     try {
-        Run-Checked -FilePath $powershell -Arguments @(
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            "viper --version"
-        ) | Out-Host
+        Invoke-CheckedProcess -FilePath $powershell -Arguments @(
+            "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-Command", "viper --version") | Out-Host
     } finally {
         $env:Path = $originalPath
     }
 
     $basic = Join-Path $work "installer-run-smoke.bas"
-    Set-Content -LiteralPath $basic -Value '10 PRINT "INSTALLER-RUN-SMOKE"' -Encoding ASCII
-    $runOut = Run-Checked -FilePath $viper -Arguments @("run", $basic)
+    [IO.File]::WriteAllText($basic, '10 PRINT "INSTALLER-RUN-SMOKE"')
+    $runOut = Invoke-CheckedProcess -FilePath $viper -Arguments @("run", $basic)
     if ($runOut -notmatch "INSTALLER-RUN-SMOKE") {
         throw "viper run produced unexpected output: $runOut"
     }
 
-    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
     $il = Join-Path $work "installer-native-smoke.il"
-    $exe = Join-Path $work "installer-native-smoke.exe"
+    $nativeExe = Join-Path $work "installer-native-smoke.exe"
     Remove-Item Env:VIPER_LIB_PATH -ErrorAction SilentlyContinue
-    Set-Content -LiteralPath $il -Encoding ASCII -Value @"
+    [IO.File]::WriteAllText($il, @'
 il 0.3.0
 
 extern @Viper.Terminal.PrintStr(str) -> void
@@ -205,23 +472,22 @@ entry:
   call @Viper.Terminal.PrintStr(%msg)
   ret 0
 }
-"@
-    Run-Checked -FilePath $viper -Arguments @("codegen", $arch, $il, "-o", $exe) -WorkingDirectory $work | Out-Null
-    $nativeOut = Run-Checked -FilePath $exe -WorkingDirectory $work
+'@)
+    Invoke-CheckedProcess -FilePath $viper -Arguments @(
+        "codegen", [string]$metadata.architecture, $il, "-o", $nativeExe) `
+        -WorkingDirectory $work | Out-Null
+    $nativeOut = Invoke-CheckedProcess -FilePath $nativeExe -WorkingDirectory $work
     if ($nativeOut -notmatch "INSTALLER-NATIVE-SMOKE") {
-        throw "native smoke produced unexpected output: $nativeOut"
+        throw "Native smoke produced unexpected output: $nativeOut"
     }
 
-    $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
-    $cmd = Join-Path $env:SystemRoot "System32\cmd.exe"
-    $developerPrompt = Join-Path $InstallRoot "bin\viper-dev.cmd"
-    if (-not (Test-Path -LiteralPath $developerPrompt -PathType Leaf)) {
-        throw "Expected installed developer prompt at $developerPrompt"
-    }
-    $consumerSource = Join-Path $work "cmake-consumer-source"
-    $consumerBuild = Join-Path $work "cmake-consumer-build"
-    New-Item -ItemType Directory -Path $consumerSource | Out-Null
-    Set-Content -LiteralPath (Join-Path $consumerSource "CMakeLists.txt") -Encoding ASCII -Value @'
+    if ($components -contains "sdk") {
+        $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
+        $cmd = Join-Path $env:SystemRoot "System32\cmd.exe"
+        $consumerSource = Join-Path $work "cmake-consumer-source"
+        $consumerBuild = Join-Path $work "cmake-consumer-build"
+        New-Item -ItemType Directory -Path $consumerSource -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $consumerSource "CMakeLists.txt"), @'
 cmake_minimum_required(VERSION 3.20)
 project(viper_installer_consumer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
@@ -229,8 +495,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Viper CONFIG REQUIRED)
 add_executable(viper_installer_consumer main.cpp)
 target_link_libraries(viper_installer_consumer PRIVATE viper::il_core viper::il_io)
-'@
-    Set-Content -LiteralPath (Join-Path $consumerSource "main.cpp") -Encoding ASCII -Value @'
+'@)
+        [IO.File]::WriteAllText((Join-Path $consumerSource "main.cpp"), @'
 #include <sstream>
 #include <viper/il/core/Module.hpp>
 #include <viper/il/io/Serializer.hpp>
@@ -241,78 +507,91 @@ int main() {
     il::io::Serializer::write(module, out);
     return out.str().empty() ? 1 : 0;
 }
-'@
-    $consumerDriver = Join-Path $work "build-cmake-consumer.cmd"
-    Set-Content -LiteralPath $consumerDriver -Encoding ASCII -Value @"
+'@)
+        $consumerDriver = Join-Path $work "build-cmake-consumer.cmd"
+        [IO.File]::WriteAllText($consumerDriver, @"
 @echo off
+chcp 65001 >nul
 call "$developerPrompt"
 if errorlevel 1 exit /b %errorlevel%
 "$cmake" -S "$consumerSource" -B "$consumerBuild"
 if errorlevel 1 exit /b %errorlevel%
 "$cmake" --build "$consumerBuild" --config Release
 exit /b %errorlevel%
-"@
-    Run-Checked -FilePath $cmd -Arguments @("/d", "/c", $consumerDriver) | Out-Host
-    $consumerExe = @(
-        (Join-Path $consumerBuild "Release\viper_installer_consumer.exe"),
-        (Join-Path $consumerBuild "viper_installer_consumer.exe")
-    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-    if (-not $consumerExe) {
-        throw "CMake consumer build did not produce viper_installer_consumer.exe"
+"@)
+        Invoke-CheckedProcess -FilePath $cmd -Arguments @("/d", "/c", $consumerDriver) | Out-Host
+        $consumerExe = @(
+            (Join-Path $consumerBuild "Release\viper_installer_consumer.exe"),
+            (Join-Path $consumerBuild "viper_installer_consumer.exe")
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $consumerExe) {
+            throw "CMake consumer build did not produce viper_installer_consumer.exe."
+        }
+        Invoke-CheckedProcess -FilePath $consumerExe | Out-Null
     }
-    Run-Checked -FilePath $consumerExe | Out-Null
-}
-finally {
-    if (-not $KeepInstalled -and (Test-Path -LiteralPath (Join-Path $InstallRoot "uninstall.exe"))) {
-        $uninstaller = Join-Path $InstallRoot "uninstall.exe"
-        Run-Checked -FilePath $uninstaller -Arguments @("/quiet", "/norestart") | Out-Null
-        Remove-Item -LiteralPath $uninstaller -Force -ErrorAction SilentlyContinue
-        if ($upgradeUnrelatedExpected) {
-            if (-not (Test-Path -LiteralPath $upgradeUnrelated -PathType Leaf)) {
-                throw "Uninstaller removed unrelated upgrade-test content: $upgradeUnrelated"
-            }
-            Remove-Item -LiteralPath $upgradeUnrelated -Force
+
+    Write-Host "Windows installer validation passed for $($metadata.display_name) " `
+        "$($metadata.version) $($metadata.architecture)."
+} finally {
+    $env:Path = $originalPath
+    if (-not $KeepInstalled -and $installedByValidation -and
+        (Test-Path -LiteralPath $uninstallRegistry)) {
+        $rootUninstaller = Join-Path $InstallRoot "uninstall.exe"
+        $cleanupExecutable = if (Test-Path -LiteralPath $rootUninstaller -PathType Leaf) {
+            $rootUninstaller
+        } elseif ($maintenanceCache -and
+            (Test-Path -LiteralPath $maintenanceCache -PathType Leaf)) {
+            $maintenanceCache
+        } else {
+            throw "Installed product has no available uninstaller."
+        }
+        Invoke-CheckedProcess -FilePath $cleanupExecutable `
+            -Arguments @("/uninstall", "/quiet", "/norestart") -SuccessCodes @(0, 3010) | Out-Null
+        if (-not (Wait-PathAbsent -Path $uninstallRegistry)) {
+            throw "Uninstaller left Apps & Features registration: $uninstallRegistry"
+        }
+        if ($maintenanceCache -and -not (Wait-PathAbsent -Path $maintenanceCache)) {
+            throw "Detached cleanup left the maintenance cache: $maintenanceCache"
         }
         foreach ($ownedPath in @(
-            (Join-Path $InstallRoot "bin\viper.exe"),
-            (Join-Path $InstallRoot "share\viper\.viper-install-manifest.txt"),
-            (Join-Path $InstallRoot ".viper-install-manifest.txt")
-        )) {
+                (Join-Path $InstallRoot "bin\viper.exe"),
+                (Join-Path $InstallRoot "uninstall.exe"),
+                (Join-Path $InstallRoot ".viper-install-manifest.txt"))) {
             if (Test-Path -LiteralPath $ownedPath) {
                 throw "Uninstaller left an owned path: $ownedPath"
             }
         }
-        Get-ChildItem -LiteralPath $InstallRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending |
-            Remove-Item -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath $InstallRoot) {
-            throw "Uninstaller left unexpected content under $InstallRoot"
-        }
-        if (Test-Path -LiteralPath $uninstallRegistry) {
-            throw "Uninstaller left Add/Remove Programs registration at $uninstallRegistry"
-        }
-        foreach ($extension in @(".zia", ".bas", ".il")) {
-            $openWith = Join-Path $classesRoot "$extension\OpenWithProgids"
-            if (Test-Path -LiteralPath $openWith) {
-                $props = Get-ItemProperty -LiteralPath $openWith
-                if ($props.PSObject.Properties.Name -contains "org.viper.toolchain$extension") {
-                    throw "Uninstaller left Viper association under $openWith"
-                }
-            }
-            $progId = Join-Path $classesRoot "org.viper.toolchain$extension"
-            if (Test-Path -LiteralPath $progId) {
-                throw "Uninstaller left Viper ProgID at $progId"
-            }
-        }
-        $remainingPath = [Environment]::GetEnvironmentVariable("Path", $pathScope)
-        $pathEntries = @($remainingPath -split ";" | Where-Object { $_.Length -gt 0 })
-        if ($pathEntries | Where-Object {
-                [string]::Equals(
-                    $_, $installedPathEntry, [System.StringComparison]::OrdinalIgnoreCase)
-            }) {
+        Assert-AssociationState -ClassesRoot $classesRoot -Identifier $identifier -Expected $false
+        if (Test-PathEntry `
+                -Value ([Environment]::GetEnvironmentVariable("Path", $pathScope)) `
+                -Expected $installedPathEntry) {
             throw "Uninstaller left its PATH entry: $installedPathEntry"
         }
+        if (Test-Path -LiteralPath $startMenu) {
+            throw "Uninstaller left its Start Menu directory: $startMenu"
+        }
+        if (Test-Path -LiteralPath $unownedSentinel -PathType Leaf) {
+            $sentinelText = [IO.File]::ReadAllText($unownedSentinel)
+            if ($sentinelText -notmatch '^preserve-unowned-') {
+                throw "Uninstaller modified unrelated content: $unownedSentinel"
+            }
+            Remove-Item -LiteralPath $unownedSentinel -Force
+        }
+        if (Test-Path -LiteralPath $InstallRoot) {
+            $remaining = @(Get-ChildItem -LiteralPath $InstallRoot -Force -Recurse)
+            if ($remaining.Count -ne 0) {
+                throw "Uninstaller left unexpected content under $InstallRoot`: " +
+                    (($remaining | Select-Object -ExpandProperty FullName) -join ", ")
+            }
+            Remove-Item -LiteralPath $InstallRoot -Force
+        }
     }
-    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $work) {
+        $resolvedWork = (Resolve-Path -LiteralPath $work).Path
+        if (-not $resolvedWork.StartsWith(
+                [IO.Path]::GetFullPath($env:TEMP), [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean unexpected validation workspace: $resolvedWork"
+        }
+        Remove-Item -LiteralPath $resolvedWork -Recurse -Force
+    }
 }

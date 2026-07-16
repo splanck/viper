@@ -1,3 +1,21 @@
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: CMakeLists.txt
+# Purpose: Configure Viper's cross-platform build, generated metadata, and tests.
+#
+# Key invariants: Build identity is canonical and platform capabilities are explicit.
+#
+# Ownership/Lifetime: CMake owns generated files under the selected build tree.
+#
+# Links: AGENTS.md, docs/architecture.md, docs/testing.md
+#
+#===----------------------------------------------------------------------===#
+
 cmake_minimum_required(VERSION 3.20)
 if(POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
@@ -19,9 +37,16 @@ string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" VIPER_VERSION_MIN
 string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\3" VIPER_VERSION_PATCH "${VIPER_VERSION_STR}")
 set(VIPER_SEMVER_NUM "${VIPER_VERSION_MAJOR}.${VIPER_VERSION_MINOR}.${VIPER_VERSION_PATCH}")
 
-# Compute snapshot string from git (empty if unavailable)
+# Compute snapshot/source identity from git (empty/unknown if unavailable).
+# Source archives and hermetic release builders can provide the immutable
+# identity explicitly without requiring a .git directory.
 find_package(Git QUIET)
 set(VIPER_SNAPSHOT_STR "")
+set(VIPER_SOURCE_COMMIT "" CACHE STRING
+    "Source commit embedded in Viper build metadata (auto-detected when empty)")
+set(VIPER_SOURCE_STATE "" CACHE STRING
+    "Source tree state embedded in build metadata: clean, dirty, or unknown")
+mark_as_advanced(VIPER_SOURCE_COMMIT VIPER_SOURCE_STATE)
 if(GIT_FOUND)
   execute_process(
     COMMAND ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --long --dirty
@@ -33,6 +58,47 @@ if(GIT_FOUND)
   if(_git_r EQUAL 0)
     string(REGEX REPLACE "^v" "" VIPER_SNAPSHOT_STR "${_git_out}")  # drop leading 'v'
   endif()
+  if(VIPER_SOURCE_COMMIT STREQUAL "")
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} rev-parse --verify HEAD
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      RESULT_VARIABLE _git_commit_r
+      OUTPUT_VARIABLE _git_commit_out
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(_git_commit_r EQUAL 0)
+      string(TOLOWER "${_git_commit_out}" VIPER_SOURCE_COMMIT)
+    endif()
+  endif()
+  if(VIPER_SOURCE_STATE STREQUAL "")
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} status --porcelain --untracked-files=normal
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      RESULT_VARIABLE _git_status_r
+      OUTPUT_VARIABLE _git_status_out
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(_git_status_r EQUAL 0)
+      if(_git_status_out STREQUAL "")
+        set(VIPER_SOURCE_STATE "clean")
+      else()
+        set(VIPER_SOURCE_STATE "dirty")
+      endif()
+    endif()
+  endif()
+endif()
+if(VIPER_SOURCE_STATE STREQUAL "")
+  set(VIPER_SOURCE_STATE "unknown")
+endif()
+string(LENGTH "${VIPER_SOURCE_COMMIT}" _viper_source_commit_length)
+if(NOT VIPER_SOURCE_COMMIT STREQUAL "" AND
+   (NOT VIPER_SOURCE_COMMIT MATCHES "^[0-9a-f]+$" OR
+    _viper_source_commit_length LESS 7 OR _viper_source_commit_length GREATER 64))
+  message(FATAL_ERROR
+      "VIPER_SOURCE_COMMIT must be 7-64 lowercase hexadecimal characters")
+endif()
+if(NOT VIPER_SOURCE_STATE MATCHES "^(clean|dirty|unknown)$")
+  message(FATAL_ERROR "VIPER_SOURCE_STATE must be clean, dirty, or unknown")
 endif()
 # ---- End: Viper version wiring ----
 project(Viper LANGUAGES CXX VERSION ${VIPER_SEMVER_NUM})
@@ -98,7 +164,13 @@ option(VIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS
 set(VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS "8" CACHE STRING
     "Number of CTest shards used for the batched BASIC-to-IL golden suite")
 option(VIPER_ENABLE_WINDOWS_INSTALLER_E2E "Run the generated Windows toolchain installer end-to-end smoke test" OFF)
+option(VIPER_INSTALLER_ENABLE_TEST_HOOKS
+       "Enable destructive Windows installer fault-injection hooks (test builds only)" OFF)
+mark_as_advanced(VIPER_INSTALLER_ENABLE_TEST_HOOKS)
 option(VIPER_BUILD_VSCODE_VSIX "Build and install the packaged Zia VS Code extension" OFF)
+option(VIPER_INSTALL_MSVC_RUNTIME
+       "Install the app-local MSVC runtime DLLs required by the Windows toolchain"
+       ON)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
 option(VIPER_VM_TAILCALL "Enable tailcall" ON)
 option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
@@ -110,6 +182,17 @@ set_property(CACHE VIPER_GRAPHICS_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
 set_property(CACHE VIPER_AUDIO_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
 viper_require_feature_mode(VIPER_GRAPHICS_MODE)
 viper_require_feature_mode(VIPER_AUDIO_MODE)
+
+# A Windows toolchain installer must run on a clean machine that has never had
+# Visual Studio or another VC++ application installed. Keep the SDK libraries
+# and executable targets on CMake's consistent dynamic-runtime model, and stage
+# the compiler-provided redistributable DLLs beside bin/viper.exe. The package
+# builder independently verifies that every imported MSVC runtime is present.
+if(WIN32 AND MSVC AND VIPER_INSTALL_MSVC_RUNTIME)
+  set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+  include(InstallRequiredSystemLibraries)
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -792,7 +875,23 @@ if(VIPER_INSTALL_SAMPLES)
           PATTERN ".git*" EXCLUDE
           PATTERN "__pycache__" EXCLUDE
           PATTERN "node_modules" EXCLUDE
-          PATTERN "build" EXCLUDE)
+          PATTERN "build" EXCLUDE
+          # examples/bin is a local output tree populated by demo build
+          # scripts.  Copying it made Release installers depend on whichever
+          # configuration a developer happened to build most recently (and
+          # could ship executables linked against the debug CRT).
+          PATTERN "bin" EXCLUDE
+          PATTERN "*.exe" EXCLUDE
+          PATTERN "*.dll" EXCLUDE
+          PATTERN "*.pdb" EXCLUDE
+          PATTERN "*.ilk" EXCLUDE
+          PATTERN "*.lib" EXCLUDE
+          PATTERN "*.exp" EXCLUDE
+          PATTERN "*.obj" EXCLUDE
+          PATTERN "*.o" EXCLUDE
+          PATTERN "*.a" EXCLUDE
+          PATTERN "*.so" EXCLUDE
+          PATTERN "*.dylib" EXCLUDE)
 endif()
 
 # Canonical project artwork used by native installers, shortcuts, file

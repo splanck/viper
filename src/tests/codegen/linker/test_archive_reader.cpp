@@ -526,6 +526,24 @@ static void runPortableArchiveReaderTests() {
         std::filesystem::remove(path);
     }
 
+    // --- UTF-8 API paths open archives without consulting the Windows ANSI code page ---
+    {
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArHeader(bytes, "empty.o/", 0, "         0");
+
+        const auto directory = std::filesystem::path("build/test-out") / u8"archive-Δ";
+        const auto path = directory / "runtime.lib";
+        std::filesystem::create_directories(directory);
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(readArchive(pathToUtf8(path), ar, err));
+        CHECK(err.str().empty());
+        CHECK(ar.members.size() == 1);
+        std::filesystem::remove_all(directory);
+    }
+
     // --- GNU long names strip the "/\n" terminator from string-table entries ---
     {
         std::vector<uint8_t> longNames;

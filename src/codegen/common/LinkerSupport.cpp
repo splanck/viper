@@ -396,7 +396,7 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
     std::sort(missingTargets.begin(), missingTargets.end());
     missingTargets.erase(std::unique(missingTargets.begin(), missingTargets.end()),
                          missingTargets.end());
-    std::vector<std::string> cmd = {"cmake", "--build", ctx.buildDir.string(), "--target"};
+    std::vector<std::string> cmd = {"cmake", "--build", pathToUtf8(ctx.buildDir), "--target"};
     cmd.insert(cmd.end(), missingTargets.begin(), missingTargets.end());
     const RunResult build = run_process(cmd);
     if (!build.out.empty())
@@ -404,7 +404,7 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
     if (!build.err.empty())
         err << build.err;
     if (build.exit_code != 0) {
-        err << "error: failed to build required runtime libraries in '" << ctx.buildDir.string()
+        err << "error: failed to build required runtime libraries in '" << pathToUtf8(ctx.buildDir)
             << "'\n";
         return false;
     }
@@ -431,9 +431,9 @@ bool addArchiveClosureSymbols(const LinkContext &ctx,
         if (!fileExists(path))
             continue;
         Archive ar;
-        if (!readArchive(path.string(), ar, err)) {
-            err << "error: failed to inspect runtime archive '" << name << "' at '" << path.string()
-                << "'\n";
+        if (!readArchive(pathToUtf8(path), ar, err)) {
+            err << "error: failed to inspect runtime archive '" << name << "' at '"
+                << pathToUtf8(path) << "'\n";
             return false;
         }
         archives.push_back(std::move(ar));
@@ -535,7 +535,7 @@ std::string linkContextCacheKey(const std::filesystem::path &buildDir,
                                 const std::unordered_set<std::string> &symbols) {
     std::vector<std::string> ordered(symbols.begin(), symbols.end());
     std::sort(ordered.begin(), ordered.end());
-    std::string key = buildDir.lexically_normal().string();
+    std::string key = pathToUtf8(buildDir.lexically_normal());
     key.push_back('\n');
     key += linkEnvironmentCacheKey();
     for (const auto &symbol : ordered) {
@@ -550,6 +550,11 @@ std::string linkContextCacheKey(const std::filesystem::path &buildDir,
 // =========================================================================
 // Pure utilities
 // =========================================================================
+
+std::string pathToUtf8(const std::filesystem::path &path) {
+    const std::u8string encoded = path.u8string();
+    return std::string(reinterpret_cast<const char *>(encoded.data()), encoded.size());
+}
 
 bool fileExists(const std::filesystem::path &path) {
     std::error_code ec;
@@ -569,12 +574,12 @@ bool readFileToString(const std::filesystem::path &path, std::string &dst) {
 bool writeTextFile(const std::filesystem::path &path, std::string_view text, std::ostream &err) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) {
-        err << "error: unable to open '" << path.string() << "' for writing\n";
+        err << "error: unable to open '" << pathToUtf8(path) << "' for writing\n";
         return false;
     }
     out << text;
     if (!out) {
-        err << "error: failed to write file '" << path.string() << "'\n";
+        err << "error: failed to write file '" << pathToUtf8(path) << "'\n";
         return false;
     }
     return true;

@@ -281,7 +281,7 @@ struct HuffmanTree {
             left -= blCount[bits];
             if (left < 0)
                 return false;
-            code = (code + blCount[bits - 1]) << 1;
+            code = static_cast<uint16_t>((code + blCount[bits - 1]) << 1);
             nextCode[bits] = code;
         }
 
@@ -559,7 +559,7 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
 
     uint8_t clLengths[kMaxCodeLenCodes] = {};
     for (int i = 0; i < hclen; i++)
-        clLengths[kCodeLengthOrder[i]] = br.read(3);
+        clLengths[kCodeLengthOrder[i]] = static_cast<uint8_t>(br.read(3));
 
     HuffmanTree clTree;
     if (!clTree.build(clLengths, kMaxCodeLenCodes))
@@ -575,7 +575,7 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
             return false;
 
         if (sym < 16) {
-            lengths[i++] = sym;
+            lengths[i++] = static_cast<uint8_t>(sym);
         } else if (sym == 16) {
             if (i == 0)
                 return false;
@@ -886,15 +886,15 @@ static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int lev
             int lenIdx = lenCode - 257;
 
             if (lenCode <= 279)
-                writeCode(bw, lenCode - 256, 7);
+                writeCode(bw, static_cast<uint16_t>(lenCode - 256), 7);
             else
-                writeCode(bw, 0xC0 + (lenCode - 280), 8);
+                writeCode(bw, static_cast<uint16_t>(0xC0 + (lenCode - 280)), 8);
 
             if (kLengthExtraBits[lenIdx] > 0)
                 bw.write(matchLen - kLengthBase[lenIdx], kLengthExtraBits[lenIdx]);
 
             int distCode = getDistCode(matchDist);
-            writeCode(bw, distCode, 5);
+            writeCode(bw, static_cast<uint16_t>(distCode), 5);
 
             if (kDistExtraBits[distCode] > 0)
                 bw.write(matchDist - kDistBase[distCode], kDistExtraBits[distCode]);

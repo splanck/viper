@@ -1,3 +1,21 @@
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/CMakeLists.txt
+# Purpose: Define Viper libraries, tools, generated sources, and install rules.
+#
+# Key invariants: Installed targets form a complete cross-platform developer SDK.
+#
+# Ownership/Lifetime: CMake owns target outputs under the selected build tree.
+#
+# Links: CMakeLists.txt, docs/codemap.md
+#
+#===----------------------------------------------------------------------===#
+
 add_subdirectory(support)
 
 #===----------------------------------------------------------------------===//
@@ -311,6 +329,7 @@ add_library(viper_packaging STATIC
         tools/common/packaging/PEBuilder.cpp
         tools/common/packaging/LnkWriter.cpp
         tools/common/packaging/WindowsPackageBuilder.cpp
+        tools/common/packaging/WindowsInstallerMetadata.cpp
         tools/common/packaging/PkgVerify.cpp
         tools/common/packaging/ZipReader.cpp
         tools/common/packaging/InstallerStubGen.cpp
@@ -327,6 +346,90 @@ target_include_directories(viper_packaging PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/runtime/core>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
+
+if(WIN32)
+    # The installer host runs before the app-local compiler runtime is deployed,
+    # so it deliberately compiles the small archive/metadata subset again with
+    # the static MSVC runtime instead of linking the /MD packaging library.
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _viper_installer_processor)
+    if(_viper_installer_processor MATCHES "arm64|aarch64")
+        set(VIPER_INSTALLER_PROCESSOR_ARCH "arm64")
+    else()
+        set(VIPER_INSTALLER_PROCESSOR_ARCH "amd64")
+    endif()
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/windows_installer/WindowsInstallerHost.manifest.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerHost.manifest"
+        @ONLY)
+    file(TO_CMAKE_PATH
+         "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerHost.manifest"
+         VIPER_INSTALLER_MANIFEST_PATH)
+    file(TO_CMAKE_PATH
+         "${CMAKE_SOURCE_DIR}/misc/images/viper-installer.ico"
+         VIPER_INSTALLER_ICON_PATH)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/windows_installer/WindowsInstallerHost.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerHost.rc"
+        @ONLY)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/windows_installer/WindowsInstallerCleanup.manifest.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerCleanup.manifest"
+        @ONLY)
+    file(TO_CMAKE_PATH
+         "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerCleanup.manifest"
+         VIPER_INSTALLER_CLEANUP_MANIFEST_PATH)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/windows_installer/WindowsInstallerCleanup.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerCleanup.rc"
+        @ONLY)
+    add_executable(viper_installer_host WIN32
+        tools/windows_installer/main.cpp
+        tools/windows_installer/WindowsInstallerHost.cpp
+        tools/windows_installer/WindowsInstallerLifecycle.cpp
+        tools/windows_installer/WindowsInstallerVersion.cpp
+        tools/windows_installer/WindowsInstallerWizard.cpp
+        tools/windows_installer/WindowsInstallerUpdate.cpp
+        tools/common/packaging/WindowsInstallerMetadata.cpp
+        tools/common/packaging/ZipReader.cpp
+        tools/common/packaging/PkgDeflate.cpp
+        tools/common/packaging/PkgHash.cpp
+        runtime/core/rt_crc32.c
+        "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerHost.rc")
+    set_target_properties(viper_installer_host PROPERTIES
+        OUTPUT_NAME "viper-installer-host"
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_definitions(viper_installer_host PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    if(VIPER_INSTALLER_ENABLE_TEST_HOOKS)
+        target_compile_definitions(viper_installer_host PRIVATE
+            VIPER_INSTALLER_ENABLE_TEST_HOOKS=1)
+    endif()
+    target_compile_options(viper_installer_host PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX /permissive- /utf-8 /sdl /guard:cf>)
+    target_link_options(viper_installer_host PRIVATE /guard:cf /DYNAMICBASE /NXCOMPAT /MANIFEST:NO)
+    target_include_directories(viper_installer_host PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/common/packaging"
+        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/core")
+    target_link_libraries(viper_installer_host PRIVATE
+        advapi32 bcrypt comctl32 ole32 rstrtmgr shell32 shlwapi user32 uxtheme version winhttp)
+    install(TARGETS viper_installer_host RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+    add_executable(viper_installer_cleanup WIN32
+        tools/windows_installer/WindowsInstallerCleanup.cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerCleanup.rc")
+    set_target_properties(viper_installer_cleanup PROPERTIES
+        OUTPUT_NAME "viper-installer-cleanup"
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_definitions(viper_installer_cleanup PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_compile_options(viper_installer_cleanup PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX /permissive- /utf-8 /sdl /guard:cf>)
+    target_link_options(viper_installer_cleanup PRIVATE
+        /guard:cf /DYNAMICBASE /NXCOMPAT /MANIFEST:NO)
+    target_link_libraries(viper_installer_cleanup PRIVATE shell32)
+    install(TARGETS viper_installer_cleanup RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 target_include_directories(il_tools_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>

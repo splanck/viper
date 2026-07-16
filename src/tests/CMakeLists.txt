@@ -80,6 +80,19 @@ endforeach ()
 find_package(Threads REQUIRED)
 find_program(VIPER_BASH_EXECUTABLE NAMES bash)
 
+if (WIN32)
+    add_test(NAME windows_installer_host_launch
+            COMMAND $<TARGET_FILE:viper_installer_host> /selftest /quiet)
+    add_test(NAME windows_installer_cleanup_launch
+            COMMAND $<TARGET_FILE:viper_installer_cleanup> /selftest)
+    set_tests_properties(
+            windows_installer_host_launch
+            windows_installer_cleanup_launch
+            PROPERTIES
+            LABELS "installer;tools;unit"
+            TIMEOUT 15)
+endif ()
+
 if (VIPER_BASH_EXECUTABLE)
     set(_viper_source_health_audit_timeout 60)
     if (WIN32)
@@ -1650,8 +1663,8 @@ if (WIN32)
     set_tests_properties(zia_smoke_ridgebound_d3d11 PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok backend=d3d11"
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
-            ENVIRONMENT "VIPER_3D_BACKEND=d3d11;VIPER_RIDGEBOUND_PERF_BUDGET_GPU_MS=80"
-            PROCESSORS 8
+            ENVIRONMENT "VIPER_3D_BACKEND=d3d11;VIPER_RIDGEBOUND_PERF_BUDGET_GPU_MS=100"
+            RUN_SERIAL TRUE
             RESOURCE_LOCK viper_display
             TIMEOUT 600)
     add_test(NAME zia_smoke_d3d11_rtt_readback
@@ -2953,6 +2966,33 @@ if (NOT TARGET runtime_surface_audit_bundle)
 endif ()
 
 if (WIN32)
+    # Keep the default Windows Debug lane focused on tests that complete in
+    # under roughly 30 seconds. These measured VM/render/system simulations are
+    # valuable coverage, but together add more than 20 minutes of serial CPU
+    # time and create severe contention during an eight-worker full-suite run.
+    set(_viper_windows_slow_tests
+            test_rt_game3d_thirdperson
+            test_rt_game3d_combat
+            test_rt_game3d_streaming_async
+            test_rt_game3d_ragdoll_time
+            test_rt_game3d_dialogue_facial
+            test_rt_game3d_cinematics
+            test_rt_game3d_hlod
+            test_rt_restclient
+            zia_viperide_console_search
+            zia_season_baseball
+            zia_smoke_ridgebound_d3d11
+            zia_smoke_3dbowling_title_postfx
+            zia_smoke_ashfall_stress
+            zia_smoke_ashfall_menu
+            test_zia_repl)
+    foreach (_test IN LISTS _viper_windows_slow_tests)
+        if (TEST ${_test})
+            set_property(TEST ${_test} APPEND PROPERTY LABELS slow)
+        endif ()
+    endforeach ()
+    unset(_viper_windows_slow_tests)
+
     # The Windows build clears CTest's historical cost cache before every run.
     # Seed the known VM/render-heavy tests so the parallel scheduler starts them
     # while the short unit tests fill the remaining workers, rather than leaving

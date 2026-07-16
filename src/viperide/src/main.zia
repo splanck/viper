@@ -157,6 +157,18 @@ func hasArg(name: String) -> Boolean {
     return false;
 }
 
+/// @brief Return the first existing file passed as a positional command-line argument.
+/// @details Windows Open With registrations pass a quoted source path directly to ViperIDE.
+func commandLineFile() -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        var arg = Env.GetArgument(i);
+        if Str.StartsWith(arg, "-") == false and IO.File.Exists(arg) { return arg; }
+        i = i + 1;
+    }
+    return "";
+}
+
 func handleCommandLine() -> Boolean {
     if hasArg("--version") {
         Terminal.Say("ViperIDE " + VIPERIDE_VERSION);
@@ -164,7 +176,7 @@ func handleCommandLine() -> Boolean {
         return true;
     }
     if hasArg("--help") or hasArg("-h") {
-        Terminal.Say("Usage: viperide [--version] [--help]");
+        Terminal.Say("Usage: viperide [--version] [--help] [file]");
         return true;
     }
     return false;
@@ -366,6 +378,15 @@ func main() {
             restoredCount = restoredCount + recoveredOpened;
             GUI.Toast.Info("Recovered " + recoveredOpened + " unsaved file(s) from a previous session");
         }
+    }
+
+    // Shell/Open With launches provide one positional source path. Open it
+    // after session recovery so the explicitly requested document wins focus.
+    var startupFile = commandLineFile();
+    if startupFile != "" {
+        explorer_action_runner.OpenFileAndRecord(
+            shell, docMgr, engine, tabs, sessionMgr, startupFile);
+        restoredCount = restoredCount + 1;
     }
 
     // ========================================================================

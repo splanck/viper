@@ -281,7 +281,7 @@ bool writeAssemblyFile(const std::filesystem::path &path,
 std::string toNativePath(const std::filesystem::path &path) {
     std::filesystem::path native = path;
     native.make_preferred();
-    return native.string();
+    return common::pathToUtf8(native);
 }
 
 /// @brief Assemble emitted assembly into an object file.
@@ -334,7 +334,7 @@ void collectNativeLinkArchives(const common::LinkContext &ctx,
     auto appendIfExists = [&](const std::filesystem::path &path) {
         if (!common::fileExists(path))
             return;
-        const std::string archivePath = path.lexically_normal().string();
+        const std::string archivePath = common::pathToUtf8(path.lexically_normal());
         if (seenArchives.insert(archivePath).second)
             archives.push_back(archivePath);
     };
@@ -413,9 +413,9 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                std::ostream &out,
                                std::ostream &err) {
     linker::NativeLinkerOptions linkOpts;
-    linkOpts.objPath = objPath.string();
+    linkOpts.objPath = common::pathToUtf8(objPath);
     linkOpts.objData = std::move(objData);
-    linkOpts.exePath = exePath.string();
+    linkOpts.exePath = common::pathToUtf8(exePath);
     linkOpts.entrySymbol = "main";
     linkOpts.platform = targetLinkPlatform(targetPlatform);
     linkOpts.arch = linker::LinkArch::X86_64;
@@ -427,7 +427,8 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     if (ctx.needsZiaFrontend) {
         const auto ziaEditorLib = common::supportLibraryPath(ctx.buildDir, "zia_editor_services");
         if (common::fileExists(ziaEditorLib))
-            linkOpts.forceLoadArchivePaths.push_back(ziaEditorLib.lexically_normal().string());
+            linkOpts.forceLoadArchivePaths.push_back(
+                common::pathToUtf8(ziaEditorLib.lexically_normal()));
         // zia_editor_services' static-link closure (fe_zia plus IL
         // build/verify/transform/runtime/core/support). Demand-driven: only
         // members the force-loaded editor-service objects reference are
@@ -435,7 +436,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
         for (const auto &lib : common::ziaFrontendClosureLibs()) {
             const auto p = common::supportLibraryPath(ctx.buildDir, lib);
             if (common::fileExists(p))
-                linkOpts.archivePaths.push_back(p.lexically_normal().string());
+                linkOpts.archivePaths.push_back(common::pathToUtf8(p.lexically_normal()));
         }
     }
     linkOpts.extraObjPaths = extraObjects;
@@ -660,26 +661,24 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         std::optional<std::vector<uint8_t>> objectData;
         if (!wantsObjectOnly)
             objectData.emplace();
-        const bool wroteObject = hasDebugLine
-                                     ? (wantsObjectOnly
-                                            ? writer->write(objPath.string(),
-                                                            *pipelineModule.binaryText,
-                                                            *pipelineModule.binaryRodata,
-                                                            err)
-                                            : writer->writeToMemory(*objectData,
-                                                                    *pipelineModule.binaryText,
-                                                                    *pipelineModule.binaryRodata,
-                                                                    err))
-                                     : (wantsObjectOnly
-                                            ? writer->write(objPath.string(),
-                                                            pipelineModule.binaryTextSections,
-                                                            *pipelineModule.binaryRodata,
-                                                            err)
-                                            : writer->writeToMemory(
-                                                  *objectData,
-                                                  pipelineModule.binaryTextSections,
-                                                  *pipelineModule.binaryRodata,
-                                                  err));
+        const bool wroteObject =
+            hasDebugLine
+                ? (wantsObjectOnly ? writer->write(objPath.string(),
+                                                   *pipelineModule.binaryText,
+                                                   *pipelineModule.binaryRodata,
+                                                   err)
+                                   : writer->writeToMemory(*objectData,
+                                                           *pipelineModule.binaryText,
+                                                           *pipelineModule.binaryRodata,
+                                                           err))
+                : (wantsObjectOnly ? writer->write(objPath.string(),
+                                                   pipelineModule.binaryTextSections,
+                                                   *pipelineModule.binaryRodata,
+                                                   err)
+                                   : writer->writeToMemory(*objectData,
+                                                           pipelineModule.binaryTextSections,
+                                                           *pipelineModule.binaryRodata,
+                                                           err));
         if (!wroteObject) {
             result.exit_code = 1;
             return finish();

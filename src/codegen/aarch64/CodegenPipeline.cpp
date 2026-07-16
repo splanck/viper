@@ -172,12 +172,12 @@ static int linkToExe(const std::string &asmPath,
 
     std::filesystem::path objPath = std::filesystem::path(asmPath);
     objPath.replace_extension(".o");
-    const int arc =
-        invokeAssembler(systemAssemblerArgs(targetPlatform), asmPath, objPath.string(), out, err);
+    const int arc = invokeAssembler(
+        systemAssemblerArgs(targetPlatform), asmPath, common::pathToUtf8(objPath), out, err);
     if (arc != 0)
         return arc;
 
-    const int lrc = linkObjToExe(objPath.string(),
+    const int lrc = linkObjToExe(common::pathToUtf8(objPath),
                                  std::nullopt,
                                  exePath,
                                  ctx,
@@ -214,7 +214,7 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
     auto appendIfExists = [&](const std::filesystem::path &path) {
         if (!common::fileExists(path))
             return;
-        const std::string archivePath = path.lexically_normal().string();
+        const std::string archivePath = common::pathToUtf8(path.lexically_normal());
         if (seenArchives.insert(archivePath).second)
             archives.push_back(archivePath);
     };
@@ -311,14 +311,15 @@ static int linkObjToExe(const std::string &objPath,
     if (ctx.needsZiaFrontend) {
         const auto ziaEditorLib = common::supportLibraryPath(ctx.buildDir, "zia_editor_services");
         if (common::fileExists(ziaEditorLib))
-            linkOpts.forceLoadArchivePaths.push_back(ziaEditorLib.lexically_normal().string());
+            linkOpts.forceLoadArchivePaths.push_back(
+                common::pathToUtf8(ziaEditorLib.lexically_normal()));
         // zia_editor_services' static-link closure (fe_zia plus IL
         // build/verify/transform/runtime/core/support). Demand-driven: only
         // referenced members are extracted.
         for (const auto &lib : common::ziaFrontendClosureLibs()) {
             const auto p = common::supportLibraryPath(ctx.buildDir, lib);
             if (common::fileExists(p))
-                linkOpts.archivePaths.push_back(p.lexically_normal().string());
+                linkOpts.archivePaths.push_back(common::pathToUtf8(p.lexically_normal()));
         }
     }
 
@@ -568,7 +569,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     if (asmPath.empty()) {
         std::filesystem::path p(opts_.input_il_path);
         p.replace_extension(".s");
-        asmPath = p.string();
+        asmPath = common::pathToUtf8(p);
     }
 
     if (opts_.emit_asm) {
@@ -678,28 +679,26 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         std::optional<std::vector<uint8_t>> objectData;
         if (!outputIsObj)
             objectData.emplace();
-        const bool wroteObject = !pipelineModule.binaryTextSections.empty()
-                                     ? (outputIsObj
-                                            ? writer->write(objPath.string(),
-                                                            pipelineModule.binaryTextSections,
-                                                            *pipelineModule.binaryRodata,
-                                                            err)
-                                            : writer->writeToMemory(
-                                                  *objectData,
-                                                  pipelineModule.binaryTextSections,
-                                                  *pipelineModule.binaryRodata,
-                                                  err))
-                                     : (outputIsObj
-                                            ? writer->write(objPath.string(),
-                                                            *pipelineModule.binaryText,
-                                                            *pipelineModule.binaryRodata,
-                                                            err)
-                                            : writer->writeToMemory(*objectData,
-                                                                    *pipelineModule.binaryText,
-                                                                    *pipelineModule.binaryRodata,
-                                                                    err));
+        const bool wroteObject =
+            !pipelineModule.binaryTextSections.empty()
+                ? (outputIsObj ? writer->write(common::pathToUtf8(objPath),
+                                               pipelineModule.binaryTextSections,
+                                               *pipelineModule.binaryRodata,
+                                               err)
+                               : writer->writeToMemory(*objectData,
+                                                       pipelineModule.binaryTextSections,
+                                                       *pipelineModule.binaryRodata,
+                                                       err))
+                : (outputIsObj ? writer->write(common::pathToUtf8(objPath),
+                                               *pipelineModule.binaryText,
+                                               *pipelineModule.binaryRodata,
+                                               err)
+                               : writer->writeToMemory(*objectData,
+                                                       *pipelineModule.binaryText,
+                                                       *pipelineModule.binaryRodata,
+                                                       err));
         if (!wroteObject) {
-            err << "error: failed to write object file '" << objPath.string() << "'\n";
+            err << "error: failed to write object file '" << common::pathToUtf8(objPath) << "'\n";
             result.exit_code = 1;
             return finish();
         }
@@ -746,9 +745,9 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         if (opts_.link_mode == LinkMode::System)
             err << "warning: --system-link is deprecated; using the native linker\n";
 
-        const int lrc = linkObjToExe(objPath.string(),
+        const int lrc = linkObjToExe(common::pathToUtf8(objPath),
                                      std::move(objectData),
-                                     exe.string(),
+                                     common::pathToUtf8(exe),
                                      ctx,
                                      opts_.target_platform,
                                      opts_.stack_size,
@@ -765,7 +764,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         }
 
         if (opts_.run_native) {
-            const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
+            const int rc = viper::codegen::common::runExecutable(common::pathToUtf8(exe), out, err);
             result.exit_code = rc == -1 ? 1 : rc;
             if (opts_.output_obj_path.empty()) {
                 std::error_code ec;
@@ -818,7 +817,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     if (opts_.link_mode == LinkMode::System)
         err << "warning: --system-link is deprecated; using the native linker\n";
     if (linkToExe(asmPath,
-                  exe.string(),
+                  common::pathToUtf8(exe),
                   opts_.target_platform,
                   opts_.stack_size,
                   opts_.extra_objects,
@@ -837,7 +836,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     }
 
     if (opts_.run_native) {
-        const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
+        const int rc = viper::codegen::common::runExecutable(common::pathToUtf8(exe), out, err);
         result.exit_code = rc == -1 ? 1 : rc;
         if (opts_.output_obj_path.empty()) {
             std::error_code ec;

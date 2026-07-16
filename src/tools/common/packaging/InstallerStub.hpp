@@ -62,10 +62,12 @@ struct WindowsPackageFileEntry {
                             uint64_t sizeBytesValue,
                             uint32_t crc32Value = 0,
                             std::string sha256Value = {},
-                            std::string componentIdValue = {})
+                            std::string componentIdValue = {},
+                            std::string sourcePathValue = {})
         : root(rootValue), relativePath(std::move(relativePathValue)),
           overlayDataOffset(overlayDataOffsetValue), sizeBytes(sizeBytesValue), crc32(crc32Value),
-          sha256(std::move(sha256Value)), componentId(std::move(componentIdValue)) {}
+          sha256(std::move(sha256Value)), componentId(std::move(componentIdValue)),
+          sourcePath(std::move(sourcePathValue)) {}
 
     WindowsInstallRoot root{WindowsInstallRoot::InstallDir}; ///< Base directory anchor
     std::string relativePath;                                ///< Destination path relative to root
@@ -74,6 +76,7 @@ struct WindowsPackageFileEntry {
     uint32_t crc32{0};             ///< CRC-32 checksum of the uncompressed data
     std::string sha256;            ///< Lowercase SHA-256 of stored overlay data when available
     std::string componentId;       ///< Empty for core; otherwise an optional-component id
+    std::string sourcePath;        ///< Entry path in the inner payload or outer bootstrap ZIP.
 };
 
 /// @brief One user-selectable installer component.
@@ -91,6 +94,25 @@ struct WindowsFileAssociationEntry {
     std::string mimeType;             ///< MIME type string (e.g. "text/x-zia")
     std::string progId;               ///< ProgID to register (e.g. "Viper.ZiaSource.1")
     std::string openCommandArguments; ///< Arguments appended after the exe path in the Open command
+};
+
+/// @brief Runtime-resolved shortcut used by the native installer host.
+/// @details Unlike the legacy embedded .lnk payload, these fields do not bake
+///          the package's default scope or destination into the link.
+struct WindowsNativeShortcutEntry {
+    WindowsInstallRoot root{WindowsInstallRoot::StartMenuDir};
+    std::string relativePath;
+    std::string targetRoot;
+    std::string targetPath;
+    std::string workingRoot;
+    std::string workingPath;
+    std::string argumentPrefix;
+    std::string argumentPath;
+    std::string description;
+    std::string iconRoot;
+    std::string iconPath;
+    int32_t iconIndex{0};
+    std::string componentId;
 };
 
 /// @brief Full layout metadata consumed by the installer/uninstaller stub codegen.
@@ -121,8 +143,14 @@ struct WindowsPackageLayout {
     std::string pathRelativePath;      ///< Subdir within installDir to add to Path (e.g. "bin")
     std::string fileAssociationExecutableRelativePath; ///< Exe used for Open commands (relative to
                                                        ///< installDir)
-    bool perUserInstall{false}; ///< Install under the current user profile and HKCU.
-    std::string homepage;       ///< Optional support/update URL for Add/Remove Programs.
+    bool perUserInstall{false};    ///< Install under the current user profile and HKCU.
+    std::string homepage;          ///< Optional support/update URL for Add/Remove Programs.
+    std::string documentationUrl;  ///< Optional installed-documentation/support URL.
+    std::string updateManifestUrl; ///< Optional HTTPS update-discovery manifest URL.
+    std::string updateRsaModulus;  ///< Optional RSA public modulus for signed update manifests.
+    std::string updateRsaExponent; ///< Optional RSA public exponent, lowercase hex.
+    std::string releaseChannel{"stable"}; ///< Stable package update channel identifier.
+    std::string sourceCommit;             ///< Optional lowercase source commit hash.
     std::string
         displayIconRelativePath;   ///< Icon path relative to installDir for Add/Remove Programs.
     uint32_t wizardImageWidth{0};  ///< Width of wizardImageRgba in pixels.
@@ -131,6 +159,7 @@ struct WindowsPackageLayout {
         wizardImageRgba;         ///< Optional top-down RGBA artwork drawn by the native x64 wizard.
     uint32_t estimatedSizeKb{0}; ///< Approximate installed size in KiB for ARP.
     std::string installDate;     ///< YYYYMMDD packaging/install metadata date.
+    std::string minimumWindowsVersion{"10.0.17763"};        ///< Supported Windows build floor.
     std::vector<WindowsPackageDirEntry> installDirectories; ///< Directories to create on install
     std::vector<WindowsPackageDirEntry>
         uninstallDirectories;                            ///< Directories to remove on uninstall
@@ -141,6 +170,8 @@ struct WindowsPackageLayout {
         optionalComponents; ///< Default-on payload groups exposed by the setup wizard
     std::vector<WindowsFileAssociationEntry>
         fileAssociations; ///< File associations to register/deregister
+    std::vector<WindowsNativeShortcutEntry>
+        nativeShortcuts; ///< Destination-aware shortcuts generated by the native host.
 };
 
 /// @brief Result of building an installer/uninstaller stub.

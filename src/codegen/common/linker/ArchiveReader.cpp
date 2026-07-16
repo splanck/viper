@@ -23,8 +23,10 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <string_view>
 
 namespace viper::codegen::linker {
 
@@ -249,7 +251,9 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
     ar.path = path;
 
     // Read the entire file.
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    const auto *utf8Path = reinterpret_cast<const char8_t *>(path.data());
+    const std::filesystem::path diskPath(std::u8string_view(utf8Path, path.size()));
+    std::ifstream f(diskPath, std::ios::binary | std::ios::ate);
     if (!f) {
         err << "error: cannot open archive '" << path << "'\n";
         return false;

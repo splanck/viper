@@ -24,6 +24,7 @@
 #include "PkgHash.hpp"
 #include "PkgUtils.hpp"
 #include "PkgZlib.hpp"
+#include "WindowsInstallerMetadata.hpp"
 #include "ZipReader.hpp"
 
 #include <algorithm>
@@ -2075,6 +2076,209 @@ bool verifyPEZipOverlayNestedPayload(const std::vector<uint8_t> &data,
     }
 
     return true;
+}
+
+namespace {
+
+struct VerifiedWindowsNativePackage {
+    WindowsInstallerMetadata metadata;
+    std::string payloadSha256;
+};
+
+bool windowsPeMatchesArchitecture(const std::vector<uint8_t> &data,
+                                  std::string_view architecture,
+                                  std::ostream &err,
+                                  std::string_view label) {
+    if (data.size() < 64U) {
+        err << "Windows native installer: " << label << " is too small for a PE header\n";
+        return false;
+    }
+    const uint32_t peOffset = rdLE32(data.data() + 60U);
+    if (peOffset > data.size() - 6U) {
+        err << "Windows native installer: " << label << " has an invalid PE header offset\n";
+        return false;
+    }
+    const uint16_t machine = rdLE16(data.data() + peOffset + 4U);
+    const uint16_t expected = architecture == "arm64" ? 0xAA64U : 0x8664U;
+    if (machine != expected) {
+        err << "Windows native installer: " << label << " architecture does not match metadata\n";
+        return false;
+    }
+    return true;
+}
+
+bool verifyNativeOuterInventory(const ZipReader &outer,
+                                const WindowsInstallerMetadata &metadata,
+                                std::ostream &err) {
+    std::set<std::string> allowed = {
+        "meta/installer-v2.txt", metadata.payloadEntry, metadata.cleanupEntry};
+    if (!metadata.licenseEntry.empty())
+        allowed.insert(metadata.licenseEntry);
+    if (!metadata.readmeEntry.empty())
+        allowed.insert(metadata.readmeEntry);
+    for (const auto &file : metadata.outerFiles)
+        allowed.insert(file.overlayPath);
+    for (const ZipEntry &entry : outer.entries()) {
+        if (!entry.name.empty() && entry.name.back() == '/')
+            continue;
+        if (allowed.find(entry.name) == allowed.end()) {
+            err << "Windows native installer: unowned outer entry '" << entry.name << "'\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool maintenanceContractMatches(const WindowsInstallerMetadata &setup,
+                                const WindowsInstallerMetadata &maintenance) {
+    if (setup.outerFiles.size() != 1U)
+        return false;
+    WindowsInstallerMetadata normalized = setup;
+    const uint64_t maintenanceSize = normalized.outerFiles.front().sizeBytes;
+    if (maintenanceSize > normalized.installedSizeBytes)
+        return false;
+    normalized.installedSizeBytes -= maintenanceSize;
+    auto core = std::find_if(
+        normalized.components.begin(),
+        normalized.components.end(),
+        [](const WindowsInstallerComponentMetadata &component) { return component.id == "core"; });
+    if (core == normalized.components.end() || maintenanceSize > core->sizeBytes)
+        return false;
+    core->sizeBytes -= maintenanceSize;
+    normalized.outerFiles.clear();
+    normalized.packageMode = "maintenance";
+    return serializeWindowsInstallerMetadata(normalized) ==
+           serializeWindowsInstallerMetadata(maintenance);
+}
+
+bool verifyWindowsNativeInstallerImpl(const std::vector<uint8_t> &data,
+                                      std::string_view expectedMode,
+                                      unsigned depth,
+                                      VerifiedWindowsNativePackage &verified,
+                                      std::ostream &err) {
+    if (depth > 1U) {
+        err << "Windows native installer: recursive maintenance payload\n";
+        return false;
+    }
+    if (!verifyPE(data, err))
+        return false;
+    size_t overlayOff = 0;
+    size_t overlayEnd = 0;
+    if (!parsePeOverlayRange(data, overlayOff, overlayEnd, err) || overlayOff >= overlayEnd) {
+        err << "Windows native installer: missing ZIP overlay\n";
+        return false;
+    }
+    try {
+        ZipReader outer(data.data() + overlayOff, overlayEnd - overlayOff);
+        const ZipEntry *metadataEntry = outer.find("meta/installer-v2.txt");
+        if (!metadataEntry) {
+            err << "Windows native installer: missing versioned metadata\n";
+            return false;
+        }
+        const std::vector<uint8_t> metadataBytes = outer.extract(*metadataEntry);
+        verified.metadata = parseWindowsInstallerMetadata(std::string_view(
+            reinterpret_cast<const char *>(metadataBytes.data()), metadataBytes.size()));
+        if (verified.metadata.packageMode != expectedMode) {
+            err << "Windows native installer: expected " << expectedMode << " metadata, found "
+                << verified.metadata.packageMode << "\n";
+            return false;
+        }
+        if (!windowsPeMatchesArchitecture(
+                data, verified.metadata.architecture, err, "installer host"))
+            return false;
+        if (!verifyNativeOuterInventory(outer, verified.metadata, err))
+            return false;
+
+        const ZipEntry *payloadEntry = outer.find(verified.metadata.payloadEntry);
+        if (!payloadEntry) {
+            err << "Windows native installer: missing nested payload\n";
+            return false;
+        }
+        const std::vector<uint8_t> payloadBytes = outer.extract(*payloadEntry);
+        verified.payloadSha256 = sha256Hex(payloadBytes.data(), payloadBytes.size());
+        ZipReader payload(payloadBytes.data(), payloadBytes.size());
+        if (payload.entries().size() != verified.metadata.payloadFiles.size()) {
+            err << "Windows native installer: payload inventory count mismatch\n";
+            return false;
+        }
+        for (const auto &file : verified.metadata.payloadFiles) {
+            const ZipEntry *entry = payload.find(file.path);
+            if (!entry || entry->uncompressedSize != file.sizeBytes) {
+                err << "Windows native installer: payload inventory mismatch for " << file.path
+                    << "\n";
+                return false;
+            }
+            const std::vector<uint8_t> bytes = payload.extract(*entry);
+            if (sha256Hex(bytes.data(), bytes.size()) != file.sha256) {
+                err << "Windows native installer: payload hash mismatch for " << file.path << "\n";
+                return false;
+            }
+        }
+
+        const ZipEntry *cleanupEntry = outer.find(verified.metadata.cleanupEntry);
+        if (!cleanupEntry) {
+            err << "Windows native installer: detached cleanup helper is missing\n";
+            return false;
+        }
+        const std::vector<uint8_t> cleanup = outer.extract(*cleanupEntry);
+        if (sha256Hex(cleanup.data(), cleanup.size()) != verified.metadata.cleanupSha256) {
+            err << "Windows native installer: detached cleanup helper hash mismatch\n";
+            return false;
+        }
+        std::ostringstream cleanupError;
+        if (!verifyPE(cleanup, cleanupError)) {
+            err << "Windows native installer: invalid cleanup helper: " << cleanupError.str();
+            return false;
+        }
+        if (!windowsPeMatchesArchitecture(
+                cleanup, verified.metadata.architecture, err, "cleanup helper"))
+            return false;
+
+        for (const auto &file : verified.metadata.outerFiles) {
+            const ZipEntry *entry = outer.find(file.overlayPath);
+            if (!entry || entry->uncompressedSize != file.sizeBytes) {
+                err << "Windows native installer: outer-file inventory mismatch\n";
+                return false;
+            }
+            const std::vector<uint8_t> bytes = outer.extract(*entry);
+            if (sha256Hex(bytes.data(), bytes.size()) != file.sha256) {
+                err << "Windows native installer: outer-file hash mismatch\n";
+                return false;
+            }
+        }
+
+        if (expectedMode == "setup") {
+            const ZipEntry *maintenanceEntry = outer.find("meta/uninstall.exe");
+            if (!maintenanceEntry) {
+                err << "Windows native installer: setup is missing maintenance executable\n";
+                return false;
+            }
+            const std::vector<uint8_t> maintenance = outer.extract(*maintenanceEntry);
+            VerifiedWindowsNativePackage nested;
+            if (!verifyWindowsNativeInstallerImpl(
+                    maintenance, "maintenance", depth + 1U, nested, err))
+                return false;
+            if (!maintenanceContractMatches(verified.metadata, nested.metadata) ||
+                nested.payloadSha256 != verified.payloadSha256) {
+                err << "Windows native installer: setup and maintenance identities differ\n";
+                return false;
+            }
+        } else if (outer.find("meta/uninstall.exe")) {
+            err << "Windows native installer: maintenance payload embeds itself recursively\n";
+            return false;
+        }
+    } catch (const std::exception &error) {
+        err << "Windows native installer: " << error.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+bool verifyWindowsNativeInstaller(const std::vector<uint8_t> &data, std::ostream &err) {
+    VerifiedWindowsNativePackage verified;
+    return verifyWindowsNativeInstallerImpl(data, "setup", 0U, verified, err);
 }
 
 /// @brief Verify that @p data ends with a plausible UDIF trailer.

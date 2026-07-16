@@ -1,3 +1,21 @@
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/tests/tools/PackageCliTests.cmake
+# Purpose: Exercise package and install-package command-line contracts.
+#
+# Key invariants: Unsafe or ambiguous packaging arguments fail without output.
+#
+# Ownership/Lifetime: Test artifacts remain under TEST_WORK_DIR.
+#
+# Links: cmd_package.cpp, cmd_install_package.cpp
+#
+#===----------------------------------------------------------------------===#
+
 cmake_minimum_required(VERSION 3.20)
 
 foreach (_required VIPER_BIN TEST_WORK_DIR)
@@ -551,6 +569,30 @@ execute_process(
 if (_release_verify_rv EQUAL 0 OR NOT _release_verify_err MATCHES "--release is a generation mode")
     message(FATAL_ERROR
             "release mode was incorrectly accepted for verify-only\nstdout:\n${_release_verify_out}\nstderr:\n${_release_verify_err}")
+endif ()
+
+execute_process(
+        COMMAND "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+                --target windows --stage-only --windows-channel stable
+        RESULT_VARIABLE _local_stable_rv
+        OUTPUT_VARIABLE _local_stable_out
+        ERROR_VARIABLE _local_stable_err)
+if (_local_stable_rv EQUAL 0 OR
+   NOT _local_stable_err MATCHES "stable Windows channel is reserved for --release")
+    message(FATAL_ERROR
+            "local package could claim the stable Windows identity\nstdout:\n${_local_stable_out}\nstderr:\n${_local_stable_err}")
+endif ()
+
+execute_process(
+        COMMAND "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+                --target windows --stage-only --windows-channel "-unsafe"
+        RESULT_VARIABLE _unsafe_channel_rv
+        OUTPUT_VARIABLE _unsafe_channel_out
+        ERROR_VARIABLE _unsafe_channel_err)
+if (_unsafe_channel_rv EQUAL 0 OR
+   NOT _unsafe_channel_err MATCHES "Windows release channel must be")
+    message(FATAL_ERROR
+            "unsafe Windows channel was accepted during stage-only validation\nstdout:\n${_unsafe_channel_out}\nstderr:\n${_unsafe_channel_err}")
 endif ()
 
 execute_process(

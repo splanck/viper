@@ -1,0 +1,58 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tools/windows_installer/WindowsInstallerCleanup.rc.in
+// Purpose: Embed compatibility and version resources in the detached native
+//          installer cleanup helper.
+//
+// Key invariants:
+//   - Identity and version originate from the canonical CMake build metadata.
+//   - The helper requests no elevation and displays no user interface.
+//
+// Ownership/Lifetime:
+//   - Configured into the build tree and compiled by the Windows resource tool.
+//
+// Links: WindowsInstallerCleanup.manifest.in, src/CMakeLists.txt
+//
+//===----------------------------------------------------------------------===//
+
+#include <windows.h>
+
+1 RT_MANIFEST "@VIPER_INSTALLER_CLEANUP_MANIFEST_PATH@"
+
+1 VERSIONINFO
+ FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+ PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "Viper Project\0"
+      VALUE "FileDescription", "Viper Installer Detached Cleanup\0"
+      VALUE "FileVersion", "@PROJECT_VERSION@\0"
+      VALUE "InternalName", "viper-installer-cleanup\0"
+      VALUE "LegalCopyright", "Copyright (c) Viper Project contributors\0"
+      VALUE "OriginalFilename", "viper-installer-cleanup.exe\0"
+      VALUE "ProductName", "Viper Tools\0"
+      VALUE "ProductVersion", "@PROJECT_VERSION@\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

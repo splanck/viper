@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-06-20
+last-verified: 2026-07-16
 ---
 
 # Testing Guide
@@ -76,6 +76,7 @@ ctest --test-dir build -L bytecode         # Bytecode VM and VM/bytecode parity
 ctest --test-dir build -L golden           # Golden file tests only
 ctest --test-dir build -L "vm"             # VM tests only
 ctest --test-dir build -L audit            # Local structural/source-health audits
+ctest --test-dir build -L slow             # Opt-in long-running tests only
 
 # Run a specific test
 ctest --test-dir build -R test_zia_lexer
@@ -138,7 +139,13 @@ fingerprints around every pass and is not a performance configuration.
 | `smoke` | 5 | Quick sanity tests |
 | `tui` | 28 | Terminal UI / REPL tests |
 | `perf` | — | Performance benchmarks (excluded from default runs) |
-| `slow` | 1 | Long-running tests (excluded from default runs) |
+| `slow` | platform-dependent | Long-running tests (excluded by the build scripts unless explicitly enabled) |
+
+The build scripts exclude `slow` tests by default. Set `VIPER_RUN_SLOW_TESTS=1`
+to include them in the full suite, or use `ctest --test-dir build -L slow` to run
+only that lane. A test may be slow on one platform only: Windows Debug tests
+whose representative runtime is about 30 seconds or more are labeled `slow` on
+Windows without changing the default lanes on Linux or macOS.
 
 ## Test Categories
 

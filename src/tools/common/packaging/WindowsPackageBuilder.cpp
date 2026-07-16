@@ -29,15 +29,16 @@
 #include "PEBuilder.hpp"
 #include "PkgPNG.hpp"
 #include "PkgUtils.hpp"
+#include "WindowsInstallerMetadata.hpp"
+#include "ZipReader.hpp"
 #include "ZipWriter.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <chrono>
-#include <ctime>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -54,23 +55,38 @@ constexpr size_t kInstallerStubPathCharLimit = 32768;
 constexpr uint64_t kInstallerStackReserve = 0x200000;
 constexpr uint64_t kInstallerStackCommit = 0x100000;
 constexpr std::string_view kComponentViperIDE = "viperide";
+constexpr std::string_view kComponentSDK = "sdk";
 constexpr std::string_view kComponentSamples = "samples";
 constexpr std::string_view kComponentVSCode = "vscode";
 
 std::string lowerAscii(std::string text);
 
+/// @brief Return true for staged bootstrap executables consumed by the packager itself.
+bool isToolchainInstallerBootstrapPath(std::string_view relativePath) {
+    std::string normalized(relativePath);
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    normalized = lowerAscii(std::move(normalized));
+    return normalized == "bin/viper-installer-host.exe" ||
+           normalized == "bin/viper-installer-cleanup.exe";
+}
+
 /// @brief Return the optional Windows toolchain component owning an install path.
-std::string toolchainComponentForPath(const std::string &relativePath) {
+std::string toolchainComponentForPath(const std::string &relativePath, bool packagedVSIX) {
     const std::string lower = lowerAscii(relativePath);
-    if (lower == "bin/viperide.exe" || lower == "bin/viperide.buildinfo" ||
-        lower == "bin/viperide.ico") {
+    if (lower.rfind("bin/viperide", 0) == 0 || lower.rfind("share/viper/viperide/", 0) == 0 ||
+        lower.rfind("share/viper/ide/", 0) == 0) {
         return std::string(kComponentViperIDE);
     }
-    if (lower.rfind("share/viper/samples/", 0) == 0)
+    if (lower.rfind("share/viper/samples/", 0) == 0 || lower.rfind("share/viper/examples/", 0) == 0)
         return std::string(kComponentSamples);
     if (lower.rfind("share/viper/vscode/", 0) == 0 ||
         lower == "bin/viper-install-vscode-extension.cmd") {
-        return std::string(kComponentVSCode);
+        return std::string(packagedVSIX ? kComponentVSCode : kComponentSDK);
+    }
+    if (lower.rfind("include/", 0) == 0 || lower.rfind("lib/", 0) == 0 ||
+        lower.rfind("share/viper/sdk/", 0) == 0 || lower.rfind("share/viper/cmake/", 0) == 0 ||
+        lower.rfind("share/cmake/viper/", 0) == 0) {
+        return std::string(kComponentSDK);
     }
     return {};
 }
@@ -638,56 +654,119 @@ std::vector<std::string> importedDllNamesFromPeImpl(const std::vector<uint8_t> &
     return names;
 }
 
-/// @brief Decide whether a DLL is a system/redistributable that need not be bundled.
-/// @details Returns true for OS DLLs and the standard MSVC/UCRT redistributables
-///          (release builds), plus the api-ms-win/ext-ms-win API sets; returns
-///          false for debug-CRT variants (which are not redistributable) so the
-///          packager can flag a debug-linked payload. Used to decide which
-///          adjacent DLLs must travel with the application.
-bool isKnownWindowsRedistributableDll(const std::string &dll) {
-    const std::string stem = dll.size() > 4 && dll.substr(dll.size() - 4) == ".dll"
-                                 ? dll.substr(0, dll.size() - 4)
-                                 : dll;
-    if (stem == "ucrtbased" ||
-        (stem.rfind("vcruntime", 0) == 0 && !stem.empty() && stem.back() == 'd') ||
-        (stem.rfind("msvcp", 0) == 0 && !stem.empty() && stem.back() == 'd')) {
-        return false;
-    }
+/// @brief Decide whether a DLL is supplied by the supported Windows operating system.
+/// @details Compiler runtimes such as vcruntime140.dll and msvcp140.dll are deliberately
+///          excluded: an installer must carry those files app-locally instead of assuming
+///          that an unrelated product installed a compatible redistributable globally.
+///          API-set forwarders and Windows inbox graphics/input libraries remain system DLLs.
+bool isKnownWindowsSystemDll(const std::string &dll) {
     static const std::set<std::string> exact = {
-        "advapi32.dll",     "bcrypt.dll",         "cfgmgr32.dll",    "combase.dll",
-        "comctl32.dll",     "crypt32.dll",        "d3d11.dll",       "d3d12.dll",
-        "dcomp.dll",        "dwmapi.dll",         "dxgi.dll",        "gdi32.dll",
-        "imm32.dll",        "iphlpapi.dll",       "kernel32.dll",    "msvcrt.dll",
-        "ntdll.dll",        "ole32.dll",          "oleaut32.dll",    "propsys.dll",
-        "rpcrt4.dll",       "secur32.dll",        "setupapi.dll",    "shell32.dll",
-        "shlwapi.dll",      "user32.dll",         "uxtheme.dll",     "version.dll",
-        "winmm.dll",        "winspool.drv",       "ws2_32.dll",      "wtsapi32.dll",
-        "ucrtbase.dll",     "xinput1_4.dll",      "xinput9_1_0.dll", "d3dcompiler_47.dll",
-        "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"};
-    auto hasNumericSuffix = [](std::string_view text) {
-        if (text.empty())
-            return false;
-        bool sawDigit = false;
-        for (char c : text) {
-            if (c == '_')
-                continue;
-            if (!std::isdigit(static_cast<unsigned char>(c)))
-                return false;
-            sawDigit = true;
-        }
-        return sawDigit;
-    };
+        "advapi32.dll",  "bcrypt.dll",      "cfgmgr32.dll",      "combase.dll",  "comctl32.dll",
+        "crypt32.dll",   "d3d11.dll",       "d3d12.dll",         "dcomp.dll",    "dwmapi.dll",
+        "dxgi.dll",      "gdi32.dll",       "imm32.dll",         "iphlpapi.dll", "kernel32.dll",
+        "msvcrt.dll",    "ntdll.dll",       "ole32.dll",         "oleaut32.dll", "propsys.dll",
+        "rpcrt4.dll",    "rstrtmgr.dll",    "secur32.dll",       "setupapi.dll", "shell32.dll",
+        "shlwapi.dll",   "user32.dll",      "uxtheme.dll",       "version.dll",  "winmm.dll",
+        "winhttp.dll",   "winspool.drv",    "ws2_32.dll",        "wtsapi32.dll", "ucrtbase.dll",
+        "xinput1_4.dll", "xinput9_1_0.dll", "d3dcompiler_47.dll"};
     if (exact.find(dll) != exact.end())
         return true;
-    static constexpr std::string_view vcruntimePrefix = "vcruntime";
-    static constexpr std::string_view msvcpPrefix = "msvcp";
-    if (stem.rfind("vcruntime", 0) == 0 &&
-        hasNumericSuffix(std::string_view(stem).substr(vcruntimePrefix.size())))
-        return true;
-    if (stem.rfind("msvcp", 0) == 0 &&
-        hasNumericSuffix(std::string_view(stem).substr(msvcpPrefix.size())))
-        return true;
     return dll.rfind("api-ms-win-", 0) == 0 || dll.rfind("ext-ms-win-", 0) == 0;
+}
+
+/// @brief Return true when @p dll names an app-local MSVC release or debug runtime.
+/// @details Runtime families begin with a stable prefix followed by a toolset number.
+///          Requiring the first suffix character to be numeric avoids misclassifying
+///          application DLLs such as `msvcp_plugin.dll`.
+bool isAppLocalMsvcRuntimeDll(const std::string &dll) {
+    if (dll.size() <= 4 || dll.substr(dll.size() - 4) != ".dll")
+        return false;
+    const std::string_view stem(dll.data(), dll.size() - 4);
+    for (const std::string_view prefix : {std::string_view("vcruntime"),
+                                          std::string_view("msvcp"),
+                                          std::string_view("concrt"),
+                                          std::string_view("vcomp")}) {
+        if (stem.size() > prefix.size() && stem.substr(0, prefix.size()) == prefix &&
+            std::isdigit(static_cast<unsigned char>(stem[prefix.size()]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @brief Return whether a staged file is a Viper-owned PE eligible for nested signing.
+/// @details Microsoft compiler runtime DLLs retain their original Microsoft signatures.
+///          Non-PE fixture files and ordinary data with an executable-looking suffix are
+///          not passed to the signer.
+bool shouldSignWindowsPayloadPe(std::string_view logicalName, const std::vector<uint8_t> &data) {
+    const std::string lowerName = lowerAscii(std::string(logicalName));
+    const std::string ext = lowerAscii(fs::path(lowerName).extension().string());
+    if (ext != ".exe" && ext != ".dll")
+        return false;
+    if (ext == ".dll" && isAppLocalMsvcRuntimeDll(fs::path(lowerName).filename().string()))
+        return false;
+    return inspectPeExecutable(data).has_value();
+}
+
+/// @brief Apply @p signer and prove that it preserved a valid PE32+ architecture.
+/// @throws std::runtime_error when signing fails, returns no bytes, or changes the image type.
+std::vector<uint8_t> signWindowsPayloadPe(const WindowsPeSigner &signer,
+                                          std::string_view logicalName,
+                                          const std::vector<uint8_t> &unsignedData,
+                                          const std::string &arch) {
+    if (!signer || !shouldSignWindowsPayloadPe(logicalName, unsignedData))
+        return unsignedData;
+
+    std::vector<uint8_t> signedData;
+    try {
+        signedData = signer(logicalName, unsignedData);
+    } catch (const std::exception &ex) {
+        throw std::runtime_error("failed to Authenticode-sign nested Windows PE '" +
+                                 std::string(logicalName) + "': " + ex.what());
+    }
+    if (signedData.empty()) {
+        throw std::runtime_error("nested Windows PE signer returned no bytes for '" +
+                                 std::string(logicalName) + "'");
+    }
+    const auto info = inspectPeExecutable(signedData);
+    if (!info || !info->pe32Plus || info->machine != windowsMachineForArch(arch)) {
+        throw std::runtime_error("nested Windows PE signer changed the image architecture for '" +
+                                 std::string(logicalName) + "'");
+    }
+    return signedData;
+}
+
+/// @brief Require every imported MSVC runtime to exist beside its staged PE importer.
+/// @details Windows resolves app-local runtime DLLs from the executable directory. The
+///          manifest is case-normalized for comparison, while diagnostics retain the
+///          original importer and expected path. Unparseable non-PE fixtures are ignored;
+///          staged object-format validation remains responsible for required executables.
+void validateToolchainMsvcRuntimeClosure(const ToolchainInstallManifest &manifest) {
+    std::set<std::string> stagedPaths;
+    for (const ToolchainFileEntry &file : manifest.files)
+        stagedPaths.insert(lowerAscii(file.stagedRelativePath));
+
+    for (const ToolchainFileEntry &file : manifest.files) {
+        if (file.symlink)
+            continue;
+        const std::string ext = lowerAscii(file.stagedAbsolutePath.extension().string());
+        if (ext != ".exe" && ext != ".dll")
+            continue;
+        const auto imports = importedDllNamesFromPeImpl(readFile(file.stagedAbsolutePath.string()));
+        const fs::path parent = fs::path(file.stagedRelativePath).parent_path();
+        for (const std::string &dll : imports) {
+            if (!isAppLocalMsvcRuntimeDll(dll))
+                continue;
+            const std::string expected = (parent / dll).generic_string();
+            if (stagedPaths.find(lowerAscii(expected)) == stagedPaths.end()) {
+                throw std::runtime_error("Windows toolchain payload '" + file.stagedRelativePath +
+                                         "' imports app-local MSVC "
+                                         "runtime '" +
+                                         dll + "' but '" + expected +
+                                         "' is missing from the stage");
+            }
+        }
+    }
 }
 
 /// @brief Find @p filename under @p dir, trying exact, adjacent, then bounded recursive search.
@@ -764,7 +843,7 @@ std::vector<WindowsDllDependency> discoverAdjacentDllDependencies(const fs::path
         for (const auto &dll : imports) {
             if (!seen.insert(dll).second)
                 continue;
-            if (isKnownWindowsRedistributableDll(dll))
+            if (isKnownWindowsSystemDll(dll))
                 continue;
             const auto local = findLocalDllCaseInsensitive(dir, dll);
             if (local) {
@@ -918,43 +997,34 @@ std::string toolchainVSCodeInstallScript() {
 }
 
 /// @brief Generate the prerequisites README text bundled with the installer.
-std::string toolchainWindowsPrerequisitesReadme() {
-    return "Viper Windows toolchain installer prerequisites\r\n"
-           "\r\n"
-           "- Windows PowerShell 5 or newer must be available under System32. The setup "
-           "bootstrap uses it to expand the compressed payload.\r\n"
-           "- Release builds produced with the MSVC dynamic runtime require the Microsoft "
-           "Visual C++ Redistributable for Visual Studio 2015-2022 unless the staged "
-           "toolchain includes the required runtime DLLs next to bin\\viper.exe or the "
-           "toolchain was built with a static MSVC runtime.\r\n"
-           "- Native code generation requires the normal Windows developer prerequisites "
-           "for the selected backend, including a C++ compiler/linker toolchain when "
-           "linking native executables.\r\n"
-           "\r\n"
-           "After setup, open a new terminal before relying on PATH changes. The default "
-           "per-user install root is %LOCALAPPDATA%\\Viper, and machine-scope installs use "
-           "%ProgramFiles%\\Viper unless the installer was built with a custom directory.\r\n"
-           "\r\n"
-           "The Viper Developer Prompt configures VIPER_HOME, PATH, Viper_DIR, and "
-           "CMAKE_PREFIX_PATH so CMake projects can use find_package(Viper CONFIG REQUIRED).\r\n"
-           "\r\n"
-           "Start Menu shortcuts include a Viper developer prompt, ViperIDE, and the VS Code "
-           "extension installer when a .vsix was packaged. To remove the toolchain, use "
-           "Settings > Apps or run uninstall.exe from the install root.\r\n";
-}
-
-/// @brief Return a YYYYMMDD date for Add/Remove Programs InstallDate metadata.
-std::string currentInstallDate() {
-    const std::time_t now = std::time(nullptr);
-    std::tm tm{};
-#if defined(_WIN32)
-    localtime_s(&tm, &now);
-#else
-    localtime_r(&now, &tm);
-#endif
-    std::ostringstream os;
-    os << std::put_time(&tm, "%Y%m%d");
-    return os.str();
+std::string toolchainWindowsPrerequisitesReadme(std::string_view installDirName) {
+    std::string readme =
+        "Viper Windows developer installation\r\n"
+        "\r\n"
+        "The native setup program is self-contained: it does not invoke PowerShell, fetch "
+        "packages, or require a separately installed Microsoft C++ redistributable. "
+        "Architecture-matched runtime DLLs are installed next to the Viper tools.\r\n"
+        "\r\n"
+        "Git, CMake, Ninja, Visual Studio C++, the Windows SDK, VS Code, and Windows "
+        "Terminal are optional companions. Setup reports what it detects but never downloads "
+        "or changes those products. Native code generation still requires an appropriate "
+        "compiler, linker, and Windows SDK for the selected backend.\r\n"
+        "\r\n"
+        "After setup, open a new terminal before relying on PATH changes. The default "
+        "per-user install root for this package is %LOCALAPPDATA%\\Programs\\";
+    readme += installDirName;
+    readme += ", and its machine-scope root is %ProgramFiles%\\";
+    readme += installDirName;
+    readme += ". Setup also supports a validated custom folder.\r\n"
+              "\r\n"
+              "The Viper Developer Prompt configures VIPER_HOME, PATH, Viper_DIR, and "
+              "CMAKE_PREFIX_PATH so CMake projects can use find_package(Viper CONFIG REQUIRED).\r\n"
+              "\r\n"
+              "Start Menu shortcuts include a Viper developer prompt, ViperIDE, and the VS Code "
+              "extension installer when a verified .vsix was packaged. Settings > Apps supports "
+              "Modify, Repair, and Uninstall. Direct uninstall.exe removal safely hands off to the "
+              "verified maintenance cache before deleting the install directory.\r\n";
+    return readme;
 }
 
 /// @brief Estimate Add/Remove Programs installed size from files installed on disk.
@@ -1133,14 +1203,11 @@ std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &a
     return progId;
 }
 
-/// @brief Return the command-line arguments the viper binary uses to open files of
-/// this extension: "-run" for pre-compiled .il modules, "run" for source files.
+/// @brief Return ViperIDE arguments used before the quoted source path.
+/// @details Opening a source association must never execute the file implicitly.
 std::string toolchainOpenCommandArgsFor(const FileAssoc &assoc) {
-    std::string ext = assoc.extension;
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return ext == ".il" ? "-run" : "run";
+    (void)assoc;
+    return {};
 }
 
 /// @brief Walk every parent directory segment of relativeFilePath and ensure each one
@@ -1226,7 +1293,8 @@ void addStoredOverlayFile(ZipWriter &zip,
                                                           entry.uncompressedSize,
                                                           entry.crc32,
                                                           sha256Hex(data, len),
-                                                          componentId});
+                                                          componentId,
+                                                          overlayName});
     appendPayloadManifestEntry(payloadManifest, overlayName, data, len);
     registerInstalledFile(
         layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall, componentId);
@@ -1249,8 +1317,8 @@ void addCompressedPayloadFile(ZipWriter &payloadZip,
                               std::vector<std::string> *installManifestPaths = nullptr,
                               const std::string &componentId = {}) {
     payloadZip.addFile(payloadName, data, len, unixMode);
-    layout.installedFiles.push_back(
-        WindowsPackageFileEntry{root, installRelativePath, 0, len, 0, {}, componentId});
+    layout.installedFiles.push_back(WindowsPackageFileEntry{
+        root, installRelativePath, 0, len, 0, sha256Hex(data, len), componentId, payloadName});
     registerInstalledFile(layout, root, installRelativePath, len, deleteOnUninstall, componentId);
     if (installManifestPaths != nullptr && root == WindowsInstallRoot::InstallDir) {
         installManifestPaths->push_back(
@@ -1304,6 +1372,259 @@ void finalizeUninstallDirs(WindowsPackageLayout &layout) {
                      });
 }
 
+/// @brief Normalize a validated Windows package path for the ZIP/metadata protocol.
+std::string metadataPath(std::string value) {
+    std::replace(value.begin(), value.end(), '\\', '/');
+    return value;
+}
+
+/// @brief Convert the package layout into the deterministic native-host contract.
+WindowsInstallerMetadata nativeMetadataForLayout(const WindowsPackageLayout &layout,
+                                                 const std::string &productKind,
+                                                 const std::string &packageMode,
+                                                 const std::string &arch) {
+    WindowsInstallerMetadata metadata;
+    metadata.packageMode = packageMode;
+    metadata.productKind = productKind;
+    metadata.identifier = layout.identifier;
+    metadata.displayName = layout.displayName;
+    metadata.version = layout.version;
+    metadata.publisher = layout.publisher;
+    metadata.description = layout.description;
+    metadata.contact = layout.contact;
+    metadata.homepage = layout.homepage;
+    metadata.documentationUrl =
+        layout.documentationUrl.empty() ? layout.homepage : layout.documentationUrl;
+    metadata.updateManifestUrl = layout.updateManifestUrl;
+    metadata.updateRsaModulus = layout.updateRsaModulus;
+    metadata.updateRsaExponent = layout.updateRsaExponent;
+    metadata.architecture = arch.empty() ? "x64" : arch;
+    metadata.channel = layout.releaseChannel;
+    metadata.commit = layout.sourceCommit;
+    metadata.defaultScope = layout.perUserInstall ? "user" : "machine";
+    metadata.defaultInstallDir = layout.installDirName;
+    metadata.executableName = metadataPath(
+        productKind == "toolchain" ? "bin/" + layout.executableName : layout.executableName);
+    metadata.associationExecutable = metadataPath(layout.fileAssociationExecutableRelativePath);
+    metadata.pathRelativePath = metadataPath(layout.pathRelativePath);
+    metadata.displayIconRelativePath = metadataPath(layout.displayIconRelativePath);
+    metadata.installedManifestRelativePath = metadataPath(layout.installedManifestRelativePath);
+    metadata.minimumWindowsVersion = layout.minimumWindowsVersion;
+    metadata.addToPath = layout.addToPath;
+    metadata.registerFileAssociations = !layout.fileAssociations.empty();
+
+    std::map<std::string, uint64_t> componentSizes;
+    for (const auto &file : layout.installedFiles) {
+        if (file.root != WindowsInstallRoot::InstallDir || file.sourcePath.empty())
+            continue;
+        if (file.sizeBytes > std::numeric_limits<uint64_t>::max() - metadata.installedSizeBytes)
+            throw std::runtime_error("Windows native installer payload size overflow");
+        metadata.installedSizeBytes += file.sizeBytes;
+        componentSizes[file.componentId] += file.sizeBytes;
+        metadata.payloadFiles.push_back(
+            {metadataPath(file.sourcePath), file.sha256, file.sizeBytes, file.componentId});
+    }
+    metadata.components.push_back(
+        {"core",
+         productKind == "toolchain" ? "Core developer tools" : "Application files",
+         productKind == "toolchain" ? "Compiler, virtual machine, command-line tools, runtime, "
+                                      "documentation, and developer prompt"
+                                    : "Files required to run the application",
+         true,
+         true,
+         componentSizes[""]});
+    for (const auto &component : layout.optionalComponents) {
+        metadata.components.push_back({component.id,
+                                       component.label,
+                                       component.description,
+                                       false,
+                                       component.defaultSelected,
+                                       componentSizes[component.id]});
+    }
+    for (const auto &shortcut : layout.nativeShortcuts) {
+        metadata.shortcuts.push_back(
+            {shortcut.root == WindowsInstallRoot::DesktopDir ? "desktop" : "start-menu",
+             metadataPath(shortcut.relativePath),
+             shortcut.targetRoot,
+             metadataPath(shortcut.targetPath),
+             shortcut.workingRoot,
+             metadataPath(shortcut.workingPath),
+             shortcut.argumentPrefix,
+             metadataPath(shortcut.argumentPath),
+             shortcut.description,
+             shortcut.iconRoot,
+             metadataPath(shortcut.iconPath),
+             shortcut.iconIndex,
+             shortcut.componentId});
+    }
+    metadata.createShortcuts = !metadata.shortcuts.empty();
+    for (const auto &assoc : layout.fileAssociations) {
+        metadata.associations.push_back({assoc.extension,
+                                         assoc.description,
+                                         assoc.mimeType,
+                                         assoc.progId,
+                                         assoc.openCommandArguments});
+    }
+    return metadata;
+}
+
+/// @brief Prove that @p path is an unsigned, static-runtime native host for @p arch.
+std::vector<uint8_t> loadNativeInstallerHost(const fs::path &path, const std::string &arch) {
+    if (!fs::is_regular_file(path))
+        throw std::runtime_error("Windows native installer host is missing: " + path.string());
+    std::vector<uint8_t> bytes = readFile(path.string());
+    const auto info = inspectPeExecutable(bytes);
+    if (!info || !info->pe32Plus || info->machine != windowsMachineForArch(arch)) {
+        throw std::runtime_error("Windows native installer host architecture does not match '" +
+                                 (arch.empty() ? std::string("x64") : arch) +
+                                 "': " + path.string());
+    }
+    for (const std::string &dependency : importedDllNamesFromPeImpl(bytes)) {
+        const std::string lower = lowerAscii(dependency);
+        if (!isKnownWindowsSystemDll(lower)) {
+            throw std::runtime_error(
+                "Windows native installer host is not self-contained; imports " + dependency);
+        }
+    }
+
+    const size_t peOff = rd32(bytes, 60);
+    const size_t coffOff = peOff + 4;
+    const uint16_t optSize = rd16(bytes, coffOff + 16);
+    const size_t optOff = coffOff + 20;
+    constexpr size_t kPe32PlusDataDirectory = 112;
+    constexpr size_t kSecurityDirectoryIndex = 4;
+    const size_t security = optOff + kPe32PlusDataDirectory + kSecurityDirectoryIndex * 8;
+    if (optSize >= kPe32PlusDataDirectory + (kSecurityDirectoryIndex + 1) * 8 &&
+        hasBytes(bytes, security, 8) &&
+        (rd32(bytes, security) != 0 || rd32(bytes, security + 4) != 0)) {
+        throw std::runtime_error(
+            "Windows native installer host template must be unsigned before package assembly");
+    }
+    return bytes;
+}
+
+/// @brief Append a completed ZIP overlay to an unsigned native host template.
+std::vector<uint8_t> appendNativeHostOverlay(const std::vector<uint8_t> &host,
+                                             const std::vector<uint8_t> &overlay) {
+    if (overlay.size() > std::numeric_limits<size_t>::max() - host.size())
+        throw std::runtime_error("Windows native installer executable size overflow");
+    std::vector<uint8_t> result;
+    result.reserve(host.size() + overlay.size());
+    result.insert(result.end(), host.begin(), host.end());
+    result.insert(result.end(), overlay.begin(), overlay.end());
+    return result;
+}
+
+/// @brief Finish a native setup + maintenance pair from the prepared payload and outer entries.
+/// @details The maintenance executable carries the repair payload but not itself. The signed
+///          maintenance image is then added as a non-recursive outer-file record to setup.
+std::vector<uint8_t> buildNativeInstallerPair(ZipWriter &outer,
+                                              const std::vector<uint8_t> &payload,
+                                              WindowsInstallerMetadata metadata,
+                                              const std::vector<uint8_t> &host,
+                                              const std::vector<uint8_t> &unsignedCleanup,
+                                              const WindowsPeSigner &signer,
+                                              const std::string &arch,
+                                              std::string_view licenseText,
+                                              std::string_view readmeText) {
+    outer.addFile("meta/payload.zip", payload.data(), payload.size(), 0100644);
+    const std::vector<uint8_t> cleanup =
+        signWindowsPayloadPe(signer, "installer-cleanup.exe", unsignedCleanup, arch);
+    metadata.cleanupSha256 = sha256Hex(cleanup.data(), cleanup.size());
+    outer.addFile("meta/cleanup.exe", cleanup.data(), cleanup.size(), 0100755);
+    if (!licenseText.empty()) {
+        outer.addFile("meta/license.txt",
+                      reinterpret_cast<const uint8_t *>(licenseText.data()),
+                      licenseText.size(),
+                      0100644);
+    }
+    if (!readmeText.empty()) {
+        outer.addFile("meta/readme.txt",
+                      reinterpret_cast<const uint8_t *>(readmeText.data()),
+                      readmeText.size(),
+                      0100644);
+    }
+
+    metadata.packageMode = "maintenance";
+    std::string maintenanceText = serializeWindowsInstallerMetadata(metadata);
+    outer.addFile("meta/installer-v2.txt",
+                  reinterpret_cast<const uint8_t *>(maintenanceText.data()),
+                  maintenanceText.size(),
+                  0100644);
+    const std::vector<uint8_t> maintenanceOverlay = outer.finishToVector();
+    std::vector<uint8_t> maintenanceExe = appendNativeHostOverlay(host, maintenanceOverlay);
+    maintenanceExe = signWindowsPayloadPe(signer, "uninstall.exe", maintenanceExe, arch);
+
+    metadata.packageMode = "setup";
+    metadata.outerFiles.push_back({"meta/uninstall.exe",
+                                   metadata.uninstallerRelativePath,
+                                   sha256Hex(maintenanceExe.data(), maintenanceExe.size()),
+                                   maintenanceExe.size(),
+                                   {}});
+    if (maintenanceExe.size() >
+        std::numeric_limits<uint64_t>::max() - metadata.installedSizeBytes) {
+        throw std::runtime_error("Windows native installer size overflow");
+    }
+    metadata.installedSizeBytes += maintenanceExe.size();
+    const auto core = std::find_if(metadata.components.begin(),
+                                   metadata.components.end(),
+                                   [](const WindowsInstallerComponentMetadata &component) {
+                                       return lowerAscii(component.id) == "core";
+                                   });
+    if (core == metadata.components.end())
+        throw std::runtime_error("Windows native installer metadata has no core component");
+    if (maintenanceExe.size() > std::numeric_limits<uint64_t>::max() - core->sizeBytes) {
+        throw std::runtime_error("Windows native installer component size overflow");
+    }
+    core->sizeBytes += maintenanceExe.size();
+    const std::string setupText = serializeWindowsInstallerMetadata(metadata);
+
+    ZipReader maintenanceReader(maintenanceOverlay.data(), maintenanceOverlay.size());
+    ZipWriter setupOuter;
+    setupOuter.setCompressionEnabled(false);
+    for (const ZipEntry &entry : maintenanceReader.entries()) {
+        if (entry.name == "meta/installer-v2.txt")
+            continue;
+        if (!entry.name.empty() && entry.name.back() == '/') {
+            setupOuter.addDirectory(entry.name);
+            continue;
+        }
+        const std::vector<uint8_t> data = maintenanceReader.extract(entry);
+        setupOuter.addFile(entry.name, data.data(), data.size(), 0100644);
+    }
+    setupOuter.addFile("meta/uninstall.exe", maintenanceExe.data(), maintenanceExe.size(), 0100755);
+    setupOuter.addFile("meta/installer-v2.txt",
+                       reinterpret_cast<const uint8_t *>(setupText.data()),
+                       setupText.size(),
+                       0100644);
+    return appendNativeHostOverlay(host, setupOuter.finishToVector());
+}
+
+/// @brief Locate a staged host template for a toolchain package.
+fs::path toolchainNativeHostPath(const WindowsToolchainBuildParams &params) {
+    if (!params.installerHostPath.empty())
+        return params.installerHostPath;
+    for (const ToolchainFileEntry &file : params.manifest.files) {
+        if (lowerAscii(metadataPath(file.stagedRelativePath)) == "bin/viper-installer-host.exe") {
+            return file.stagedAbsolutePath;
+        }
+    }
+    return {};
+}
+
+/// @brief Locate the staged detached-cleanup helper for a toolchain package.
+fs::path toolchainNativeCleanupPath(const WindowsToolchainBuildParams &params) {
+    if (!params.installerCleanupPath.empty())
+        return params.installerCleanupPath;
+    for (const ToolchainFileEntry &file : params.manifest.files) {
+        if (lowerAscii(metadataPath(file.stagedRelativePath)) ==
+            "bin/viper-installer-cleanup.exe") {
+            return file.stagedAbsolutePath;
+        }
+    }
+    return {};
+}
+
 } // namespace
 
 std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data) {
@@ -1354,9 +1675,11 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.wizardSummary =
         pkg.windowsWizardSummary.empty() ? pkg.welcomeText : pkg.windowsWizardSummary;
     layout.executableName = exec + ".exe";
+    layout.fileAssociationExecutableRelativePath = exec + ".exe";
     layout.perUserInstall = pkg.windowsInstallScope.empty() || pkg.windowsInstallScope == "user";
     layout.homepage = pkg.homepage;
-    layout.installDate = currentInstallDate();
+    layout.minimumWindowsVersion =
+        pkg.minOsWindows.empty() ? std::string("10.0.17763") : pkg.minOsWindows;
     layout.createDesktopShortcut = pkg.shortcutDesktop;
     layout.createStartMenuShortcut = pkg.shortcutMenu;
     layout.cleanInstallRootBeforeInstall = false;
@@ -1402,7 +1725,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         icoData = generateIco(defaultViperToolchainIconImage());
     }
 
-    const auto execData = readFile(params.executablePath);
+    const auto execData = signWindowsPayloadPe(
+        params.peSigner, exec + ".exe", readFile(params.executablePath), params.archStr);
     noteInstallFile(exec + ".exe");
     addCompressedPayloadFile(payloadZip,
                              exec + ".exe",
@@ -1430,7 +1754,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         validateWindowsRelativePath(dllName, "Windows DLL dependency path");
         addParentDirs(
             layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, dllName);
-        const auto dllData = readFile(dll.sourcePath.string());
+        const auto dllData = signWindowsPayloadPe(
+            params.peSigner, dllName, readFile(dll.sourcePath.string()), params.archStr);
         addCompressedPayloadFile(payloadZip,
                                  dllName,
                                  dllData.data(),
@@ -1540,6 +1865,19 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     }
 
     if (pkg.shortcutMenu) {
+        layout.nativeShortcuts.push_back({WindowsInstallRoot::StartMenuDir,
+                                          displayName + ".lnk",
+                                          "install",
+                                          exec + ".exe",
+                                          "install",
+                                          {},
+                                          {},
+                                          {},
+                                          displayName,
+                                          icoData.empty() ? std::string{} : "install",
+                                          icoData.empty() ? std::string{} : exec + ".ico",
+                                          0,
+                                          {}});
         LnkParams lnk;
         lnk.targetPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".exe");
         lnk.workingDir = windowsInstallEnvPath(installDir, layout.perUserInstall);
@@ -1547,19 +1885,34 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         if (!icoData.empty())
             lnk.iconPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
-        addStoredOverlayFile(zip,
-                             "meta/start_menu.lnk",
-                             lnkData.data(),
-                             lnkData.size(),
-                             0100644,
-                             layout,
-                             WindowsInstallRoot::StartMenuDir,
-                             displayName + ".lnk",
-                             true,
-                             &payloadManifest);
+        if (params.installerHostPath.empty()) {
+            addStoredOverlayFile(zip,
+                                 "meta/start_menu.lnk",
+                                 lnkData.data(),
+                                 lnkData.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::StartMenuDir,
+                                 displayName + ".lnk",
+                                 true,
+                                 &payloadManifest);
+        }
     }
 
     if (pkg.shortcutDesktop) {
+        layout.nativeShortcuts.push_back({WindowsInstallRoot::DesktopDir,
+                                          displayName + ".lnk",
+                                          "install",
+                                          exec + ".exe",
+                                          "install",
+                                          {},
+                                          {},
+                                          {},
+                                          displayName,
+                                          icoData.empty() ? std::string{} : "install",
+                                          icoData.empty() ? std::string{} : exec + ".ico",
+                                          0,
+                                          {}});
         LnkParams lnk;
         lnk.targetPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".exe");
         lnk.workingDir = windowsInstallEnvPath(installDir, layout.perUserInstall);
@@ -1567,16 +1920,42 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         if (!icoData.empty())
             lnk.iconPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
-        addStoredOverlayFile(zip,
-                             "meta/desktop.lnk",
-                             lnkData.data(),
-                             lnkData.size(),
-                             0100644,
-                             layout,
-                             WindowsInstallRoot::DesktopDir,
-                             displayName + ".lnk",
-                             true,
-                             &payloadManifest);
+        if (params.installerHostPath.empty()) {
+            addStoredOverlayFile(zip,
+                                 "meta/desktop.lnk",
+                                 lnkData.data(),
+                                 lnkData.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::DesktopDir,
+                                 displayName + ".lnk",
+                                 true,
+                                 &payloadManifest);
+        }
+    }
+
+    if (!params.installerHostPath.empty()) {
+        finalizeUninstallDirs(layout);
+        const std::vector<uint8_t> compressedPayload = payloadZip.finishToVector();
+        WindowsInstallerMetadata metadata =
+            nativeMetadataForLayout(layout, "application", "setup", params.archStr);
+        const std::vector<uint8_t> host =
+            loadNativeInstallerHost(params.installerHostPath, params.archStr);
+        if (params.installerCleanupPath.empty())
+            throw std::runtime_error("Windows native installer cleanup helper path is required");
+        const std::vector<uint8_t> cleanup =
+            loadNativeInstallerHost(params.installerCleanupPath, params.archStr);
+        const std::vector<uint8_t> nativeInstaller = buildNativeInstallerPair(zip,
+                                                                              compressedPayload,
+                                                                              std::move(metadata),
+                                                                              host,
+                                                                              cleanup,
+                                                                              params.peSigner,
+                                                                              params.archStr,
+                                                                              layout.licenseText,
+                                                                              {});
+        writePEToFile(nativeInstaller, params.outputPath);
+        return;
     }
 
     noteInstallFile("uninstall.exe");
@@ -1595,7 +1974,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     uninstPe.iconData = icoData;
     uninstPe.versionInfo = windowsVersionInfoForLayout(layout, "uninstall.exe", "Uninstaller");
     configureInstallerStack(uninstPe);
-    auto uninstBytes = buildPE(uninstPe);
+    auto uninstBytes =
+        signWindowsPayloadPe(params.peSigner, "uninstall.exe", buildPE(uninstPe), params.archStr);
     addCompressedPayloadFile(payloadZip,
                              "uninstall.exe",
                              uninstBytes.data(),
@@ -1704,6 +2084,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  "toolchain manifest, got '" +
                                  params.manifest.platform + "'");
     }
+    validateToolchainMsvcRuntimeClosure(params.manifest);
     validateWindowsFileName(params.displayName, "Windows display name");
     validateWindowsProgIdBase(params.identifier, "Windows package identifier");
     validateSingleLineField(params.publisher, "Windows package publisher");
@@ -1715,6 +2096,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     if (params.manifest.version.empty())
         throw std::runtime_error("toolchain package version is required");
     validateSingleLineField(params.manifest.version, "Windows package version");
+    const fs::path nativeHostPath = toolchainNativeHostPath(params);
+    const bool useNativeHost = !nativeHostPath.empty();
     WindowsPackageLayout layout;
     layout.displayName = params.displayName;
     layout.installDirName = params.installDirName;
@@ -1729,14 +2112,20 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         "Choose the developer tools you want, review the license, and install Viper.";
     layout.executableName = "viper.exe";
     layout.homepage = params.homepage;
+    layout.documentationUrl = params.documentationUrl;
+    layout.updateManifestUrl = params.updateManifestUrl;
+    layout.updateRsaModulus = params.updateRsaModulus;
+    layout.updateRsaExponent = params.updateRsaExponent;
+    layout.releaseChannel = params.releaseChannel;
+    layout.sourceCommit = params.sourceCommit;
     layout.displayIconRelativePath = "share\\viper\\viper.ico";
-    layout.installDate = currentInstallDate();
+    layout.minimumWindowsVersion = "10.0.17763";
     layout.createDesktopShortcut = false;
     layout.createStartMenuShortcut = params.createStartMenuShortcuts;
     layout.addToPath = params.addToPath;
     layout.cleanInstallRootBeforeInstall = false;
     layout.pathRelativePath = "bin";
-    layout.fileAssociationExecutableRelativePath = "bin\\viper.exe";
+    layout.fileAssociationExecutableRelativePath = "bin\\viperide.exe";
     layout.perUserInstall = params.installScope == "user";
     if (params.registerFileAssociations) {
         if (params.identifier.empty())
@@ -1764,6 +2153,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.installedManifestRelativePath = ".viper-install-manifest.txt";
     std::ostringstream payloadManifest;
     std::string stagedLicenseText;
+    std::string windowsReadmeText;
     bool hasLicenseOverlay = false;
     bool hasReadmeOverlay = false;
     bool hasPackagedVSIX = false;
@@ -1781,15 +2171,47 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         layout.wizardImageRgba = banner.pixels;
     }
 
+    for (const ToolchainFileEntry &file : params.manifest.files) {
+        const std::string lowerRel = lowerAscii(file.stagedRelativePath);
+        if (lowerRel.rfind("share/viper/vscode/", 0) != 0 || lowerRel.size() < 5U ||
+            lowerRel.substr(lowerRel.size() - 5U) != ".vsix") {
+            continue;
+        }
+        try {
+            const std::vector<uint8_t> bytes = readFile(file.stagedAbsolutePath.string());
+            ZipReader vsix(bytes.data(), bytes.size());
+            if (!vsix.find("[Content_Types].xml") || !vsix.find("extension.vsixmanifest") ||
+                !vsix.find("extension/package.json")) {
+                throw std::runtime_error("required VSIX metadata is missing");
+            }
+            for (const ZipEntry &entry : vsix.entries()) {
+                if (entry.name.empty() || entry.name.back() == '/')
+                    continue;
+                static_cast<void>(vsix.extract(entry));
+            }
+        } catch (const std::exception &error) {
+            throw std::runtime_error("invalid staged VS Code extension '" +
+                                     file.stagedRelativePath + "': " + error.what());
+        }
+        hasPackagedVSIX = true;
+    }
+
     bool hasViperIDEComponent = false;
+    bool hasSDKComponent = false;
     bool hasSamplesComponent = false;
     bool hasVSCodeComponent = false;
     for (const ToolchainFileEntry &file : params.manifest.files) {
-        const std::string component = toolchainComponentForPath(file.stagedRelativePath);
+        if (isToolchainInstallerBootstrapPath(file.stagedRelativePath))
+            continue;
+        const std::string component =
+            toolchainComponentForPath(file.stagedRelativePath, hasPackagedVSIX);
         hasViperIDEComponent = hasViperIDEComponent || component == kComponentViperIDE;
+        hasSDKComponent = hasSDKComponent || component == kComponentSDK;
         hasSamplesComponent = hasSamplesComponent || component == kComponentSamples;
         hasVSCodeComponent = hasVSCodeComponent || component == kComponentVSCode;
     }
+    if (!hasViperIDEComponent)
+        layout.fileAssociations.clear();
     if (hasViperIDEComponent) {
         layout.optionalComponents.push_back(
             {std::string(kComponentViperIDE),
@@ -1797,12 +2219,19 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
              "Native editor, project workflow, debugger, and language services",
              true});
     }
+    if (hasSDKComponent) {
+        layout.optionalComponents.push_back(
+            {std::string(kComponentSDK),
+             "Viper SDK",
+             "Headers, libraries, CMake integration, and extension development files",
+             true});
+    }
     if (hasSamplesComponent) {
         layout.optionalComponents.push_back(
             {std::string(kComponentSamples),
              "Samples and example projects",
              "Install the complete source-level examples under share/viper/samples",
-             true});
+             false});
     }
     if (hasVSCodeComponent) {
         layout.optionalComponents.push_back(
@@ -1813,6 +2242,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     }
 
     for (const auto &file : params.manifest.files) {
+        if (isToolchainInstallerBootstrapPath(file.stagedRelativePath))
+            continue;
         const std::string relInstall =
             sanitizePackageRelativePath(file.stagedRelativePath, "windows toolchain path");
         validateWindowsRelativePath(relInstall, "windows toolchain path");
@@ -1823,8 +2254,11 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         }
         addParentDirs(
             layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, relInstall);
-        const auto data = readFile(file.stagedAbsolutePath.string());
-        const std::string componentId = toolchainComponentForPath(relInstall);
+        const auto data = signWindowsPayloadPe(params.peSigner,
+                                               relInstall,
+                                               readFile(file.stagedAbsolutePath.string()),
+                                               params.archStr);
+        const std::string componentId = toolchainComponentForPath(relInstall, hasPackagedVSIX);
         addCompressedPayloadFile(payloadZip,
                                  relInstall,
                                  data.data(),
@@ -1837,12 +2271,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  &installedManifestPaths,
                                  componentId);
 
-        const std::string lowerName = lowerAscii(fs::path(relInstall).filename().generic_string());
         const std::string lowerRel = lowerAscii(relInstall);
-        if (lowerRel.rfind("share/viper/vscode/", 0) == 0 && lowerName.size() >= 5 &&
-            lowerName.substr(lowerName.size() - 5) == ".vsix") {
-            hasPackagedVSIX = true;
-        }
         const bool isCanonicalLicense =
             lowerRel == "license" || lowerRel == "share/doc/viper/license";
         const bool isCanonicalReadme =
@@ -1851,8 +2280,13 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             (isCanonicalReadme && !hasReadmeOverlay)) {
             const std::string overlayName =
                 isCanonicalLicense ? "meta/license.txt" : "meta/readme.txt";
-            zip.addFile(overlayName, data.data(), data.size(), 0100644);
-            appendPayloadManifestEntry(&payloadManifest, overlayName, data.data(), data.size());
+            // The native host pair owns its metadata overlay and inserts these
+            // files once in buildNativeInstallerPair().  The legacy generated
+            // stub still needs them added to its outer ZIP here.
+            if (!useNativeHost) {
+                zip.addFile(overlayName, data.data(), data.size(), 0100644);
+                appendPayloadManifestEntry(&payloadManifest, overlayName, data.data(), data.size());
+            }
             if (isCanonicalLicense) {
                 stagedLicenseText = textFromBytes(data);
                 hasLicenseOverlay = true;
@@ -1878,7 +2312,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  true,
                                  &installedManifestPaths);
     }
-    {
+    if (hasPackagedVSIX) {
         const std::string script = toolchainVSCodeInstallScript();
         addCompressedPayloadFile(payloadZip,
                                  "bin/viper-install-vscode-extension.cmd",
@@ -1890,8 +2324,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  "bin/viper-install-vscode-extension.cmd",
                                  true,
                                  &installedManifestPaths,
-                                 hasVSCodeComponent ? std::string(kComponentVSCode)
-                                                    : std::string{});
+                                 std::string(kComponentVSCode));
     }
     {
         addUniqueDir(layout.installDirectories,
@@ -1921,7 +2354,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                      &installedManifestPaths,
                                      std::string(kComponentViperIDE));
         }
-        const std::string readme = toolchainWindowsPrerequisitesReadme();
+        const std::string readme = toolchainWindowsPrerequisitesReadme(params.installDirName);
+        windowsReadmeText = readme;
         addCompressedPayloadFile(payloadZip,
                                  "share/viper/README.windows-prerequisites.txt",
                                  reinterpret_cast<const uint8_t *>(readme.data()),
@@ -1935,6 +2369,19 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     }
 
     if (params.createStartMenuShortcuts) {
+        layout.nativeShortcuts.push_back({WindowsInstallRoot::StartMenuDir,
+                                          "Viper Developer Prompt.lnk",
+                                          "windows",
+                                          "System32/cmd.exe",
+                                          "profile",
+                                          {},
+                                          "/k",
+                                          "bin/viper-dev.cmd",
+                                          params.displayName + " Developer Prompt",
+                                          "install",
+                                          metadataPath(layout.displayIconRelativePath),
+                                          0,
+                                          {}});
         LnkParams promptLnk;
         promptLnk.targetPath = "%SystemRoot%\\System32\\cmd.exe";
         promptLnk.workingDir = "%USERPROFILE%";
@@ -1945,18 +2392,34 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         promptLnk.iconPath = windowsInstallEnvPath(
             params.installDirName, layout.perUserInstall, layout.displayIconRelativePath);
         const auto promptData = generateLnk(promptLnk);
-        addStoredOverlayFile(zip,
-                             "meta/viper_developer_prompt.lnk",
-                             promptData.data(),
-                             promptData.size(),
-                             0100644,
-                             layout,
-                             WindowsInstallRoot::StartMenuDir,
-                             "Viper Developer Prompt.lnk",
-                             true,
-                             &payloadManifest);
+        if (!useNativeHost) {
+            addStoredOverlayFile(zip,
+                                 "meta/viper_developer_prompt.lnk",
+                                 promptData.data(),
+                                 promptData.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::StartMenuDir,
+                                 "Viper Developer Prompt.lnk",
+                                 true,
+                                 &payloadManifest);
+        }
 
         if (hasPackagedVSIX) {
+            layout.nativeShortcuts.push_back(
+                {WindowsInstallRoot::StartMenuDir,
+                 "Install VS Code Extension.lnk",
+                 "windows",
+                 "System32/cmd.exe",
+                 "profile",
+                 {},
+                 "/c",
+                 "bin/viper-install-vscode-extension.cmd",
+                 "Install " + params.displayName + " VS Code extension",
+                 "install",
+                 metadataPath(layout.displayIconRelativePath),
+                 0,
+                 std::string(kComponentVSCode)});
             LnkParams vscodeLnk;
             vscodeLnk.targetPath = "%SystemRoot%\\System32\\cmd.exe";
             vscodeLnk.workingDir = "%USERPROFILE%";
@@ -1969,20 +2432,35 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             vscodeLnk.iconPath = windowsInstallEnvPath(
                 params.installDirName, layout.perUserInstall, layout.displayIconRelativePath);
             const auto vscodeData = generateLnk(vscodeLnk);
-            addStoredOverlayFile(zip,
-                                 "meta/viper_vscode_extension.lnk",
-                                 vscodeData.data(),
-                                 vscodeData.size(),
-                                 0100644,
-                                 layout,
-                                 WindowsInstallRoot::StartMenuDir,
-                                 "Install VS Code Extension.lnk",
-                                 true,
-                                 &payloadManifest,
-                                 std::string(kComponentVSCode));
+            if (!useNativeHost) {
+                addStoredOverlayFile(zip,
+                                     "meta/viper_vscode_extension.lnk",
+                                     vscodeData.data(),
+                                     vscodeData.size(),
+                                     0100644,
+                                     layout,
+                                     WindowsInstallRoot::StartMenuDir,
+                                     "Install VS Code Extension.lnk",
+                                     true,
+                                     &payloadManifest,
+                                     std::string(kComponentVSCode));
+            }
         }
 
         if (hasViperIDEComponent) {
+            layout.nativeShortcuts.push_back({WindowsInstallRoot::StartMenuDir,
+                                              "ViperIDE.lnk",
+                                              "install",
+                                              "bin/viperide.exe",
+                                              "profile",
+                                              {},
+                                              {},
+                                              {},
+                                              "ViperIDE",
+                                              "install",
+                                              "bin/viperide.ico",
+                                              0,
+                                              std::string(kComponentViperIDE)});
             LnkParams ideLnk;
             ideLnk.targetPath = windowsInstallEnvPath(
                 params.installDirName, layout.perUserInstall, "bin\\viperide.exe");
@@ -1991,18 +2469,46 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             ideLnk.iconPath = windowsInstallEnvPath(
                 params.installDirName, layout.perUserInstall, "bin\\viperide.ico");
             const auto ideData = generateLnk(ideLnk);
-            addStoredOverlayFile(zip,
-                                 "meta/viperide.lnk",
-                                 ideData.data(),
-                                 ideData.size(),
-                                 0100644,
-                                 layout,
-                                 WindowsInstallRoot::StartMenuDir,
-                                 "ViperIDE.lnk",
-                                 true,
-                                 &payloadManifest,
-                                 std::string(kComponentViperIDE));
+            if (!useNativeHost) {
+                addStoredOverlayFile(zip,
+                                     "meta/viperide.lnk",
+                                     ideData.data(),
+                                     ideData.size(),
+                                     0100644,
+                                     layout,
+                                     WindowsInstallRoot::StartMenuDir,
+                                     "ViperIDE.lnk",
+                                     true,
+                                     &payloadManifest,
+                                     std::string(kComponentViperIDE));
+            }
         }
+    }
+
+    if (!nativeHostPath.empty()) {
+        const fs::path nativeCleanupPath = toolchainNativeCleanupPath(params);
+        if (nativeCleanupPath.empty()) {
+            throw std::runtime_error(
+                "Windows toolchain stage is missing bin/viper-installer-cleanup.exe");
+        }
+        finalizeUninstallDirs(layout);
+        const std::vector<uint8_t> compressedPayload = payloadZip.finishToVector();
+        WindowsInstallerMetadata metadata =
+            nativeMetadataForLayout(layout, "toolchain", "setup", params.archStr);
+        const std::vector<uint8_t> host = loadNativeInstallerHost(nativeHostPath, params.archStr);
+        const std::vector<uint8_t> cleanup =
+            loadNativeInstallerHost(nativeCleanupPath, params.archStr);
+        const std::vector<uint8_t> nativeInstaller = buildNativeInstallerPair(zip,
+                                                                              compressedPayload,
+                                                                              std::move(metadata),
+                                                                              host,
+                                                                              cleanup,
+                                                                              params.peSigner,
+                                                                              params.archStr,
+                                                                              layout.licenseText,
+                                                                              windowsReadmeText);
+        writePEToFile(nativeInstaller, params.outputPath);
+        return;
     }
 
     registerInstalledFile(
@@ -2019,7 +2525,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     uninstPe.iconData = toolchainIcon;
     uninstPe.versionInfo = windowsVersionInfoForLayout(layout, "uninstall.exe", "Uninstaller");
     configureInstallerStack(uninstPe);
-    const auto uninstBytes = buildPE(uninstPe);
+    const auto uninstBytes =
+        signWindowsPayloadPe(params.peSigner, "uninstall.exe", buildPE(uninstPe), params.archStr);
     addCompressedPayloadFile(payloadZip,
                              "uninstall.exe",
                              uninstBytes.data(),

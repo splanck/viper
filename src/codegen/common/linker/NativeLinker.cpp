@@ -82,7 +82,9 @@ bool readArchiveCached(const std::string &path,
     static std::unordered_map<std::string, ArchiveCacheEntry> cache;
 
     std::error_code ec;
-    const auto modified = std::filesystem::last_write_time(path, ec);
+    const auto *utf8Path = reinterpret_cast<const char8_t *>(path.data());
+    const std::filesystem::path diskPath(std::u8string_view(utf8Path, path.size()));
+    const auto modified = std::filesystem::last_write_time(diskPath, ec);
     if (ec) {
         auto parsed = std::make_shared<Archive>();
         if (!readArchive(path, *parsed, err))
@@ -90,7 +92,7 @@ bool readArchiveCached(const std::string &path,
         archive = std::move(parsed);
         return true;
     }
-    const std::uintmax_t size = std::filesystem::file_size(path, ec);
+    const std::uintmax_t size = std::filesystem::file_size(diskPath, ec);
     if (ec) {
         auto parsed = std::make_shared<Archive>();
         if (!readArchive(path, *parsed, err))
@@ -1265,13 +1267,10 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 1: Read the user's object file.
     ObjFile userObj;
-    const bool readUserObject = opts.objData
-                                    ? readObjFile(opts.objData->data(),
-                                                  opts.objData->size(),
-                                                  opts.objPath,
-                                                  userObj,
-                                                  err)
-                                    : readObjFile(opts.objPath, userObj, err);
+    const bool readUserObject =
+        opts.objData
+            ? readObjFile(opts.objData->data(), opts.objData->size(), opts.objPath, userObj, err)
+            : readObjFile(opts.objPath, userObj, err);
     if (!readUserObject) {
         err << "error: failed to read object file '" << opts.objPath << "'\n";
         return 1;
@@ -1368,10 +1367,9 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             globalSyms.find("_tls_index") != globalSyms.end() || dynamicSyms.count("_tls_index") ||
             dynamicSyms.count("__imp__tls_index") ||
             std::any_of(allObjects.begin(), allObjects.end(), [](const ObjFile &obj) {
-                return std::any_of(
-                    obj.sections.begin(), obj.sections.end(), [](const ObjSection &sec) {
-                        return sec.alloc && sec.tls;
-                    });
+                return std::any_of(obj.sections.begin(),
+                                   obj.sections.end(),
+                                   [](const ObjSection &sec) { return sec.alloc && sec.tls; });
             });
 
         if (opts.arch == LinkArch::X86_64 || opts.arch == LinkArch::AArch64) {

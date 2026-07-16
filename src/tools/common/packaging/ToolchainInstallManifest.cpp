@@ -182,6 +182,45 @@ std::string parseVersionFromText(const std::string &text) {
     return {};
 }
 
+/// @brief Extract one quoted preprocessor definition from configured build metadata.
+std::string parseQuotedDefine(const std::string &text, std::string_view name) {
+    const std::string prefix = "#define " + std::string(name);
+    const std::size_t define = text.find(prefix);
+    if (define == std::string::npos)
+        return {};
+    const std::size_t quote = text.find('"', define + prefix.size());
+    if (quote == std::string::npos)
+        return {};
+    const std::size_t end = text.find('"', quote + 1U);
+    if (end == std::string::npos)
+        return {};
+    return text.substr(quote + 1U, end - quote - 1U);
+}
+
+struct StagedBuildProvenance {
+    std::string snapshot;
+    std::string commit;
+    std::string state{"unknown"};
+};
+
+/// @brief Read immutable source provenance from the installed generated header.
+StagedBuildProvenance detectBuildProvenance(const fs::path &stagePrefix) {
+    StagedBuildProvenance result;
+    const fs::path header = stagePrefix / "include" / "viper" / "version.hpp";
+    std::ifstream input(header, std::ios::binary);
+    if (!input)
+        return result;
+    std::ostringstream bytes;
+    bytes << input.rdbuf();
+    const std::string text = bytes.str();
+    result.snapshot = parseQuotedDefine(text, "VIPER_SNAPSHOT_STR");
+    result.commit = parseQuotedDefine(text, "VIPER_SOURCE_COMMIT_STR");
+    const std::string state = parseQuotedDefine(text, "VIPER_SOURCE_STATE_STR");
+    if (!state.empty())
+        result.state = state;
+    return result;
+}
+
 /// @brief Probe well-known files in the staged install tree to infer the toolchain
 /// version without requiring a separate manifest argument. Tries CMake config
 /// first, then the C++ version header. Returns empty if neither file exists.
@@ -817,9 +856,13 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
 
     ToolchainInstallManifest manifest;
     const StagedToolchainIdentity identity = detectStagedToolchainIdentity(stage, files);
+    const StagedBuildProvenance provenance = detectBuildProvenance(stage);
     if (identity.platform == "macos")
         validateMacOSPayloadArchitectures(stage, files, identity.arch);
     manifest.version = detectManifestVersion(stage);
+    manifest.snapshot = provenance.snapshot;
+    manifest.sourceCommit = provenance.commit;
+    manifest.sourceState = provenance.state;
     manifest.arch = identity.arch;
     manifest.platform = identity.platform;
     manifest.fileAssociations = defaultToolchainFileAssociations();
@@ -867,6 +910,20 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
         validateToolchainArchitecture(manifest.arch);
     }
     validateDebVersion(manifest.version, "toolchain package version");
+    validateSingleLineField(manifest.snapshot, "toolchain snapshot identity");
+    if (!manifest.sourceCommit.empty() &&
+        (manifest.sourceCommit.size() < 7U || manifest.sourceCommit.size() > 64U ||
+         !std::all_of(
+             manifest.sourceCommit.begin(), manifest.sourceCommit.end(), [](unsigned char ch) {
+                 return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+             }))) {
+        throw std::runtime_error(
+            "toolchain source commit must be 7-64 lowercase hexadecimal characters");
+    }
+    if (manifest.sourceState != "clean" && manifest.sourceState != "dirty" &&
+        manifest.sourceState != "unknown") {
+        throw std::runtime_error("toolchain source state must be clean, dirty, or unknown");
+    }
     validatePackageFileAssociations(manifest.fileAssociations);
     validateManifestFileEntries(manifest);
 

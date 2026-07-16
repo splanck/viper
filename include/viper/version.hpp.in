@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viper/version.hpp.in
+// Purpose: Define configured toolchain, source, and IL build identity.
+//
+// Key invariants:
+//   - Release provenance is immutable and comes from configure-time metadata.
+//   - Source state is exactly clean, dirty, or unknown.
+//
+// Ownership/Lifetime: CMake configures this template into generated/viper.
+//
+// Links: CMakeLists.txt, ToolchainInstallManifest.cpp
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 // Toolchain (Viper) version as provided by CMake/configure_file.
@@ -11,6 +31,10 @@
 // Optional snapshot/build metadata derived from `git describe`.
 // Empty if not in a git checkout or no matching tags.
 #define VIPER_SNAPSHOT_STR   "@VIPER_SNAPSHOT_STR@"
+
+// Immutable source provenance used by release package gates and diagnostics.
+#define VIPER_SOURCE_COMMIT_STR "@VIPER_SOURCE_COMMIT@"
+#define VIPER_SOURCE_STATE_STR  "@VIPER_SOURCE_STATE@"
 
 // IL/spec version (single source of truth from IL_VERSION file)
 #define VIPER_IL_VERSION_STR "@VIPER_IL_VERSION_STR@"

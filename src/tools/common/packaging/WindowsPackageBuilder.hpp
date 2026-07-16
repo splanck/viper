@@ -33,20 +33,33 @@
 #include "ToolchainInstallManifest.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace viper::pkg {
 
+/// @brief Transform one complete PE image into its signed form before packaging.
+/// @details The logical name is an install-relative path used for diagnostics and
+///          temporary filenames. Implementations return the complete signed bytes
+///          and must preserve the image architecture. An empty callback selects
+///          unsigned developer-package behavior.
+using WindowsPeSigner = std::function<std::vector<uint8_t>(std::string_view logicalName,
+                                                           const std::vector<uint8_t> &unsignedPe)>;
+
 /// @brief Parameters for building a Windows self-extracting installer.
 struct WindowsBuildParams {
-    std::string projectName;    ///< Project name (used for display name fallback).
-    std::string version;        ///< Version string (e.g. "1.2.0").
-    std::string executablePath; ///< Path to compiled native .exe binary.
-    std::string projectRoot;    ///< Project root directory (for resolving assets).
-    PackageConfig pkgConfig;    ///< Package manifest configuration.
-    std::string outputPath;     ///< Output .exe path.
-    std::string archStr;        ///< Payload architecture string ("x64" or "arm64").
+    std::string projectName;          ///< Project name (used for display name fallback).
+    std::string version;              ///< Version string (e.g. "1.2.0").
+    std::string executablePath;       ///< Path to compiled native .exe binary.
+    std::string projectRoot;          ///< Project root directory (for resolving assets).
+    PackageConfig pkgConfig;          ///< Package manifest configuration.
+    std::string outputPath;           ///< Output .exe path.
+    std::string archStr;              ///< Payload architecture string ("x64" or "arm64").
+    std::string installerHostPath;    ///< Statically linked native installer host template.
+    std::string installerCleanupPath; ///< Statically linked detached cleanup helper template.
+    WindowsPeSigner peSigner;         ///< Optional nested PE signer applied before payload hashing.
 };
 
 /// @brief Build a Windows self-extracting installer .exe.
@@ -87,11 +100,20 @@ struct WindowsToolchainBuildParams {
         "org.viper.toolchain"}; ///< Unique product identifier used as the registry key name.
     std::string installDirName{"Viper"}; ///< Directory name under the selected install root.
     std::string homepage{"https://github.com/splanck/viper"}; ///< Support/update URL.
+    std::string documentationUrl;         ///< Documentation URL; defaults to homepage.
+    std::string updateManifestUrl;        ///< Optional HTTPS signed update-manifest URL.
+    std::string updateRsaModulus;         ///< RSA public modulus for update signature verification.
+    std::string updateRsaExponent;        ///< RSA public exponent as lowercase big-endian hex.
+    std::string releaseChannel{"stable"}; ///< Package update channel.
+    std::string sourceCommit; ///< Lowercase source revision embedded in package metadata.
     std::string installScope{
         "user"};          ///< "user" for LocalAppData/HKCU, "machine" for ProgramFiles/HKLM.
     bool addToPath{true}; ///< Add bin/ to the selected PATH registry value.
     bool registerFileAssociations{true}; ///< Register .zia/.bas/.il file associations.
     bool createStartMenuShortcuts{true}; ///< Create Viper developer shortcuts in the Start Menu.
+    std::string installerHostPath; ///< Native host template; auto-detected in staged bin/ if empty.
+    std::string installerCleanupPath; ///< Detached cleanup helper; auto-detected in staged bin/.
+    WindowsPeSigner peSigner; ///< Optional signer for Viper-owned payload PEs and uninstall.exe.
 };
 
 /// @brief Build a Windows toolchain installer .exe from a staged install manifest.

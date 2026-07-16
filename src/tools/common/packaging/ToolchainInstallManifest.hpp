@@ -63,6 +63,9 @@ struct ToolchainFileEntry {
 /// @brief The full Viper toolchain install manifest for one (arch, platform) pair.
 struct ToolchainInstallManifest {
     std::string version;                     ///< Toolchain version (e.g. "0.2.5").
+    std::string snapshot;                    ///< Optional git-describe build identity.
+    std::string sourceCommit;                ///< Optional lowercase source commit hash.
+    std::string sourceState{"unknown"};      ///< "clean", "dirty", or "unknown".
     std::string arch;                        ///< Target architecture ("x64"/"arm64").
     std::string platform;                    ///< Target platform ("windows"/"macos"/"linux").
     std::string license{"GPL-3.0-only"};     ///< SPDX license id for package metadata.

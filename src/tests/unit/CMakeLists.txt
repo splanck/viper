@@ -1,6 +1,20 @@
-# SPDX-License-Identifier: GPL-3.0-only
-# File: tests/unit/CMakeLists.txt
-# Purpose: Build standalone unit test executables.
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/tests/unit/CMakeLists.txt
+# Purpose: Build and register standalone Viper unit tests.
+#
+# Key invariants: Unit tests use repository targets without product dependencies.
+#
+# Ownership/Lifetime: CTest owns generated unit-test outputs in the build tree.
+#
+# Links: docs/testing.md, src/tests/CMakeLists.txt
+#
+#===----------------------------------------------------------------------===#
 
 set(VIPER_UNIT_SUPPORT_LIBS viper_support)
 set(VIPER_UNIT_SUPPORT_LIBS ${VIPER_UNIT_SUPPORT_LIBS} PARENT_SCOPE)
@@ -92,6 +106,34 @@ if (NOT TARGET test_basic_terminal_scan)
     viper_add_test(test_basic_terminal_scan ${VIPER_TESTS_DIR}/unit/BasicTerminalScanTest.cpp)
     target_link_libraries(test_basic_terminal_scan PRIVATE fe_basic)
     viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
+endif ()
+
+if (WIN32 AND NOT TARGET test_windows_installer_version)
+    viper_add_test(test_windows_installer_version
+            ${VIPER_TESTS_DIR}/unit/test_windows_installer_version.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/windows_installer/WindowsInstallerVersion.cpp)
+    target_include_directories(test_windows_installer_version PRIVATE
+            ${CMAKE_SOURCE_DIR}/src/tools/common/packaging)
+    viper_add_ctest(test_windows_installer_version test_windows_installer_version)
+    viper_add_test_labels(test_windows_installer_version installer packaging requires_windows)
+endif ()
+
+if (WIN32 AND NOT TARGET test_windows_installer_update)
+    viper_add_test(test_windows_installer_update
+            ${VIPER_TESTS_DIR}/unit/test_windows_installer_update.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/windows_installer/WindowsInstallerUpdate.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/windows_installer/WindowsInstallerVersion.cpp)
+    target_include_directories(test_windows_installer_update PRIVATE
+            ${CMAKE_SOURCE_DIR}/src/tools/common/packaging)
+    target_link_libraries(test_windows_installer_update PRIVATE
+            viper_packaging bcrypt comctl32 shell32 user32 winhttp)
+    # Debug linking retains the uncalled TaskDialogIndirect UI path. Without a
+    # v6 activation context Windows loads comctl32 v5 and fails before main.
+    target_link_options(test_windows_installer_update PRIVATE
+            "/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'")
+    viper_add_ctest(test_windows_installer_update test_windows_installer_update)
+    set_tests_properties(test_windows_installer_update PROPERTIES TIMEOUT 15)
+    viper_add_test_labels(test_windows_installer_update installer packaging requires_windows)
 endif ()
 
 # Packaging subsystem unit tests (VAPS)

@@ -33,7 +33,9 @@ viper \- Viper project driver, IL tool, and native build frontend
 [\fB--arch\fR arm64|x64] [\fB--stage-only\fR] [\fB--keep-stage-dir\fR]
 [\fB--macos-pkg-version\fR \fIVERSION\fR] [\fB--macos-sign-identity\fR \fIIDENTITY\fR]
 [\fB--macos-notary-profile\fR \fIPROFILE\fR] [\fB--macos-staple\fR]
-[\fB--no-verify\fR] [\fB-o\fR \fIOUTPUT\fR]
+[\fB--windows-channel\fR \fICHANNEL\fR] [\fB--windows-install-scope\fR user|machine]
+[\fB--windows-install-dir\fR \fINAME\fR] [\fB--windows-identifier\fR \fIID\fR]
+[\fB--release\fR] [\fB--no-verify\fR] [\fB-o\fR \fIOUTPUT\fR]
 .br
 .B viper
 \fB-run\fR \fIFILE.il\fR [\fIrun-options\fR]
@@ -131,23 +133,40 @@ code with \fB--macos-app-sign-identity\fR, and can sign the product with \fB--ma
 \fB--macos-notary-profile\fR, and stapled with \fB--macos-staple\fR. With
 \fB--macos-dmg\fR, the generated DMG is verified and can be notarized/stapled
 with the same notary options. Generated
-Windows toolchain installers default to a per-user install under
-\fC%LocalAppData%\\Viper\fR, add the installed \fCbin\fR directory to the user
-\fCPath\fR, avoid duplicate Viper-owned PATH entries on reinstall, remove only
-that PATH token on uninstall, stage and verify a DEFLATE-compressed inner
-payload in a journaled transaction, reject reparse traversal and unowned
-collisions, restore files/PATH/registry on failure or interruption, remove only
-stale Viper-owned files after commit, and create Start
-Menu developer shortcuts and source/IL file associations by default. Use
-\fB--windows-install-scope machine\fR for a \fC%ProgramFiles%\\Viper\fR install,
-\fB--windows-no-path\fR to leave PATH untouched, \fB--windows-shortcuts off\fR
-to omit shortcuts, and \fB--windows-file-associations off\fR to skip
-source/IL file associations; when enabled, associations use the appropriate
-\fBviper run\fR or \fBviper -run\fR command. Windows installer generation rejects MSVC Debug CRT
-payloads unless \fB--allow-debug-toolchain\fR is supplied; Release payloads that
-use the MSVC dynamic runtime require the Visual C++ Redistributable unless the
-runtime DLLs are staged next to \fCbin\\viper.exe\fR or the toolchain is built
-with a static runtime. Linux toolchain
+Windows toolchain installers are statically linked native setup and
+maintenance executables; the canonical lifecycle does not invoke PowerShell or
+download dependencies. Stable current-user setup defaults to
+\fC%LocalAppData%\\Programs\\Viper\fR and machine scope defaults to
+\fC%ProgramFiles%\\Viper\fR. Unsigned local output uses a separate development
+channel and directory so it can coexist with stable. The wizard offers Typical,
+SDK, Complete, and Custom component paths, validates scope and Unicode
+destination, checks disk and semantic-version policy, reports files in use with
+Restart Manager, and exposes Modify, Repair, and Uninstall through Installed
+apps.
+.PP
+The lifecycle engine verifies the schema-versioned nested inventory, stages and
+atomically swaps selected files in a recoverable journal, rejects reparse
+traversal and unowned collisions, restores files/PATH/registry on failure or
+interruption, removes stale owned files, and preserves unrelated developer
+content. Repair restores exact owned hashes. Detached cleanup removes the
+installed uninstaller, package cache, and empty install root after successful
+removal. PATH, Start Menu shortcuts, and safe \fC.zia\fR/\fC.bas\fR/\fC.il\fR
+Open With entries are ownership-marked and uninstall removes only exact values
+created by that package; associations never take over an existing default or
+execute source on open.
+.PP
+Use \fB--windows-install-scope machine\fR for all users,
+\fB--windows-install-dir\fR and \fB--windows-identifier\fR for a custom product
+identity, \fB--windows-channel\fR for coexistence/update identity,
+\fB--windows-no-path\fR to leave PATH untouched,
+\fB--windows-shortcuts off\fR to omit shortcuts, and
+\fB--windows-file-associations off\fR to skip Open With entries. Windows
+installer generation rejects MSVC Debug CRT payloads unless
+\fB--allow-debug-toolchain\fR is supplied. Release staging installs the
+architecture-matched MSVC runtime DLLs beside \fCbin\\viper.exe\fR, and package
+generation rejects a PE whose imported compiler runtime is absent from that
+directory. Viper-owned nested PEs are signed before hashing and the outer setup
+is signed last. Linux toolchain
 packages include desktop/MIME association metadata, hicolor icons, preserve
 staged Unix modes, declare runtime package dependencies for libc/C++/libgcc and
 optional X11/ALSA support. CMake, make, a C++ compiler,
@@ -159,8 +178,9 @@ the previous manifest in a rollback-capable transaction, reject unowned
 conflicts, and remove only files listed in the current manifest during uninstall.
 Every successful toolchain package writes a SHA-256 sidecar and JSON inventory;
 multi-artifact output also writes \fCSHA256SUMS\fR. \fB--release\fR requires
-numeric \fCSOURCE_DATE_EPOCH\fR, verification, collision-free output, and the
-native platform trust chain. Use \fB--require-checksum\fR with
+numeric \fCSOURCE_DATE_EPOCH\fR, a clean immutable source commit, verification,
+collision-free output, and the native platform trust chain. Use
+\fB--require-checksum\fR with
 \fB--verify-only\fR to enforce the sidecar.
 .SH BUILD AND RUN OPTIONS
 These options apply to \fBviper run\fR and \fBviper build\fR when relevant, and

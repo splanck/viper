@@ -1,3 +1,21 @@
+#===----------------------------------------------------------------------===#
+#
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/tests/tools/WindowsUserInstallerSmoke.cmake
+# Purpose: Exercise a current-user native Windows application package lifecycle.
+#
+# Key invariants: Setup and detached uninstall leave no owned product state.
+#
+# Ownership/Lifetime: Test product state is isolated by a dedicated identifier.
+#
+# Links: WindowsPackageBuilder.cpp, WindowsInstallerLifecycle.cpp
+#
+#===----------------------------------------------------------------------===#
+
 cmake_minimum_required(VERSION 3.20)
 
 foreach (_required VIPER_BIN TEST_WORK_DIR)
@@ -37,7 +55,7 @@ file-assoc .vapsuser \"VAPS User Smoke Source\" text/x-vaps-user --open-source
 
 execute_process(
         COMMAND powershell -NoProfile -ExecutionPolicy Bypass -Command
-        "Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'VAPSUserSmoke') -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Desktop')) 'VAPS User Smoke.lnk') -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) 'VAPSUserSmoke') -Recurse -Force -ErrorAction SilentlyContinue; reg delete 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\.vapsuser' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\org.viper.smoke.user.vapsuser' /f 2>$null; exit 0"
+        "$arpPath='Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user'; $arp=Get-ItemProperty -LiteralPath $arpPath -ErrorAction SilentlyContinue; $cache=if($arp -and $arp.ViperMaintenanceCache){[string]$arp.ViperMaintenanceCache}else{''}; $newRoot=Join-Path $env:LOCALAPPDATA 'Programs\\VAPSUserSmoke'; $oldRoot=Join-Path $env:LOCALAPPDATA 'VAPSUserSmoke'; $candidate=if($cache -and (Test-Path -LiteralPath $cache -PathType Leaf)){$cache}elseif(Test-Path -LiteralPath (Join-Path $newRoot 'uninstall.exe') -PathType Leaf){Join-Path $newRoot 'uninstall.exe'}elseif(Test-Path -LiteralPath (Join-Path $oldRoot 'uninstall.exe') -PathType Leaf){Join-Path $oldRoot 'uninstall.exe'}else{$null}; if($candidate){$p=Start-Process -FilePath $candidate -ArgumentList @('/uninstall','/quiet','/norestart') -PassThru -Wait; if($p.ExitCode -notin @(0,3010)){throw \"Prior test uninstall returned $($p.ExitCode)\"}}; $deadline=[DateTime]::UtcNow.AddSeconds(45); while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath $arpPath) -or ($cache -and (Test-Path -LiteralPath $cache)))){Start-Sleep -Milliseconds 100}; if($cache -and (Test-Path -LiteralPath $cache)){throw \"Prior test maintenance cache remained: $cache\"}; Remove-Item -LiteralPath $newRoot,$oldRoot -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Desktop')) 'VAPS User Smoke.lnk') -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) 'VAPSUserSmoke') -Recurse -Force -ErrorAction SilentlyContinue; reg delete 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\.vapsuser' /f 2>$null; reg delete 'HKCU\\Software\\Classes\\org.viper.smoke.user.vapsuser' /f 2>$null; exit 0"
         RESULT_VARIABLE _cleanup_rv)
 if (NOT _cleanup_rv EQUAL 0)
     message(FATAL_ERROR "Windows user smoke pre-cleanup failed")
@@ -64,7 +82,7 @@ if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR "Windows user installer failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
 endif ()
 
-set(_install_root "$ENV{LOCALAPPDATA}/VAPSUserSmoke")
+set(_install_root "$ENV{LOCALAPPDATA}/Programs/VAPSUserSmoke")
 set(_app_exe "${_install_root}/vaps_user_smoke.exe")
 set(_uninstall_exe "${_install_root}/uninstall.exe")
 if (NOT EXISTS "${_app_exe}")
@@ -140,6 +158,19 @@ if (NOT EXISTS "${_menu_lnk}")
 endif ()
 
 execute_process(
+        COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command
+        "(Get-ItemProperty -LiteralPath 'Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user').ViperMaintenanceCache"
+        RESULT_VARIABLE _cache_query_rv
+        OUTPUT_VARIABLE _maintenance_cache
+        ERROR_VARIABLE _cache_query_err
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+if (NOT _cache_query_rv EQUAL 0 OR _maintenance_cache STREQUAL "")
+    message(FATAL_ERROR "Cannot locate user-app maintenance cache\n${_cache_query_err}")
+endif ()
+file(TO_NATIVE_PATH "${_install_root}" _install_root_native)
+file(TO_NATIVE_PATH "${_maintenance_cache}" _maintenance_cache_native)
+
+execute_process(
         COMMAND "${_uninstall_exe}" /quiet /norestart
         RESULT_VARIABLE _uninstall_rv
         OUTPUT_VARIABLE _uninstall_out
@@ -147,6 +178,17 @@ execute_process(
         TIMEOUT 120)
 if (NOT _uninstall_rv EQUAL 0)
     message(FATAL_ERROR "Windows user uninstaller failed\nstdout:\n${_uninstall_out}\nstderr:\n${_uninstall_err}")
+endif ()
+execute_process(
+        COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command
+        "$deadline=[DateTime]::UtcNow.AddSeconds(45); $arp='Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.user'; while([DateTime]::UtcNow -lt $deadline -and ((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp))){Start-Sleep -Milliseconds 100}; if((Test-Path -LiteralPath '${_install_root_native}') -or (Test-Path -LiteralPath '${_maintenance_cache_native}') -or (Test-Path -LiteralPath $arp)){exit 1}"
+        RESULT_VARIABLE _cleanup_wait_rv)
+if (NOT _cleanup_wait_rv EQUAL 0)
+    message(FATAL_ERROR "Detached user-app cleanup did not converge")
+endif ()
+get_filename_component(_maintenance_cache_leaf "${_maintenance_cache}" DIRECTORY)
+if (EXISTS "${_maintenance_cache_leaf}")
+    message(FATAL_ERROR "User-app package cache leaf remained: ${_maintenance_cache_leaf}")
 endif ()
 
 if (EXISTS "${_app_exe}")
