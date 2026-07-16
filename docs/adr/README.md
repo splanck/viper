@@ -131,6 +131,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0100](0100-profiling-depth.md) — Profiling Depth — Per-Pass Draw Attribution + Hitch Tracer
 - [ADR 0102](0102-graphics3d-runtime-boundary-and-contract-manifest.md) — Graphics3D Runtime Boundary and Contract Manifest
 - [ADR 0105](0105-game3d-character-controller-gravity.md) — CharacterController3D Gravity Magnitude
+- [ADR 0106](0106-linux-graphics-backend-selection.md) — Linux Graphics Backend Selection
 
 ## Release & Packaging
 

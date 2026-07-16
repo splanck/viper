@@ -1,4 +1,4 @@
-# ADR 0104: Linux Graphics Backend Selection
+# ADR 0106: Linux Graphics Backend Selection
 
 Date: 2026-07-16
 Status: Accepted
