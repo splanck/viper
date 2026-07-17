@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-16
+last-verified: 2026-07-17
 ---
 
 # Viper Compiler Platform — Release Notes
@@ -14,7 +14,7 @@ last-verified: 2026-07-16
 
 ### What this release is about
 
-A cleanup-and-packaging follow-up to the v0.2.7 hardening cycle. Three efforts dominate: the runtime's public API is canonicalized onto one naming and error-handling scheme, the 3D stack grows from a renderer toward a real-time engine with first- and third-person game runtimes, and packaging gains an installer-and-release pipeline.
+A cleanup-and-packaging follow-up to the v0.2.7 hardening cycle. Four efforts dominate: the runtime's public API is canonicalized onto one naming and error-handling scheme, the 3D stack grows from a renderer toward a real-time engine with first- and third-person game runtimes, the GUI toolkit completes a forty-item modernization program, and packaging gains an installer-and-release pipeline.
 
 Most visible to your code, the public surface is unified. Every symbol has one canonical name, terse abbreviations are spelled out, and every recoverable failure now comes back as a value you can inspect — a read past end-of-input, a decrypt that doesn't authenticate, a lookup that finds nothing each return an `Option` or `Result` instead of a null, a `-1`, or a silent side channel. The older shapes stay as compatibility aliases, `viper --dump-runtime-api` emits a machine-readable contract, and the 17,000-line registry behind it splits into documented, domain-oriented fragments (ADRs 0027, 0101–0102).
 
@@ -40,21 +40,22 @@ The 3D renderer gains image-based lighting, a clustered forward+ path, screen-sp
 - **A fourth 3D pass adds vehicles and standing conformance gates.** A raycast-suspension `Vehicle3D`, eight-influence GPU skinning, and a per-pass render profiler land alongside new harnesses that diff each GPU backend against the software-raster golden — catching a vignette aspect bug shared by all three GPU backends — verify byte-identical software rendering, soak entity churn, and audit graphics-off link completeness.
 - **Zia gains target-typed list combinators (new).** `map`, `filter`, `reduce`, `firstWhere`, `any`, `all`, and `sum` target their lambdas from the receiver's element type and lower to inline loops, alongside a shared precedence-climbing parser and a language-correctness pass.
 - **ViperIDE becomes a multi-root workbench (new; ADRs 0066–0068).** Async git source control, a VT terminal, a grouped-Variables debugger, an in-editor command overlay, named vector toolbar icons, split panes with crash recovery, and OS foreground activation land atop a shell split into focused modules.
+- **The GUI toolkit completes a forty-item modernization program (new; ADRs 0106–0109).** Scalable per-app themes, Unicode grapheme editing with IME composition on all three platforms, native accessibility adapters over a shared semantic tree, virtual list/tree models for large data, frame-driven dialogs, and a deterministic TestHarness with real input and framebuffer capture — all behind the existing public surface.
 - **Packaging gains an installer-and-release pipeline (ADRs 0025, 0073, 0103).** The toolchain installer ships ViperIDE, the Windows setup becomes a native, transactional installer — a statically linked setup host with signed payloads, journaled rollback, and a full modify/repair/upgrade lifecycle — standalone apps package as AppImage/RPM/DMG/Windows installers, and a signed release pipeline structurally verifies, checksums, and manifests every artifact — while the repository consolidates under `src/`.
-- **Native builds are stable on Linux and Windows.** Static archives stop pulling unresolved libgcc/libstdc++ helpers, the CRT-less PE path is completed on x86-64 and AArch64, the linker rejects imports exclusive to another platform, and the generated codegen tables are checked in for clean source builds.
+- **Native builds are stable on Linux and Windows, and the platform adapters absorb full audits.** Static archives stop pulling unresolved libgcc/libstdc++ helpers, the CRT-less PE path is completed on x86-64 and AArch64, the linker rejects imports exclusive to another platform, and the generated codegen tables are checked in for clean source builds. Reliability audits then sweep the Windows adapters (sockets, entropy, locale, TLS, process launch, timed waits, file watching) and the Linux adapters (X11/GLX, ALSA, inotify, PTY), adding a dependency-free headless Linux graphics backend.
 
 ### By the Numbers
 
 | Metric | v0.2.7 | v0.2.99 | Delta |
 |---|---|---|---|
-| Commits | — | 107 | +107 |
-| Source files | 3,402 | 3,530 | +128 |
-| Production SLOC | 762K | 855K | +93K |
-| Test SLOC | 304K | 329K | +25K |
+| Commits | — | 115 | +115 |
+| Source files | 3,402 | 3,554 | +152 |
+| Production SLOC | 762K | 877K | +115K |
+| Test SLOC | 304K | 333K | +29K |
 | ViperIDE SLOC | 28K | 37K | +9K |
 | Demo SLOC | 197K | 239K | +42K |
 
-Counts via `scripts/count_sloc.sh` (production 855,211 / test 329,304 / demo 238,896 / viperide 36,986 / source files 3,530); commits since the `v0.2.7-dev` tag (2026-06-30). The range touched 3,530 files (+543,889 / −78,622); most of the raw insertions are the checked-in text-glTF character and model assets, which the SLOC figures above exclude.
+Counts via `scripts/count_sloc.sh` (production 877,028 / test 332,871 / demo 238,941 / viperide 36,986 / source files 3,554); commits since the `v0.2.7-dev` tag (2026-06-30). The range touched 4,443 files (+589,163 / −83,918); most of the raw insertions are the checked-in text-glTF character and model assets, which the SLOC figures above exclude.
 
 ---
 
@@ -118,6 +119,7 @@ Counts via `scripts/count_sloc.sh` (production 855,211 / test 329,304 / demo 238
 - A reusable in-editor command overlay (ADR 0067) replaces external prompts for Go To Line, Add Watch, Rename Symbol, Extract Local/Function, and workspace-symbol lookup, and toolbar and activity-bar buttons trade glyph labels for semantic named icons drawn through the vector renderer.
 - ViperIDE becomes a multi-document, multi-root workbench: per-document buffers preserve undo/cursor/scroll across tab switches, split panes, crash-recovery swap files, a welcome/recents surface, and inline SCM diff gutters fill out the editing surface, and workspaces advertise multiple roots. The monolithic `AppShell` splits into focused modules, and a performance pass adds damage-region partial repaint plus an incremental `Viper.Zia.Document` mirror that syncs edit deltas.
 - `Viper.GUI.App.Activate` (ADR 0068) requests native foreground and menu ownership across macOS, Windows, Linux, and the mock backend; ViperIDE uses it at startup and adds an adaptive `PollWait` cadence that stays live while builds, debugging, terminals, overlays, or indexing are active.
+- The GUI toolkit completes a forty-item modernization program (ADRs 0106–0109) without changing the public surface: reviewed ownership/nullability/fallibility metadata and a deterministic API manifest, explicit availability and fallible app construction, scalable per-app themes with custom palettes, contrast policies, and reduced motion; Unicode 17 grapheme editing and IME composition on Linux, macOS, and Windows; a shared semantic tree projected through native accessibility adapters; complete widget geometry and flex/grid/dock layout, interactive data grids, and virtual list/tree models for viewport-bounded large data; frame-driven dialogs, scheduled video, and image filtering; and a TestHarness bound to real app input, deterministic frames, framebuffer capture, and accessibility snapshots.
 
 ### Frontends and language tooling
 
@@ -135,10 +137,12 @@ Counts via `scripts/count_sloc.sh` (production 855,211 / test 329,304 / demo 238
 ### Windows and Linux builds, and tests
 
 - Windows and Linux native builds return to green, with the D3D11 backend building cleanly under MSVC after the chunked-HLSL and constant-buffer alignment work, and a build-acceleration pass shortens demo codegen and linking on both platforms. The OpenGL backend and the Linux platform adapters take a lifecycle-hardening pass — context/resource teardown ordering, drained GPU errors, and guarded process-global state — and a clean-build reliability pass on Linux fixes a debug-adapter thread initialization race that intermittently dropped breakpoint commands in the ViperIDE debugger probe.
+- A Windows runtime-adapter audit makes failure paths deterministic across sockets, entropy, locale, TLS, process launch, timed waits, and file watching — WinSock startup becomes retryable and atomically visible, entropy outputs clear on BCrypt failure, locale tags normalize under one strict POSIX policy, child environments are built sorted UTF-16, and a saturating deadline helper keeps long finite waits from becoming infinite. A clean-build pass then closes the MSVC compile, native-link, and packaging regressions a full unfiltered test run exposed, including release-runtime helpers that make Debug-built archives usable in redistributable packages.
+- The matching Linux audit hardens X11/GLX, XInput, ALSA, inotify, machine-information, PTY, and ELF-import paths — serialized graphics initialization, drained and validated inotify queues, cgroup-aware CPU/memory probes — and adds a dependency-free headless graphics backend so graphics code runs without a display server.
 - The third-person suite's twenty-seven subsystems each ship a VM==native probe; the codegen round adds jump-table, narrow-arithmetic, and range-demotion coverage; and the runtime API, registry-modularization, and boundary-audit work are locked by contract-fingerprint and leaf-name-uniqueness guards.
 
 ---
 
-Demos and docs tracked the work. The demo set — the ASHFALL FPS campaign, Ridgebound, Neon Lanes, Zia chess, Xenoscape 1.0, and a new `game3d` showcase — exercises the engine surface above, and a repository-wide documentation audit reconciled the 3D, packaging, CLI, and library docs against the live registry — covering the new lighting, canonical API names and contract, reversed-Z depth and occluders, the asset pipeline, the third-person suite, and the signed release pipeline (ADRs 0025–0102).
+Demos and docs tracked the work. The demo set — the ASHFALL FPS campaign, Ridgebound, Neon Lanes, Zia chess, Xenoscape 1.0, and a new `game3d` showcase — exercises the engine surface above, and the documentation tree reorganizes from a flat directory into a topical hierarchy (languages, IL, internals, tools) while a repository-wide audit reconciled the 3D, packaging, CLI, and library docs against the live registry (ADRs 0025–0109).
 
 <!-- END DRAFT -->

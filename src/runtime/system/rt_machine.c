@@ -115,14 +115,15 @@ static rt_string machine_passwd_field(int home_directory) {
     }
 }
 
+#endif
+
+#if RT_PLATFORM_LINUX
 static int64_t checked_u64_bytes(unsigned long long value, unsigned long long unit) {
     if (unit != 0 && value > (unsigned long long)INT64_MAX / unit)
         return INT64_MAX;
     return (int64_t)(value * unit);
 }
-#endif
 
-#if RT_PLATFORM_LINUX
 static int linux_read_control_line(const char *path, char *buffer, size_t capacity) {
     if (!path || !buffer || capacity < 2)
         return 0;
